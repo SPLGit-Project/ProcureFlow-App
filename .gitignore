@@ -7,9 +7,22 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+
+# Build Output
 dist
 dist-ssr
+
+# Environment Variables (CRITICAL SECURITY)
+.env
+.env.local
+.env.staging
+.env.production
+.env.development
+.env.test
 *.local
 
 # Editor directories and files
@@ -22,3 +35,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Supabase (Optional but recommended)
+supabase/.branches
+supabase/.temp
