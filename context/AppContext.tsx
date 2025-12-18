@@ -247,70 +247,118 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // Auth Initialization
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (session?.user) {
-            setIsLoadingAuth(true);
-            try {
-                // 1. Fetch user from our DB
-                let { data: rawData, error } = await supabase
+    let mounted = true;
+
+    const initializeAuth = async () => {
+        setIsLoadingAuth(true);
+        console.log("Auth: Initializing...");
+
+        // 1. Initial Session Check
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session && mounted) {
+                console.log("Auth: Initial session found for user:", session.user.id);
+                await handleUserAuth(session);
+            } else {
+                console.log("Auth: No initial session found");
+                setIsLoadingAuth(false);
+            }
+        } catch (err) {
+            console.error("Auth: Failed to get initial session:", err);
+            if (mounted) setIsLoadingAuth(false);
+        }
+
+        // 2. Listen for changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (!mounted) return;
+            console.log(`Auth Event: ${event}`, session?.user?.id);
+
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || (event === 'INITIAL_SESSION' && session)) {
+                await handleUserAuth(session!);
+            } else if (event === 'SIGNED_OUT') {
+                setCurrentUser(null);
+                setIsAuthenticated(false);
+                setIsPendingApproval(false);
+                setIsLoadingAuth(false);
+            }
+        });
+
+        return subscription;
+    };
+
+    const handleUserAuth = async (session: any) => {
+        if (!mounted) return;
+        setIsLoadingAuth(true);
+        try {
+            console.log("Auth: Fetching user data from DB...");
+            // 1. Fetch user from our DB
+            let { data: rawData, error } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', session.user.id)
+                .single();
+
+            if (error && error.code !== 'PGRST116') {
+                console.error("Auth: Error fetching user:", error);
+                throw error;
+            }
+
+            let userData: User | null = rawData ? {
+                id: rawData.id,
+                name: rawData.name,
+                email: rawData.email,
+                role: rawData.role_id,
+                avatar: rawData.avatar,
+                jobTitle: rawData.job_title,
+                status: rawData.status,
+                createdAt: rawData.created_at
+            } : null;
+
+            if (!userData) {
+                console.log("Auth: User not in DB, starting registration...");
+                // 2. New User - Registration Flow
+                const { count } = await supabase
                     .from('users')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single();
+                    .select('*', { count: 'exact', head: true });
 
-                if (error && error.code !== 'PGRST116') {
-                    console.error("Error fetching user:", error);
+                const isFirstUser = count === 0;
+                
+                const dbUser = {
+                    id: session.user.id,
+                    email: session.user.email || '',
+                    name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'Unknown User',
+                    role_id: isFirstUser ? 'ADMIN' : 'REQUESTER',
+                    status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
+                    avatar: session.user.user_metadata.avatar_url || '',
+                    job_title: '',
+                    created_at: new Date().toISOString()
+                };
+
+                console.log("Auth: Inserting new user:", dbUser.email);
+                const { error: insertError } = await supabase
+                    .from('users')
+                    .insert([dbUser]);
+
+                if (insertError) {
+                    console.error("Auth: Registration failed:", insertError);
+                    throw insertError;
                 }
+                
+                userData = {
+                    id: dbUser.id,
+                    name: dbUser.name,
+                    email: dbUser.email,
+                    role: dbUser.role_id,
+                    avatar: dbUser.avatar,
+                    jobTitle: dbUser.job_title,
+                    status: dbUser.status as any,
+                    createdAt: dbUser.created_at
+                };
+                console.log("Auth: Registration complete");
+            }
 
-                let userData: User | null = rawData ? {
-                    id: rawData.id,
-                    name: rawData.name,
-                    email: rawData.email,
-                    role: rawData.role_id,
-                    avatar: rawData.avatar,
-                    jobTitle: rawData.job_title,
-                    status: rawData.status,
-                    createdAt: rawData.created_at
-                } : null;
-
-                if (!userData) {
-                    // 2. New User - Registration Flow
-                    // Check if first user ever
-                    const { count } = await supabase
-                        .from('users')
-                        .select('*', { count: 'exact', head: true });
-
-                    const isFirstUser = count === 0;
-                    
-                    const dbUser = {
-                        id: session.user.id,
-                        email: session.user.email || '',
-                        name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'Unknown User',
-                        role_id: isFirstUser ? 'ADMIN' : 'REQUESTER',
-                        status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
-                        avatar: session.user.user_metadata.avatar_url || '',
-                        job_title: '',
-                        created_at: new Date().toISOString()
-                    };
-
-                    const { error: insertError } = await supabase
-                        .from('users')
-                        .insert([dbUser]);
-
-                    if (insertError) throw insertError;
-                    
-                    userData = {
-                        id: dbUser.id,
-                        name: dbUser.name,
-                        email: dbUser.email,
-                        role: dbUser.role_id,
-                        avatar: dbUser.avatar,
-                        jobTitle: dbUser.job_title,
-                        status: dbUser.status as any,
-                        createdAt: dbUser.created_at
-                    };
-                }
-
+            if (mounted) {
+                console.log("Auth: Setting authenticated state for", userData.email);
                 setCurrentUser(userData);
                 setIsAuthenticated(true);
                 setIsPendingApproval(userData.status !== 'APPROVED');
@@ -318,21 +366,23 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 if (userData.status === 'APPROVED') {
                     reloadData();
                 }
-            } catch (err) {
-                console.error("Auth initialization failed:", err);
-            } finally {
-                setIsLoadingAuth(false);
             }
-        } else {
-            setCurrentUser(null);
-            setIsAuthenticated(false);
-            setIsPendingApproval(false);
-            setIsLoadingAuth(false);
+        } catch (err) {
+            console.error("Auth initialization failed:", err);
+            if (mounted) {
+                setIsAuthenticated(false);
+                setCurrentUser(null);
+            }
+        } finally {
+            if (mounted) setIsLoadingAuth(false);
         }
-    });
+    };
+
+    const authPromise = initializeAuth();
 
     return () => {
-        subscription.unsubscribe();
+        mounted = false;
+        authPromise.then(sub => sub?.unsubscribe());
     };
   }, [reloadData]);
 
