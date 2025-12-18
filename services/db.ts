@@ -40,7 +40,9 @@ export const db = {
             email: u.email,
             role: u.role_id,
             avatar: u.avatar,
-            jobTitle: u.job_title
+            jobTitle: u.job_title,
+            status: u.status,
+            createdAt: u.created_at
         }));
     },
 
@@ -51,7 +53,9 @@ export const db = {
             name: user.name,
             role_id: user.role,
             avatar: user.avatar,
-            job_title: user.jobTitle
+            job_title: user.jobTitle,
+            status: user.status || 'PENDING_APPROVAL',
+            created_at: user.createdAt || new Date().toISOString()
         });
         if (error) throw error;
     },

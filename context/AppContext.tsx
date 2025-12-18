@@ -252,7 +252,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setIsLoadingAuth(true);
             try {
                 // 1. Fetch user from our DB
-                let { data: userData, error } = await supabase
+                let { data: rawData, error } = await supabase
                     .from('users')
                     .select('*')
                     .eq('id', session.user.id)
@@ -261,6 +261,17 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 if (error && error.code !== 'PGRST116') {
                     console.error("Error fetching user:", error);
                 }
+
+                let userData: User | null = rawData ? {
+                    id: rawData.id,
+                    name: rawData.name,
+                    email: rawData.email,
+                    role: rawData.role_id,
+                    avatar: rawData.avatar,
+                    jobTitle: rawData.job_title,
+                    status: rawData.status,
+                    createdAt: rawData.created_at
+                } : null;
 
                 if (!userData) {
                     // 2. New User - Registration Flow
@@ -271,23 +282,33 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
                     const isFirstUser = count === 0;
                     
-                    const newUser: User = {
+                    const dbUser = {
                         id: session.user.id,
                         email: session.user.email || '',
                         name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'Unknown User',
-                        role: isFirstUser ? 'ADMIN' : 'REQUESTER',
+                        role_id: isFirstUser ? 'ADMIN' : 'REQUESTER',
                         status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
                         avatar: session.user.user_metadata.avatar_url || '',
-                        jobTitle: '',
-                        createdAt: new Date().toISOString()
+                        job_title: '',
+                        created_at: new Date().toISOString()
                     };
 
                     const { error: insertError } = await supabase
                         .from('users')
-                        .insert([newUser]);
+                        .insert([dbUser]);
 
                     if (insertError) throw insertError;
-                    userData = newUser;
+                    
+                    userData = {
+                        id: dbUser.id,
+                        name: dbUser.name,
+                        email: dbUser.email,
+                        role: dbUser.role_id,
+                        avatar: dbUser.avatar,
+                        jobTitle: dbUser.job_title,
+                        status: dbUser.status as any,
+                        createdAt: dbUser.created_at
+                    };
                 }
 
                 setCurrentUser(userData);
