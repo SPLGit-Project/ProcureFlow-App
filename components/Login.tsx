@@ -61,13 +61,6 @@ const Login = () => {
                <p className="text-xs text-gray-400 mb-4">
                    Restricted to authorized personnel only. 
                </p>
-               <button 
-                onClick={bypassAuth}
-                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline flex items-center justify-center gap-1 w-full"
-               >
-                   <Lock size={10} />
-                   <span>Admin Bypass (Testing)</span>
-               </button>
            </div>
        </div>
     </div>

@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
+import AdminUserApproval from './AdminUserApproval';
+
 
 const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, category: 'Page Access' | 'Functional Access' | 'Admin Access' }[] = [
     // Page Access
@@ -1868,7 +1870,12 @@ if __name__ == "__main__":
           </div>
       )}
       {activeTab === 'SECURITY' && (
-          <div className="animate-fade-in flex flex-col md:flex-row gap-6 h-auto md:h-[calc(100vh-200px)] min-h-[600px]">
+          <div className="animate-fade-in space-y-6">
+              {/* User Approval Requests */}
+              <AdminUserApproval />
+
+              <div className="flex flex-col md:flex-row gap-6 h-auto md:h-[calc(100vh-200px)] min-h-[600px]">
+
               {/* Sidebar: Roles List */}
               <div className="w-full md:w-64 flex-shrink-0 bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden max-h-[300px] md:max-h-none">
                   <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
@@ -2102,6 +2109,7 @@ if __name__ == "__main__":
                        </div>
                    </div>
                )}
+              </div>
           </div>
       )}
 

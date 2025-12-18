@@ -12,9 +12,10 @@ import HelpGuide from './components/HelpGuide';
 import Login from './components/Login';
 import ReportingView from './components/ReportingView';
 import HistoryView from './components/HistoryView';
+import PendingApproval from './components/PendingApproval';
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
-    const { isAuthenticated, isLoadingAuth } = useApp();
+    const { isAuthenticated, isPendingApproval, isLoadingAuth } = useApp();
     
     if (isLoadingAuth) {
         return (
@@ -28,6 +29,10 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
         return <Navigate to="/login" replace />;
     }
 
+    if (isPendingApproval) {
+        return <Navigate to="/pending-approval" replace />;
+    }
+
     return <>{children}</>;
 };
 
@@ -37,6 +42,7 @@ function App() {
       <HashRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/pending-approval" element={<PendingApproval />} />
           
           <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
             <Route index element={<Dashboard />} />

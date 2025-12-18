@@ -45,6 +45,8 @@ export interface User {
   avatar: string;
   email: string;
   jobTitle?: string;
+  status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
+  createdAt?: string;
 }
 
 export interface AppBranding {

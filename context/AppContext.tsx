@@ -3,14 +3,15 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import { v4 as uuidv4 } from 'uuid';
 import { User, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationSetting, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus } from '../types';
 import { db } from '../services/db';
+import { supabase } from '../lib/supabaseClient';
 
 interface AppContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
   login: () => Promise<void>;
-  bypassAuth: () => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   isLoadingAuth: boolean;
+  isPendingApproval: boolean;
   isLoadingData: boolean;
 
   // User Management
@@ -108,6 +109,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [isPendingApproval, setIsPendingApproval] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
@@ -245,29 +247,73 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // Auth Initialization
   useEffect(() => {
-      if (isLoadingData) return; // Wait for data
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (session?.user) {
+            setIsLoadingAuth(true);
+            try {
+                // 1. Fetch user from our DB
+                let { data: userData, error } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', session.user.id)
+                    .single();
 
-      // Check for existing session
-      const savedUser = localStorage.getItem('app-current-user');
-      if (savedUser) {
-          // Re-validate against fetched users to ensure role/permissions are fresh
-          const parsed = JSON.parse(savedUser);
-          let freshUser = users.find(u => u.id === parsed.id) || parsed;
-          
-          // Fix: Ensure Bypass Admin has correct role ID
-          if (freshUser.role === 'admin') {
-             freshUser = { ...freshUser, role: 'ADMIN' };
-          }
+                if (error && error.code !== 'PGRST116') {
+                    console.error("Error fetching user:", error);
+                }
 
-          setCurrentUser(freshUser);
-          setIsAuthenticated(true);
-      } else if (!authConfig.enabled && users.length > 0) {
-          // If auth is disabled (dev mode), auto-login as first user
-          setCurrentUser(users[0]);
-          setIsAuthenticated(true);
-      }
-      setIsLoadingAuth(false);
-  }, [isLoadingData, users, authConfig.enabled]);
+                if (!userData) {
+                    // 2. New User - Registration Flow
+                    // Check if first user ever
+                    const { count } = await supabase
+                        .from('users')
+                        .select('*', { count: 'exact', head: true });
+
+                    const isFirstUser = count === 0;
+                    
+                    const newUser: User = {
+                        id: session.user.id,
+                        email: session.user.email || '',
+                        name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'Unknown User',
+                        role: isFirstUser ? 'ADMIN' : 'REQUESTER',
+                        status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
+                        avatar: session.user.user_metadata.avatar_url || '',
+                        jobTitle: '',
+                        createdAt: new Date().toISOString()
+                    };
+
+                    const { error: insertError } = await supabase
+                        .from('users')
+                        .insert([newUser]);
+
+                    if (insertError) throw insertError;
+                    userData = newUser;
+                }
+
+                setCurrentUser(userData);
+                setIsAuthenticated(true);
+                setIsPendingApproval(userData.status !== 'APPROVED');
+                
+                if (userData.status === 'APPROVED') {
+                    reloadData();
+                }
+            } catch (err) {
+                console.error("Auth initialization failed:", err);
+            } finally {
+                setIsLoadingAuth(false);
+            }
+        } else {
+            setCurrentUser(null);
+            setIsAuthenticated(false);
+            setIsPendingApproval(false);
+            setIsLoadingAuth(false);
+        }
+    });
+
+    return () => {
+        subscription.unsubscribe();
+    };
+  }, [reloadData]);
 
   // Apply Theme & Branding to DOM
   useEffect(() => {
@@ -314,58 +360,21 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // --- Auth Operations ---
   const login = async () => {
-      setIsLoadingAuth(true);
-      
-      // SIMULATION: In a real app, this calls MSAL loginPopup/loginRedirect
-      // Here we simulate the delay and the return of a user object from Azure AD
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Mock User returned from O365
-      // For simulation purposes, we use Charlie Admin (charlie@company.com)
-      const mockO365User = users.find(u => u.email === 'charlie@company.com') || users[0]; 
-
-      // VALIDATION: Ensure user is from allowed domain
-      if (authConfig.enabled && authConfig.allowedDomains.length > 0) {
-          const userDomain = mockO365User.email.split('@')[1];
-          // Simple case-insensitive check
-          const isAllowed = authConfig.allowedDomains.some(
-              domain => domain.toLowerCase() === userDomain.toLowerCase()
-          );
-
-          if (!isAllowed) {
-              setIsLoadingAuth(false);
-              alert(`Login Failed: The domain "@${userDomain}" is not authorized. Allowed domains: ${authConfig.allowedDomains.join(', ')}`);
-              return;
+      const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'azure',
+          options: {
+              scopes: 'openid profile email User.Read',
+              redirectTo: window.location.origin
           }
+      });
+      if (error) {
+          console.error("Login failed:", error.message);
+          alert(`Login failed: ${error.message}`);
       }
-      
-      setCurrentUser(mockO365User);
-      setIsAuthenticated(true);
-      setIsLoadingAuth(false);
-      localStorage.setItem('app-current-user', JSON.stringify(mockO365User));
   };
 
-  const bypassAuth = () => {
-      const adminUser: User = users.find(u => u.role === 'ADMIN') || {
-          id: 'dev-admin',
-          email: 'admin@local.test',
-          name: 'Bypass Admin',
-          role: 'ADMIN',
-          avatar: '',
-          jobTitle: 'System Administrator',
-          createdAt: new Date().toISOString()
-      };
-      
-      setCurrentUser(adminUser);
-      setIsAuthenticated(true);
-      localStorage.setItem('app-current-user', JSON.stringify(adminUser));
-  };
-
-  const logout = () => {
-      setCurrentUser(null);
-      setIsAuthenticated(false);
-      localStorage.removeItem('app-current-user');
-      // In real app: instance.logoutPopup();
+  const logout = async () => {
+      await supabase.auth.signOut();
   };
 
   // --- Security Operations ---
@@ -833,7 +842,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   return (
     <AppContext.Provider value={{
-      currentUser, setCurrentUser, isAuthenticated, login, bypassAuth, logout, isLoadingAuth, isLoadingData,
+      currentUser, isAuthenticated, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
       authConfig, updateAuthConfig,
       users, updateUserRole, addUser, reloadData,
       roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,

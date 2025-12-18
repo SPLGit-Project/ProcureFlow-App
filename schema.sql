@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
   role_id TEXT REFERENCES roles(id),
   avatar TEXT,
   job_title TEXT,
+  status TEXT DEFAULT 'PENDING_APPROVAL', -- 'APPROVED', 'PENDING_APPROVAL', 'REJECTED'
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -191,8 +192,13 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all public access' AND tablename = 'roles') THEN
         CREATE POLICY "Allow all public access" ON roles FOR ALL USING (true) WITH CHECK (true);
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all public access' AND tablename = 'users') THEN
-        CREATE POLICY "Allow all public access" ON users FOR ALL USING (true) WITH CHECK (true);
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can view their own profile' AND tablename = 'users') THEN
+        CREATE POLICY "Users can view their own profile" ON users FOR SELECT USING (auth.uid() = id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Admins can view and edit all users' AND tablename = 'users') THEN
+        CREATE POLICY "Admins can view and edit all users" ON users FOR ALL USING (
+            EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role_id = 'ADMIN')
+        );
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all public access' AND tablename = 'sites') THEN
         CREATE POLICY "Allow all public access" ON sites FOR ALL USING (true) WITH CHECK (true);
