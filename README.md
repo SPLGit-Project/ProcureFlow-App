@@ -112,3 +112,39 @@ The app is automatically deployed to **Azure App Service (Free Tier, Linux)** wh
 
 ### Manual Deployment
 You can manually trigger a deployment from the **Actions** tab in GitHub by selecting the "Build and deploy Node.js app" workflow and clicking "Run workflow".
+
+---
+
+## 🔑 Azure AD & Supabase Configuration
+
+The error `Unsupported provider: provider is not enabled` usually means the Azure provider is not toggled "ON" in your Supabase Dashboard.
+
+### Step 1: Azure App Registration
+1. In the [Azure Portal](https://portal.azure.com/), go to **App registrations**.
+2. Click **New registration** and name it "ProcureFlow".
+3. Set **Supported account types** to "Accounts in this organizational directory only".
+4. Add a **Redirect URI** (Platform: **Single-page application**):
+   - Local: `http://localhost:3000` (or your local dev port)
+   - Production: `https://your-project-ref.supabase.co/auth/v1/callback`
+5. Note the **Application (client) ID**.
+6. Note the **Directory (tenant) ID**.
+7. Under **Certificates & secrets**, create a new **Client secret**.
+
+### Step 2: Enable Azure in Supabase
+1. Go to your [Supabase Dashboard](https://supabase.com/dashboard).
+2. Navigate to **Authentication** -> **Providers**.
+3. Find **Azure** in the list and expand it.
+4. Toggle **Enable Azure** to "ON".
+5. Fill in the following:
+   - **Client ID**: Your Azure Application ID.
+   - **Secret**: Your Azure Client Secret.
+   - **Azure Tenant URL**: `https://login.microsoftonline.com/YOUR_TENANT_ID`
+6. Click **Save**.
+
+
+
+### Step 3: Site URL & Redirects
+In **Authentication** -> **URL Configuration**:
+- **Site URL**: `https://procureflow-app-spl.azurewebsites.net` (or your production URL).
+- **Redirect URLs**: Add `http://localhost:3000/*` for local testing.
+
