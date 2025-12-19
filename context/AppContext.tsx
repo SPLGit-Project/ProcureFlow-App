@@ -261,6 +261,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         // Supabase sometimes puts the session in the URL fragment (#access_token=...)
         // before the event listener captures it. We want to wait a beat if we see a fragment.
         const hash = window.location.hash;
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlError = searchParams.get('error');
+        const urlErrorDesc = searchParams.get('error_description');
+
+        if (urlError && mounted) {
+            console.error("Auth: URL contains error:", urlError, urlErrorDesc);
+            alert(`Sign-in Error: ${urlErrorDesc || urlError}`);
+            // Clean up URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setIsLoadingAuth(false);
+            return;
+        }
+
         if (hash && (hash.includes('access_token=') || hash.includes('error='))) {
             console.log("Auth: Found OAuth fragment, waiting for Supabase to process...");
             // Allow a small delay for Supabase's internal listener to grab the hash
