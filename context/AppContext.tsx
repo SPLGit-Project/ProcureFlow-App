@@ -253,7 +253,17 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         setIsLoadingAuth(true);
         console.log("Auth: Initializing...");
 
-        // 1. Initial Session Check
+        // 1. Check for recovery/OAuth tokens in URL
+        // Supabase sometimes puts the session in the URL fragment (#access_token=...)
+        // before the event listener captures it. We want to wait a beat if we see a fragment.
+        const hash = window.location.hash;
+        if (hash && (hash.includes('access_token=') || hash.includes('error='))) {
+            console.log("Auth: Found OAuth fragment, waiting for Supabase to process...");
+            // Allow a small delay for Supabase's internal listener to grab the hash
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // 2. Initial Session Check
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session && mounted) {
@@ -261,24 +271,30 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 await handleUserAuth(session);
             } else {
                 console.log("Auth: No initial session found");
-                setIsLoadingAuth(false);
+                // If we're on the login page, we don't want to spin forever
+                if (mounted) setIsLoadingAuth(false);
             }
         } catch (err) {
             console.error("Auth: Failed to get initial session:", err);
             if (mounted) setIsLoadingAuth(false);
         }
 
-        // 2. Listen for changes
+        // 3. Listen for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (!mounted) return;
-            console.log(`Auth Event: ${event}`, session?.user?.id);
+            console.log(`Auth Event (listener): ${event}`, session?.user?.id);
 
-            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || (event === 'INITIAL_SESSION' && session)) {
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
                 await handleUserAuth(session!);
             } else if (event === 'SIGNED_OUT') {
                 setCurrentUser(null);
                 setIsAuthenticated(false);
                 setIsPendingApproval(false);
+                setIsLoadingAuth(false);
+            } else if (event === 'INITIAL_SESSION' && session) {
+                await handleUserAuth(session);
+            } else if (event === 'INITIAL_SESSION' && !session) {
+                // If no session after init, stop loading
                 setIsLoadingAuth(false);
             }
         });
@@ -290,7 +306,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         if (!mounted) return;
         setIsLoadingAuth(true);
         try {
-            console.log("Auth: Fetching user data from DB...");
+            console.log("Auth: Handling user auth for", session.user.email);
             // 1. Fetch user from our DB
             let { data: rawData, error } = await supabase
                 .from('users')
@@ -299,7 +315,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 .single();
 
             if (error && error.code !== 'PGRST116') {
-                console.error("Auth: Error fetching user:", error);
+                console.error("Auth: Error fetching user from DB:", error);
                 throw error;
             }
 
@@ -354,11 +370,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     status: dbUser.status as any,
                     createdAt: dbUser.created_at
                 };
-                console.log("Auth: Registration complete");
+                console.log("Auth: Registration complete for", userData.email);
             }
 
             if (mounted) {
-                console.log("Auth: Setting authenticated state for", userData.email);
+                console.log("Auth: Successfully authenticated user:", userData.email, "Status:", userData.status);
                 setCurrentUser(userData);
                 setIsAuthenticated(true);
                 setIsPendingApproval(userData.status !== 'APPROVED');
@@ -368,7 +384,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 }
             }
         } catch (err) {
-            console.error("Auth initialization failed:", err);
+            console.error("Auth: handleUserAuth failed:", err);
             if (mounted) {
                 setIsAuthenticated(false);
                 setCurrentUser(null);
@@ -382,7 +398,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
     return () => {
         mounted = false;
-        authPromise.then(sub => sub?.unsubscribe());
+        authPromise.then(sub => {
+            if (sub && typeof sub === 'object' && 'unsubscribe' in sub) {
+                (sub as { unsubscribe: () => void }).unsubscribe();
+            } else if (typeof sub === 'function') {
+                (sub as () => void)();
+            }
+        });
     };
   }, [reloadData]);
 

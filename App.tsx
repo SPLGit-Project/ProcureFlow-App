@@ -1,5 +1,5 @@
 import React from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -39,7 +39,7 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <AppProvider>
-      <HashRouter>
+      <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/pending-approval" element={<PendingApproval />} />
@@ -61,7 +61,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
-      </HashRouter>
+      </BrowserRouter>
     </AppProvider>
   );
 }
