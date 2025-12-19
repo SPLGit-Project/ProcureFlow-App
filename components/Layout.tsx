@@ -121,29 +121,41 @@ const Layout = () => {
         </nav>
 
         {/* User Profile */}
-        <div className="p-4 m-4 rounded-2xl bg-white/10 border border-white/10 backdrop-blur-md">
+        <div 
+          onClick={() => navigate('/settings', { state: { activeTab: 'PROFILE' } })}
+          className="p-4 m-4 rounded-2xl bg-white/10 border border-white/10 backdrop-blur-md cursor-pointer hover:bg-white/15 transition-all group"
+        >
            <div className="flex items-center gap-3 mb-3">
-              <img src={currentUser.avatar} alt="User" className="w-10 h-10 rounded-full bg-gray-200 border-2 border-white/20 shadow-sm" />
+              <div className="relative">
+                <img src={currentUser.avatar} alt="User" className="w-10 h-10 rounded-full bg-gray-200 border-2 border-white/20 shadow-sm transition-transform group-hover:scale-105" />
+                <div className="absolute inset-0 rounded-full bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                   <Settings size={12} className="text-white" />
+                </div>
+              </div>
               <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold truncate">{currentUser.name}</p>
-                  <p className="text-[10px] uppercase font-bold text-[var(--color-brand)] bg-white/20 px-1.5 rounded inline-block">
+                  <p className="text-sm font-bold truncate transition-colors group-hover:text-white">{currentUser.name}</p>
+                  <p className={`text-[10px] uppercase font-bold px-1.5 rounded inline-block shadow-sm ${
+                    ['brand', 'dark'].includes(branding.sidebarTheme || '') 
+                      ? 'bg-white/20 text-white border border-white/10' 
+                      : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)] dark:bg-[rgba(var(--color-brand-rgb),0.2)] dark:text-blue-400 border border-[var(--color-brand)]/20'
+                  }`}>
                     {roles.find(r => r.id === currentUser.role)?.name || currentUser.role}
                   </p>
               </div>
            </div>
            
-           <div className="space-y-2">
-             {isActualAdmin && (
+           <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+             {currentUser.realRole === 'ADMIN' && (
                  <div className="space-y-1">
                      <p className="text-[9px] uppercase font-bold text-white/40 px-1">Switch View</p>
                      <select 
-                        className={`w-full rounded-lg text-xs p-2 outline-none appearance-none cursor-pointer font-medium ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'bg-black/20 text-white border-transparent' : 'bg-white dark:bg-[#15171e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700'}`}
+                        className={`w-full rounded-lg text-xs p-2.5 outline-none appearance-none cursor-pointer font-bold shadow-sm transition-all ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'bg-black/30 text-white border-white/10 hover:bg-black/40' : 'bg-white dark:bg-[#15171e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]'}`}
                         value={currentUser.role}
                         onChange={(e) => switchRole(e.target.value as any)}
                      >
-                       <option value="ADMIN" className="text-gray-900 bg-white">Administrator</option>
+                       <option value="ADMIN" className="text-gray-900 bg-white">Administrator View</option>
                        {roles.filter(r => r.id !== 'ADMIN').map(r => (
-                           <option key={r.id} value={r.id} className="text-gray-900 bg-white">{r.name}</option>
+                           <option key={r.id} value={r.id} className="text-gray-900 bg-white">{r.name} View</option>
                        ))}
                      </select>
                  </div>

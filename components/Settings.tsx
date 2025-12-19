@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
+import { useLocation } from 'react-router-dom';
 import AdminUserApproval from './AdminUserApproval';
 
 
@@ -62,7 +63,16 @@ const Settings = () => {
     getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile
   } = useApp();
 
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<AdminTab>('PROFILE');
+
+  useEffect(() => {
+    const state = location.state as { activeTab?: AdminTab };
+    if (state?.activeTab) {
+      setActiveTab(state.activeTab);
+    }
+  }, [location.state]);
+
   const [fieldRegistry, setFieldRegistry] = useState<any[]>([]);
   
   useEffect(() => {

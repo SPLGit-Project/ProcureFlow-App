@@ -42,6 +42,7 @@ export interface User {
   id: string;
   name: string;
   role: UserRole; // Links to RoleDefinition.id
+  realRole?: UserRole; // Stays as the DB role during session-based switching
   avatar: string;
   email: string;
   jobTitle?: string;

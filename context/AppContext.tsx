@@ -338,6 +338,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 name: rawData.name,
                 email: rawData.email,
                 role: rawData.role_id,
+                realRole: rawData.role_id,
                 avatar: rawData.avatar,
                 jobTitle: rawData.job_title,
                 status: rawData.status,
@@ -384,6 +385,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     name: dbUser.name,
                     email: dbUser.email,
                     role: dbUser.role_id,
+                    realRole: dbUser.role_id,
                     avatar: dbUser.avatar,
                     jobTitle: dbUser.job_title,
                     status: dbUser.status as any,
@@ -570,7 +572,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const switchRole = (roleId: UserRole) => {
       if (!currentUser) return;
-      // Note: This is a temporary visual switch for admins to test other roles
+      // Note: This is a session switch if they have the right realRole
       setCurrentUser(prev => prev ? ({ ...prev, role: roleId }) : null);
   };
 
