@@ -205,19 +205,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 fetchedAvailability,
                 fetchedTeamsUrl
             ] = await Promise.all([
-                db.getRoles(),
-                db.getUsers(),
-                db.getSites(),
-                db.getSuppliers(),
-                db.getItems(),
-                db.getCatalog(),
-                db.getStockSnapshots(),
-                db.getPOs(),
-                db.getWorkflowSteps(),
-                db.getNotificationSettings(),
-                db.getMappings(),
-                db.getProductAvailability(),
-                db.getTeamsConfig()
+                safeFetch(db.getRoles(), [], 'roles'),
+                safeFetch(db.getUsers(), [], 'users'),
+                safeFetch(db.getSites(), [], 'sites'),
+                safeFetch(db.getSuppliers(), [], 'suppliers'),
+                safeFetch(db.getItems(), [], 'items'),
+                safeFetch(db.getCatalog(), [], 'catalog'),
+                safeFetch(db.getStockSnapshots(), [], 'snapshots'),
+                safeFetch(db.getPOs(), [], 'pos'),
+                safeFetch(db.getWorkflowSteps(), [], 'workflowSteps'),
+                safeFetch(db.getNotificationSettings(), [], 'notifications'),
+                safeFetch(db.getMappings(), [], 'mappings'),
+                safeFetch(db.getProductAvailability(), [], 'availability'),
+                safeFetch(db.getTeamsConfig(), '', 'teamsConfig')
             ]);
 
             setRoles(fetchedRoles);
@@ -241,9 +241,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }, []);
 
   // Fetch Data on Mount
+  // Fetch Data when authenticated and approved
   useEffect(() => {
-    reloadData();
-  }, []);
+    if (isAuthenticated && !isPendingApproval) {
+      console.log("Auth: Authenticated and approved, reloading data...");
+      reloadData();
+    }
+  }, [isAuthenticated, isPendingApproval, reloadData]);
 
   // Auth Initialization
   useEffect(() => {
