@@ -347,7 +347,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     id: session.user.id,
                     email: session.user.email || '',
                     name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'Unknown User',
-                    role_id: isFirstUser ? 'ADMIN' : 'REQUESTER',
+                    role_id: isFirstUser ? 'ADMIN' : 'SITE_USER',
                     status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
                     avatar: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || '',
                     job_title: '',
@@ -361,6 +361,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
                 if (insertError) {
                     console.error("Auth: Registration failed:", insertError);
+                    alert(`Registration failed: ${insertError.message}. Please contact your administrator.`);
                     throw insertError;
                 }
                 
