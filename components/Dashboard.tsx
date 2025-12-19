@@ -19,6 +19,12 @@ const Dashboard = () => {
   const allSites = React.useMemo(() => Array.from(new Set(pos.map(p => p.site).filter(Boolean))) as string[], [pos]);
   const [selectedSite, setSelectedSite] = React.useState<string>('All');
 
+  // --- Filtered Data ---
+  const filteredPos = React.useMemo(() => {
+     if (selectedSite === 'All') return pos;
+     return pos.filter(p => p.site === selectedSite);
+  }, [pos, selectedSite]);
+
   if (isLoadingData) {
       return (
           <div className="flex h-[50vh] w-full items-center justify-center">
@@ -26,12 +32,6 @@ const Dashboard = () => {
           </div>
       );
   }
-
-  // --- Filtered Data ---
-  const filteredPos = React.useMemo(() => {
-     if (selectedSite === 'All') return pos;
-     return pos.filter(p => p.site === selectedSite);
-  }, [pos, selectedSite]);
 
   // --- Pipeline Metrics (Filtered) ---
   const pendingApprovals = filteredPos.filter(p => p.status === 'PENDING_APPROVAL');

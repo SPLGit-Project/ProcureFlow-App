@@ -123,12 +123,13 @@ The error `Unsupported provider: provider is not enabled` usually means the Azur
 1. In the [Azure Portal](https://portal.azure.com/), go to **App registrations**.
 2. Click **New registration** and name it "ProcureFlow".
 3. Set **Supported account types** to "Accounts in this organizational directory only".
-4. Add a **Redirect URI** (Platform: **Single-page application**):
+4. Add a **Redirect URI** (Platform: **Web**):
    - Local: `http://localhost:3000` (or your local dev port)
    - Production: `https://your-project-ref.supabase.co/auth/v1/callback`
+   - **Note**: Ensure the platform is "Web" and NOT "Single-page application" when using a client secret.
 5. Note the **Application (client) ID**.
 6. Note the **Directory (tenant) ID**.
-7. Under **Certificates & secrets**, create a new **Client secret**.
+7. Under **Certificates & secrets**, create a new **Client secret**. Copy the **Value** (not the Secret ID).
 
 ### Step 2: Enable Azure in Supabase
 1. Go to your [Supabase Dashboard](https://supabase.com/dashboard).
@@ -147,4 +148,24 @@ The error `Unsupported provider: provider is not enabled` usually means the Azur
 In **Authentication** -> **URL Configuration**:
 - **Site URL**: `https://procureflow-app-spl.azurewebsites.net` (or your production URL).
 - **Redirect URLs**: Add `http://localhost:3000/*` for local testing.
+
+---
+
+## 🛠 Troubleshooting: "Error getting user email from external provider"
+
+If you encounter this error during sign-in, it typically means Azure AD is not sending the `email` claim in the identity token.
+
+### Fix Checklist:
+1. **Platform Type**: In Azure Portal, ensure you have added the **Web** platform. If you have "Single-page application" added, delete it and move the redirect URIs to "Web".
+2. **Optional Claims**: 
+   - Go to **Token configuration** in Azure Portal.
+   - Click **Add optional claim** -> **ID token**.
+   - Select **email** and click **Add**.
+3. **Admin Consent**: 
+   - Go to **API permissions**.
+   - Ensure `email`, `openid`, `profile`, and `User.Read` (Delegated) are present.
+   - Click **Grant admin consent for [Your Org]**.
+4. **Implicit Grant**: 
+   - Go to **Authentication**.
+   - Ensure **ID tokens** and **Access tokens** are **unchecked** under the Implicit grant section.
 

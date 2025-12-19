@@ -478,7 +478,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const { error } = await supabase.auth.signInWithOAuth({
           provider: 'azure',
           options: {
-              scopes: 'openid profile email User.Read',
+              scopes: 'openid profile email User.Read offline_access',
               redirectTo: window.location.origin
           }
       });
