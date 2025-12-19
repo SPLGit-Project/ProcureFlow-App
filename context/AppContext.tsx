@@ -333,24 +333,28 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             if (!userData) {
                 console.log("Auth: User not in DB, starting registration...");
                 // 2. New User - Registration Flow
-                const { count } = await supabase
-                    .from('users')
-                    .select('*', { count: 'exact', head: true });
+                // Use RPC to bypass RLS limitations on counting users
+                const { data: count, error: countError } = await supabase
+                    .rpc('get_user_count');
+
+                if (countError) {
+                    console.warn("Auth: Failed to get user count via RPC, falling back to 1 (not first):", countError);
+                }
 
                 const isFirstUser = count === 0;
                 
                 const dbUser = {
                     id: session.user.id,
                     email: session.user.email || '',
-                    name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'Unknown User',
+                    name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'Unknown User',
                     role_id: isFirstUser ? 'ADMIN' : 'REQUESTER',
                     status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
-                    avatar: session.user.user_metadata.avatar_url || '',
+                    avatar: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || '',
                     job_title: '',
                     created_at: new Date().toISOString()
                 };
 
-                console.log("Auth: Inserting new user:", dbUser.email);
+                console.log("Auth: Inserting new user:", dbUser.email, "Is First:", isFirstUser);
                 const { error: insertError } = await supabase
                     .from('users')
                     .insert([dbUser]);
