@@ -12,7 +12,7 @@ const HelpGuide = () => {
   const { currentUser } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'overview' | 'manual' | 'faq'>('overview');
+  const [activeTab, setActiveTab] = useState<'manual' | 'faq'>('manual');
   const [searchQuery, setSearchQuery] = useState('');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
@@ -114,14 +114,21 @@ const HelpGuide = () => {
           icon: FileText,
           content: (
               <div className="space-y-4">
-                  <p>Starting a new order is simple. Navigate to the <strong>New Request</strong> page via the sidebar or Quick Actions.</p>
+                  <p>Starting a new order is simple. Navigate to the <strong>New Request</strong> page via the sidebar or use the button below.</p>
                   <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
-                      <li><strong>Select Site & Supplier:</strong> Choose where the items are going and who needs to be paid.</li>
-                      <li><strong>Browse Catalog:</strong> Search for items by name or SKU. Stock levels are shown in real-time.</li>
-                      <li><strong>Add to Cart:</strong> Click the "+" button, then adjust quantities in the cart summary.</li>
-                      <li><strong>Special items?</strong> If you can't find an item but know the supplier has it, use the "Add Special Request" button (Admin feature) or contact Procurement.</li>
-                      <li><strong>Submit:</strong> Once ready, click "Submit Request". Your notification will go to the relevant approver immediately.</li>
+                      <li><strong>Select Site & Supplier:</strong> Choose destination site and supplier.</li>
+                      <li><strong>Browse Catalog:</strong> Search for items or browse by category.</li>
+                      <li><strong>Add to Cart:</strong> Adjust quantities and review your selection.</li>
+                      <li><strong>Submit:</strong> Once ready, click "Submit Request".</li>
                   </ul>
+                  <div className="pt-4">
+                      <button 
+                        onClick={() => navigate('/create')}
+                        className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-md active:scale-95"
+                      >
+                          <Zap size={18}/> Start New Purchase Request
+                      </button>
+                  </div>
               </div>
           )
       },
@@ -134,13 +141,22 @@ const HelpGuide = () => {
                   <p>Requests follow a strict approval chain based on value thresholds configured in Settings.</p>
                   <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-lg border border-amber-100 dark:border-amber-800/30">
                       <h4 className="font-bold text-amber-800 dark:text-amber-400 text-sm mb-2 flex items-center gap-2"><Shield size={14}/> Important Rule</h4>
-                      <p className="text-sm text-amber-700 dark:text-amber-300">You cannot approve your own requests. If you are an approver and submit a request, it must be approved by another manager.</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-300">Approvers cannot approve their own requests. They must be reviewed by another manager.</p>
                   </div>
                   <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
-                      <li><strong>Notification:</strong> Approvers receive an email and a dashboard alert.</li>
                       <li><strong>Action:</strong> Approvers can 'Approve' or 'Reject' (with comments).</li>
-                      <li><strong>Outcome:</strong> Approved requests move to "Pending Concur". Rejected requests return to the user for editing.</li>
+                      <li><strong>Outcome:</strong> Approved requests move to "Pending Concur".</li>
                   </ul>
+                  {isApprover && (
+                      <div className="pt-4">
+                          <button 
+                            onClick={() => navigate('/approvals')}
+                            className="w-full bg-amber-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-amber-600 transition-all shadow-md active:scale-95"
+                          >
+                              <CheckCircle size={18}/> Open Approvals Queue
+                          </button>
+                      </div>
+                  )}
               </div>
           )
       },
@@ -152,10 +168,17 @@ const HelpGuide = () => {
               <div className="space-y-4">
                   <p>Once approved, requests must be synchronized with SAP Concur to generate a formal PO.</p>
                   <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
-                      <li><strong>Data Export:</strong> Use the "Details for Concur" button to get the CSV/Excel data.</li>
-                      <li><strong>PO Creation:</strong> Create the PO in Concur following your standard finance process.</li>
-                      <li><strong>Linking:</strong> Use the "Link Concur PO" button to enter the Concur PO ID. This activates the order in ProcureFlow.</li>
+                      <li><strong>Data Export:</strong> Use the "Details for Concur" button in the request view.</li>
+                      <li><strong>Linking:</strong> Enter the Concur PO ID to activate the order in ProcureFlow.</li>
                   </ul>
+                  <div className="pt-4">
+                      <button 
+                        onClick={() => navigate('/requests')}
+                        className="w-full bg-indigo-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-600 transition-all shadow-md active:scale-95"
+                      >
+                          <LinkIcon size={18}/> Link Concur PO
+                      </button>
+                  </div>
               </div>
           )
       },
@@ -168,10 +191,17 @@ const HelpGuide = () => {
                   <p>When items arrive at the site, accurate receiving is critical for finance matching.</p>
                   <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
                       <li><strong>Record Delivery:</strong> Open the PO and click "Record Delivery".</li>
-                      <li><strong>Matching:</strong> Enter the quantity received against each line item from the packing slip.</li>
+                      <li><strong>Matching:</strong> Enter quantity received against each line item.</li>
                       <li><strong>Dockets:</strong> Upload or record the delivery docket/reference number.</li>
-                      <li><strong>Partial Receipts:</strong> If a shipment is split, record only what arrived. The PO remains active for remaining items.</li>
                   </ul>
+                  <div className="pt-4">
+                      <button 
+                        onClick={() => navigate('/requests')}
+                        className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all shadow-md active:scale-95"
+                      >
+                          <Truck size={18}/> Record New Delivery
+                      </button>
+                  </div>
               </div>
           )
       },
@@ -181,12 +211,21 @@ const HelpGuide = () => {
           icon: DollarSign,
           content: (
               <div className="space-y-4">
-                  <p>The Finance team reviews all received deliveries to determine asset capitalization.</p>
+                  <p>The Finance team reviews received deliveries to determine asset capitalization.</p>
                   <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
-                      <li><strong>Invoice Matching:</strong> Enter the supplier invoice number against the delivery line.</li>
-                      <li><strong>Capitalization Toggle:</strong> Mark items as "Assets" (Capitalised) or "Expense".</li>
-                      <li><strong>Date:</strong> The system auto-records the capitalization date, which can be adjusted if needed.</li>
+                      <li><strong>Invoice Matching:</strong> Enter supplier invoice number against the delivery.</li>
+                      <li><strong>Capitalization:</strong> Mark items as "Assets" or "Expense".</li>
                   </ul>
+                  {isAdmin && (
+                      <div className="pt-4">
+                          <button 
+                            onClick={() => navigate('/finance')}
+                            className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-purple-700 transition-all shadow-md active:scale-95"
+                          >
+                              <DollarSign size={18}/> Finance Dashboard
+                          </button>
+                      </div>
+                  )}
               </div>
           )
       }
@@ -218,54 +257,58 @@ const HelpGuide = () => {
   );
 
   return (
-    <div className="max-w-6xl mx-auto pb-20 space-y-8 animate-fade-in">
+    <div className="max-w-6xl mx-auto pb-20 space-y-12 animate-fade-in">
         
-        {/* Dynamic Hero Section */}
+        {/* Dynamic Hero Section - Simplified */}
         <div className="bg-gradient-to-r from-[var(--color-brand)] to-indigo-900 rounded-3xl p-10 md:p-14 text-white text-center relative overflow-hidden shadow-xl">
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 opacity-20">
                 <div className="absolute top-[-50px] left-[-50px] w-64 h-64 bg-white rounded-full blur-3xl"></div>
                 <div className="absolute bottom-[-50px] right-[-50px] w-80 h-80 bg-blue-400 rounded-full blur-3xl"></div>
             </div>
 
-            <div className="relative z-10 max-w-2xl mx-auto space-y-6">
+            <div className="relative z-10 max-w-2xl mx-auto space-y-4">
                 <h1 className="text-3xl md:text-5xl font-bold tracking-tight">
                     Hello, {currentUser?.name.split(' ')[0] || 'there'}. <br/>
-                    <span className="text-white/80 text-2xl md:text-4xl">How can we help?</span>
+                    <span className="text-white/80 text-2xl md:text-4xl">ProcureFlow Support</span>
                 </h1>
-                
-                <div className="relative mt-8">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20}/>
-                    <input 
-                        type="text" 
-                        placeholder="Search usage guides, troubleshooting..." 
-                        className="w-full pl-12 pr-4 py-4 rounded-xl text-gray-900 focus:outline-none focus:ring-4 focus:ring-white/20 shadow-lg text-lg"
-                        value={searchQuery}
-                        onChange={(e) => {
-                            setSearchQuery(e.target.value);
-                            if(e.target.value) setActiveTab('faq');
-                        }}
-                    />
-                </div>
+                <p className="text-white/60 text-lg">Understand the lifecycle of your purchase requests and find help.</p>
             </div>
         </div>
 
-        {/* Quick Actions Grid */}
-        <div className="overflow-x-auto pb-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2 px-1">
-                <Zap className="text-[var(--color-brand)]" size={20}/> Quick Actions
-            </h2>
-            <div className="flex gap-4 min-w-max">
-                {quickActions.filter(a => a.visible).map((action, idx) => (
-                    <button 
-                        key={idx}
-                        onClick={() => navigate(action.path)}
-                        className="bg-white dark:bg-[#1e2029] p-4 rounded-xl border border-gray-200 dark:border-gray-800 hover:shadow-lg hover:-translate-y-1 transition-all w-40 text-left group"
+        {/* Workflow Visualizer - Now prominent at the top */}
+        <div className="animate-fade-in bg-white dark:bg-[#1e2029] p-8 md:p-12 rounded-3xl border border-gray-200 dark:border-gray-800 text-center shadow-sm">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center justify-center gap-2">
+                <Zap className="text-[var(--color-brand)]" size={20}/> Purchase Lifecycle
+            </h3>
+            <p className="text-gray-500 mb-12 max-w-lg mx-auto">Master the 5 stages of the procurement process.</p>
+
+            <div className="relative flex flex-col md:flex-row justify-between items-center gap-8 max-w-4xl mx-auto">
+                {/* Connector Line */}
+                <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-100 dark:bg-gray-800 -z-10 -translate-y-1/2 rounded-full hidden md:block"></div>
+                <div className="absolute left-1/2 top-0 w-1 h-full bg-gray-100 dark:bg-gray-800 -z-10 -translate-x-1/2 rounded-full block md:hidden"></div>
+
+                {workflowSteps.map((step, idx) => (
+                    <div 
+                        key={idx} 
+                        className={`relative group cursor-pointer transition-all ${selectedStage === step.id ? 'scale-110 z-20' : ''}`} 
+                        onClick={() => {
+                            setSelectedStage(step.id);
+                            setActiveTab('manual');
+                        }}
                     >
-                        <div className={`w-10 h-10 rounded-lg ${action.color} text-white flex items-center justify-center mb-3 shadow-md group-hover:scale-110 transition-transform`}>
-                            <action.icon size={20}/>
+                        <div className={`w-20 h-20 rounded-2xl ${step.color} text-white flex items-center justify-center shadow-lg transform transition-all group-hover:scale-110 group-hover:rotate-3 z-10 relative mx-auto ${selectedStage === step.id ? 'ring-4 ring-white ring-offset-4 ring-offset-[var(--color-brand)]' : ''}`}>
+                            <step.icon size={32} strokeWidth={2}/>
                         </div>
-                        <h3 className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-[var(--color-brand)] transition-colors">{action.label}</h3>
-                    </button>
+                        <div className="mt-4 bg-white dark:bg-[#2b2d3b] p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-48 absolute top-full left-1/2 -translate-x-1/2 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all z-20 pointer-events-none md:pointer-events-auto shadow-xl">
+                            <h4 className="font-bold text-gray-900 dark:text-white text-sm">{step.label}</h4>
+                            <p className="text-xs text-gray-500 mt-1">{step.desc}</p>
+                            <p className="text-[10px] text-[var(--color-brand)] font-bold mt-2">Click to view guide</p>
+                        </div>
+                        {/* Mobile Text (Visible) */}
+                        <div className="md:hidden mt-2">
+                                <h4 className="font-bold text-gray-900 dark:text-white text-sm">{step.label}</h4>
+                        </div>
+                    </div>
                 ))}
             </div>
         </div>
@@ -273,9 +316,8 @@ const HelpGuide = () => {
         {/* Main Content Tabs */}
         <div className="flex gap-6 border-b border-gray-200 dark:border-gray-800">
             {[
-                { id: 'overview', label: 'Workflow Overview', icon: MousePointer },
-                { id: 'manual', label: 'User Manual', icon: BookOpen },
-                { id: 'faq', label: 'FAQs', icon: HelpCircle }
+                { id: 'manual', label: 'User Guides', icon: BookOpen },
+                { id: 'faq', label: 'Common Questions', icon: HelpCircle }
             ].map((tab) => (
                 <button
                     key={tab.id}
@@ -291,42 +333,7 @@ const HelpGuide = () => {
         {/* Tab Content */}
         <div className="min-h-[400px]">
             
-            {/* 1. Workflow Visualizer */}
-            {activeTab === 'overview' && (
-                <div className="animate-fade-in bg-white dark:bg-[#1e2029] p-8 md:p-12 rounded-3xl border border-gray-200 dark:border-gray-800 text-center">
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Purchase Lifecycle</h3>
-                    <p className="text-gray-500 mb-12 max-w-lg mx-auto">Click on any stage to see detailed instructions.</p>
-
-                    <div className="relative flex flex-col md:flex-row justify-between items-center gap-8 max-w-4xl mx-auto">
-                        {/* Connector Line */}
-                        <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-100 dark:bg-gray-800 -z-10 -translate-y-1/2 rounded-full hidden md:block"></div>
-                        <div className="absolute left-1/2 top-0 w-1 h-full bg-gray-100 dark:bg-gray-800 -z-10 -translate-x-1/2 rounded-full block md:hidden"></div>
-
-                        {workflowSteps.map((step, idx) => (
-                            <div 
-                                key={idx} 
-                                className={`relative group cursor-pointer transition-all ${selectedStage === step.id ? 'scale-110 z-20' : ''}`} 
-                                onClick={() => {
-                                    setSelectedStage(step.id);
-                                    setActiveTab('manual');
-                                }}
-                            >
-                                <div className={`w-20 h-20 rounded-2xl ${step.color} text-white flex items-center justify-center shadow-lg transform transition-all group-hover:scale-110 group-hover:rotate-3 z-10 relative mx-auto ${selectedStage === step.id ? 'ring-4 ring-white ring-offset-4 ring-offset-[var(--color-brand)]' : ''}`}>
-                                    <step.icon size={32} strokeWidth={2}/>
-                                </div>
-                                <div className="mt-4 bg-white dark:bg-[#2b2d3b] p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-48 absolute top-full left-1/2 -translate-x-1/2 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0 transition-all z-20 pointer-events-none md:pointer-events-auto">
-                                    <h4 className="font-bold text-gray-900 dark:text-white text-sm">{step.label}</h4>
-                                    <p className="text-xs text-gray-500 mt-1">{step.desc}</p>
-                                </div>
-                                {/* Mobile Text (Visible) */}
-                                <div className="md:hidden mt-2">
-                                     <h4 className="font-bold text-gray-900 dark:text-white text-sm">{step.label}</h4>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            {/* 1. Workflow Visualizer (Legacy tab removed, now at top) */}
 
             {/* 2. User Manual */}
             {activeTab === 'manual' && (
