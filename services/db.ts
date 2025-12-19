@@ -164,6 +164,21 @@ export const db = {
         if (error) throw error;
     },
 
+    getBranding: async (): Promise<any> => {
+        const { data, error } = await supabase.from('app_config').select('value').eq('key', 'branding').single();
+        if (error && error.code !== 'PGRST116') throw error;
+        return data?.value || null;
+    },
+
+    updateBranding: async (branding: any): Promise<void> => {
+        const { error } = await supabase.from('app_config').upsert({
+            key: 'branding',
+            value: branding,
+            updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+    },
+
 
 
     getMappings: async (): Promise<SupplierProductMap[]> => {

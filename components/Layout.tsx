@@ -21,19 +21,12 @@ import {
 import { PermissionId } from '../types';
 
 const Layout = () => {
-  const { currentUser, logout, users, setCurrentUser, theme, setTheme, branding, hasPermission, authConfig } = useApp();
+  const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const navigate = useNavigate();
 
-  // Dev mode user switch (only if auth disabled)
-  const handleRoleSwitch = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const user = users.find(u => u.id === e.target.value);
-    if (user) {
-        setCurrentUser(user);
-        navigate('/'); 
-        setIsMobileMenuOpen(false);
-    }
-  };
+  // Admin Role Switcher (Mock for testing permissions)
+  const isActualAdmin = currentUser?.role === 'ADMIN'; // Real check would be against the DB record
 
   const navItems: { to: string; label: string; icon: any; permission?: PermissionId }[] = [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'view_dashboard' },
@@ -133,29 +126,35 @@ const Layout = () => {
               <img src={currentUser.avatar} alt="User" className="w-10 h-10 rounded-full bg-gray-200 border-2 border-white/20 shadow-sm" />
               <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold truncate">{currentUser.name}</p>
-                  <p className="text-xs opacity-70 truncate">{users.find(u => u.id === currentUser.id)?.role}</p>
+                  <p className="text-[10px] uppercase font-bold text-[var(--color-brand)] bg-white/20 px-1.5 rounded inline-block">
+                    {roles.find(r => r.id === currentUser.role)?.name || currentUser.role}
+                  </p>
               </div>
            </div>
            
-           <div className="relative">
-             {!authConfig.enabled ? (
-                 <select 
-                   className={`w-full rounded-lg text-xs p-2 outline-none appearance-none cursor-pointer font-medium ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'bg-black/20 text-white border-transparent' : 'bg-white dark:bg-[#15171e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700'}`}
-                   value={currentUser.id}
-                   onChange={handleRoleSwitch}
-                 >
-                   {users.map(u => (
-                       <option key={u.id} value={u.id} className="text-gray-900 bg-white">{u.name}</option>
-                   ))}
-                 </select>
-             ) : (
-                 <button 
-                    onClick={logout}
-                    className={`w-full flex items-center justify-center gap-2 rounded-lg text-xs p-2 font-medium transition-colors ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'bg-black/20 text-white hover:bg-black/30' : 'bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 hover:bg-gray-200'}`}
-                 >
-                     <LogOut size={14} /> Sign Out
-                 </button>
+           <div className="space-y-2">
+             {isActualAdmin && (
+                 <div className="space-y-1">
+                     <p className="text-[9px] uppercase font-bold text-white/40 px-1">Switch View</p>
+                     <select 
+                        className={`w-full rounded-lg text-xs p-2 outline-none appearance-none cursor-pointer font-medium ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'bg-black/20 text-white border-transparent' : 'bg-white dark:bg-[#15171e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700'}`}
+                        value={currentUser.role}
+                        onChange={(e) => switchRole(e.target.value as any)}
+                     >
+                       <option value="ADMIN" className="text-gray-900 bg-white">Administrator</option>
+                       {roles.filter(r => r.id !== 'ADMIN').map(r => (
+                           <option key={r.id} value={r.id} className="text-gray-900 bg-white">{r.name}</option>
+                       ))}
+                     </select>
+                 </div>
              )}
+             
+             <button 
+                onClick={logout}
+                className={`w-full flex items-center justify-center gap-2 rounded-lg text-xs p-2.5 font-bold transition-all shadow-sm ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-white dark:bg-white/5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 border border-transparent dark:border-red-500/20'}`}
+             >
+                 <LogOut size={14} /> Sign Out
+             </button>
            </div>
         </div>
       </aside>

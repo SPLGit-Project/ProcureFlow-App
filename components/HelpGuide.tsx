@@ -3,7 +3,7 @@ import {
     FileText, CheckCircle, Database, Truck, DollarSign, ArrowRight, 
     Search, HelpCircle, BookOpen, MessageSquare, PlayCircle, 
     Settings, Users, Shield, CreditCard, Box, Zap, ChevronDown, ChevronRight,
-    MousePointer, Link as LinkIcon
+    MousePointer, Link as LinkIcon, X
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -15,6 +15,7 @@ const HelpGuide = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'manual' | 'faq'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
+  const [selectedStage, setSelectedStage] = useState<string | null>(null);
 
   // Handle Deep Linking
   useEffect(() => {
@@ -108,7 +109,7 @@ const HelpGuide = () => {
   // --- Detailed Content ---
   const manualSections = [
       {
-          id: 'creating-requests',
+          id: 'create',
           title: 'Creating a Purchase Request',
           icon: FileText,
           content: (
@@ -125,7 +126,7 @@ const HelpGuide = () => {
           )
       },
       {
-          id: 'approval-workflow',
+          id: 'approve',
           title: 'Approval Workflow',
           icon: CheckCircle,
           content: (
@@ -144,7 +145,38 @@ const HelpGuide = () => {
           )
       },
       {
-          id: 'finance-capitalization',
+          id: 'concur',
+          title: 'Concur Synchronization',
+          icon: LinkIcon,
+          content: (
+              <div className="space-y-4">
+                  <p>Once approved, requests must be synchronized with SAP Concur to generate a formal PO.</p>
+                  <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
+                      <li><strong>Data Export:</strong> Use the "Details for Concur" button to get the CSV/Excel data.</li>
+                      <li><strong>PO Creation:</strong> Create the PO in Concur following your standard finance process.</li>
+                      <li><strong>Linking:</strong> Use the "Link Concur PO" button to enter the Concur PO ID. This activates the order in ProcureFlow.</li>
+                  </ul>
+              </div>
+          )
+      },
+      {
+          id: 'receive',
+          title: 'Receiving Goods',
+          icon: Truck,
+          content: (
+              <div className="space-y-4">
+                  <p>When items arrive at the site, accurate receiving is critical for finance matching.</p>
+                  <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
+                      <li><strong>Record Delivery:</strong> Open the PO and click "Record Delivery".</li>
+                      <li><strong>Matching:</strong> Enter the quantity received against each line item from the packing slip.</li>
+                      <li><strong>Dockets:</strong> Upload or record the delivery docket/reference number.</li>
+                      <li><strong>Partial Receipts:</strong> If a shipment is split, record only what arrived. The PO remains active for remaining items.</li>
+                  </ul>
+              </div>
+          )
+      },
+      {
+          id: 'finance',
           title: 'Finance & Capitalization',
           icon: DollarSign,
           content: (
@@ -271,8 +303,15 @@ const HelpGuide = () => {
                         <div className="absolute left-1/2 top-0 w-1 h-full bg-gray-100 dark:bg-gray-800 -z-10 -translate-x-1/2 rounded-full block md:hidden"></div>
 
                         {workflowSteps.map((step, idx) => (
-                            <div key={idx} className="relative group cursor-pointer" onClick={() => setActiveTab('manual')}>
-                                <div className={`w-20 h-20 rounded-2xl ${step.color} text-white flex items-center justify-center shadow-lg transform transition-all group-hover:scale-110 group-hover:rotate-3 z-10 relative mx-auto`}>
+                            <div 
+                                key={idx} 
+                                className={`relative group cursor-pointer transition-all ${selectedStage === step.id ? 'scale-110 z-20' : ''}`} 
+                                onClick={() => {
+                                    setSelectedStage(step.id);
+                                    setActiveTab('manual');
+                                }}
+                            >
+                                <div className={`w-20 h-20 rounded-2xl ${step.color} text-white flex items-center justify-center shadow-lg transform transition-all group-hover:scale-110 group-hover:rotate-3 z-10 relative mx-auto ${selectedStage === step.id ? 'ring-4 ring-white ring-offset-4 ring-offset-[var(--color-brand)]' : ''}`}>
                                     <step.icon size={32} strokeWidth={2}/>
                                 </div>
                                 <div className="mt-4 bg-white dark:bg-[#2b2d3b] p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-48 absolute top-full left-1/2 -translate-x-1/2 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0 transition-all z-20 pointer-events-none md:pointer-events-auto">
@@ -291,41 +330,58 @@ const HelpGuide = () => {
 
             {/* 2. User Manual */}
             {activeTab === 'manual' && (
-                <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {manualSections.map((section) => (
-                        <div 
-                            key={section.id} 
-                            id={section.id} 
-                            className="bg-white dark:bg-[#1e2029] rounded-2xl p-6 border border-gray-200 dark:border-gray-800 scroll-mt-24"
-                        >
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-2.5 bg-gray-100 dark:bg-white/5 rounded-xl text-gray-600 dark:text-gray-300">
-                                    <section.icon size={22}/>
-                                </div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-white">{section.title}</h3>
-                            </div>
-                            <div className="text-sm leading-relaxed">
-                                {section.content}
-                            </div>
-                        </div>
-                    ))}
+                <div className="animate-fade-in space-y-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                            {selectedStage ? `Guide: ${workflowSteps.find(s => s.id === selectedStage)?.label}` : 'Full User Manual'}
+                        </h3>
+                        {selectedStage && (
+                            <button 
+                                onClick={() => setSelectedStage(null)}
+                                className="text-sm font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"
+                            >
+                                <X size={14}/> Clear Filter
+                            </button>
+                        )}
+                    </div>
                     
-                    {/* Support Contact */}
-                    <div className="bg-indigo-50 dark:bg-indigo-900/10 rounded-2xl p-6 border border-indigo-100 dark:border-indigo-800/30 flex flex-col justify-between">
-                         <div>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-2.5 bg-indigo-100 dark:bg-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
-                                    <MessageSquare size={22}/>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {manualSections.filter(s => !selectedStage || s.id === selectedStage).map((section) => (
+                            <div 
+                                key={section.id} 
+                                id={section.id} 
+                                className={`bg-white dark:bg-[#1e2029] rounded-2xl p-6 border border-gray-200 dark:border-gray-800 scroll-mt-24 transition-all ${selectedStage === section.id ? 'md:col-span-2 ring-2 ring-[var(--color-brand)] shadow-lg' : ''}`}
+                            >
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="p-2.5 bg-gray-100 dark:bg-white/5 rounded-xl text-gray-600 dark:text-gray-300">
+                                        <section.icon size={22}/>
+                                    </div>
+                                    <h3 className="font-bold text-lg text-gray-900 dark:text-white">{section.title}</h3>
                                 </div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-white">Still stuck?</h3>
+                                <div className="text-sm leading-relaxed">
+                                    {section.content}
+                                </div>
                             </div>
-                            <p className="text-sm text-indigo-800 dark:text-indigo-200 mb-6">
-                                Our support team is available Mon-Fri, 9am - 5pm to help with any technical or purchasing questions.
-                            </p>
-                         </div>
-                         <button className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors">
-                             Contact Support
-                         </button>
+                        ))}
+                        
+                        {!selectedStage && (
+                            <div className="bg-indigo-50 dark:bg-indigo-900/10 rounded-2xl p-6 border border-indigo-100 dark:border-indigo-800/30 flex flex-col justify-between">
+                                 <div>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="p-2.5 bg-indigo-100 dark:bg-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
+                                            <MessageSquare size={22}/>
+                                        </div>
+                                        <h3 className="font-bold text-lg text-gray-900 dark:text-white">Still stuck?</h3>
+                                    </div>
+                                    <p className="text-sm text-indigo-800 dark:text-indigo-200 mb-6">
+                                        Our support team is available Mon-Fri, 9am - 5pm to help with any technical or purchasing questions.
+                                    </p>
+                                 </div>
+                                 <button className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors">
+                                     Contact Support
+                                 </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

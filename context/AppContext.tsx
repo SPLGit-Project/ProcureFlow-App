@@ -34,7 +34,7 @@ interface AppContextType {
   theme: 'light' | 'dark';
   setTheme: (theme: 'light' | 'dark') => void;
   branding: AppBranding;
-  updateBranding: (branding: AppBranding) => void;
+  updateBranding: (branding: AppBranding) => Promise<void>;
 
   pos: PORequest[];
   suppliers: Supplier[];
@@ -68,6 +68,10 @@ interface AppContextType {
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
   linkConcurPO: (poId: string, concurPoNumber: string) => void;
   addDelivery: (poId: string, delivery: DeliveryHeader, closedLineIds?: string[]) => void;
+  
+  // User Actions
+  updateProfile: (profile: Partial<User>) => Promise<void>;
+  switchRole: (roleId: UserRole) => void;
   
   // Finance Actions
   updateFinanceInfo: (poId: string, deliveryId: string, lineId: string, updates: Partial<DeliveryLineItem>) => void;
@@ -114,18 +118,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
   
-  // Auth Config State
-  const [authConfig, setAuthConfig] = useState<AuthConfig>(() => {
-      const saved = localStorage.getItem('app-auth-config');
-      if (saved) return JSON.parse(saved);
-      return {
-          enabled: false,
-          provider: 'AZURE_AD',
-          tenantId: '',
-          clientId: '',
-          allowedDomains: ['company.com']
-      };
-  });
+  // Auth Config is now managed in the backend (env vars/Azure)
 
   // Theme State
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -203,7 +196,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 fetchedNotifs,
                 fetchedMappings,
                 fetchedAvailability,
-                fetchedTeamsUrl
+                fetchedTeamsUrl,
+                fetchedBranding
             ] = await Promise.all([
                 safeFetch(db.getRoles(), [], 'roles'),
                 safeFetch(db.getUsers(), [], 'users'),
@@ -217,7 +211,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getNotificationSettings(), [], 'notifications'),
                 safeFetch(db.getMappings(), [], 'mappings'),
                 safeFetch(db.getProductAvailability(), [], 'availability'),
-                safeFetch(db.getTeamsConfig(), '', 'teamsConfig')
+                safeFetch(db.getTeamsConfig(), '', 'teamsConfig'),
+                safeFetch(db.getBranding(), null, 'branding')
             ]);
 
             setRoles(fetchedRoles);
@@ -233,6 +228,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setMappings(fetchedMappings);
             setAvailability(fetchedAvailability);
             setTeamsWebhookUrl(fetchedTeamsUrl);
+            if (fetchedBranding) setBranding(fetchedBranding);
         } catch (error) {
             console.error("Failed to load data", error);
         } finally {
@@ -301,17 +297,18 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             if (!mounted) return;
             console.log(`Auth Event (listener): ${event}`, session?.user?.id);
 
-            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                await handleUserAuth(session!);
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+                if (session) {
+                    // If we already have a user, do it silently to avoid UI blocking
+                    const silent = !!currentUser;
+                    await handleUserAuth(session, silent);
+                } else if (event === 'INITIAL_SESSION') {
+                    setIsLoadingAuth(false);
+                }
             } else if (event === 'SIGNED_OUT') {
                 setCurrentUser(null);
                 setIsAuthenticated(false);
                 setIsPendingApproval(false);
-                setIsLoadingAuth(false);
-            } else if (event === 'INITIAL_SESSION' && session) {
-                await handleUserAuth(session);
-            } else if (event === 'INITIAL_SESSION' && !session) {
-                // If no session after init, stop loading
                 setIsLoadingAuth(false);
             }
         });
@@ -319,9 +316,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         return subscription;
     };
 
-    const handleUserAuth = async (session: any) => {
+    const handleUserAuth = async (session: any, silent = false) => {
         if (!mounted) return;
-        setIsLoadingAuth(true);
+        if (!silent) setIsLoadingAuth(true);
         try {
             console.log("Auth: Handling user auth for", session.user.email);
             // 1. Fetch user from our DB
@@ -460,10 +457,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       localStorage.setItem('app-branding', JSON.stringify(branding));
   }, [branding]);
 
-  const updateAuthConfig = (config: AuthConfig) => {
-      setAuthConfig(config);
-      localStorage.setItem('app-auth-config', JSON.stringify(config));
-  };
+  // authConfig removed - managed via backend
 
   // Helper to get RGB string for opacity support
   function hexToRgb(hex: string) {
@@ -471,7 +465,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '37, 99, 235';
   }
 
-  const updateBranding = (newBranding: AppBranding) => setBranding(newBranding);
+  const updateBranding = async (newBranding: AppBranding) => {
+      setBranding(newBranding);
+      try {
+          await db.updateBranding(newBranding);
+      } catch (e) {
+          console.error("Failed to persist branding", e);
+      }
+  };
 
   // --- Auth Operations ---
   const login = async () => {
@@ -543,6 +544,34 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           console.error("Failed to update teams config", e);
           reloadData();
       }
+  };
+
+  const updateProfile = async (updates: Partial<User>) => {
+      if (!currentUser) return;
+      try {
+          const { error } = await supabase
+              .from('users')
+              .update({
+                  name: updates.name,
+                  avatar: updates.avatar,
+                  job_title: updates.jobTitle
+              })
+              .eq('id', currentUser.id);
+
+          if (error) throw error;
+
+          setCurrentUser(prev => prev ? ({ ...prev, ...updates }) : null);
+          setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, ...updates } : u));
+      } catch (e) {
+          console.error("Failed to update profile:", e);
+          throw e;
+      }
+  };
+
+  const switchRole = (roleId: UserRole) => {
+      if (!currentUser) return;
+      // Note: This is a temporary visual switch for admins to test other roles
+      setCurrentUser(prev => prev ? ({ ...prev, role: roleId }) : null);
   };
 
   const updateUserRole = (userId: string, role: UserRole) => {
@@ -958,7 +987,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   return (
     <AppContext.Provider value={{
       currentUser, isAuthenticated, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
-      authConfig, updateAuthConfig,
       users, updateUserRole, addUser, reloadData,
       roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
       teamsWebhookUrl, updateTeamsWebhook,
@@ -971,6 +999,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       notificationSettings, updateNotificationSetting, addNotificationSetting, deleteNotificationSetting,
       theme, setTheme, branding, updateBranding,
       createPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
+      updateProfile, switchRole,
       addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: db.upsertProductMaster,
       getEffectiveStock,
       addItem, updateItem, deleteItem,

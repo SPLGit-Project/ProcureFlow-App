@@ -43,7 +43,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Admin Access' }
 ];
 
-type AdminTab = 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'AUTHENTICATION';
+type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS';
 
 const Settings = () => {
   const {
@@ -55,15 +55,14 @@ const Settings = () => {
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep, notificationSettings, updateNotificationSetting, addNotificationSetting, deleteNotificationSetting,
     items, addItem, updateItem, deleteItem,
     catalog, updateCatalogItem, stockSnapshots,
-    authConfig, updateAuthConfig,
     // Actions
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping,
     // New Admin Caps
-    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData
+    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<AdminTab>('ITEMS');
+  const [activeTab, setActiveTab] = useState<AdminTab>('PROFILE');
   const [fieldRegistry, setFieldRegistry] = useState<any[]>([]);
   
   useEffect(() => {
@@ -144,14 +143,31 @@ const Settings = () => {
   const [roleFormDesc, setRoleFormDesc] = useState('');
   const [roleFormPerms, setRoleFormPerms] = useState<PermissionId[]>([]);
 
-  // --- Auth Config State ---
-  const [authForm, setAuthForm] = useState(authConfig);
-
   // --- Item Master Form State ---
   const [isItemFormOpen, setIsItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [itemForm, setItemForm] = useState<Partial<Item>>({ sku: '', name: '', description: '', unitPrice: 0, uom: 'Each', category: '' });
   const [itemSearch, setItemSearch] = useState('');
+
+  // --- Profile State ---
+  const [profileForm, setProfileForm] = useState({ 
+      name: currentUser?.name || '', 
+      jobTitle: currentUser?.jobTitle || '', 
+      avatar: currentUser?.avatar || '' 
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const handleSaveProfile = async () => {
+      setIsSavingProfile(true);
+      try {
+          await updateProfile(profileForm);
+          alert('Profile updated successfully!');
+      } catch (e) {
+          alert('Failed to update profile.');
+      } finally {
+          setIsSavingProfile(false);
+      }
+  };
 
   // --- Supplier Form State ---
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false);
@@ -226,7 +242,6 @@ const Settings = () => {
         { id: 'WORKFLOW', label: 'Workflow', icon: GitMerge },
         { id: 'SECURITY', label: 'Security & Users', icon: Shield },
         { id: 'NOTIFICATIONS', label: 'Notifications', icon: Bell },
-        { id: 'AUTHENTICATION', label: 'Authentication', icon: Lock },
         { id: 'BRANDING', label: 'Branding', icon: Palette }
   ];
 
@@ -265,12 +280,6 @@ const Settings = () => {
       setSnapSku('');
       setSnapProductName('');
       setIsSnapshotFormOpen(false);
-  };
-
-  // --- Auth Handler ---
-  const handleSaveAuth = () => {
-      updateAuthConfig(authForm);
-      alert('Authentication settings saved.');
   };
 
   // --- Security Handlers ---
@@ -502,8 +511,8 @@ const Settings = () => {
       reader.readAsDataURL(file);
   };
   
-  const handleSaveBranding = () => {
-      updateBranding(brandingForm);
+  const handleSaveBranding = async () => {
+      await updateBranding(brandingForm);
       alert('Branding updated successfully! Refreshing view...');
   };
 
@@ -692,6 +701,17 @@ if __name__ == "__main__":
 
       <div className="sticky top-0 z-30 bg-gray-50 dark:bg-[#15171e] -mx-4 px-4 md:mx-0 md:px-0">
           <div className="flex border-b border-gray-200 dark:border-gray-800 overflow-x-auto gap-6 pb-2">
+             <button
+                onClick={() => setActiveTab('PROFILE')}
+                className={`pb-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+                    activeTab === 'PROFILE'
+                        ? 'border-[var(--color-brand)] text-[var(--color-brand)]'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+            >
+                <User size={16} />
+                My Profile
+            </button>
              {allTabs.map(tab => (
                  <button
                     key={tab.id}
@@ -711,94 +731,91 @@ if __name__ == "__main__":
 
       <div className="mt-6">
 
-      {activeTab === 'AUTHENTICATION' && (
-          <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="space-y-6">
-                  <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
-                      <div className="flex justify-between items-start mb-6">
-                          <div>
-                              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                  <Shield size={18} className="text-[var(--color-brand)]"/> Microsoft Azure AD
-                              </h3>
-                              <p className="text-sm text-gray-500 mt-1">Configure Office 365 Single Sign-On (SSO).</p>
-                          </div>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                              <input 
-                                type="checkbox" 
-                                className="sr-only peer" 
-                                checked={authForm.enabled} 
-                                onChange={e => setAuthForm({...authForm, enabled: e.target.checked})} 
-                              />
-                              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-[var(--color-brand)]"></div>
-                          </label>
+      {activeTab === 'PROFILE' && (
+          <div className="animate-fade-in max-w-2xl">
+              <div className="bg-white dark:bg-[#1e2029] rounded-2xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">User Profile</h2>
+                  
+                  <div className="flex flex-col md:flex-row gap-8 items-start">
+                      <div className="relative group">
+                          <img 
+                            src={profileForm.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileForm.name || 'U')}&background=random`} 
+                            className="w-32 h-32 rounded-3xl object-cover bg-gray-100 dark:bg-white/5 border-2 border-gray-200 dark:border-gray-800 shadow-lg"
+                          />
+                          <button className="absolute bottom-2 right-2 p-2 bg-white dark:bg-[#15171e] rounded-xl shadow-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-[var(--color-brand)] transition-colors">
+                              <Image size={16}/>
+                          </button>
                       </div>
 
-                      <div className={`space-y-4 transition-opacity ${authForm.enabled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
-                          <div>
-                              <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Directory (Tenant) ID</label>
-                              <input 
-                                className="input-field font-mono text-xs" 
-                                placeholder="e.g. 555-555-555"
-                                value={authForm.tenantId}
-                                onChange={e => setAuthForm({...authForm, tenantId: e.target.value})}
-                              />
+                      <div className="flex-1 space-y-4 w-full">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Full Name</label>
+                                  <input 
+                                    className="input-field" 
+                                    value={profileForm.name} 
+                                    onChange={e => setProfileForm({...profileForm, name: e.target.value})}
+                                  />
+                              </div>
+                              <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Email Address</label>
+                                  <input 
+                                    className="input-field opacity-60 cursor-not-allowed" 
+                                    value={currentUser?.email} 
+                                    readOnly
+                                  />
+                              </div>
                           </div>
-                          <div>
-                              <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Application (Client) ID</label>
-                              <input 
-                                className="input-field font-mono text-xs" 
-                                placeholder="e.g. 123-456-789"
-                                value={authForm.clientId}
-                                onChange={e => setAuthForm({...authForm, clientId: e.target.value})}
-                              />
-                          </div>
-                          <div>
-                              <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Allowed Email Domains</label>
+
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Job Title</label>
                               <input 
                                 className="input-field" 
-                                placeholder="e.g. company.com, subsidiary.com"
-                                value={authForm.allowedDomains.join(', ')}
-                                onChange={e => setAuthForm({...authForm, allowedDomains: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})}
+                                placeholder="e.g. Site Manager"
+                                value={profileForm.jobTitle} 
+                                onChange={e => setProfileForm({...profileForm, jobTitle: e.target.value})}
                               />
-                              <p className="text-xs text-gray-400 mt-1">Comma separated list of allowed domains for login.</p>
                           </div>
-                      </div>
 
-                      <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800">
-                          <button onClick={handleSaveAuth} className="btn-primary w-full">Save Configuration</button>
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Avatar URL</label>
+                              <input 
+                                className="input-field font-mono text-xs" 
+                                placeholder="https://example.com/photo.jpg"
+                                value={profileForm.avatar} 
+                                onChange={e => setProfileForm({...profileForm, avatar: e.target.value})}
+                              />
+                          </div>
+
+                          <div className="pt-4 flex justify-end">
+                              <button 
+                                onClick={handleSaveProfile} 
+                                disabled={isSavingProfile}
+                                className="btn-primary flex items-center gap-2"
+                              >
+                                  {isSavingProfile ? <RefreshCw size={18} className="animate-spin"/> : <Save size={18}/>}
+                                  Save Changes
+                              </button>
+                          </div>
                       </div>
                   </div>
               </div>
 
-              <div className="space-y-6">
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-500/20">
-                      <h4 className="font-bold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
-                          <Fingerprint size={18}/> Setup Instructions
-                      </h4>
-                      <ol className="list-decimal list-inside space-y-3 text-sm text-blue-800 dark:text-blue-200">
-                          <li>Go to the <a href="#" className="underline font-bold">Azure Portal</a> and navigate to Azure Active Directory.</li>
-                          <li>Register a new application named "ProcureFlow".</li>
-                          <li>Copy the <b>Application (Client) ID</b> and <b>Directory (Tenant) ID</b> into the fields on the left.</li>
-                          <li>In Azure Authentication settings, add a <b>Single Page Application</b> platform.</li>
-                          <li>Add the Redirect URI: <code className="bg-white/50 px-1 rounded">https://your-domain.com/auth-callback</code></li>
-                          <li>Ensure users exist in your directory with email addresses matching the Allowed Domains.</li>
-                      </ol>
+              <div className="mt-8 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 p-6 rounded-2xl flex items-start gap-4">
+                  <div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-xl text-amber-600 dark:text-amber-400">
+                      <Lock size={24}/>
                   </div>
-
-                  <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
-                      <h4 className="font-bold text-gray-900 dark:text-white mb-4">Access Control Policy</h4>
-                      <div className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-white/5 rounded-xl text-sm text-gray-600 dark:text-gray-400">
-                          <CheckCircle2 size={18} className="text-green-500 mt-0.5 shrink-0"/>
-                          <p>Users must have a valid Microsoft 365 account within your tenant to sign in.</p>
-                      </div>
-                      <div className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-white/5 rounded-xl text-sm text-gray-600 dark:text-gray-400 mt-2">
-                          <CheckCircle2 size={18} className="text-green-500 mt-0.5 shrink-0"/>
-                          <p>New users will be auto-assigned the 'Site User' role upon first login.</p>
-                      </div>
+                  <div>
+                      <h3 className="font-bold text-amber-900 dark:text-amber-400">Security Note</h3>
+                      <p className="text-sm text-amber-800/80 dark:text-amber-300/60 mt-1">
+                          Role assignments and site access are managed by the Procurement team. To request a change to your system level permissions, please contact support.
+                      </p>
                   </div>
               </div>
           </div>
       )}
+
+
       
       {activeTab === 'ITEMS' && (
         <>
@@ -1100,76 +1117,6 @@ if __name__ == "__main__":
       
 
 
-      {/* Duplicate Branding Block Removed */ false && (
-          <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              <div className="lg:col-span-1 xl:col-span-2 space-y-6">
-                  <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2"><Layout size={18} className="text-[var(--color-brand)]"/> General Identity</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div><label className="text-xs font-bold text-gray-500 uppercase block mb-1">App Name</label><input className="input-field" value={brandingForm.appName} onChange={(e) => setBrandingForm({...brandingForm, appName: e.target.value})}/></div>
-                          <div>
-                              <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Company Logo</label>
-                              <div className="flex items-center gap-4">
-                                  <div className="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-white/5 flex items-center justify-center overflow-hidden cursor-pointer hover:border-[var(--color-brand)] transition-colors relative group" onClick={() => logoInputRef.current?.click()}>
-                                      {brandingForm.logoUrl ? ( <img src={brandingForm.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" /> ) : ( <Image size={24} className="text-gray-400" /> )}
-                                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Edit2 size={16} className="text-white"/></div>
-                                  </div>
-                                  <div className="flex-1"><input type="file" ref={logoInputRef} accept="image/*" className="hidden" onChange={handleLogoUpload}/> <button onClick={() => logoInputRef.current?.click()} className="text-sm font-bold text-[var(--color-brand)] hover:underline mb-1">Upload New Logo</button><p className="text-xs text-gray-500">Recommended: PNG or SVG, max 2MB.</p></div>
-                              </div>
-                              <div className="mt-3 relative"><LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/><input className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg pl-9 pr-3 py-2 text-xs text-gray-600 dark:text-gray-300 outline-none focus:border-[var(--color-brand)]" placeholder="Or paste image URL..." value={brandingForm.logoUrl} onChange={(e) => setBrandingForm({...brandingForm, logoUrl: e.target.value})}/></div>
-                          </div>
-                      </div>
-                  </div>
-                  <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2"><Palette size={18} className="text-[var(--color-brand)]"/> Brand Colors</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                          <ColorPicker label="Primary Color" value={brandingForm.primaryColor} onChange={(val) => setBrandingForm({...brandingForm, primaryColor: val})}/>
-                          <ColorPicker label="Secondary Color" value={brandingForm.secondaryColor} onChange={(val) => setBrandingForm({...brandingForm, secondaryColor: val})}/>
-                      </div>
-                  </div>
-                  <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2"><Layers size={18} className="text-[var(--color-brand)]"/> Sidebar Style</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          {[{ id: 'light', label: 'Light', bg: 'bg-white', border: 'border-gray-200', text: 'text-gray-900' }, { id: 'dark', label: 'Dark', bg: 'bg-gray-900', border: 'border-gray-700', text: 'text-white' }, { id: 'brand', label: 'Brand', bg: 'bg-blue-600', border: 'border-blue-500', text: 'text-white' }].map(opt => (
-                              <button key={opt.id} onClick={() => setBrandingForm({...brandingForm, sidebarTheme: opt.id as any})} className={`relative h-24 rounded-xl border-2 flex items-center justify-center overflow-hidden transition-all ${brandingForm.sidebarTheme === opt.id ? 'border-[var(--color-brand)] ring-1 ring-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
-                                  <div className={`absolute inset-0 ${opt.id === 'brand' ? '' : opt.bg} flex`}>{opt.id === 'brand' && <div className="absolute inset-0 opacity-90" style={{ backgroundColor: brandingForm.primaryColor }}></div>}<div className="w-1/3 h-full border-r border-white/10 flex flex-col gap-2 p-2"><div className="w-full h-2 bg-white/20 rounded-full"></div><div className="w-2/3 h-2 bg-white/20 rounded-full"></div></div></div>
-                                  <span className={`relative z-10 font-bold ${opt.id === 'light' ? 'text-gray-900' : 'text-white'} bg-black/10 px-3 py-1 rounded-full backdrop-blur-sm`}>{opt.label}</span>
-                                  {brandingForm.sidebarTheme === opt.id && <div className="absolute top-2 right-2 text-white bg-[var(--color-brand)] rounded-full p-0.5"><CheckCircle2 size={16}/></div>}
-                              </button>
-                          ))}
-                      </div>
-                  </div>
-                  <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2"><Type size={18} className="text-[var(--color-brand)]"/> Typography</h3>
-                      <div className="flex gap-4">
-                           {['sans', 'serif', 'mono'].map(font => ( <button key={font} onClick={() => setBrandingForm({...brandingForm, fontFamily: font as any})} className={`flex-1 py-3 px-4 rounded-xl border font-medium text-sm transition-all ${brandingForm.fontFamily === font ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)] shadow-md' : 'bg-white dark:bg-[#15171e] text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}> <span className={font === 'serif' ? 'font-serif' : font === 'mono' ? 'font-mono' : 'font-sans'}> {font.charAt(0).toUpperCase() + font.slice(1)} </span> </button> ))}
-                      </div>
-                  </div>
-                  <button onClick={handleSaveBranding} className="btn-primary w-full py-4 text-lg">Save Changes</button>
-              </div>
-              <div className="lg:col-span-1">
-                  <div className="sticky top-4 bg-gray-900 rounded-3xl p-6 shadow-2xl border border-gray-800">
-                       <h4 className="text-white font-bold mb-4 flex items-center gap-2 text-sm uppercase tracking-wider"><Eye size={16} className="text-green-400"/> Live Preview</h4>
-                       <div className="bg-gray-50 rounded-xl overflow-hidden shadow-lg border border-gray-800 flex h-[400px]" style={{ fontFamily: brandingForm.fontFamily === 'serif' ? 'ui-serif, Georgia, serif' : brandingForm.fontFamily === 'mono' ? 'monospace' : 'ui-sans-serif, system-ui, sans-serif' }}>
-                            <div className={`w-16 flex-shrink-0 flex flex-col items-center py-4 gap-4 transition-colors ${brandingForm.sidebarTheme === 'dark' ? 'bg-[#1e2029]' : brandingForm.sidebarTheme === 'light' ? 'bg-white border-r border-gray-200' : '' }`} style={{ backgroundColor: brandingForm.sidebarTheme === 'brand' ? brandingForm.primaryColor : undefined }}>
-                                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center overflow-hidden">{brandingForm.logoUrl ? ( <img src={brandingForm.logoUrl} className="w-full h-full object-contain" /> ) : ( <div className="text-white font-bold">{brandingForm.appName.charAt(0)}</div> )}</div>
-                                <div className="w-8 h-8 rounded-lg bg-white/10"></div><div className="w-8 h-8 rounded-lg bg-white/10"></div>
-                            </div>
-                            <div className="flex-1 p-4 bg-gray-50 relative">
-                                <div className="flex justify-between items-center mb-6"><div><h5 className="font-bold text-gray-900 text-lg">{brandingForm.appName}</h5><div className="w-20 h-2 bg-gray-200 rounded mt-1"></div></div><div className="w-8 h-8 rounded-full bg-gray-300"></div></div>
-                                <div className="grid grid-cols-2 gap-3 mb-4">
-                                    <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden"><div className="w-8 h-8 rounded-lg mb-2 opacity-20" style={{ backgroundColor: brandingForm.primaryColor }}></div><div className="w-12 h-3 bg-gray-200 rounded mb-1"></div><div className="w-8 h-2 bg-gray-100 rounded"></div><div className="absolute right-0 top-0 w-2 h-full" style={{ backgroundColor: brandingForm.secondaryColor, opacity: 0.1 }}></div></div>
-                                    <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><div className="w-8 h-8 rounded-lg mb-2 bg-gray-100" style={{ color: brandingForm.secondaryColor }}><div className="w-full h-full opacity-20" style={{ backgroundColor: brandingForm.secondaryColor }}></div></div><div className="w-12 h-3 bg-gray-200 rounded mb-1"></div><div className="w-8 h-2 bg-gray-100 rounded"></div></div>
-                                </div>
-                                <button className="w-full py-2 rounded-lg text-white text-xs font-bold shadow-md mb-2" style={{ backgroundColor: brandingForm.primaryColor }}>Primary Action</button>
-                                <button className="w-full py-2 rounded-lg text-white text-xs font-bold shadow-md" style={{ backgroundColor: brandingForm.secondaryColor }}>Secondary Action</button>
-                            </div>
-                       </div>
-                       <p className="text-gray-500 text-xs mt-4 text-center">Preview is approximate. Save to see full effect.</p>
-                  </div>
-              </div>
-          </div>
-      )}
 
       {activeTab === 'STOCK' && (
           <div className="space-y-6 animate-fade-in">
