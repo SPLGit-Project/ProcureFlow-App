@@ -15,6 +15,7 @@ import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, W
 import { normalizeItemCode } from '../utils/normalization';
 import { useLocation } from 'react-router-dom';
 import AdminUserApproval from './AdminUserApproval';
+import AdminMigration from './AdminMigration';
 
 
 const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, category: 'Page Access' | 'Functional Access' | 'Admin Access' }[] = [
@@ -44,7 +45,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Admin Access' }
 ];
 
-type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS';
+type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION';
 
 const Settings = () => {
   const {
@@ -252,7 +253,8 @@ const Settings = () => {
         { id: 'WORKFLOW', label: 'Workflow', icon: GitMerge },
         { id: 'SECURITY', label: 'Security & Users', icon: Shield },
         { id: 'NOTIFICATIONS', label: 'Notifications', icon: Bell },
-        { id: 'BRANDING', label: 'Branding', icon: Palette }
+        { id: 'BRANDING', label: 'Branding', icon: Palette },
+        { id: 'MIGRATION', label: 'Data Migration', icon: Upload }
   ];
 
   // --- Helper Functions ---
@@ -690,10 +692,8 @@ if __name__ == "__main__":
                 <input 
                   type="color" 
                   className="w-10 h-10 rounded-lg cursor-pointer border-0 p-0 overflow-hidden" 
-                  value={value.startsWith('#') ? value : '#2563eb'} 
-                  onChange={(e) => onChange(e.target.value)}
-                />
-                <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 font-mono">Custom</span>
+                /> 
+        <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 font-mono">Custom</span>
             </div>
         </div>
     </div>
