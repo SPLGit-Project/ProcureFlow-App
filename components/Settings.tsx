@@ -2196,6 +2196,11 @@ if __name__ == "__main__":
               )}
           </div>
       )}
+      {activeTab === 'MIGRATION' && (
+          <div className="animate-fade-in max-w-4xl mx-auto">
+              <AdminMigration />
+          </div>
+      )}
       </div>
       
 
