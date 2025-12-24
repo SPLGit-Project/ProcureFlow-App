@@ -297,16 +297,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             if (!mounted) return;
             console.log(`Auth Event (listener): ${event}`, session?.user?.id);
 
-            if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+            // Cast to string to avoid TS errors with older type definitions
+            const eventType = event as string;
+
+            if (eventType === 'SIGNED_IN' || eventType === 'INITIAL_SESSION') {
                 if (session) {
                     await handleUserAuth(session);
+                } else if (eventType === 'INITIAL_SESSION') {
+                     setIsLoadingAuth(false);
                 }
-            } else if (event === 'TOKEN_REFRESHED') {
+            } else if (eventType === 'TOKEN_REFRESHED') {
                 // Do nothing on token refresh to prevent app reload
                 console.log('Auth: Token refreshed, skipping data reload');
-            } else if (event === 'INITIAL_SESSION') {
-                setIsLoadingAuth(false);
-            } else if (event === 'SIGNED_OUT') {
+            } else if (eventType === 'SIGNED_OUT') {
                 setCurrentUser(null);
                 setIsAuthenticated(false);
                 setIsPendingApproval(false);
