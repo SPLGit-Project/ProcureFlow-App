@@ -276,7 +276,7 @@ const HelpGuide = () => {
         </div>
 
         {/* Workflow Visualizer - Now prominent at the top */}
-        <div className="animate-fade-in bg-white dark:bg-[#1e2029] p-8 md:p-12 rounded-3xl border border-gray-200 dark:border-gray-800 text-center shadow-sm">
+        <div className="animate-fade-in bg-white dark:bg-[#1e2029] p-8 md:p-12 rounded-3xl border border-gray-200 dark:border-gray-800 text-center shadow-sm mb-24">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center justify-center gap-2">
                 <Zap className="text-[var(--color-brand)]" size={20}/> Purchase Lifecycle
             </h3>

@@ -759,7 +759,7 @@ if __name__ == "__main__":
 
                       <div className="flex-1 space-y-4 w-full">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="space-y-2">
+                              <div className="space-y-3">
                                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Full Name</label>
                                   <input 
                                     className="input-field" 
@@ -767,7 +767,7 @@ if __name__ == "__main__":
                                     onChange={e => setProfileForm({...profileForm, name: e.target.value})}
                                   />
                               </div>
-                              <div className="space-y-2">
+                              <div className="space-y-3">
                                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Email Address</label>
                                   <input 
                                     className="input-field opacity-60 cursor-not-allowed" 
@@ -777,7 +777,7 @@ if __name__ == "__main__":
                               </div>
                           </div>
 
-                          <div className="space-y-2">
+                          <div className="space-y-3">
                               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Job Title</label>
                               <input 
                                 className="input-field" 
@@ -787,7 +787,7 @@ if __name__ == "__main__":
                               />
                           </div>
 
-                          <div className="space-y-2">
+                          <div className="space-y-3">
                               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Avatar URL</label>
                               <input 
                                 className="input-field font-mono text-xs" 
@@ -2026,7 +2026,7 @@ if __name__ == "__main__":
                                         <span className="text-xs">Searching Directory...</span>
                                    </div>
                                ) : directoryResults.length > 0 ? (
-                                   <div className="space-y-2">
+                                   <div className="space-y-3">
                                        {directoryResults.map(u => (
                                            <div key={u.id} className="bg-white dark:bg-[#15171e] p-3 rounded-lg border border-gray-100 dark:border-gray-800 flex justify-between items-center group hover:border-[var(--color-brand)] transition-colors">
                                                <div>
