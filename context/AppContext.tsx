@@ -478,8 +478,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
     const authPromise = initializeAuth();
 
+    const handleVisibilityChange = async () => {
+        if (document.visibilityState === 'visible' && mounted) {
+            console.log("Auth: App returned to foreground, checking session...");
+            // Force a re-check if we are stuck or just to be safe
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                 // Refresh user data silently
+                await handleUserAuth(session, true); 
+            } else {
+                 // If no session and we were loading, stop loading
+                 if (mounted && isLoadingAuth) setIsLoadingAuth(false);
+            }
+        }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
         mounted = false;
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
         authPromise.then(sub => {
             if (sub && typeof sub === 'object' && 'unsubscribe' in sub) {
                 (sub as { unsubscribe: () => void }).unsubscribe();
