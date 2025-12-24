@@ -297,14 +297,15 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             if (!mounted) return;
             console.log(`Auth Event (listener): ${event}`, session?.user?.id);
 
-            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+            if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
                 if (session) {
-                    // If we already have a user, do it silently to avoid UI blocking
-                    const silent = !!currentUser;
-                    await handleUserAuth(session, silent);
-                } else if (event === 'INITIAL_SESSION') {
-                    setIsLoadingAuth(false);
+                    await handleUserAuth(session);
                 }
+            } else if (event === 'TOKEN_REFRESHED') {
+                // Do nothing on token refresh to prevent app reload
+                console.log('Auth: Token refreshed, skipping data reload');
+            } else if (event === 'INITIAL_SESSION') {
+                setIsLoadingAuth(false);
             } else if (event === 'SIGNED_OUT') {
                 setCurrentUser(null);
                 setIsAuthenticated(false);
@@ -986,33 +987,42 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const updateSite = (s: Site) => setSites(prev => prev.map(existing => existing.id === s.id ? s : existing));
   const deleteSite = (id: string) => setSites(prev => prev.filter(s => s.id !== id));
 
+  // --- Context Value Memoization ---
+  const contextValue = React.useMemo(() => ({
+    currentUser, isAuthenticated, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
+    users, updateUserRole, addUser, reloadData,
+    roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
+    teamsWebhookUrl, updateTeamsWebhook,
+    pos, suppliers, items, sites, catalog, stockSnapshots,
+    mappings, availability,
+    
+    // Methods
+    importMasterProducts, generateMappings, updateMapping: upsertMapping, upsertMapping, refreshAvailability, runDataBackfill,
+    workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep,
+    notificationSettings, updateNotificationSetting, addNotificationSetting, deleteNotificationSetting,
+    theme, setTheme, branding, updateBranding,
+    createPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
+    updateProfile, switchRole,
+    addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: db.upsertProductMaster,
+    getEffectiveStock,
+    addItem, updateItem, deleteItem,
+    addSupplier, updateSupplier, deleteSupplier,
+    addSite, updateSite, deleteSite,
+    
+    // New Admin Caps
+    getItemFieldRegistry,
+    runAutoMapping,
+    getMappingQueue
+  }), [
+    currentUser, isAuthenticated, isLoadingAuth, isPendingApproval, isLoadingData,
+    users, roles, teamsWebhookUrl, theme, branding,
+    pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability,
+    workflowSteps, notificationSettings,
+    reloadData
+  ]);
+
   return (
-    <AppContext.Provider value={{
-      currentUser, isAuthenticated, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
-      users, updateUserRole, addUser, reloadData,
-      roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
-      teamsWebhookUrl, updateTeamsWebhook,
-      pos, suppliers, items, sites, catalog, stockSnapshots,
-      mappings, availability, 
-      
-      // Methods
-      importMasterProducts, generateMappings, updateMapping: upsertMapping, upsertMapping, refreshAvailability, runDataBackfill,
-      workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep,
-      notificationSettings, updateNotificationSetting, addNotificationSetting, deleteNotificationSetting,
-      theme, setTheme, branding, updateBranding,
-      createPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
-      updateProfile, switchRole,
-      addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: db.upsertProductMaster,
-      getEffectiveStock,
-      addItem, updateItem, deleteItem,
-      addSupplier, updateSupplier, deleteSupplier,
-      addSite, updateSite, deleteSite,
-      
-      // New Admin Caps
-      getItemFieldRegistry,
-      runAutoMapping,
-      getMappingQueue
-    }}>
+    <AppContext.Provider value={contextValue}>
       {children}
     </AppContext.Provider>
   );
