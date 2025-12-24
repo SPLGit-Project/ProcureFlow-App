@@ -42,7 +42,8 @@ export const db = {
             avatar: u.avatar,
             jobTitle: u.job_title,
             status: u.status,
-            createdAt: u.created_at
+            createdAt: u.created_at,
+            siteIds: u.site_ids || []
         }));
     },
 
@@ -55,7 +56,8 @@ export const db = {
             avatar: user.avatar,
             job_title: user.jobTitle,
             status: user.status || 'PENDING_APPROVAL',
-            created_at: user.createdAt || new Date().toISOString()
+            created_at: user.createdAt || new Date().toISOString(),
+            site_ids: user.siteIds || []
         });
         if (error) throw error;
     },

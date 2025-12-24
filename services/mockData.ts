@@ -32,11 +32,11 @@ export const MOCK_ROLES: RoleDefinition[] = [
 ];
 
 export const MOCK_USERS: User[] = [
-  { id: 'u1', name: 'Alice Site-User', email: 'alice@company.com', role: 'SITE_USER', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice' },
-  { id: 'u2', name: 'Bob Approver', email: 'bob@company.com', role: 'APPROVER', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bob' },
-  { id: 'u3', name: 'Charlie Admin', email: 'charlie@company.com', role: 'ADMIN', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Charlie' },
-  { id: 'u4', name: 'Dave Admin', email: 'dave@company.com', role: 'ADMIN', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dave' },
-  { id: 'u5', name: 'Sarah Admin', email: 'sarah@company.com', role: 'ADMIN', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah' },
+  { id: 'u1', name: 'Alice Site-User', email: 'alice@company.com', role: 'SITE_USER', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice', siteIds: ['site-1', 'site-2'] },
+  { id: 'u2', name: 'Bob Approver', email: 'bob@company.com', role: 'APPROVER', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bob', siteIds: ['site-1'] },
+  { id: 'u3', name: 'Charlie Admin', email: 'charlie@company.com', role: 'ADMIN', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Charlie', siteIds: [] },
+  { id: 'u4', name: 'Dave Admin', email: 'dave@company.com', role: 'ADMIN', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dave', siteIds: [] },
+  { id: 'u5', name: 'Sarah Admin', email: 'sarah@company.com', role: 'ADMIN', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah', siteIds: [] },
 ];
 
 export const MOCK_SITES: Site[] = [
