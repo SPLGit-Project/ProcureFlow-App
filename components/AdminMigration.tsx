@@ -4,7 +4,7 @@ import { useDropzone, DropzoneOptions } from 'react-dropzone';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
-import { Upload, FileSpreadsheet, CheckCircle, AlertTriangle, Loader2, Edit2, Search, X } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle, AlertTriangle, Loader2, Edit2, Search, X, Calendar, Wand2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 interface AdminMigrationProps {
@@ -42,20 +42,49 @@ interface ParsedPO {
     comments?: string;
 }
 
+// Levenshtein implementation
+const levenshtein = (a: string, b: string): number => {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+                );
+            }
+        }
+    }
+    return matrix[b.length][a.length];
+};
+
 const AdminMigration: React.FC<AdminMigrationProps> = () => {
-    const { items, sites } = useApp();
+    const { items, sites, addItem } = useApp();
     const [file, setFile] = useState<File | null>(null);
     const [previewData, setPreviewData] = useState<ParsedPO[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [uploadStatus, setUploadStatus] = useState<'IDLE' | 'PARSING' | 'READY' | 'COMMITTING' | 'DONE' | 'ERROR'>('IDLE');
     const [logs, setLogs] = useState<string[]>([]);
+    const [allowImportErrors, setAllowImportErrors] = useState(false);
     
     // Mapping Modal State
     const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
     const [mappingTargetSku, setMappingTargetSku] = useState<string>('');
     const [mappingSearch, setMappingSearch] = useState('');
+    const [suggestions, setSuggestions] = useState<{ item: any, score: number }[]>([]);
 
-    const addLog = (msg: string) => setLogs(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`]);
+    // Date Edit Modal State
+    const [isDateEditOpen, setIsDateEditOpen] = useState(false);
+    const [editingDateLine, setEditingDateLine] = useState<{ poNum: string, lineIdx: number, date?: string } | null>(null);
+
+
+    const addLog = (msg: string) => setLogs(prev => [`${new Date().toLocaleTimeString()} - ${msg}`, ...prev]);
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         if (acceptedFiles.length > 0) {
@@ -71,7 +100,7 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
     } as unknown as DropzoneOptions);
 
     const excelDateToJSDate = (serial: any) => {
-       if (!serial) return new Date();
+       if (!serial) return undefined;
        if (typeof serial === 'string') return new Date(serial); // Attempt normal parse if invalid excel date
        const utc_days  = Math.floor(serial - 25569);
        const utc_value = utc_days * 86400;                                        
@@ -105,7 +134,7 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                     if (!poGroups[poNum]) {
                         poGroups[poNum] = {
                             poNum,
-                            date: excelDateToJSDate(row['Order Date']),
+                            date: excelDateToJSDate(row['Order Date']) || new Date(),
                             status: row['Order Status'] === 'Received in Full' ? 'COMPLETED' : 'PENDING_DELIVERY',
                             lines: [],
                             isValid: true,
@@ -121,10 +150,7 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                     const isValid = !!item;
 
                     // Cap Data
-                    let capDate = undefined;
-                    if (row['Capitalized Month']) {
-                        capDate = excelDateToJSDate(row['Capitalized Month']);
-                    }
+                    let capDate = excelDateToJSDate(row['Capitalized Month']);
 
                     poGroups[poNum].lines.push({
                         _rowIdx: idx + 2,
@@ -164,10 +190,43 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
         reader.readAsArrayBuffer(fileToParse);
     };
 
+    // --- Fuzzy Matching & Suggestions ---
+    const generateSuggestions = (targetSku: string) => {
+        if (!targetSku) return;
+        const target = targetSku.toLowerCase();
+        
+        const scored = items.map(item => {
+            const skuScore = levenshtein(target, (item.sku || '').toLowerCase());
+            const nameScore = levenshtein(target, (item.name || '').toLowerCase());
+            
+            // Normalize score (0-1, 1 is best)
+            // Length based normalization
+            const maxLenSku = Math.max(target.length, (item.sku || '').length);
+            const normSku = 1 - (skuScore / maxLenSku);
+
+            const maxLenName = Math.max(target.length, (item.name || '').length);
+            const normName = 1 - (nameScore / maxLenName);
+
+            return {
+                item,
+                score: Math.max(normSku, normName * 0.8) // Bias towards SKU match
+            };
+        });
+
+        // Filter valid suggestions (> 0.4) and sort
+        const top = scored
+            .filter(s => s.score > 0.4)
+            .sort((a,b) => b.score - a.score)
+            .slice(0, 5);
+        
+        setSuggestions(top);
+    };
+
     // --- Mapping Logic ---
     const openMappingModal = (invalidSku: string) => {
         setMappingTargetSku(invalidSku);
         setMappingSearch('');
+        generateSuggestions(invalidSku);
         setIsMappingModalOpen(true);
     };
 
@@ -211,6 +270,39 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
         setIsMappingModalOpen(false);
     };
 
+    // --- Date Editing ---
+    const openDateEdit = (po: ParsedPO, lineIdx: number) => {
+        const line = po.lines[lineIdx];
+        setEditingDateLine({
+            poNum: po.poNum,
+            lineIdx,
+            date: line.capDate ? line.capDate.toISOString().split('T')[0] : ''
+        });
+        setIsDateEditOpen(true);
+    };
+
+    const saveDateEdit = () => {
+        if (!editingDateLine) return;
+        
+        setPreviewData(prev => prev.map(po => {
+            if (po.poNum !== editingDateLine.poNum) return po;
+            const newLines = [...po.lines];
+            const line = newLines[editingDateLine.lineIdx];
+            
+            // Update line
+            newLines[editingDateLine.lineIdx] = {
+                ...line,
+                capDate: editingDateLine.date ? new Date(editingDateLine.date) : undefined
+            };
+
+            return { ...po, lines: newLines };
+        }));
+
+        setIsDateEditOpen(false);
+        setEditingDateLine(null);
+    };
+
+
     // --- Commit Logic ---
     const handleCommit = async () => {
         if (uploadStatus !== 'READY') return;
@@ -223,10 +315,72 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
 
         let successCount = 0;
         let failCount = 0;
+        let createdItemsCount = 0;
 
+        // Pre-flight: Create Unmatched Items if needed
+        const uniqueUnknownSkus = new Set<string>();
+        if (allowImportErrors) {
+            previewData.forEach(po => {
+                po.lines.forEach(line => {
+                    if (!line.isValid && !line.mappedItemId) {
+                        uniqueUnknownSkus.add(line.sku);
+                    }
+                });
+            });
+
+            if (uniqueUnknownSkus.size > 0) {
+                addLog(`Creating ${uniqueUnknownSkus.size} placeholder items for unknown SKUs...`);
+                // Process sequentially to be safe with DB
+                for (const sku of Array.from(uniqueUnknownSkus)) {
+                    // Check if already exists (incase run twice)
+                    const existing = items.find(i => i.sku === `UNMATCHED_${sku}`);
+                    if (!existing) {
+                        // Create it
+                        try {
+                            const newId = uuidv4();
+                            const newPlaceholder = {
+                                id: newId,
+                                name: `Unmatched Import: ${sku}`,
+                                sku: `UNMATCHED_${sku}`, // Safe key
+                                description: `Automatically created during migration for unknown SKU: ${sku}`,
+                                category: 'Unmatched Import',
+                                uom: 'EACH',
+                                status: 'ACTIVE',
+                                supplierId: 'unknown',
+                                unitPrice: 0
+                            };
+                            
+                            // Insert to DB
+                            const { error } = await supabase.from('items').insert(newPlaceholder);
+                            if (error) {
+                                console.error('Failed to create placeholder', error);
+                                addLog(`Failed to create placeholder for ${sku}`);
+                            } else {
+                                // Update local cache so we can find it in the loop below
+                                // Actually we should add it to 'items' context but reloadData might be slow.
+                                // We'll just rely on DB fetch or local array for now, but simple valid lookup in loop:
+                                createdItemsCount++;
+                            }
+                        } catch (e) { console.error(e); }
+                    }
+                }
+                // Refresh items to ensure we can find them below? 
+                // Alternatively, we just know the schema `UNMATCHED_${sku}` and hope validation passes or we fetch id?
+                // Better to simple fetch them or assume success and insert using known ID if we generated it?
+                // Let's assume we can query them or just try to insert PO Line with new ID if we tracked it.
+                // Re-fetching items is safest.
+                // But simplified: We insert them now. In the loop, if isValid is false, we look for `UNMATCHED_${sku}` in *refreshed* list?
+                // Or just standard fallback logic.
+            }
+        }
+
+        // We need the items to be available.
+        // Let's reload items quickly? Or just handle ID resolution manually in loop.
+        // Loop approach:
+        
         for (const po of previewData) {
-            // Skip ONLY if still invalid (user didn't map)
-            if (!po.isValid) {
+            // Skip ONLY if still invalid AND errors not allowed
+            if (!po.isValid && !allowImportErrors) {
                 addLog(`Skipping Invalid PO: ${po.poNum}`);
                 failCount++;
                 continue;
@@ -258,7 +412,7 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
 
                 // 2. Lines
                 for (const line of po.lines) {
-                    // Item ID resolution: Mapped OR Original lookup
+                    // Item ID resolution
                     let finalItemId = line.mappedItemId;
                     let finalSku = line.mappedSku;
                     
@@ -267,12 +421,22 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                          if (item) {
                              finalItemId = item.id;
                              finalSku = item.sku;
+                         } else if (allowImportErrors) {
+                             // Try to find the placeholder we just created
+                             // We constructed SKU as `UNMATCHED_${line.sku}`
+                             // We need to fetch its ID.
+                             // Optimization: We could have stored map. 
+                             // Fallback: SELECT id FROM items WHERE sku = ...
+                             const { data: placeholder, error } = await supabase.from('items').select('id, sku').eq('sku', `UNMATCHED_${line.sku}`).maybeSingle();
+                             if (placeholder) {
+                                 finalItemId = placeholder.id;
+                                 finalSku = placeholder.sku;
+                             }
                          }
                     }
 
                     if (!finalItemId) {
-                         // Should not happen if filtered by isValid, but safety
-                         addLog(`Error: Could not resolve item for line ${line.sku} in PO ${po.poNum}`);
+                         addLog(`Error: Could not resolve item for line ${line.sku} in PO ${po.poNum} (Skipping Line)`);
                          continue; 
                     }
 
@@ -294,7 +458,6 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                         await supabase.from('asset_capitalization').insert({
                             po_line_id: newLine.id,
                             gl_code: 'HISTORICAL',
-                             // Use provided tag or generate one
                             asset_tag: line.assetTag || `AST-${po.poNum}-${finalSku}`,
                             capitalized_date: line.capDate.toISOString(),
                             comments: line.capComments
@@ -313,15 +476,16 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
 
         setIsProcessing(false);
         setUploadStatus('DONE');
-        addLog(`Import Complete. Success: ${successCount}, Failed/Skipped: ${failCount}`);
-        alert(`Import Complete!\nSuccessful: ${successCount}\nFailed/Skipped: ${failCount}`);
+        addLog(`Import Complete. Success: ${successCount}, Failed/Skipped: ${failCount}, Created Placeholders: ${createdItemsCount}`);
+        alert(`Import Complete!\nSuccessful: ${successCount}\nFailed/Skipped: ${failCount}\nCreated Placeholders: ${createdItemsCount}`);
     };
 
     return (
         <div className="space-y-6">
+            {/* Header / Upload */}
             <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
                 <h3 className="text-lg font-bold mb-4">Historical Data Import</h3>
-                <p className="text-sm text-gray-500 mb-6">Upload an Excel file to import historical POs. The system will look for Product Codes, QTY Received, and Capitalization columns.</p>
+                <p className="text-sm text-gray-500 mb-6">Upload an Excel file. Use the generic "Force Import" option to auto-create placeholder items for unknown SKUs.</p>
                 
                 <div {...getRootProps()} className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${isDragActive ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5' : 'border-gray-300 dark:border-gray-700 hover:border-gray-400'}`}>
                     <input {...getInputProps()} />
@@ -337,7 +501,7 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
             {uploadStatus !== 'IDLE' && (
                 <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
                    
-                   <div className="flex items-center justify-between mb-4">
+                   <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
                         <div>
                             <h3 className="font-bold">Preview ({previewData.length} POs)</h3>
                             <div className="text-xs text-gray-500">
@@ -345,21 +509,31 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                                 • Issues: <span className="text-red-500 font-bold">{previewData.filter(p => !p.isValid).length}</span>
                             </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <label className="flex items-center gap-2 text-xs font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-white/5 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-white/10 transition-colors">
+                                <input 
+                                    type="checkbox" 
+                                    checked={allowImportErrors} 
+                                    onChange={e => setAllowImportErrors(e.target.checked)}
+                                    className="rounded text-[var(--color-brand)] focus:ring-[var(--color-brand)]"
+                                />
+                                Allow Import with Errors (Auto-Create Items)
+                            </label>
+
                             {(uploadStatus === 'READY' || uploadStatus === 'DONE') && (
                                 <button 
                                     onClick={handleCommit}
-                                    disabled={isProcessing || previewData.filter(p => p.isValid).length === 0}
-                                    className="px-4 py-2 bg-[var(--color-brand)] text-white rounded-lg font-bold text-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+                                    disabled={isProcessing || (!allowImportErrors && previewData.filter(p => p.isValid).length === 0)}
+                                    className={`px-4 py-2 text-white rounded-lg font-bold text-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2 ${allowImportErrors ? 'bg-amber-600' : 'bg-[var(--color-brand)]'}`}
                                 >
                                     {isProcessing && <Loader2 className="animate-spin" size={16} />}
-                                    Commit Import
+                                    {allowImportErrors ? 'Force Commit Import' : 'Commit Valid Import'}
                                 </button>
                             )}
                         </div>
                    </div>
 
-                   <div className="h-32 overflow-y-auto mb-6 bg-gray-50 dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-800 p-4 font-mono text-xs">
+                   <div className="h-32 overflow-y-auto mb-6 bg-gray-50 dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-800 p-4 font-mono text-xs text-gray-600 dark:text-gray-400">
                        {logs.map((log, i) => <div key={i}>{log}</div>)}
                    </div>
 
@@ -397,9 +571,9 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                                                                  <span>Unknown: <b>{line.sku}</b></span>
                                                                  <button 
                                                                     onClick={() => openMappingModal(line.sku)}
-                                                                    className="px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-[10px] font-bold border border-red-200"
+                                                                    className="px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-[10px] font-bold border border-red-200 flex items-center gap-1"
                                                                  >
-                                                                     FIX
+                                                                     <Wand2 size={10} /> FIX
                                                                  </button>
                                                              </div>
                                                          ))}
@@ -413,7 +587,20 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                                                 {po.lines.reduce((acc, l) => acc + l.qtyReceived, 0)} / {po.lines.reduce((acc, l) => acc + l.qtyOrdered, 0)}
                                             </td>
                                             <td className="px-4 py-3 text-right">
-                                                {po.lines.some(l => l.capDate) ? <span className="text-green-600 font-bold">YES</span> : '-'}
+                                                <div className="flex flex-col gap-1 items-end">
+                                                    {po.lines.map((l, i) => (
+                                                        l.capDate && (
+                                                            <button 
+                                                                key={i} 
+                                                                onClick={() => openDateEdit(po, i)}
+                                                                className="text-[10px] font-mono bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded flex items-center gap-1 hover:bg-green-200"
+                                                            >
+                                                                {l.capDate.toLocaleDateString()} <Edit2 size={8} />
+                                                            </button>
+                                                        )
+                                                    ))}
+                                                    {!po.lines.some(l => l.capDate) && <span className="text-gray-300">-</span>}
+                                                </div>
                                             </td>
                                         </tr>
                                     </React.Fragment>
@@ -436,23 +623,49 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                         
                         <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-xl border border-red-100 dark:border-red-800 mb-4">
                             <p className="text-xs text-red-800 dark:text-red-200">
-                                The file contains SKU <b>"{mappingTargetSku}"</b> which was not found in the system.
-                                Select the correct system item to map.
+                                SKU <b>"{mappingTargetSku}"</b> was not found.
+                                Select a replacement below.
                             </p>
                         </div>
+
+                        {suggestions.length > 0 && (
+                            <div className="mb-4">
+                                <div className="text-[10px] uppercase font-bold text-gray-500 mb-2">Suggested Matches</div>
+                                <div className="space-y-1">
+                                    {suggestions.map((s, idx) => (
+                                        <button 
+                                            key={s.item.id}
+                                            onClick={() => applyMapping(s.item.id)}
+                                            className="w-full text-left p-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800 rounded-lg flex justify-between items-center hover:bg-amber-100 transition-colors"
+                                        >
+                                            <div>
+                                                <div className="font-bold text-xs text-amber-900 dark:text-amber-100">{s.item.name}</div>
+                                                <div className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">{s.item.sku}</div>
+                                            </div>
+                                            <div className="text-[10px] font-bold bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-100 px-1.5 py-0.5 rounded">
+                                                {Math.round(s.score * 100)}% Match
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <div className="relative mb-4">
                             <Search className="absolute left-3 top-2.5 text-gray-400" size={16}/>
                             <input 
                                 className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg pl-9 pr-4 py-2 text-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none"
-                                placeholder="Search system items..."
+                                placeholder="Search all system items..."
                                 value={mappingSearch}
-                                onChange={e => setMappingSearch(e.target.value)}
+                                onChange={e => {
+                                    setMappingSearch(e.target.value);
+                                    // Optional: dynamic suggestions if needed, but standard filtering below is fine
+                                }}
                                 autoFocus
                             />
                         </div>
 
-                        <div className="max-h-60 overflow-y-auto border border-gray-100 dark:border-gray-800 rounded-xl">
+                        <div className="max-h-48 overflow-y-auto border border-gray-100 dark:border-gray-800 rounded-xl">
                             {items
                                 .filter(i => (i.name || '').toLowerCase().includes(mappingSearch.toLowerCase()) || (i.sku || '').toLowerCase().includes(mappingSearch.toLowerCase()))
                                 .slice(0, 50)
@@ -470,11 +683,33 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                                     </button>
                                 ))
                             }
-                            {items.length === 0 && <div className="p-4 text-center text-xs text-gray-400">No items found in system.</div>}
+                            {items.length === 0 && <div className="p-4 text-center text-xs text-gray-400">No items found.</div>}
                         </div>
                         
                         <div className="mt-4 flex justify-end">
                             <button onClick={() => setIsMappingModalOpen(false)} className="px-4 py-2 text-gray-500 text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Date Edit Modal */}
+            {isDateEditOpen && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-sm p-6 animate-slide-up">
+                         <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Edit Capitalization Date</h2>
+                         <div className="mb-6">
+                             <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Date</label>
+                             <input 
+                                type="date"
+                                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl p-3 outline-none focus:border-[var(--color-brand)]"
+                                value={editingDateLine?.date || ''}
+                                onChange={e => setEditingDateLine(prev => prev ? ({ ...prev, date: e.target.value }) : null)}
+                             />
+                         </div>
+                         <div className="flex justify-end gap-3">
+                            <button onClick={() => setIsDateEditOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                            <button onClick={saveDateEdit} className="px-4 py-2 bg-[var(--color-brand)] text-white rounded-lg font-bold shadow-lg shadow-[var(--color-brand)]/20">Save Change</button>
                         </div>
                     </div>
                 </div>
