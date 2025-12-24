@@ -48,6 +48,7 @@ export interface User {
   jobTitle?: string;
   status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
   createdAt?: string;
+  siteIds: string[]; // List of site IDs this user has access to
 }
 
 export interface AppBranding {

@@ -5,9 +5,24 @@ import { User, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, Deliver
 import { db } from '../services/db';
 import { supabase } from '../lib/supabaseClient';
 
+const REQUIRED_ADMIN_ROLE = 'ADMIN';
+
+// Helper to get raw site filter from localStorage or user defaults
+const getInitialSiteId = (): string | null => {
+    try {
+        const stored = localStorage.getItem('activeSiteId');
+        return stored === 'null' ? null : stored;
+    } catch {
+        return null;
+    }
+};
+
 interface AppContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
+  activeSiteId: string | null; // Multi-site context
+  setActiveSiteId: (id: string | null) => void;
+  siteName: (siteId?: string) => string;
   login: () => Promise<void>;
   logout: () => Promise<void>;
   isLoadingAuth: boolean;
@@ -112,6 +127,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [activeSiteId, _setActiveSiteId] = useState<string | null>(getInitialSiteId());
+  
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isPendingApproval, setIsPendingApproval] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -167,6 +184,29 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSetting[]>([]);
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
+
+    // --- Active Site Logic ---
+    const setActiveSiteId = (id: string | null) => {
+        _setActiveSiteId(id);
+        if (id === null) {
+            localStorage.setItem('activeSiteId', 'null');
+        } else {
+            localStorage.setItem('activeSiteId', id);
+        }
+    };
+
+    // --- Helper for Site Name ---
+    const siteName = useCallback((siteId?: string) => {
+        if (!siteId) return 'Unknown Site';
+        const site = sites.find(s => s.id === siteId);
+        return site ? site.name : 'Unknown Site';
+    }, [sites]);
+
+    // --- Data Filtering based on Active Site ---
+    const filteredPos = React.useMemo(() => {
+        if (!activeSiteId) return pos; // Show all
+        return pos.filter(p => p.siteId === activeSiteId);
+    }, [pos, activeSiteId]);
 
   // Data Loading
   const reloadData = useCallback(async () => {
@@ -346,7 +386,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 avatar: rawData.avatar,
                 jobTitle: rawData.job_title,
                 status: rawData.status,
-                createdAt: rawData.created_at
+                createdAt: rawData.created_at,
+                siteIds: rawData.site_ids || []
             } : null;
 
             if (!userData) {
@@ -370,7 +411,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
                     avatar: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || '',
                     job_title: '',
-                    created_at: new Date().toISOString()
+                    created_at: new Date().toISOString(),
+                    site_ids: []
                 };
 
                 console.log("Auth: Inserting new user:", dbUser.email, "Is First:", isFirstUser);
@@ -388,12 +430,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     id: dbUser.id,
                     name: dbUser.name,
                     email: dbUser.email,
-                    role: dbUser.role_id,
-                    realRole: dbUser.role_id,
+                    role: dbUser.role_id as any,
+                    realRole: dbUser.role_id as any,
                     avatar: dbUser.avatar,
                     jobTitle: dbUser.job_title,
                     status: dbUser.status as any,
-                    createdAt: dbUser.created_at
+                    createdAt: dbUser.created_at,
+                    siteIds: []
                 };
                 console.log("Auth: Registration complete for", userData.email);
             }
@@ -404,6 +447,20 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 setIsAuthenticated(true);
                 setIsPendingApproval(userData.status !== 'APPROVED');
                 
+                // Initialize Active Site Context
+                if (userData.role !== 'ADMIN') {
+                     if (userData.siteIds && userData.siteIds.length > 0) {
+                         // Check if currently stored site is valid
+                         if (!activeSiteId || !userData.siteIds.includes(activeSiteId)) {
+                             // _setActiveSiteId is technically internal, but within component we can use setActiveSiteId wrapper
+                             // Note: setActiveSiteId from scope above might be cleaner
+                             if(mounted) setActiveSiteId(userData.siteIds[0]);
+                         }
+                     } else {
+                         if(mounted) setActiveSiteId(null); 
+                     }
+                }
+
                 if (userData.status === 'APPROVED') {
                     reloadData();
                 }
@@ -992,11 +1049,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // --- Context Value Memoization ---
   const contextValue = React.useMemo(() => ({
-    currentUser, isAuthenticated, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
+    currentUser, isAuthenticated, activeSiteId, setActiveSiteId, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
     users, updateUserRole, addUser, reloadData,
     roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
     teamsWebhookUrl, updateTeamsWebhook,
-    pos, suppliers, items, sites, catalog, stockSnapshots,
+    pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
+    suppliers, items, sites, catalog, stockSnapshots,
     mappings, availability,
     
     // Methods
@@ -1017,11 +1075,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     runAutoMapping,
     getMappingQueue
   }), [
-    currentUser, isAuthenticated, isLoadingAuth, isPendingApproval, isLoadingData,
+    currentUser, isAuthenticated, activeSiteId, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
-    pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability,
+    filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability,
     workflowSteps, notificationSettings,
-    reloadData
+    reloadData, siteName
   ]);
 
   return (

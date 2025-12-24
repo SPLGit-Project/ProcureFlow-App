@@ -16,12 +16,14 @@ import {
   HelpCircle,
   LogOut,
   BarChart3,
-  Clock
+  Clock,
+  MapPin, 
+  Building
 } from 'lucide-react';
 import { PermissionId } from '../types';
 
 const Layout = () => {
-  const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission } = useApp();
+  const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteId, setActiveSiteId, sites, siteName } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const navigate = useNavigate();
 
@@ -144,7 +146,24 @@ const Layout = () => {
               </div>
            </div>
            
-           <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+           <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
+             {/* Site Switcher */}
+             {(currentUser.role === 'ADMIN' || (currentUser.siteIds && currentUser.siteIds.length > 1)) && (
+                  <div className="space-y-1">
+                      <p className="text-[9px] uppercase font-bold text-white/40 px-1 flex items-center gap-1"><MapPin size={10}/> Site Context</p>
+                      <select 
+                        className={`w-full rounded-lg text-xs p-2.5 outline-none appearance-none cursor-pointer font-bold shadow-sm transition-all ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'bg-black/30 text-white border-white/10 hover:bg-black/40' : 'bg-white dark:bg-[#15171e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]'}`}
+                        value={activeSiteId || ''}
+                        onChange={(e) => setActiveSiteId(e.target.value === '' ? null : e.target.value)}
+                     >
+                       <option value="" className="text-gray-900 bg-white">All Sites (Global)</option>
+                       {sites.map(s => (
+                           <option key={s.id} value={s.id} className="text-gray-900 bg-white">{s.name}</option>
+                       ))}
+                     </select>
+                  </div>
+             )}
+
              {currentUser.realRole === 'ADMIN' && (
                  <div className="space-y-1">
                      <p className="text-[9px] uppercase font-bold text-white/40 px-1">Switch View</p>

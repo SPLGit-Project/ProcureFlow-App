@@ -9,8 +9,9 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare,
-    Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info
 } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 import { useLocation } from 'react-router-dom';
@@ -1840,6 +1841,18 @@ if __name__ == "__main__":
                       <button onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-[var(--color-brand)] transition-colors"><Plus size={18}/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                      <button
+                          onClick={() => setActiveRole({ id: 'ALL', name: 'All Users', description: 'View all users across all roles', permissions: [], isSystem: true } as any)}
+                          className={`w-full text-left px-3 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeRole?.id === 'ALL' ? 'bg-[var(--color-brand)] text-white shadow-md shadow-[var(--color-brand)]/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300'}`}
+                      >
+                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${activeRole?.id === 'ALL' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
+                                  <User size={16}/>
+                           </div>
+                           <div className="flex-1 min-w-0">
+                                  <div className="font-bold text-sm truncate">All Users</div>
+                                  <div className={`text-[10px] truncate ${activeRole?.id === 'ALL' ? 'text-white/80' : 'text-gray-400'}`}>{users.length} Users</div>
+                           </div>
+                      </button> 
                       {roles.map(role => (
                           <button
                               key={role.id}
@@ -1942,6 +1955,12 @@ if __name__ == "__main__":
                                                               <div>
                                                                   <div className="font-bold text-gray-900 dark:text-white">{user.name}</div>
                                                                   <div className="text-xs">{user.email}</div>
+                                                                  <div className="flex flex-wrap gap-1 mt-1">
+                                                                    {user.siteIds && user.siteIds.map(sid => {
+                                                                        const s = sites.find(x => x.id === sid);
+                                                                        return s ? <span key={sid} className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] rounded text-gray-500">{s.name}</span> : null;
+                                                                    })}
+                                                                  </div>
                                                               </div>
                                                           </td>
                                                           <td className="px-4 py-3 text-right">
@@ -2028,27 +2047,59 @@ if __name__ == "__main__":
                                ) : directoryResults.length > 0 ? (
                                    <div className="space-y-3">
                                        {directoryResults.map(u => (
-                                           <div key={u.id} className="bg-white dark:bg-[#15171e] p-3 rounded-lg border border-gray-100 dark:border-gray-800 flex justify-between items-center group hover:border-[var(--color-brand)] transition-colors">
-                                               <div>
-                                                   <div className="font-bold text-sm text-gray-900 dark:text-white">{u.name}</div>
-                                                   <div className="text-xs text-gray-500">{u.email}</div>
-                                                   <div className="text-[10px] text-gray-400 mt-0.5">{u.jobTitle}</div>
-                                               </div>
-                                               <button onClick={() => {
-                                                    if (activeRole) {
-                                                        // Update User Role directly
-                                                        const userToUpdate = users.find(existing => existing.id === u.id); // Check if they already exist in local
-                                                        if (userToUpdate) {
-                                                            updateUserRole(u.id, activeRole.id);
-                                                        } else {
-                                                            // Add new user from directory with this role
-                                                            addUser({ ...u, role: activeRole.id, avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=random` } as any);
+                                           <div key={u.id} className="bg-white dark:bg-[#15171e] p-3 rounded-lg border border-gray-100 dark:border-gray-800 flex flex-col gap-3 group hover:border-[var(--color-brand)] transition-colors">
+                                               <div className="flex justify-between items-start">
+                                                   <div>
+                                                       <div className="font-bold text-sm text-gray-900 dark:text-white">{u.name}</div>
+                                                       <div className="text-xs text-gray-500">{u.email}</div>
+                                                       <div className="text-[10px] text-gray-400 mt-0.5">{u.jobTitle}</div>
+                                                   </div>
+                                                   <button onClick={async () => {
+                                                        const targetRole = activeRole ? activeRole.id : 'SITE_USER';
+
+                                                        // 1. Send Magic Link Invite (if email valid)
+                                                        let inviteSent = false;
+                                                        if (u.email && u.email.includes('@')) {
+                                                            const { error } = await supabase.auth.signInWithOtp({
+                                                                email: u.email,
+                                                                options: {
+                                                                    emailRedirectTo: window.location.origin,
+                                                                    data: {
+                                                                        full_name: u.name,
+                                                                        avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=random`
+                                                                    }
+                                                                }
+                                                            });
+                                                            if (error) {
+                                                                alert(`Could not send invite: ${error.message}`);
+                                                                return;
+                                                            }
+                                                            inviteSent = true;
                                                         }
-                                                    } else {
-                                                        handleAddFromDirectory(u);
-                                                    }
-                                                    setIsDirectoryModalOpen(false);
-                                               }} className="btn-primary py-1.5 px-3 text-xs">Add</button>
+
+                                                        // 2. Add to DB
+                                                        if (activeRole) {
+                                                            const userToUpdate = users.find(existing => existing.id === u.id);
+                                                            if (userToUpdate) {
+                                                                updateUserRole(u.id, activeRole.id);
+                                                            } else {
+                                                                await addUser({ 
+                                                                    ...u, 
+                                                                    role: activeRole.id, 
+                                                                    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=random`,
+                                                                    siteIds: [] // Default to none, admin can edit later
+                                                                } as any);
+                                                            }
+                                                        } else {
+                                                             await handleAddFromDirectory(u);
+                                                        }
+
+                                                        if (inviteSent) alert(`Passcode login link sent to ${u.email}`);
+                                                        setIsDirectoryModalOpen(false);
+                                                   }} className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1">
+                                                       <Mail size={12}/> Invite
+                                                   </button>
+                                               </div>
                                            </div>
                                        ))}
                                    </div>
