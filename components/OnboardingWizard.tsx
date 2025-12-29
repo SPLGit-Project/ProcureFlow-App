@@ -92,8 +92,8 @@ const OnboardingWizard = () => {
 
                             <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl p-6 space-y-4 border border-gray-100 dark:border-gray-800">
                                 <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center text-blue-600 font-bold text-xl">
-                                        {currentUser?.avatar ? <img src={currentUser.avatar} className="w-full h-full rounded-full" /> : currentUser?.name.charAt(0)}
+                                    <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-100 dark:border-gray-800 shrink-0">
+                                        <img src={currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.name || '')}&background=random&color=fff`} className="w-full h-full object-cover" />
                                     </div>
                                     <div>
                                         <div className="font-semibold text-gray-900 dark:text-white text-lg">{currentUser?.name}</div>

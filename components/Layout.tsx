@@ -129,7 +129,7 @@ const Layout = () => {
         >
            <div className="flex items-center gap-3 mb-3">
               <div className="relative">
-                <img src={currentUser.avatar} alt="User" className="w-10 h-10 rounded-full bg-gray-200 border-2 border-white/20 shadow-sm transition-transform group-hover:scale-105" />
+                <img src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`} alt="User" className="w-10 h-10 rounded-full bg-gray-200 border-2 border-white/20 shadow-sm transition-transform group-hover:scale-105" />
                 <div className="absolute inset-0 rounded-full bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                    <Settings size={12} className="text-white" />
                 </div>
@@ -201,7 +201,7 @@ const Layout = () => {
                 <span className="font-bold text-lg text-gray-900 dark:text-white tracking-tight">{branding.appName}</span>
             </div>
             <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-gray-700">
-                <img src={currentUser.avatar} alt="User" className="w-full h-full object-cover" />
+                <img src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`} alt="User" className="w-full h-full object-cover" />
             </div>
         </header>
         

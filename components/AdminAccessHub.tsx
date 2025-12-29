@@ -103,7 +103,7 @@ const AdminAccessHub = () => {
                     role_id: selectedRole,
                     site_ids: finalSiteIds,
                     status: 'APPROVED',
-                    avatar_url: selectedUser.avatar
+                    avatar: selectedUser.avatar
                 }]);
                  if (error) throw error;
             }
@@ -200,8 +200,12 @@ const AdminAccessHub = () => {
                                 {displayedUsers.map(user => (
                                     <div key={user.id} className="p-6 flex flex-col md:flex-row gap-6 hover:bg-gray-50 dark:hover:bg-[#15171e] transition-colors group">
                                         <div className="flex items-start gap-4 flex-1">
-                                            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center text-blue-600 font-bold shrink-0">
-                                                {user.avatar ? <img src={user.avatar} className="w-full h-full rounded-full" /> : user.name.charAt(0)}
+                                            <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-gray-100 dark:border-gray-800">
+                                                <img 
+                                                    src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff`} 
+                                                    alt={user.name} 
+                                                    className="w-full h-full object-cover" 
+                                                />
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2">
@@ -253,8 +257,12 @@ const AdminAccessHub = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                              {displayedUsers.map(user => (
                                  <div key={user.id} className="p-4 border border-gray-100 dark:border-gray-800 rounded-xl flex items-center gap-4 hover:border-blue-200 transition-colors">
-                                     <div className="w-10 h-10 bg-gray-100 dark:bg-[#15171e] rounded-full flex items-center justify-center font-bold text-gray-500">
-                                         {user.avatar ? <img src={user.avatar} className="w-full h-full rounded-full" /> : user.name.charAt(0)}
+                                     <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-gray-100 dark:border-gray-800">
+                                         <img 
+                                             src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff`} 
+                                             alt={user.name}
+                                             className="w-full h-full object-cover" 
+                                         />
                                      </div>
                                      <div className="overflow-hidden">
                                          <div className="font-semibold text-gray-900 dark:text-white truncate">{user.name}</div>
