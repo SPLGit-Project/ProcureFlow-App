@@ -209,7 +209,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }, [pos, activeSiteId]);
 
   // Data Loading
-  const reloadData = useCallback(async () => {
+  const reloadData = useCallback(async (silent: boolean = false) => {
         // Helper for resilience
         async function safeFetch<T>(promise: Promise<T>, fallback: T, label: string): Promise<T> {
             try {
@@ -220,7 +220,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
         }
 
-        setIsLoadingData(true);
+        if (!silent) setIsLoadingData(true);
         try {
             // Parallel fetch with individual error handling
             const [
@@ -272,7 +272,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         } catch (error) {
             console.error("Failed to load data", error);
         } finally {
-            setIsLoadingData(false);
+            if (!silent) setIsLoadingData(false);
         }
     }, []);
 
@@ -285,9 +285,20 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   }, [isAuthenticated, isPendingApproval, reloadData]);
 
+  // Ref to guard against overlapping session checks
+  const isCheckingSessionRef = React.useRef(false);
+
   // Auth Initialization
   useEffect(() => {
     let mounted = true;
+
+    // Safety timeout to ensure we don't get stuck on loading forever
+    const safetyTimeout = setTimeout(() => {
+        if (mounted && isLoadingAuth) {
+            console.warn("Auth: Safety timeout triggered, forcing load state off.");
+            setIsLoadingAuth(false);
+        }
+    }, 10000); // 10 seconds
 
     const initializeAuth = async () => {
         setIsLoadingAuth(true);
@@ -462,7 +473,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 }
 
                 if (userData.status === 'APPROVED') {
-                    reloadData();
+                    // Use silent reload if triggered from silent auth check
+                    reloadData(silent);
                 }
             }
         } catch (err) {
@@ -472,7 +484,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 setCurrentUser(null);
             }
         } finally {
-            if (mounted) setIsLoadingAuth(false);
+            if (mounted && !silent) setIsLoadingAuth(false);
         }
     };
 
@@ -480,15 +492,22 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
     const handleVisibilityChange = async () => {
         if (document.visibilityState === 'visible' && mounted) {
-            console.log("Auth: App returned to foreground, checking session...");
-            // Force a re-check if we are stuck or just to be safe
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                 // Refresh user data silently
-                await handleUserAuth(session, true); 
-            } else {
-                 // If no session and we were loading, stop loading
-                 if (mounted && isLoadingAuth) setIsLoadingAuth(false);
+            if (isCheckingSessionRef.current) return;
+            
+            try {
+                isCheckingSessionRef.current = true;
+                console.log("Auth: App returned to foreground, checking session...");
+                // Force a re-check if we are stuck or just to be safe
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session) {
+                     // Refresh user data silently
+                    await handleUserAuth(session, true); 
+                } else {
+                     // If no session and we were loading, stop loading
+                     if (mounted && isLoadingAuth) setIsLoadingAuth(false);
+                }
+            } finally {
+                isCheckingSessionRef.current = false;
             }
         }
     };
@@ -496,6 +515,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
     return () => {
         mounted = false;
+        clearTimeout(safetyTimeout);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
         authPromise.then(sub => {
             if (sub && typeof sub === 'object' && 'unsubscribe' in sub) {
@@ -505,7 +525,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
         });
     };
-  }, [reloadData]);
+  }, []); // Eslint might warn about reloadData dependency, but we want this to run once on mount.
 
   // Apply Theme & Branding to DOM
   useEffect(() => {

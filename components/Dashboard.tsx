@@ -206,8 +206,8 @@ const Dashboard = () => {
                   </div>
                   
                   {/* Chart Visual */}
-                  <div className="w-[180px] h-[180px] relative flex items-center justify-center">
-                       <ResponsiveContainer width="100%" height="100%">
+                  <div className="w-[180px] h-[180px] relative flex items-center justify-center min-w-[180px] min-h-[180px]">
+                       <ResponsiveContainer width="100%" height="100%" minWidth={180} minHeight={180}>
                           <BarChart data={spendSplitData}>
                               <Bar dataKey="value" >
                                 {spendSplitData.map((entry, index) => (
