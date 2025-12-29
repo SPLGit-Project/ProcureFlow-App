@@ -9,7 +9,7 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient } from '../types';
@@ -57,7 +57,7 @@ const Settings = () => {
     sites, addSite, updateSite, deleteSite,
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep, notificationRules, upsertNotificationRule, deleteNotificationRule,
     items, addItem, updateItem, deleteItem,
-    catalog, updateCatalogItem, stockSnapshots,
+    catalog, updateCatalogItem, stockSnapshots, pos,
     // Actions
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping,
@@ -67,6 +67,10 @@ const Settings = () => {
 
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<AdminTab>('PROFILE');
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [activeStepTab, setActiveStepTab] = useState<'GENERAL' | 'NOTIFICATIONS' | 'SLA'>('GENERAL');
+  const [showWorkflowVisuals, setShowWorkflowVisuals] = useState(true);
+  const [showMonitor, setShowMonitor] = useState(false);
 
   useEffect(() => {
     const state = location.state as { activeTab?: AdminTab };
@@ -1722,116 +1726,180 @@ if __name__ == "__main__":
       )}
 
       {activeTab === 'WORKFLOW' && (
-          <div className="animate-fade-in max-w-2xl mx-auto py-8">
-               <div className="flex flex-col items-center">
-                   {/* Start Node */}
-                   <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-full border border-gray-200 dark:border-gray-700 w-48 text-center relative z-10 shadow-sm">
-                       <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Trigger</div>
-                       <div className="font-bold text-gray-900 dark:text-white flex items-center justify-center gap-2"><FileText size={16}/> PO Request Created</div>
+          <div className="animate-fade-in max-w-5xl mx-auto py-8">
+               {/* Toolbar */}
+               <div className="flex justify-between items-center mb-8 bg-white dark:bg-[#1e2029] p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+                   <div>
+                       <h2 className="text-xl font-bold text-gray-900 dark:text-white">Workflow Designer</h2>
+                       <p className="text-sm text-gray-500">Design the approval flow, configure notifications, and set SLAs.</p>
                    </div>
+                   <div className="flex items-center gap-3">
+                        <div className="flex bg-gray-100 dark:bg-[#15171e] p-1 rounded-lg">
+                            <button 
+                                onClick={() => setShowWorkflowVisuals(true)}
+                                className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${showWorkflowVisuals ? 'bg-white dark:bg-[#2b2d3b] text-[var(--color-brand)] shadow-sm' : 'text-gray-500'}`}
+                            >
+                                <Network size={14}/> Visual
+                            </button>
+                            <button 
+                                onClick={() => setShowWorkflowVisuals(false)}
+                                className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${!showWorkflowVisuals ? 'bg-white dark:bg-[#2b2d3b] text-[var(--color-brand)] shadow-sm' : 'text-gray-500'}`}
+                            >
+                                <ListFilter size={14}/> List
+                            </button>
+                        </div>
+                        <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-2"></div>
+                       <div className="flex items-center gap-2">
+                           <span className="text-xs font-bold text-gray-500 uppercase">Live Monitor</span>
+                           <label className="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" className="sr-only peer" checked={showMonitor} onChange={e => setShowMonitor(e.target.checked)} />
+                                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-500"></div>
+                            </label>
+                       </div>
+                   </div>
+               </div>
 
-                   {/* Connector */}
-                   <div className="w-0.5 h-12 bg-gray-300 dark:bg-gray-700"></div>
+               {/* Canvas */}
+               <div className="bg-[#f8fafc] dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-10 min-h-[600px] relative overflow-hidden flex flex-col items-center shadow-inner" style={{backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px'}}>
                    
-                   {/* Steps */}
-                   {workflowSteps.sort((a,b) => a.order - b.order).map((step, idx) => (
-                       <div key={step.id} className="flex flex-col items-center w-full group">
-                           {/* Step Node */}
-                           <div className={`bg-white dark:bg-[#1e2029] p-5 rounded-xl border ${step.isActive ? 'border-[var(--color-brand)]/30 ring-4 ring-[var(--color-brand)]/5' : 'border-gray-200 dark:border-gray-800 opacity-60'} w-full sm:w-[500px] shadow-lg shadow-gray-200/50 dark:shadow-none relative z-10 transition-all hover:scale-[1.02]`}>
-                               <div className="absolute top-1/2 -right-12 translate-y-1/2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => {
-                                        if (idx > 0) {
-                                            const prev = workflowSteps[idx - 1];
-                                            updateWorkflowStep({ ...step, order: prev.order });
-                                            updateWorkflowStep({ ...prev, order: step.order });
-                                        }
-                                    }} className="p-2 bg-white dark:bg-[#15171e] rounded-full border border-gray-200 dark:border-gray-700 hover:text-[var(--color-brand)] shadow-sm"><ArrowDown size={14} className="rotate-180"/></button>
-                                    <button onClick={() => deleteWorkflowStep(step.id)} className="p-2 bg-white dark:bg-[#15171e] rounded-full border border-gray-200 dark:border-gray-700 hover:text-red-500 shadow-sm"><Trash2 size={14}/></button>
-                               </div>
+                    {/* START NODE */}
+                    <div className="flex flex-col items-center mb-0 relative group">
+                        <div className="bg-white dark:bg-[#1e2029] p-1 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-700 shadow-sm z-10 transition-transform hover:scale-105 cursor-default">
+                             <div className="bg-gray-100 dark:bg-gray-800 w-16 h-16 rounded-full flex items-center justify-center text-gray-400">
+                                 <PlayCircle size={32} />
+                             </div>
+                        </div>
+                        <div className="mt-3 bg-white dark:bg-[#1e2029] px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm text-xs font-bold text-gray-500 uppercase tracking-widest z-10">Start</div>
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 w-0.5 h-16 bg-gray-300 dark:bg-gray-700 -z-0"></div>
+                    </div>
 
-                               <div className="flex justify-between items-start mb-4">
-                                   <div className="flex items-center gap-3">
-                                       <div className="w-8 h-8 rounded-lg bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center font-bold text-sm">
-                                           {idx + 1}
-                                       </div>
-                                       <div>
-                                           <h4 className="font-bold text-gray-900 dark:text-white">{step.stepName}</h4>
-                                           <div className="text-xs text-gray-500">Approver: <span className="font-bold text-gray-700 dark:text-gray-300">{roles.find(r => r.id === step.approverRole)?.name || step.approverRole}</span></div>
-                                       </div>
-                                   </div>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input type="checkbox" className="sr-only peer" checked={step.isActive} onChange={e => handleWorkflowUpdate(step.id, { isActive: e.target.checked })} />
-                                        <div className="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[0px] after:left-[0px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-[var(--color-brand)]"></div>
-                                    </label>
-                               </div>
-                               
-                               {/* Inline Config */}
-                               <div className="bg-gray-50 dark:bg-white/5 p-3 rounded-lg flex gap-4 text-xs items-center">
-                                    <div className="flex-1">
-                                        <label className="block font-bold text-gray-400 uppercase text-[9px] mb-1">Condition</label>
-                                        <select 
-                                            value={step.conditionType} 
-                                            onChange={e => handleWorkflowUpdate(step.id, { conditionType: e.target.value as any })}
-                                            className="bg-transparent border-none p-0 text-gray-900 dark:text-gray-200 font-medium focus:ring-0 w-full cursor-pointer"
-                                        >
-                                            <option value="ALWAYS">Always Required</option>
-                                            <option value="AMOUNT_GT">If Amount &gt;</option>
-                                        </select>
-                                    </div>
-                                    {step.conditionType === 'AMOUNT_GT' && (
-                                        <div className="w-24">
-                                            <label className="block font-bold text-gray-400 uppercase text-[9px] mb-1">Value ($)</label>
-                                            <input 
-                                                type="number" 
-                                                value={step.conditionValue || 0}
-                                                onChange={e => handleWorkflowUpdate(step.id, { conditionValue: parseInt(e.target.value) })}
-                                                className="bg-transparent border-b border-gray-300 dark:border-gray-600 p-0 text-gray-900 dark:text-gray-200 font-medium focus:ring-0 w-full text-right"
-                                            />
+                    <div className="h-16"></div>
+
+                    {/* STEPS */}
+                   {workflowSteps.sort((a,b) => a.order - b.order).map((step, idx) => {
+                       const roleName = roles.find(r => r.id === step.approverRole)?.name || step.approverRole;
+                       const notificationCount = step.notifications?.length || 0;
+                       
+                       // Simplified Monitor Logic: If step is active and PO is pending approval, assume it's here (approximated for demo)
+                       const pendingCount = idx === 0 ? pos.filter(p => p.status === 'PENDING_APPROVAL').length : 0;
+                       
+                       return (
+                           <div key={step.id} className="flex flex-col items-center w-full relative group">
+                               {/* Card */}
+                               <div 
+                                    onClick={() => setEditingStepId(step.id)}
+                                    className={`relative w-80 bg-white dark:bg-[#1e2029] rounded-xl border-2 transition-all cursor-pointer shadow-lg hover:shadow-xl hover:-translate-y-1 group/card
+                                    ${step.isActive ? 'border-[var(--color-brand)] shadow-blue-500/10' : 'border-gray-200 dark:border-gray-700 opacity-70 grayscale'}
+                               `}
+                               >    
+                                    {showMonitor && pendingCount > 0 && (
+                                        <div className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center font-bold text-xs shadow-lg animate-bounce z-30 ring-2 ring-white dark:ring-[#1e2029]">
+                                            {pendingCount}
                                         </div>
                                     )}
+                                    {/* Connector Dot Top */}
+                                    <div className="absolute -top-[9px] left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-[#1e2029] border-2 border-gray-300 dark:border-gray-600 rounded-full z-20 flex items-center justify-center">
+                                        <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
+                                    </div>
+
+                                    <div className="p-5">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div className="bg-[var(--color-brand)]/10 text-[var(--color-brand)] px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">Step {idx + 1}</div>
+                                            <div className="flex gap-1">
+                                                 {step.sla?.warnAfterHours && <div className="text-amber-500" title="SLA Configured"><Clock size={14}/></div>}
+                                                 {notificationCount > 0 && <div className="text-blue-500" title={`${notificationCount} Notifications`}><Bell size={14}/></div>}
+                                            </div>
+                                        </div>
+                                        
+                                        <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1 group-hover/card:text-[var(--color-brand)] transition-colors">{step.stepName}</h3>
+                                        <div className="flex items-center gap-2 text-sm text-gray-500 mb-4 bg-gray-50 dark:bg-[#15171e] p-2 rounded-lg border border-gray-100 dark:border-gray-800">
+                                            <Shield size={14} className="text-purple-500"/>
+                                            <span className="font-medium text-gray-700 dark:text-gray-300">{roleName}</span>
+                                        </div>
+
+                                        <div className="flex items-center justify-between text-xs border-t border-gray-100 dark:border-gray-800 pt-3 text-gray-400">
+                                            <div className="flex items-center gap-1.5">
+                                                <GitMerge size={14}/>
+                                                <span>{step.conditionType === 'ALWAYS' ? 'Always runs' : `If > $${step.conditionValue}`}</span>
+                                            </div>
+                                            <div className="opacity-0 group-hover/card:opacity-100 transition-opacity text-[var(--color-brand)] font-bold flex items-center gap-1">
+                                                Edit <ArrowRight size={12}/>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Connector Dot Bottom */}
+                                    <div className="absolute -bottom-[9px] left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-[#1e2029] border-2 border-gray-300 dark:border-gray-600 rounded-full z-20 flex items-center justify-center group-hover/card:border-[var(--color-brand)] transition-colors">
+                                        <div className="w-1.5 h-1.5 bg-gray-400 group-hover/card:bg-[var(--color-brand)] rounded-full transition-colors"></div>
+                                    </div>
+                                    
+                                    {/* Delete Action (Hover) */}
+                                    <div className="absolute top-2 right-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                        <button onClick={(e) => { e.stopPropagation(); deleteWorkflowStep(step.id); }} className="p-1.5 hover:bg-red-50 text-gray-300 hover:text-red-500 rounded-lg"><Trash2 size={14}/></button>
+                                    </div>
+                               </div>
+
+                               {/* Link Line */}
+                               <div className="h-16 w-0.5 bg-gray-300 dark:bg-gray-700 relative group/link">
+                                    {/* Add Button on Link Hover */}
+                                    <button 
+                                        onClick={() => {
+                                             // Insert Logic
+                                             const newOrder = step.order + 0.5; // Simplified
+                                             addWorkflowStep({
+                                                id: uuidv4(),
+                                                stepName: 'New Step',
+                                                approverRole: roles[0]?.id || 'ADMIN',
+                                                conditionType: 'ALWAYS',
+                                                order: newOrder,
+                                                isActive: true,
+                                                notifications: [],
+                                                sla: {}
+                                             });
+                                        }}
+                                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white dark:bg-[#1e2029] rounded-full border-2 border-gray-300 dark:border-gray-600 shadow-sm flex items-center justify-center text-gray-400 opacity-0 group-hover/link:opacity-100 hover:text-green-600 hover:border-green-500 hover:scale-110 transition-all z-30"
+                                        title="Insert Step Here"
+                                    >
+                                        <Plus size={16} />
+                                    </button>
                                </div>
                            </div>
-                           
-                           {/* Connector + Add Button Overlay */}
-                           <div className="w-0.5 h-16 bg-gray-300 dark:bg-gray-700 relative group/connector">
-                                <button 
-                                    onClick={() => {
-                                        const newOrder = step.order + 0.5; // Will be normalized by backend or next sort
-                                        // Actually order is integer usually. Let's just append for now to be safe, or use float if supported.
-                                        // To simplfiy, just use "Add Next Step" button at bottom.
-                                        // This insert button is nice but complex to manage order.
-                                    }}
-                                    className="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-white dark:bg-gray-800 rounded-full border border-gray-300 dark:border-gray-600 items-center justify-center hover:bg-[var(--color-brand)] hover:text-white hover:border-[var(--color-brand)] transition-all z-20"
-                                    title="Insert Step"
-                                >
-                                    <Plus size={14}/>
-                                </button>
-                           </div>
-                       </div>
-                   ))}
+                       );
+                   })}
 
-                   {/* Add Step Button */}
-                   <button onClick={() => {
-                       const newOrder = workflowSteps.length > 0 ? Math.max(...workflowSteps.map(s => s.order)) + 1 : 1;
-                       addWorkflowStep({
-                           id: uuidv4(),
-                           stepName: 'Approval Step',
-                           approverRole: roles[0]?.id || 'ADMIN',
-                           conditionType: 'ALWAYS',
-                           order: newOrder,
-                           isActive: true
-                       });
-                   }} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e2029] border-2 border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center text-gray-400 hover:text-[var(--color-brand)] hover:border-[var(--color-brand)] hover:bg-[var(--color-brand)]/5 transition-all mb-4 shadow-sm z-10">
-                       <Plus size={20}/>
-                   </button>
-                   
-                   <div className="w-0.5 h-8 bg-gray-300 dark:bg-gray-700"></div>
+                    {/* ADD STEP END */}
+                    <button 
+                        onClick={() => {
+                            const newOrder = workflowSteps.length > 0 ? Math.max(...workflowSteps.map(s => s.order)) + 1 : 1;
+                            addWorkflowStep({
+                                id: uuidv4(),
+                                stepName: 'Approval Step',
+                                approverRole: roles[0]?.id || 'ADMIN',
+                                conditionType: 'ALWAYS',
+                                order: newOrder,
+                                isActive: true,
+                                notifications: [],
+                                sla: {}
+                            });
+                        }}
+                        className="mb-12 flex flex-col items-center gap-2 group opacity-50 hover:opacity-100 transition-opacity"
+                    >
+                        <div className="w-12 h-12 rounded-full border-2 border-dashed border-gray-400 dark:border-gray-600 flex items-center justify-center text-gray-400 group-hover:border-[var(--color-brand)] group-hover:text-[var(--color-brand)] transition-colors">
+                            <Plus size={24}/>
+                        </div>
+                        <span className="text-xs font-bold text-gray-500 uppercase">Add Step</span>
+                    </button>
 
-                    {/* End Node */}
-                   <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-full border border-green-200 dark:border-green-800 w-48 text-center relative z-10 shadow-sm">
-                       <div className="text-xs font-bold text-green-600 dark:text-green-400 uppercase tracking-widest mb-1">Result</div>
-                       <div className="font-bold text-gray-900 dark:text-white flex items-center justify-center gap-2"><CheckCircle2 size={16} className="text-green-500"/> PO Approved</div>
-                   </div>
+                    {/* END NODE */}
+                    <div className="flex flex-col items-center relative">
+                        <div className="bg-white dark:bg-[#1e2029] p-1 rounded-full border-2 border-dashed border-green-300 dark:border-green-800 shadow-sm z-10">
+                             <div className="bg-green-50 dark:bg-green-900/20 w-16 h-16 rounded-full flex items-center justify-center text-green-500">
+                                 <CheckCircle size={32} />
+                             </div>
+                        </div>
+                        <div className="mt-3 bg-white dark:bg-[#1e2029] px-4 py-1.5 rounded-full border border-green-200 dark:border-green-800 shadow-sm text-xs font-bold text-green-600 dark:text-green-400 uppercase tracking-widest z-10">PO Approved</div>
+                    </div>
+
                </div>
           </div>
       )}
@@ -2752,7 +2820,256 @@ if __name__ == "__main__":
                       </div>
                  </div>
              )}
+             {/* WORKFLOW STEP MODAL */}
+             {editingStepId && (() => {
+                 const step = workflowSteps.find(s => s.id === editingStepId);
+                 if (!step) return null;
+                 return (
+                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-2xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
+                            
+                            {/* Header */}
+                            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-white/5">
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-lg bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center font-bold text-sm">
+                                           {step.order < 1 ? '1' : Math.floor(step.order)}
+                                        </div>
+                                        Edit Workflow Step
+                                    </h2>
+                                    <p className="text-sm text-gray-500 mt-1">Configure logic, notifications, and SLAs.</p>
+                                </div>
+                                <button onClick={() => setEditingStepId(null)} className="text-gray-400 hover:text-gray-600"><X size={24}/></button>
+                            </div>
 
+                            {/* Tabs */}
+                            <div className="flex border-b border-gray-100 dark:border-gray-800 px-6 gap-6">
+                                <button onClick={() => setActiveStepTab('GENERAL')} className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeStepTab === 'GENERAL' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>General</button>
+                                <button onClick={() => setActiveStepTab('NOTIFICATIONS')} className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeStepTab === 'NOTIFICATIONS' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Notifications {(step.notifications?.length || 0) > 0 && <span className="ml-1 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full text-[10px]">{step.notifications?.length}</span>}</button>
+                                <button onClick={() => setActiveStepTab('SLA')} className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeStepTab === 'SLA' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>SLA {step.sla?.warnAfterHours && <span className="ml-1 text-[var(--color-brand)]">•</span>}</button>
+                            </div>
+
+                            {/* Body */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                {activeStepTab === 'GENERAL' && (
+                                    <div className="space-y-4 animate-fade-in">
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 uppercase">Step Name</label>
+                                            <input 
+                                                className="input-field mt-1" 
+                                                value={step.stepName}
+                                                onChange={e => updateWorkflowStep({ ...step, stepName: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 uppercase">Approver Role</label>
+                                            <select 
+                                                className="input-field mt-1"
+                                                value={step.approverRole}
+                                                onChange={e => updateWorkflowStep({ ...step, approverRole: e.target.value })}
+                                            >
+                                                {roles.map(r => (
+                                                    <option key={r.id} value={r.id}>{r.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-xs font-bold text-gray-500 uppercase">Condition</label>
+                                                <select 
+                                                    className="input-field mt-1"
+                                                    value={step.conditionType}
+                                                    onChange={e => updateWorkflowStep({ ...step, conditionType: e.target.value as any })}
+                                                >
+                                                    <option value="ALWAYS">Always Required</option>
+                                                    <option value="AMOUNT_GT">If Amount &gt;</option>
+                                                </select>
+                                            </div>
+                                            {step.conditionType === 'AMOUNT_GT' && (
+                                                <div>
+                                                    <label className="text-xs font-bold text-gray-500 uppercase">Threshold ($)</label>
+                                                    <input 
+                                                        type="number"
+                                                        className="input-field mt-1"
+                                                        value={step.conditionValue || 0}
+                                                        onChange={e => updateWorkflowStep({ ...step, conditionValue: parseInt(e.target.value) })}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={step.isActive}
+                                                    onChange={e => updateWorkflowStep({ ...step, isActive: e.target.checked })}
+                                                    className="rounded text-[var(--color-brand)] focus:ring-[var(--color-brand)]"
+                                                />
+                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Step is Active</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeStepTab === 'NOTIFICATIONS' && (
+                                    <div className="space-y-6 animate-fade-in">
+                                        <div className="flex justify-between items-center">
+                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Embedded Notification Rules</h3>
+                                            <button 
+                                                onClick={() => {
+                                                    const newRule = {
+                                                        trigger: 'ON_ENTRY',
+                                                        recipientType: 'APPROVER',
+                                                        channels: { email: true, inApp: true, teams: false }
+                                                    };
+                                                    updateWorkflowStep({ 
+                                                        ...step, 
+                                                        notifications: [...(step.notifications || []), newRule as any] 
+                                                    });
+                                                }}
+                                                className="btn-secondary text-xs py-1.5 flex items-center gap-1"
+                                            >
+                                                <Plus size={14}/> Add Rule
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="space-y-3">
+                                            {(step.notifications || []).length === 0 && (
+                                                <div className="text-center py-8 bg-gray-50 dark:bg-white/5 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 text-gray-400 text-sm">
+                                                    No notifications configured for this step.
+                                                </div>
+                                            )}
+                                            {(step.notifications || []).map((rule, idx) => (
+                                                <div key={idx} className="bg-gray-50 dark:bg-white/5 p-4 rounded-xl border border-gray-200 dark:border-gray-800 relative group">
+                                                    <button 
+                                                        onClick={() => {
+                                                            const newRules = step.notifications!.filter((_, i) => i !== idx);
+                                                            updateWorkflowStep({ ...step, notifications: newRules });
+                                                        }}
+                                                        className="absolute top-2 right-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    >
+                                                        <Trash2 size={14}/>
+                                                    </button>
+                                                    
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Trigger</label>
+                                                            <select 
+                                                                className="input-field mt-1 py-1.5 text-xs"
+                                                                value={rule.trigger}
+                                                                onChange={e => {
+                                                                    const newRules = [...(step.notifications || [])];
+                                                                    newRules[idx] = { ...newRules[idx], trigger: e.target.value as any };
+                                                                    updateWorkflowStep({ ...step, notifications: newRules });
+                                                                }}
+                                                            >
+                                                                <option value="ON_ENTRY">When Step Starts</option>
+                                                                <option value="ON_APPROVED">When Approved</option>
+                                                                <option value="ON_REJECTED">When Rejected</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Recipient</label>
+                                                            <select 
+                                                                className="input-field mt-1 py-1.5 text-xs"
+                                                                value={rule.recipientType}
+                                                                onChange={e => {
+                                                                    const newRules = [...(step.notifications || [])];
+                                                                    newRules[idx] = { ...newRules[idx], recipientType: e.target.value as any };
+                                                                    updateWorkflowStep({ ...step, notifications: newRules });
+                                                                }}
+                                                            >
+                                                                <option value="APPROVER">Assigned Approver</option>
+                                                                <option value="REQUESTER">Requester</option>
+                                                                <option value="ADMIN">Admins</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="flex gap-4 border-t border-gray-200 dark:border-gray-700 pt-3">
+                                                         <label className="flex items-center gap-2 cursor-pointer">
+                                                             <input type="checkbox" checked={rule.channels.email} onChange={e => {
+                                                                 const newRules = [...(step.notifications || [])];
+                                                                 newRules[idx].channels.email = e.target.checked;
+                                                                 updateWorkflowStep({ ...step, notifications: newRules });
+                                                             }} className="rounded text-xs text-[var(--color-brand)]"/>
+                                                             <span className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1"><Mail size={12}/> Email</span>
+                                                         </label>
+                                                         <label className="flex items-center gap-2 cursor-pointer">
+                                                             <input type="checkbox" checked={rule.channels.inApp} onChange={e => {
+                                                                 const newRules = [...(step.notifications || [])];
+                                                                 newRules[idx].channels.inApp = e.target.checked;
+                                                                 updateWorkflowStep({ ...step, notifications: newRules });
+                                                             }} className="rounded text-xs text-[var(--color-brand)]"/>
+                                                             <span className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1"><Bell size={12}/> In-App</span>
+                                                         </label>
+                                                         <label className="flex items-center gap-2 cursor-pointer">
+                                                             <input type="checkbox" checked={rule.channels.teams} onChange={e => {
+                                                                 const newRules = [...(step.notifications || [])];
+                                                                 newRules[idx].channels.teams = e.target.checked;
+                                                                 updateWorkflowStep({ ...step, notifications: newRules });
+                                                             }} className="rounded text-xs text-[var(--color-brand)]"/>
+                                                             <span className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1"><MessageSquare size={12}/> Teams</span>
+                                                         </label>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeStepTab === 'SLA' && (
+                                    <div className="space-y-6 animate-fade-in">
+                                        <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800 rounded-xl">
+                                             <div className="flex items-center gap-2 mb-2">
+                                                 <Clock size={16} className="text-amber-500"/>
+                                                 <h3 className="font-bold text-gray-900 dark:text-white text-sm">SLA Configuration</h3>
+                                             </div>
+                                             <p className="text-xs text-gray-500">Service Level Agreements help keep approvals moving by warning or escalating stalled items.</p>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-6">
+                                            <div>
+                                                <label className="text-xs font-bold text-gray-500 uppercase">Warning Threshold</label>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <input 
+                                                        type="number"
+                                                        className="input-field text-right"
+                                                        value={step.sla?.warnAfterHours || ''}
+                                                        placeholder="e.g. 24"
+                                                        onChange={e => updateWorkflowStep({ ...step, sla: { ...step.sla, warnAfterHours: parseInt(e.target.value) || undefined } })}
+                                                    />
+                                                    <span className="text-sm text-gray-500 font-medium">Hours</span>
+                                                </div>
+                                                <p className="text-[10px] text-gray-400 mt-1">Send a reminder notification after this time.</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-gray-500 uppercase">Escalation Threshold</label>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <input 
+                                                        type="number"
+                                                        className="input-field text-right"
+                                                        value={step.sla?.escalateAfterHours || ''}
+                                                        placeholder="e.g. 48"
+                                                        onChange={e => updateWorkflowStep({ ...step, sla: { ...step.sla, escalateAfterHours: parseInt(e.target.value) || undefined } })}
+                                                    />
+                                                    <span className="text-sm text-gray-500 font-medium">Hours</span>
+                                                </div>
+                                                <p className="text-[10px] text-gray-400 mt-1">Escalate to manager or admin after this time.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 flex justify-end gap-3">
+                                <button onClick={() => setEditingStepId(null)} className="px-6 py-2.5 text-gray-500 font-bold hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                 );
+             })()}
     </div>
   );
 };

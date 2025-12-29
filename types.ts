@@ -306,6 +306,21 @@ export interface DeliveryLineItem {
 
 // --- Workflow & Admin Types ---
 
+export interface StepNotificationRule {
+    id: string;
+    trigger: 'ON_START' | 'ON_APPROVE' | 'ON_REJECT' | 'ON_OVERDUE';
+    recipientType: 'USER' | 'ROLE' | 'REQUESTER' | 'EMAIL';
+    recipientId: string;
+    channels: { email: boolean; inApp: boolean; teams: boolean; };
+    customMessage?: string;
+}
+
+export interface WorkflowSLA {
+    warnAfterHours?: number;
+    escalateAfterHours?: number;
+    escalateToRoleId?: string;
+}
+
 export interface WorkflowStep {
     id: string;
     stepName: string;
@@ -314,6 +329,8 @@ export interface WorkflowStep {
     conditionValue?: number;
     order: number;
     isActive: boolean;
+    notifications?: StepNotificationRule[]; // Embedded rules
+    sla?: WorkflowSLA; // Service Level Agreement
 }
 
 
