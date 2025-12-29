@@ -9,7 +9,7 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient } from '../types';
@@ -62,7 +62,7 @@ const Settings = () => {
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping,
     // New Admin Caps
-    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail
+    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, impersonateUser
   } = useApp();
 
   const location = useLocation();
@@ -1760,147 +1760,233 @@ if __name__ == "__main__":
                </div>
 
                {/* Canvas */}
-               <div className="bg-[#f8fafc] dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-10 min-h-[600px] relative overflow-hidden flex flex-col items-center shadow-inner" style={{backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px'}}>
-                   
-                    {/* START NODE */}
-                    <div className="flex flex-col items-center mb-0 relative group">
-                        <div className="bg-white dark:bg-[#1e2029] p-1 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-700 shadow-sm z-10 transition-transform hover:scale-105 cursor-default">
-                             <div className="bg-gray-100 dark:bg-gray-800 w-16 h-16 rounded-full flex items-center justify-center text-gray-400">
-                                 <PlayCircle size={32} />
-                             </div>
+
+               {/* VISUAL GRAPH */}
+               {showWorkflowVisuals && (
+                   <div className="bg-[#f8fafc] dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-10 min-h-[600px] relative overflow-hidden flex flex-col items-center shadow-inner" style={{backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px'}}>
+                       
+                        {/* START NODE */}
+                        <div className="flex flex-col items-center mb-0 relative group">
+                            <div className="bg-white dark:bg-[#1e2029] p-1 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-700 shadow-sm z-10 transition-transform hover:scale-105 cursor-default">
+                                 <div className="bg-gray-100 dark:bg-gray-800 w-16 h-16 rounded-full flex items-center justify-center text-gray-400">
+                                     <PlayCircle size={32} />
+                                 </div>
+                            </div>
+                            <div className="mt-3 bg-white dark:bg-[#1e2029] px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm text-xs font-bold text-gray-500 uppercase tracking-widest z-10">Start</div>
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0.5 h-16 bg-gray-300 dark:bg-gray-700 -z-0"></div>
                         </div>
-                        <div className="mt-3 bg-white dark:bg-[#1e2029] px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm text-xs font-bold text-gray-500 uppercase tracking-widest z-10">Start</div>
-                        <div className="absolute top-full left-1/2 -translate-x-1/2 w-0.5 h-16 bg-gray-300 dark:bg-gray-700 -z-0"></div>
-                    </div>
 
-                    <div className="h-16"></div>
+                        <div className="h-16"></div>
 
-                    {/* STEPS */}
-                   {workflowSteps.sort((a,b) => a.order - b.order).map((step, idx) => {
-                       const roleName = roles.find(r => r.id === step.approverRole)?.name || step.approverRole;
-                       const notificationCount = step.notifications?.length || 0;
-                       
-                       // Simplified Monitor Logic: If step is active and PO is pending approval, assume it's here (approximated for demo)
-                       const pendingCount = idx === 0 ? pos.filter(p => p.status === 'PENDING_APPROVAL').length : 0;
-                       
-                       return (
-                           <div key={step.id} className="flex flex-col items-center w-full relative group">
-                               {/* Card */}
-                               <div 
-                                    onClick={() => setEditingStepId(step.id)}
-                                    className={`relative w-80 bg-white dark:bg-[#1e2029] rounded-xl border-2 transition-all cursor-pointer shadow-lg hover:shadow-xl hover:-translate-y-1 group/card
-                                    ${step.isActive ? 'border-[var(--color-brand)] shadow-blue-500/10' : 'border-gray-200 dark:border-gray-700 opacity-70 grayscale'}
-                               `}
-                               >    
-                                    {showMonitor && pendingCount > 0 && (
-                                        <div className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center font-bold text-xs shadow-lg animate-bounce z-30 ring-2 ring-white dark:ring-[#1e2029]">
-                                            {pendingCount}
-                                        </div>
-                                    )}
-                                    {/* Connector Dot Top */}
-                                    <div className="absolute -top-[9px] left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-[#1e2029] border-2 border-gray-300 dark:border-gray-600 rounded-full z-20 flex items-center justify-center">
-                                        <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
-                                    </div>
-
-                                    <div className="p-5">
-                                        <div className="flex justify-between items-start mb-3">
-                                            <div className="bg-[var(--color-brand)]/10 text-[var(--color-brand)] px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">Step {idx + 1}</div>
-                                            <div className="flex gap-1">
-                                                 {step.sla?.warnAfterHours && <div className="text-amber-500" title="SLA Configured"><Clock size={14}/></div>}
-                                                 {notificationCount > 0 && <div className="text-blue-500" title={`${notificationCount} Notifications`}><Bell size={14}/></div>}
+                        {/* STEPS */}
+                       {workflowSteps.sort((a,b) => a.order - b.order).map((step, idx) => {
+                           const roleName = roles.find(r => r.id === step.approverRole)?.name || step.approverRole;
+                           const notificationCount = step.notifications?.length || 0;
+                           
+                           // Simplified Monitor Logic: If step is active and PO is pending approval, assume it's here (approximated for demo)
+                           const pendingCount = idx === 0 ? pos.filter(p => p.status === 'PENDING_APPROVAL').length : 0;
+                           
+                           return (
+                               <div key={step.id} className="flex flex-col items-center w-full relative group">
+                                   {/* Card */}
+                                   <div 
+                                        onClick={() => setEditingStepId(step.id)}
+                                        className={`relative w-80 bg-white dark:bg-[#1e2029] rounded-xl border-2 transition-all cursor-pointer shadow-lg hover:shadow-xl hover:-translate-y-1 group/card
+                                        ${step.isActive ? 'border-[var(--color-brand)] shadow-blue-500/10' : 'border-gray-200 dark:border-gray-700 opacity-70 grayscale'}
+                                   `}
+                                   >    
+                                        {showMonitor && pendingCount > 0 && (
+                                            <div className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center font-bold text-xs shadow-lg animate-bounce z-30 ring-2 ring-white dark:ring-[#1e2029]">
+                                                {pendingCount}
                                             </div>
+                                        )}
+                                        {/* Connector Dot Top */}
+                                        <div className="absolute -top-[9px] left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-[#1e2029] border-2 border-gray-300 dark:border-gray-600 rounded-full z-20 flex items-center justify-center">
+                                            <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
+                                        </div>
+
+                                        <div className="p-5">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div className="bg-[var(--color-brand)]/10 text-[var(--color-brand)] px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">Step {idx + 1}</div>
+                                                <div className="flex gap-1">
+                                                     {step.sla?.warnAfterHours && <div className="text-amber-500" title="SLA Configured"><Clock size={14}/></div>}
+                                                     {notificationCount > 0 && <div className="text-blue-500" title={`${notificationCount} Notifications`}><Bell size={14}/></div>}
+                                                </div>
+                                            </div>
+                                            
+                                            <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1 group-hover/card:text-[var(--color-brand)] transition-colors">{step.stepName}</h3>
+                                            <div className="flex items-center gap-2 text-sm text-gray-500 mb-4 bg-gray-50 dark:bg-[#15171e] p-2 rounded-lg border border-gray-100 dark:border-gray-800">
+                                                <Shield size={14} className="text-purple-500"/>
+                                                <span className="font-medium text-gray-700 dark:text-gray-300">{roleName}</span>
+                                            </div>
+
+                                            <div className="flex items-center justify-between text-xs border-t border-gray-100 dark:border-gray-800 pt-3 text-gray-400">
+                                                <div className="flex items-center gap-1.5">
+                                                    <GitMerge size={14}/>
+                                                    <span>{step.conditionType === 'ALWAYS' ? 'Always runs' : `If > $${step.conditionValue}`}</span>
+                                                </div>
+                                                <div className="opacity-0 group-hover/card:opacity-100 transition-opacity text-[var(--color-brand)] font-bold flex items-center gap-1">
+                                                    Edit <ArrowRight size={12}/>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Connector Dot Bottom */}
+                                        <div className="absolute -bottom-[9px] left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-[#1e2029] border-2 border-gray-300 dark:border-gray-600 rounded-full z-20 flex items-center justify-center group-hover/card:border-[var(--color-brand)] transition-colors">
+                                            <div className="w-1.5 h-1.5 bg-gray-400 group-hover/card:bg-[var(--color-brand)] rounded-full transition-colors"></div>
                                         </div>
                                         
-                                        <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1 group-hover/card:text-[var(--color-brand)] transition-colors">{step.stepName}</h3>
-                                        <div className="flex items-center gap-2 text-sm text-gray-500 mb-4 bg-gray-50 dark:bg-[#15171e] p-2 rounded-lg border border-gray-100 dark:border-gray-800">
-                                            <Shield size={14} className="text-purple-500"/>
-                                            <span className="font-medium text-gray-700 dark:text-gray-300">{roleName}</span>
+                                        {/* Delete Action (Hover) */}
+                                        <div className="absolute top-2 right-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                            <button onClick={(e) => { e.stopPropagation(); deleteWorkflowStep(step.id); }} className="p-1.5 hover:bg-red-50 text-gray-300 hover:text-red-500 rounded-lg"><Trash2 size={14}/></button>
                                         </div>
+                                   </div>
 
-                                        <div className="flex items-center justify-between text-xs border-t border-gray-100 dark:border-gray-800 pt-3 text-gray-400">
-                                            <div className="flex items-center gap-1.5">
-                                                <GitMerge size={14}/>
-                                                <span>{step.conditionType === 'ALWAYS' ? 'Always runs' : `If > $${step.conditionValue}`}</span>
-                                            </div>
-                                            <div className="opacity-0 group-hover/card:opacity-100 transition-opacity text-[var(--color-brand)] font-bold flex items-center gap-1">
-                                                Edit <ArrowRight size={12}/>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Connector Dot Bottom */}
-                                    <div className="absolute -bottom-[9px] left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-[#1e2029] border-2 border-gray-300 dark:border-gray-600 rounded-full z-20 flex items-center justify-center group-hover/card:border-[var(--color-brand)] transition-colors">
-                                        <div className="w-1.5 h-1.5 bg-gray-400 group-hover/card:bg-[var(--color-brand)] rounded-full transition-colors"></div>
-                                    </div>
-                                    
-                                    {/* Delete Action (Hover) */}
-                                    <div className="absolute top-2 right-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                                        <button onClick={(e) => { e.stopPropagation(); deleteWorkflowStep(step.id); }} className="p-1.5 hover:bg-red-50 text-gray-300 hover:text-red-500 rounded-lg"><Trash2 size={14}/></button>
-                                    </div>
+                                   {/* Link Line */}
+                                   <div className="h-16 w-0.5 bg-gray-300 dark:bg-gray-700 relative group/link">
+                                        {/* Add Button on Link Hover */}
+                                        <button 
+                                            onClick={() => {
+                                                 // Insert Logic
+                                                 const newOrder = step.order + 0.5; // Simplified
+                                                 addWorkflowStep({
+                                                    id: uuidv4(),
+                                                    stepName: 'New Step',
+                                                    approverRole: roles[0]?.id || 'ADMIN',
+                                                    conditionType: 'ALWAYS',
+                                                    order: newOrder,
+                                                    isActive: true,
+                                                    notifications: [],
+                                                    sla: {}
+                                                 });
+                                            }}
+                                            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white dark:bg-[#1e2029] rounded-full border-2 border-gray-300 dark:border-gray-600 shadow-sm flex items-center justify-center text-gray-400 opacity-0 group-hover/link:opacity-100 hover:text-green-600 hover:border-green-500 hover:scale-110 transition-all z-30"
+                                            title="Insert Step Here"
+                                        >
+                                            <Plus size={16} />
+                                        </button>
+                                   </div>
                                </div>
+                           );
+                       })}
 
-                               {/* Link Line */}
-                               <div className="h-16 w-0.5 bg-gray-300 dark:bg-gray-700 relative group/link">
-                                    {/* Add Button on Link Hover */}
-                                    <button 
-                                        onClick={() => {
-                                             // Insert Logic
-                                             const newOrder = step.order + 0.5; // Simplified
-                                             addWorkflowStep({
-                                                id: uuidv4(),
-                                                stepName: 'New Step',
-                                                approverRole: roles[0]?.id || 'ADMIN',
-                                                conditionType: 'ALWAYS',
-                                                order: newOrder,
-                                                isActive: true,
-                                                notifications: [],
-                                                sla: {}
-                                             });
-                                        }}
-                                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white dark:bg-[#1e2029] rounded-full border-2 border-gray-300 dark:border-gray-600 shadow-sm flex items-center justify-center text-gray-400 opacity-0 group-hover/link:opacity-100 hover:text-green-600 hover:border-green-500 hover:scale-110 transition-all z-30"
-                                        title="Insert Step Here"
-                                    >
-                                        <Plus size={16} />
-                                    </button>
-                               </div>
-                           </div>
-                       );
-                   })}
+                        {/* ADD STEP END */}
+                        <button 
+                            onClick={() => {
+                                const newOrder = workflowSteps.length > 0 ? Math.max(...workflowSteps.map(s => s.order)) + 1 : 1;
+                                addWorkflowStep({
+                                    id: uuidv4(),
+                                    stepName: 'Approval Step',
+                                    approverRole: roles[0]?.id || 'ADMIN',
+                                    conditionType: 'ALWAYS',
+                                    order: newOrder,
+                                    isActive: true,
+                                    notifications: [],
+                                    sla: {}
+                                });
+                            }}
+                            className="mb-12 flex flex-col items-center gap-2 group opacity-50 hover:opacity-100 transition-opacity"
+                        >
+                            <div className="w-12 h-12 rounded-full border-2 border-dashed border-gray-400 dark:border-gray-600 flex items-center justify-center text-gray-400 group-hover:border-[var(--color-brand)] group-hover:text-[var(--color-brand)] transition-colors">
+                                <Plus size={24}/>
+                            </div>
+                            <span className="text-xs font-bold text-gray-500 uppercase">Add Step</span>
+                        </button>
 
-                    {/* ADD STEP END */}
-                    <button 
-                        onClick={() => {
-                            const newOrder = workflowSteps.length > 0 ? Math.max(...workflowSteps.map(s => s.order)) + 1 : 1;
-                            addWorkflowStep({
-                                id: uuidv4(),
-                                stepName: 'Approval Step',
-                                approverRole: roles[0]?.id || 'ADMIN',
-                                conditionType: 'ALWAYS',
-                                order: newOrder,
-                                isActive: true,
-                                notifications: [],
-                                sla: {}
-                            });
-                        }}
-                        className="mb-12 flex flex-col items-center gap-2 group opacity-50 hover:opacity-100 transition-opacity"
-                    >
-                        <div className="w-12 h-12 rounded-full border-2 border-dashed border-gray-400 dark:border-gray-600 flex items-center justify-center text-gray-400 group-hover:border-[var(--color-brand)] group-hover:text-[var(--color-brand)] transition-colors">
-                            <Plus size={24}/>
+                        {/* END NODE */}
+                        <div className="flex flex-col items-center relative">
+                            <div className="bg-white dark:bg-[#1e2029] p-1 rounded-full border-2 border-dashed border-green-300 dark:border-green-800 shadow-sm z-10">
+                                 <div className="bg-green-50 dark:bg-green-900/20 w-16 h-16 rounded-full flex items-center justify-center text-green-500">
+                                     <CheckCircle size={32} />
+                                 </div>
+                            </div>
+                            <div className="mt-3 bg-white dark:bg-[#1e2029] px-4 py-1.5 rounded-full border border-green-200 dark:border-green-800 shadow-sm text-xs font-bold text-green-600 dark:text-green-400 uppercase tracking-widest z-10">PO Approved</div>
                         </div>
-                        <span className="text-xs font-bold text-gray-500 uppercase">Add Step</span>
-                    </button>
+                   </div>
+               )}
 
-                    {/* END NODE */}
-                    <div className="flex flex-col items-center relative">
-                        <div className="bg-white dark:bg-[#1e2029] p-1 rounded-full border-2 border-dashed border-green-300 dark:border-green-800 shadow-sm z-10">
-                             <div className="bg-green-50 dark:bg-green-900/20 w-16 h-16 rounded-full flex items-center justify-center text-green-500">
-                                 <CheckCircle size={32} />
-                             </div>
-                        </div>
-                        <div className="mt-3 bg-white dark:bg-[#1e2029] px-4 py-1.5 rounded-full border border-green-200 dark:border-green-800 shadow-sm text-xs font-bold text-green-600 dark:text-green-400 uppercase tracking-widest z-10">PO Approved</div>
-                    </div>
-
-               </div>
+               {/* LIST VIEW */}
+               {!showWorkflowVisuals && (
+                   <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden animate-fade-in">
+                       <table className="w-full text-sm text-left">
+                           <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
+                               <tr>
+                                   <th className="px-6 py-4 font-bold">Step Name</th>
+                                   <th className="px-6 py-4 font-bold">Approver Role</th>
+                                   <th className="px-6 py-4 font-bold">Condition</th>
+                                   <th className="px-6 py-4 font-bold">Notifications</th>
+                                   <th className="px-6 py-4 font-bold">Status</th>
+                                   <th className="px-6 py-4 font-bold text-right">Actions</th>
+                               </tr>
+                           </thead>
+                           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                               {workflowSteps.sort((a,b) => a.order - b.order).map((step) => {
+                                   const roleName = roles.find(r => r.id === step.approverRole)?.name || step.approverRole;
+                                   return (
+                                       <tr key={step.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                           <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{step.stepName}</td>
+                                           <td className="px-6 py-4">
+                                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+                                                   {roleName}
+                                               </span>
+                                           </td>
+                                           <td className="px-6 py-4 text-gray-500">
+                                               {step.conditionType === 'ALWAYS' ? 'Always' : `> $${step.conditionValue}`}
+                                           </td>
+                                           <td className="px-6 py-4">
+                                               {(step.notifications || []).length > 0 ? (
+                                                   <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                                                       <Bell size={14}/> {step.notifications?.length}
+                                                   </span>
+                                               ) : (
+                                                   <span className="text-gray-400 text-xs italic">Default</span>
+                                               )}
+                                           </td>
+                                           <td className="px-6 py-4">
+                                               {step.isActive ? (
+                                                   <span className="text-green-600 flex items-center gap-1 font-bold text-xs"><CheckCircle size={12}/> Active</span>
+                                               ) : (
+                                                   <span className="text-gray-400 flex items-center gap-1 font-bold text-xs"><MinusCircle size={12}/> Disabled</span>
+                                               )}
+                                           </td>
+                                           <td className="px-6 py-4 text-right">
+                                               <div className="flex justify-end gap-2">
+                                                   <button onClick={() => setEditingStepId(step.id)} className="icon-btn-blue"><Edit2 size={16}/></button>
+                                                   <button onClick={() => deleteWorkflowStep(step.id)} className="icon-btn-red"><Trash2 size={16}/></button>
+                                               </div>
+                                           </td>
+                                       </tr>
+                                   );
+                               })}
+                               {workflowSteps.length === 0 && (
+                                   <tr>
+                                       <td colSpan={6} className="px-6 py-8 text-center text-gray-500 italic">No workflow steps defined.</td>
+                                   </tr>
+                               )}
+                           </tbody>
+                       </table>
+                       <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 flex justify-center">
+                            <button 
+                                onClick={() => {
+                                    const newOrder = workflowSteps.length > 0 ? Math.max(...workflowSteps.map(s => s.order)) + 1 : 1;
+                                    addWorkflowStep({
+                                        id: uuidv4(),
+                                        stepName: 'Approval Step',
+                                        approverRole: roles[0]?.id || 'ADMIN',
+                                        conditionType: 'ALWAYS',
+                                        order: newOrder,
+                                        isActive: true,
+                                        notifications: [],
+                                        sla: {}
+                                    });
+                                }}
+                                className="btn-secondary text-sm flex items-center gap-2"
+                            >
+                                <Plus size={16}/> Add New Step
+                            </button>
+                       </div>
+                   </div>
+               )}
           </div>
       )}
 
@@ -2120,7 +2206,22 @@ if __name__ == "__main__":
                                                               </div>
                                                           </td>
                                                           <td className="px-4 py-3 text-right">
-                                                              <button onClick={() => updateUserRole(user.id, 'SITE_USER')} className="text-xs text-red-500 hover:underline">Remove</button>
+                                                              <div className="flex items-center justify-end gap-3">
+                                                                  {currentUser?.id !== user.id && (
+                                                                      <button 
+                                                                          onClick={() => {
+                                                                              if (window.confirm(`View as ${user.name}?`)) {
+                                                                                  impersonateUser(user.id);
+                                                                              }
+                                                                          }}
+                                                                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                                                                          title="Sign in as this user to verify permissions"
+                                                                      >
+                                                                          <Eye size={12}/> View As
+                                                                      </button>
+                                                                  )}
+                                                                  <button onClick={() => updateUserRole(user.id, 'SITE_USER')} className="text-xs text-red-500 hover:underline">Remove</button>
+                                                              </div>
                                                           </td>
                                                       </tr>
                                                   ))

@@ -18,12 +18,13 @@ import {
   BarChart3,
   Clock,
   MapPin, 
-  Building
+  Building,
+  Shield
 } from 'lucide-react';
 import { PermissionId } from '../types';
 
 const Layout = () => {
-  const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteId, setActiveSiteId, sites, siteName } = useApp();
+  const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteId, setActiveSiteId, sites, siteName, originalUser, stopImpersonation } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const navigate = useNavigate();
 
@@ -192,6 +193,22 @@ const Layout = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative w-full">
+        
+        {/* Impersonation Banner */}
+        {originalUser && (
+             <div className="bg-orange-600 text-white px-4 py-2 text-center text-sm font-bold shadow-md z-50 flex items-center justify-center gap-4 animate-fade-in relative">
+                <span className="flex items-center gap-2">
+                    <div className="p-1 bg-white/20 rounded-full animate-pulse"><Shield size={14} /></div>
+                    Viewing as <span className="underline decoration-white/50 underline-offset-4">{currentUser?.name}</span>
+                </span>
+                <button 
+                    onClick={stopImpersonation}
+                    className="bg-white text-orange-600 hover:bg-gray-100 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide transition-all shadow-sm flex items-center gap-1"
+                >
+                    <LogOut size={12}/> Exit View
+                </button>
+            </div>
+        )}
         {/* Mobile Header */}
         <header className="md:hidden bg-white/90 dark:bg-[#15171e]/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-4 z-20 shrink-0 sticky top-0">
             <div className="flex items-center gap-3">

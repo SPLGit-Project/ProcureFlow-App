@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { User, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification } from '../types';
 import { db } from '../services/db';
@@ -19,6 +19,7 @@ const getInitialSiteId = (): string | null => {
 
 interface AppContextType {
   currentUser: User | null;
+  originalUser: User | null; // For impersonation
   isAuthenticated: boolean;
   activeSiteId: string | null; // Multi-site context
   setActiveSiteId: (id: string | null) => void;
@@ -33,6 +34,8 @@ interface AppContextType {
   users: User[];
   updateUserRole: (userId: string, role: UserRole) => void;
   addUser: (user: User) => Promise<void>;
+  impersonateUser: (user: User) => void;
+  stopImpersonation: () => void;
   permissions: Permission[];
   hasPermission: (permissionId: PermissionId) => boolean;
   createRole: (role: RoleDefinition) => void;
@@ -128,7 +131,24 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [users, setUsers] = useState<User[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+        // If we were impersonating (original user exists), restore the IMPERSONATED user as current
+        if (sessionStorage.getItem('procureflow_original_user')) {
+            const stored = sessionStorage.getItem('procureflow_impersonated_user');
+            return stored ? JSON.parse(stored) : null;
+        }
+        return null;
+    } catch { return null; }
+  });
+  const [originalUser, setOriginalUser] = useState<User | null>(() => {
+    try {
+        const stored = sessionStorage.getItem('procureflow_original_user');
+        return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+        return null;
+    }
+  });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeSiteId, _setActiveSiteId] = useState<string | null>(getInitialSiteId());
   
@@ -137,6 +157,24 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [isLoadingData, setIsLoadingData] = useState(true);
   
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
+  
+  // --- Persist Impersonation State ---
+  const originalUserRef = useRef<User | null>(originalUser);
+
+  // --- Persist Impersonation State ---
+  useEffect(() => {
+    originalUserRef.current = originalUser;
+    
+    if (originalUser) {
+        sessionStorage.setItem('procureflow_original_user', JSON.stringify(originalUser));
+        if (currentUser) {
+            sessionStorage.setItem('procureflow_impersonated_user', JSON.stringify(currentUser));
+        }
+    } else {
+        sessionStorage.removeItem('procureflow_original_user');
+        sessionStorage.removeItem('procureflow_impersonated_user');
+    }
+  }, [originalUser, currentUser]);
   
   // Auth Config is now managed in the backend (env vars/Azure)
 
@@ -346,10 +384,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (!mounted) return;
             const eventType = event as string;
+            console.log(`Auth: Event fired: ${eventType}`, session?.user?.email);
 
             if (manualRecoveryTimeout) clearTimeout(manualRecoveryTimeout);
 
-            if (eventType === 'SIGNED_IN' || eventType === 'INITIAL_SESSION') {
+            if (eventType === 'TOKEN_REFRESHED') {
+                 // Nothing to do, but good to know session is keeping alive
+                 console.log("Auth: Session refreshed successfully.");
+            } else if (eventType === 'SIGNED_IN' || eventType === 'INITIAL_SESSION') {
                 if (session) {
                     await handleUserAuth(session);
                 } else if (eventType === 'INITIAL_SESSION') {
@@ -567,7 +609,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
             if (mounted) {
                 console.log("Auth: Successfully authenticated user:", userData.email, "Status:", userData.status);
-                setCurrentUser(userData);
+                
+                // If impersonating, verify backend auth but DO NOT switch currentUser context
+                if (originalUserRef.current) {
+                     console.log("Auth: Impersonation active. Background auth verified. Refreshing original user data.");
+                     setOriginalUser(userData);
+                } else {
+                     setCurrentUser(userData);
+                }
                 setIsAuthenticated(true);
                 setIsPendingApproval(userData.status !== 'APPROVED');
                 
@@ -601,29 +650,26 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
     const authPromise = initializeAuth();
 
+    // --- Session Keep-Alive & Visibility Handler ---
     const handleVisibilityChange = async () => {
-        if (document.visibilityState === 'visible' && mounted) {
+        if ((document.visibilityState === 'visible' || document.hasFocus()) && mounted) {
             if (isCheckingSessionRef.current) return;
             
             try {
                 isCheckingSessionRef.current = true;
-                // Smart Re-entry: Don't hammer auth/db if we just fetched
                 const now = Date.now();
                 if (currentUser && (now - lastFetchTime.current < 5 * 60 * 1000)) {
-                    console.log("Auth: App returned to foreground, data is fresh. Skipping checks.");
+                    console.log("Auth: App focused/visible, data is fresh. Skipping checks.");
                     return;
                 }
 
-                console.log("Auth: App returned to foreground, checking session...");
-                const { data: { session } } = await supabase.auth.getSession();
+                console.log("Auth: App focused/visible, checking session...");
+                const { data: { session }, error } = await supabase.auth.getSession();
                 
                 if (session) {
-                     // Only full refresh if we are stale
                      if (!currentUser || session.user.email !== currentUser.email) {
                          await handleUserAuth(session, true); 
                      } else {
-                         // Session is valid, user matches, but data might be old (> 5 mins)
-                         // triggers silent refresh of data + user profile
                          await handleUserAuth(session, true);
                      }
                 } else {
@@ -636,19 +682,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
         }
     };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+    
+    // Passive Keep-Alive Ping (Every 9 minutes)
+    const keepAliveInterval = setInterval(async () => {
+            if (mounted && !document.hidden) {
+                console.log("Auth: Keep-alive ping...");
+                await supabase.auth.getSession(); 
+            }
+    }, 9 * 60 * 1000);
 
     return () => {
         mounted = false;
         clearTimeout(safetyTimeout);
+        clearInterval(keepAliveInterval);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
-        authPromise.then(sub => {
-            if (sub && typeof sub === 'object' && 'unsubscribe' in sub) {
-                (sub as { unsubscribe: () => void }).unsubscribe();
-            } else if (typeof sub === 'function') {
-                (sub as () => void)();
-            }
-        });
+        window.removeEventListener('focus', handleVisibilityChange);
+        authPromise.then(sub => sub?.unsubscribe());
     };
   }, []); // Eslint might warn about reloadData dependency, but we want this to run once on mount.
 
@@ -1386,10 +1438,30 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const updateSite = (s: Site) => setSites(prev => prev.map(existing => existing.id === s.id ? s : existing));
   const deleteSite = (id: string) => setSites(prev => prev.filter(s => s.id !== id));
 
+  // --- Impersonation ---
+  const impersonateUser = (targetUser: User) => {
+        if (!currentUser) return;
+        console.log(`Impersonation: Switching view to ${targetUser.name} (${targetUser.role})`);
+        setOriginalUser(currentUser);
+        setCurrentUser(targetUser);
+        // Force reload active site if needed
+        if (targetUser.role !== 'ADMIN' && targetUser.siteIds.length > 0) {
+            setActiveSiteId(targetUser.siteIds[0]);
+        }
+  };
+
+  const stopImpersonation = () => {
+        if (!originalUser) return;
+        console.log("Impersonation: Returning to admin view");
+        setCurrentUser(originalUser);
+        setOriginalUser(null);
+        setActiveSiteId(null); // Reset to show all sites (or default)
+  };
+
   // --- Context Value Memoization ---
   const contextValue = React.useMemo(() => ({
-    currentUser, isAuthenticated, activeSiteId, setActiveSiteId, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
-    users, updateUserRole, addUser, reloadData,
+    currentUser, originalUser, isAuthenticated, activeSiteId, setActiveSiteId, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
+    users, updateUserRole, addUser, reloadData, impersonateUser, stopImpersonation,
     roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
     teamsWebhookUrl, updateTeamsWebhook,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
@@ -1413,8 +1485,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     getItemFieldRegistry,
     runAutoMapping,
     getMappingQueue,
-
-
 
 
     searchDirectory: async (query: string) => {
@@ -1455,7 +1525,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     sendWelcomeEmail,
     sendNotification
   }), [
-    currentUser, isAuthenticated, activeSiteId, isLoadingAuth, isPendingApproval, isLoadingData,
+    currentUser, originalUser, isAuthenticated, activeSiteId, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability,
     workflowSteps, notificationRules,
