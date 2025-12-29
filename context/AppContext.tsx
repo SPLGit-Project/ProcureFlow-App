@@ -209,7 +209,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }, [pos, activeSiteId]);
 
   // Data Loading
+  const lastFetchTime = React.useRef<number>(0);
   const reloadData = useCallback(async (silent: boolean = false) => {
+        // Smart Sync Check
+        const now = Date.now();
+        // If silent (smart) sync and data is fresh (< 5 mins), skip
+        if (silent && (now - lastFetchTime.current < 5 * 60 * 1000)) {
+            console.log("Data is fresh, skipping reload.");
+            return;
+        }
+
         // Helper for resilience
         async function safeFetch<T>(promise: Promise<T>, fallback: T, label: string): Promise<T> {
             try {
@@ -269,6 +278,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setAvailability(fetchedAvailability);
             setTeamsWebhookUrl(fetchedTeamsUrl);
             if (fetchedBranding) setBranding(fetchedBranding);
+            
+            lastFetchTime.current = Date.now();
         } catch (error) {
             console.error("Failed to load data", error);
         } finally {
@@ -276,16 +287,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
     }, []);
 
-  // Fetch Data on Mount
-  // Fetch Data when authenticated and approved
-  useEffect(() => {
-    if (isAuthenticated && !isPendingApproval) {
-      console.log("Auth: Authenticated and approved, reloading data...");
-      reloadData();
-    }
-  }, [isAuthenticated, isPendingApproval, reloadData]);
+    // ... (rest of code)
+    
+    
 
-  // Ref to guard against overlapping session checks
   const isCheckingSessionRef = React.useRef(false);
 
   // Auth Initialization
@@ -399,7 +404,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 jobTitle: rawData.job_title,
                 status: rawData.status,
                 createdAt: rawData.created_at,
-                siteIds: rawData.site_ids || []
+                siteIds: rawData.site_ids || [],
+                department: rawData.department,
+                approvalReason: rawData.approval_reason
             } : null;
 
             if (!userData) {
@@ -655,7 +662,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               .update({
                   name: updates.name,
                   avatar: updates.avatar,
-                  job_title: updates.jobTitle
+                  job_title: updates.jobTitle,
+                  department: updates.department,
+                  approval_reason: updates.approvalReason
               })
               .eq('id', currentUser.id);
 

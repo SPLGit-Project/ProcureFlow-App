@@ -49,6 +49,8 @@ export interface User {
   status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
   createdAt?: string;
   siteIds: string[]; // List of site IDs this user has access to
+  department?: string;
+  approvalReason?: string;
 }
 
 export interface AppBranding {
