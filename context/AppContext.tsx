@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { User, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationSetting, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus } from '../types';
+import { User, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification } from '../types';
 import { db } from '../services/db';
 import { supabase } from '../lib/supabaseClient';
 
@@ -73,10 +73,9 @@ interface AppContextType {
   addWorkflowStep: (step: WorkflowStep) => Promise<void>;
   deleteWorkflowStep: (id: string) => Promise<void>;
 
-  notificationSettings: NotificationSetting[];
-  updateNotificationSetting: (setting: NotificationSetting) => Promise<void>;
-  addNotificationSetting: (setting: NotificationSetting) => Promise<void>;
-  deleteNotificationSetting: (id: string) => Promise<void>;
+  notificationRules: NotificationRule[];
+  upsertNotificationRule: (rule: NotificationRule) => Promise<void>;
+  deleteNotificationRule: (id: string) => Promise<void>;
   
   // Core Actions
   createPO: (po: PORequest) => void;
@@ -99,6 +98,9 @@ interface AppContextType {
   
   // New Admin Capabilities
   getItemFieldRegistry: () => Promise<any[]>;
+  sendWelcomeEmail: (email: string, name: string) => Promise<void>;
+
+
   runAutoMapping: (supplierId: string) => Promise<{ confirmed: number, proposed: number }>;
   getMappingQueue: (supplierId?: string) => Promise<SupplierProductMap[]>;
   searchDirectory: (query: string) => Promise<any[]>;
@@ -183,7 +185,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // Admin Data State
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
-  const [notificationSettings, setNotificationSettings] = useState<NotificationSetting[]>([]);
+  const [notificationRules, setNotificationRules] = useState<NotificationRule[]>([]);
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
 
     // --- Active Site Logic ---
@@ -258,7 +260,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getStockSnapshots(), [], 'snapshots'),
                 safeFetch(db.getPOs(), [], 'pos'),
                 safeFetch(db.getWorkflowSteps(), [], 'workflowSteps'),
-                safeFetch(db.getNotificationSettings(), [], 'notifications'),
+                safeFetch(db.getNotificationRules(), [], 'notifications'),
                 safeFetch(db.getMappings(), [], 'mappings'),
                 safeFetch(db.getProductAvailability(), [], 'availability'),
                 safeFetch(db.getTeamsConfig(), '', 'teamsConfig'),
@@ -274,7 +276,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setStockSnapshots(fetchedSnapshots);
             setPos(fetchedPos);
             setWorkflowSteps(fetchedSteps);
-            setNotificationSettings(fetchedNotifs);
+            setNotificationRules(fetchedNotifs);
             setMappings(fetchedMappings);
             setAvailability(fetchedAvailability);
             setTeamsWebhookUrl(fetchedTeamsUrl);
@@ -921,39 +923,135 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   // --- Notification Operations ---
-  const updateNotificationSetting = async (setting: NotificationSetting) => {
-      setNotificationSettings(prev => prev.map(n => n.id === setting.id ? setting : n));
+  // --- Notification Operations ---
+  const upsertNotificationRule = async (rule: NotificationRule) => {
+      setNotificationRules(prev => {
+          const exists = prev.find(n => n.id === rule.id);
+          return exists ? prev.map(n => n.id === rule.id ? rule : n) : [...prev, rule];
+      });
       try {
-          await db.upsertNotificationSetting(setting);
+          await db.upsertNotificationRule(rule);
       } catch (e) {
-          console.error("Failed to update notification setting", e);
+          console.error("Failed to upsert notification rule", e);
           reloadData();
       }
   };
 
-  const addNotificationSetting = async (setting: NotificationSetting) => {
-      setNotificationSettings(prev => [...prev, setting]);
+  const deleteNotificationRule = async (id: string) => {
+      setNotificationRules(prev => prev.filter(n => n.id !== id));
       try {
-          await db.upsertNotificationSetting(setting);
+          await db.deleteNotificationRule(id);
       } catch (e) {
-          console.error("Failed to add notification setting", e);
-          reloadData();
-      }
-  };
-
-  const deleteNotificationSetting = async (id: string) => {
-      setNotificationSettings(prev => prev.filter(n => n.id !== id));
-      try {
-          await db.deleteNotificationSetting(id);
-      } catch (e) {
-           console.error("Failed to delete notification setting", e);
+           console.error("Failed to delete notification rule", e);
            reloadData();
       }
   };
+  
+    const sendNotification = async (event: NotificationEventType, data: any) => {
+        // 1. Get Matching Rules
+        const rules = notificationRules.filter(r => r.eventType === event && r.isActive);
+        if (rules.length === 0) return;
+
+        console.log(`Processing ${rules.length} rules for ${event}`);
+
+        // 2. Targets Map
+        const targets = new Map<string, { 
+            userId?: string, 
+            emailAddress?: string, 
+            email: boolean, 
+            inApp: boolean, 
+            teams: boolean 
+        }>();
+
+        const mergeTarget = (key: string, userData: any, channels: any) => {
+            const existing = targets.get(key) || { ...userData, email: false, inApp: false, teams: false };
+            targets.set(key, {
+                ...existing,
+                email: existing.email || channels.email,
+                inApp: existing.inApp || channels.inApp,
+                teams: existing.teams || channels.teams
+            });
+        };
+
+        for (const rule of rules) {
+            const title = rule.label || event;
+            for (const recipient of rule.recipients) {
+                if (recipient.type === 'USER') {
+                     mergeTarget(recipient.id, { userId: recipient.id }, recipient.channels);
+                } else if (recipient.type === 'ROLE') {
+                     const roleUsers = users.filter(u => u.role === recipient.id || u.realRole === recipient.id);
+                     roleUsers.forEach(u => mergeTarget(u.id, { userId: u.id, emailAddress: u.email }, recipient.channels));
+                } else if (recipient.type === 'REQUESTER') {
+                     if (data.requesterId) {
+                        const reqUser = users.find(u => u.id === data.requesterId);
+                        if (reqUser) mergeTarget(reqUser.id, { userId: reqUser.id, emailAddress: reqUser.email }, recipient.channels);
+                     }
+                } else if (recipient.type === 'EMAIL') {
+                     if (recipient.id.includes('@')) {
+                         mergeTarget(`email:${recipient.id}`, { emailAddress: recipient.id }, recipient.channels);
+                     }
+                }
+            }
+        }
+
+        // 3. Dispatch
+        // Teams (Global Check)
+        const sendTeams = Array.from(targets.values()).some(t => t.teams);
+        if (sendTeams && teamsWebhookUrl) {
+             const message = `**ProcureFlow Notification**\n\nEvent: ${event}\nData: ${JSON.stringify(data, null, 2)}`;
+             try {
+                await fetch(teamsWebhookUrl, { method: 'POST', body: JSON.stringify({ text: message }) });
+             } catch (e) {
+                 console.error("Failed to send Teams webhook", e);
+             }
+        }
+
+        // Individual Targets
+        for (const [key, target] of targets.entries()) {
+            if (target.inApp && target.userId) {
+                try {
+                    await db.addNotification({
+                        userId: target.userId,
+                        title: event,
+                        message: JSON.stringify(data),
+                        link: ''
+                    });
+                } catch (e) { console.error("Failed to add in-app notification", e); }
+            }
+            
+            if (target.email && target.emailAddress) {
+                 const { data: { session } } = await supabase.auth.getSession();
+                 const token = session?.provider_token;
+                 if (token) {
+                     const emailPayload = {
+                        message: {
+                            subject: `ProcureFlow Notification: ${event}`,
+                            body: {
+                                contentType: "Text",
+                                content: `Event: ${event}\n\nDetails:\n${JSON.stringify(data, null, 2)}`
+                            },
+                            toRecipients: [
+                                { emailAddress: { address: target.emailAddress } }
+                            ]
+                        }
+                     };
+                     try {
+                        await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify(emailPayload)
+                        });
+                     } catch(e) { console.error("Failed to send email", e); }
+                 }
+            }
+        }
+    };
 
   const createPO = async (po: PORequest) => {
     try {
         const displayId = await db.createPO(po);
+        // NOTIFICATION TRIGGER
+        sendNotification('PO_CREATED', { poId: displayId, requesterId: po.requesterId, amount: po.totalAmount });
         setPos(prev => [{ ...po, displayId }, ...prev]);
     } catch (error) {
         console.error('Failed to create PO:', error);
@@ -968,7 +1066,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     // Persist
     try {
         await db.updatePOStatus(poId, status);
-        // await db.addApprovalEvent(event); // If we add this to DB later
+        
+        // NOTIFICATION TRIGGER
+        if (status === 'APPROVED_PENDING_CONCUR') {
+            const po = pos.find(p => p.id === poId);
+            if (po) sendNotification('PO_APPROVED', { poId: po.displayId || po.id, approver: event.approverName });
+        } else if (status === 'REJECTED') {
+            const po = pos.find(p => p.id === poId);
+            if (po) sendNotification('PO_REJECTED', { poId: po.displayId || po.id, rejector: event.approverName });
+        }
+        
     } catch (e) {
         console.error("Failed to update status", e);
         reloadData();
@@ -1049,6 +1156,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     // Persist
     try {
         await db.createDelivery(delivery, poId);
+
+        // NOTIFICATION TRIGGER
+        sendNotification('DELIVERY_RECEIVED', { poId: poId, deliveryId: delivery.id, receivedBy: delivery.receivedBy });
+
         // Also need to persist Status Update if it changed!
         // For now complex status logic runs on fetch in some systems, but here we store status.
         // We should calculate status and save it.
@@ -1288,7 +1399,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     // Methods
     importMasterProducts, generateMappings, updateMapping: upsertMapping, upsertMapping, refreshAvailability, runDataBackfill,
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep,
-    notificationSettings, updateNotificationSetting, addNotificationSetting, deleteNotificationSetting,
+    notificationRules, upsertNotificationRule, deleteNotificationRule,
     theme, setTheme, branding, updateBranding,
     createPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
     updateProfile, switchRole,
@@ -1302,6 +1413,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     getItemFieldRegistry,
     runAutoMapping,
     getMappingQueue,
+
+
+
+
     searchDirectory: async (query: string) => {
         // Find session token
         const { data: { session } } = await supabase.auth.getSession();
@@ -1337,12 +1452,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             return [];
         }
     },
-    sendWelcomeEmail
+    sendWelcomeEmail,
+    sendNotification
   }), [
     currentUser, isAuthenticated, activeSiteId, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability,
-    workflowSteps, notificationSettings,
+    workflowSteps, notificationRules,
     reloadData, siteName
   ]);
 

@@ -12,7 +12,7 @@ import {
     Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
-import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus } from '../types';
+import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 import { useLocation } from 'react-router-dom';
 import AdminAccessHub from './AdminAccessHub';
@@ -46,7 +46,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Admin Access' }
 ];
 
-type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION';
+type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL';
 
 const Settings = () => {
   const {
@@ -55,7 +55,7 @@ const Settings = () => {
     theme, setTheme, branding, updateBranding,
     suppliers, addSupplier, updateSupplier, deleteSupplier,
     sites, addSite, updateSite, deleteSite,
-    workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep, notificationSettings, updateNotificationSetting, addNotificationSetting, deleteNotificationSetting,
+    workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep, notificationRules, upsertNotificationRule, deleteNotificationRule,
     items, addItem, updateItem, deleteItem,
     catalog, updateCatalogItem, stockSnapshots,
     // Actions
@@ -74,6 +74,14 @@ const Settings = () => {
       setActiveTab(state.activeTab);
     }
   }, [location.state]);
+  
+  // --- Security: Strict Role Checks ---
+  useEffect(() => {
+      const restrictedTabs: AdminTab[] = ['SECURITY', 'WORKFLOW', 'BRANDING', 'NOTIFICATIONS', 'MIGRATION', 'EMAIL'];
+      if (currentUser?.role !== 'ADMIN' && restrictedTabs.includes(activeTab)) {
+          setActiveTab('PROFILE');
+      }
+  }, [currentUser, activeTab]);
 
   // --- Email Templates State ---
   const [emailSubject, setEmailSubject] = useState(branding.emailTemplate?.subject || `Welcome to ${branding.appName}`);
@@ -684,8 +692,27 @@ if __name__ == "__main__":
   const handleSiteFormSubmit = (e: React.FormEvent) => { e.preventDefault(); const newSite: Site = { id: editingSite ? editingSite.id : uuidv4(), name: siteForm.name, suburb: siteForm.suburb, address: siteForm.address, state: siteForm.state, zip: siteForm.zip, contactPerson: siteForm.contactPerson }; editingSite ? updateSite(newSite) : addSite(newSite); setIsSiteFormOpen(false); };
   const openSiteForm = (s?: Site) => { if(s) { setEditingSite(s); setSiteForm({ name: s.name, suburb: s.suburb, address: s.address, state: s.state, zip: s.zip, contactPerson: s.contactPerson }); } else { setEditingSite(null); setSiteForm({ name: '', suburb: '', address: '', state: '', zip: '', contactPerson: '' }); } setIsSiteFormOpen(true); };
   const handleWorkflowUpdate = (id: string, updates: Partial<WorkflowStep>) => { const step = workflowSteps.find(s => s.id === id); if (step) updateWorkflowStep({ ...step, ...updates }); };
-  const toggleNotificationChannel = (id: string, channel: 'email' | 'inApp' | 'teams') => { const setting = notificationSettings.find(n => n.id === id); if (setting) { updateNotificationSetting({ ...setting, channels: { ...setting.channels, [channel]: !setting.channels[channel] } }); } };
-  const toggleNotificationRole = (settingId: string, roleId: UserRole) => { const setting = notificationSettings.find(n => n.id === settingId); if (!setting) return; const currentRoles = setting.recipientRoles; const newRoles = currentRoles.includes(roleId) ? currentRoles.filter(r => r !== roleId) : [...currentRoles, roleId]; updateNotificationSetting({ ...setting, recipientRoles: newRoles }); };
+
+  // --- Notification Logic ---
+  const [editingRule, setEditingRule] = useState<NotificationRule | null>(null);
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+
+  const openRuleConfig = (rule: NotificationRule) => {
+      setEditingRule(JSON.parse(JSON.stringify(rule))); // Deep copy
+      setIsRuleModalOpen(true);
+  };
+
+  const handleSaveRule = async () => {
+      if (editingRule) {
+          await upsertNotificationRule(editingRule);
+          setIsRuleModalOpen(false);
+          setEditingRule(null);
+      }
+  };
+
+  const handleToggleActive = async (rule: NotificationRule) => {
+      await upsertNotificationRule({ ...rule, isActive: !rule.isActive });
+  };
 
   // --- Directory Mock Logic ---
   const handleDirectorySearch = async () => {
@@ -784,7 +811,7 @@ if __name__ == "__main__":
                 <User size={16} />
                 My Profile
             </button>
-             {currentUser?.role === 'ADMIN' && allTabs.map(tab => (
+             {allTabs.filter(tab => currentUser?.role === 'ADMIN' || !['SECURITY', 'WORKFLOW', 'BRANDING', 'NOTIFICATIONS', 'MIGRATION', 'EMAIL'].includes(tab.id as any)).map(tab => (
                  <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
@@ -2316,8 +2343,8 @@ if __name__ == "__main__":
                   <div className="flex items-center gap-3">
                       <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg text-blue-600 dark:text-blue-400"><Bell size={20}/></div>
                       <div>
-                          <h3 className="font-bold text-gray-900 dark:text-white">Notification Center</h3>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">Manage how users are notified of important events.</p>
+                          <h3 className="font-bold text-gray-900 dark:text-white">Notification Rules</h3>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Configure automated alerts and recipients.</p>
                       </div>
                   </div>
                    <button onClick={() => setIsTeamsConfigOpen(true)} className="btn-secondary flex items-center gap-2 text-xs">
@@ -2330,86 +2357,232 @@ if __name__ == "__main__":
                   <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400 min-w-[900px]">
                       <thead className="table-header">
                           <tr>
-                              <th className="px-6 py-4 w-1/3">Event Type</th>
-                              <th className="px-6 py-4 text-center">Channels</th>
-                              <th className="px-6 py-4">Recipients (Roles)</th>
-                              <th className="px-6 py-4">Additional Recipients</th>
+                              <th className="px-6 py-4 w-1/4">Event</th>
+                              <th className="px-6 py-4">Recipients</th>
+                              <th className="px-6 py-4 text-center">Status</th>
+                              <th className="px-6 py-4 text-right">Actions</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                          {notificationSettings.map(setting => (
-                              <tr key={setting.id} className="table-row">
+                          {notificationRules.map(rule => (
+                              <tr key={rule.id} className="table-row">
                                   <td className="px-6 py-4">
-                                      <div className="font-bold text-gray-900 dark:text-white">{setting.label}</div>
-                                      <div className="text-xs text-gray-400 font-mono mt-0.5">{setting.eventType}</div>
-                                  </td>
-                                  <td className="px-6 py-4">
-                                      <div className="flex justify-center gap-4">
-                                          <label className="flex flex-col items-center gap-1 cursor-pointer group">
-                                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${setting.channels.email ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
-                                                  <MailIcon size={16}/>
-                                              </div>
-                                              <input type="checkbox" className="sr-only" checked={setting.channels.email} onChange={() => toggleNotificationChannel(setting.id, 'email')}/>
-                                              <span className="text-[9px] font-bold uppercase text-gray-400 group-hover:text-blue-500">Email</span>
-                                          </label>
-                                          
-                                          <label className="flex flex-col items-center gap-1 cursor-pointer group">
-                                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${setting.channels.inApp ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
-                                                  <Bell size={16}/>
-                                              </div>
-                                              <input type="checkbox" className="sr-only" checked={setting.channels.inApp} onChange={() => toggleNotificationChannel(setting.id, 'inApp')}/>
-                                              <span className="text-[9px] font-bold uppercase text-gray-400 group-hover:text-amber-500">In-App</span>
-                                          </label>
-
-                                          <label className="flex flex-col items-center gap-1 cursor-pointer group">
-                                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${setting.channels.teams ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
-                                                  <ArrowDown size={16} className={setting.channels.teams ? 'text-[#6264A7]' : ''}/> 
-                                              </div>
-                                              <input type="checkbox" className="sr-only" checked={setting.channels.teams || false} onChange={() => toggleNotificationChannel(setting.id, 'teams')}/>
-                                              <span className="text-[9px] font-bold uppercase text-gray-400 group-hover:text-indigo-500">Teams</span>
-                                          </label>
-                                      </div>
-                                  </td>
-                                  <td className="px-6 py-4">
-                                      <div className="flex flex-wrap gap-1">
-                                          {setting.recipientRoles.map(roleId => {
-                                              const r = roles.find(r => r.id === roleId);
-                                              return r ? (
-                                                  <button key={roleId} onClick={() => toggleNotificationRole(setting.id, roleId)} className="badge badge-blue hover:bg-red-100 hover:text-red-600 transition-colors flex items-center gap-1">
-                                                      {r.name} <X size={10}/>
-                                                  </button>
-                                              ) : null;
-                                          })}
-                                          <div className="relative group">
-                                              <button className="badge bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500"><Plus size={12}/></button>
-                                              <div className="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-[#15171e] rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 p-2 hidden group-hover:block z-20">
-                                                  <div className="text-xs font-bold text-gray-400 px-2 py-1 uppercase">Add Role</div>
-                                                  {roles.filter(r => !setting.recipientRoles.includes(r.id)).map(r => (
-                                                      <button key={r.id} onClick={() => toggleNotificationRole(setting.id, r.id)} className="w-full text-left px-2 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg">
-                                                          {r.name}
-                                                      </button>
-                                                  ))}
-                                              </div>
+                                      <div className="flex items-center gap-3">
+                                          <div className={`p-2 rounded-lg ${rule.isActive ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-gray-100 text-gray-400 dark:bg-white/5'}`}>
+                                              <Bell size={18}/>
+                                          </div>
+                                          <div>
+                                              <div className="font-bold text-gray-900 dark:text-white">{rule.label}</div>
+                                              <code className="text-[10px] text-gray-400 px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">{rule.eventType}</code>
                                           </div>
                                       </div>
                                   </td>
                                   <td className="px-6 py-4">
-                                      <input 
-                                          type="text" 
-                                          placeholder="finance@example.com"
-                                          className="input-field py-1 text-xs w-full"
-                                          value={(setting.customEmails || []).join(', ')}
-                                          onChange={e => {
-                                              const emails = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                                              updateNotificationSetting({ ...setting, customEmails: emails });
-                                          }}
-                                      />
+                                      <div className="flex flex-wrap gap-1.5 is-truncated max-w-md">
+                                          {rule.recipients.length > 0 ? rule.recipients.map((r, idx) => (
+                                              <span key={idx} className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded text-xs border border-gray-200 dark:border-gray-700">
+                                                  {r.type === 'ROLE' && <Shield size={10} className="text-purple-500"/>}
+                                                  {r.type === 'USER' && <User size={10} className="text-blue-500"/>}
+                                                  {r.type === 'EMAIL' && <Mail size={10} className="text-green-500"/>}
+                                                  {r.type === 'REQUESTER' && <User size={10} className="text-orange-500"/>}
+                                                  
+                                                  <span className="font-medium">
+                                                      {r.type === 'ROLE' ? (roles.find(x => x.id === r.id)?.name || r.id) : 
+                                                       r.type === 'USER' ? (users.find(x => x.id === r.id)?.name || 'Unknown User') :
+                                                       r.type === 'REQUESTER' ? 'Requester' : r.id}
+                                                  </span>
+
+                                                  <div className="flex gap-0.5 pl-1 border-l border-gray-300 dark:border-gray-600 ml-1">
+                                                      {r.channels.email && <MailIcon size={10} className="text-blue-400"/>}
+                                                      {r.channels.inApp && <Bell size={10} className="text-amber-400"/>}
+                                                      {r.channels.teams && <ArrowDown size={10} className="text-indigo-400"/>}
+                                                  </div>
+                                              </span>
+                                          )) : <span className="text-gray-400 text-xs italic">No recipients configured</span>}
+                                      </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                      <button 
+                                          onClick={() => handleToggleActive(rule)}
+                                          className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase transition-colors ${rule.isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}
+                                      >
+                                          {rule.isActive ? 'Active' : 'Disabled'}
+                                      </button>
+                                  </td>
+                                  <td className="px-6 py-4 text-right">
+                                      <button onClick={() => openRuleConfig(rule)} className="text-sm font-bold text-[var(--color-brand)] hover:underline">Configure</button>
                                   </td>
                               </tr>
                           ))}
                       </tbody>
                   </table>
               </div>
+
+              {/* Rule Configuration Modal */}
+              {isRuleModalOpen && editingRule && (
+                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-4xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
+                        {/* Header */}
+                        <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-white/5">
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    <SettingsIcon size={20} className="text-[var(--color-brand)]"/>
+                                    Configure Notification
+                                </h2>
+                                <p className="text-sm text-gray-500 mt-1">Rule: <span className="font-bold text-gray-700 dark:text-gray-300">{editingRule.label}</span></p>
+                            </div>
+                            <button onClick={() => setIsRuleModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24}/></button>
+                        </div>
+                        
+                        {/* Body */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                            
+                            {/* Recipients List */}
+                            <div>
+                                <div className="flex justify-between items-end mb-3">
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">Recipients</h3>
+                                    
+                                    {/* Add Recipient Dropdown */}
+                                    <div className="relative group">
+                                        <button className="btn-secondary text-xs flex items-center gap-1 py-1.5"><Plus size={14}/> Add Recipient</button>
+                                        <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#15171e] rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 p-2 hidden group-hover:block z-50">
+                                            <div className="text-[10px] font-bold text-gray-400 px-2 py-1 uppercase">Dynamic</div>
+                                            <button 
+                                                onClick={() => setEditingRule({ ...editingRule, recipients: [...editingRule.recipients, { type: 'REQUESTER', id: 'requester', channels: { email: true, inApp: true, teams: false } }] })}
+                                                className="w-full text-left px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg flex items-center gap-2"
+                                            >
+                                                <User size={12} className="text-orange-500"/> Requester
+                                            </button>
+
+                                            <div className="border-t border-gray-100 dark:border-gray-800 my-1"></div>
+                                            <div className="text-[10px] font-bold text-gray-400 px-2 py-1 uppercase">Roles</div>
+                                            {roles.map(r => (
+                                                <button 
+                                                    key={r.id}
+                                                    onClick={() => setEditingRule({ ...editingRule, recipients: [...editingRule.recipients, { type: 'ROLE', id: r.id, channels: { email: true, inApp: true, teams: false } }] })}
+                                                    className="w-full text-left px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg flex items-center gap-2"
+                                                >
+                                                    <Shield size={12} className="text-purple-500"/> {r.name}
+                                                </button>
+                                            ))}
+                                            
+                                            <div className="border-t border-gray-100 dark:border-gray-800 my-1"></div>
+                                            <button 
+                                                 onClick={() => {
+                                                     const email = prompt("Enter email address:");
+                                                     if (email) {
+                                                         setEditingRule({ ...editingRule, recipients: [...editingRule.recipients, { type: 'EMAIL', id: email, channels: { email: true, inApp: false, teams: false } }] });
+                                                     }
+                                                 }}
+                                                 className="w-full text-left px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg flex items-center gap-2"
+                                            >
+                                                <Mail size={12} className="text-green-500"/> Custom Email
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {editingRule.recipients.length === 0 ? (
+                                        <div className="text-center py-8 bg-gray-50 dark:bg-white/5 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 text-gray-400 text-sm">
+                                            No recipients added. No notifications will be sent.
+                                        </div>
+                                    ) : (
+                                        editingRule.recipients.map((r, idx) => (
+                                            <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-800 transition-colors">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-full bg-white dark:bg-white/10 flex items-center justify-center text-gray-500 shadow-sm">
+                                                        {r.type === 'ROLE' && <Shield size={18} className="text-purple-500"/>}
+                                                        {r.type === 'USER' && <User size={18} className="text-blue-500"/>}
+                                                        {r.type === 'EMAIL' && <Mail size={18} className="text-green-500"/>}
+                                                        {r.type === 'REQUESTER' && <User size={18} className="text-orange-500"/>}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-bold text-gray-900 dark:text-white">
+                                                            {r.type === 'ROLE' ? (roles.find(x => x.id === r.id)?.name || r.id) : 
+                                                             r.type === 'USER' ? (users.find(x => x.id === r.id)?.name || 'Unknown User') :
+                                                             r.type === 'REQUESTER' ? 'Event Requester' : r.id}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500">
+                                                            {r.type === 'ROLE' ? 'All users with this role' : 
+                                                             r.type === 'REQUESTER' ? 'User who initiated action' : 
+                                                             'Specific Recipient'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-6">
+                                                    <div className="flex gap-2">
+                                                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors border ${r.channels.email ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white dark:bg-white/5 border-gray-200 dark:border-gray-700 text-gray-400'}`}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="sr-only" 
+                                                                checked={r.channels.email} 
+                                                                onChange={() => {
+                                                                    const newRecipients = [...editingRule.recipients];
+                                                                    newRecipients[idx].channels.email = !newRecipients[idx].channels.email;
+                                                                    setEditingRule({ ...editingRule, recipients: newRecipients });
+                                                                }}
+                                                            />
+                                                            <Mail size={14}/> <span className="text-xs font-bold">Email</span>
+                                                        </label>
+
+                                                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors border ${r.channels.inApp ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-300' : 'bg-white dark:bg-white/5 border-gray-200 dark:border-gray-700 text-gray-400'}`}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="sr-only" 
+                                                                checked={r.channels.inApp} 
+                                                                onChange={() => {
+                                                                    const newRecipients = [...editingRule.recipients];
+                                                                    newRecipients[idx].channels.inApp = !newRecipients[idx].channels.inApp;
+                                                                    setEditingRule({ ...editingRule, recipients: newRecipients });
+                                                                }}
+                                                            />
+                                                            <Bell size={14}/> <span className="text-xs font-bold">In-App</span>
+                                                        </label>
+
+                                                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors border ${r.channels.teams ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300' : 'bg-white dark:bg-white/5 border-gray-200 dark:border-gray-700 text-gray-400'}`}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="sr-only" 
+                                                                checked={r.channels.teams} 
+                                                                onChange={() => {
+                                                                    const newRecipients = [...editingRule.recipients];
+                                                                    newRecipients[idx].channels.teams = !newRecipients[idx].channels.teams;
+                                                                    setEditingRule({ ...editingRule, recipients: newRecipients });
+                                                                }}
+                                                            />
+                                                            <ArrowDown size={14}/> <span className="text-xs font-bold">Teams</span>
+                                                        </label>
+                                                    </div>
+
+                                                    <button 
+                                                        onClick={() => {
+                                                            const newRecipients = editingRule.recipients.filter((_, i) => i !== idx);
+                                                            setEditingRule({ ...editingRule, recipients: newRecipients });
+                                                        }}
+                                                        className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg"
+                                                    >
+                                                        <Trash2 size={16}/>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 flex justify-end gap-3">
+                            <button onClick={() => setIsRuleModalOpen(false)} className="px-6 py-2.5 text-gray-500 font-bold hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors">Cancel</button>
+                            <button onClick={handleSaveRule} className="btn-primary px-8 flex items-center gap-2">
+                                <Save size={18}/> Save Changes
+                            </button>
+                        </div>
+                    </div>
+                 </div>
+              )}
 
               {isTeamsConfigOpen && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">

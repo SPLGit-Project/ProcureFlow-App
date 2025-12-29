@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationSetting, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability } from '../types';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 
 export const db = {
@@ -400,16 +400,15 @@ export const db = {
         }));
     },
 
-    getNotificationSettings: async (): Promise<NotificationSetting[]> => {
+    getNotificationRules: async (): Promise<NotificationRule[]> => {
         const { data, error } = await supabase.from('notification_settings').select('*');
         if (error) throw error;
         return data.map((n: any) => ({
             id: n.id,
             eventType: n.event_type,
             label: n.label,
-            channels: n.channels, 
-            recipientRoles: n.recipient_roles,
-            customEmails: n.custom_emails || []
+            isActive: n.is_active,
+            recipients: n.recipients || [] // JSONB column
         }));
     },
 
@@ -431,21 +430,54 @@ export const db = {
         if (error) throw error;
     },
 
-    upsertNotificationSetting: async (setting: NotificationSetting): Promise<void> => {
+    upsertNotificationRule: async (rule: NotificationRule): Promise<void> => {
         const { error } = await supabase.from('notification_settings').upsert({
-            id: setting.id,
-            event_type: setting.eventType,
-            label: setting.label,
-            channels: setting.channels,
-            recipient_roles: setting.recipientRoles,
-            custom_emails: setting.customEmails || []
+            id: rule.id,
+            event_type: rule.eventType,
+            label: rule.label,
+            is_active: rule.isActive,
+            recipients: rule.recipients
         });
         if (error) throw error;
     },
 
-    deleteNotificationSetting: async (id: string): Promise<void> => {
+    deleteNotificationRule: async (id: string): Promise<void> => {
         const { error } = await supabase.from('notification_settings').delete().eq('id', id);
         if (error) throw error;
+    },
+
+    addNotification: async (notif: Omit<AppNotification, 'id' | 'createdAt' | 'isRead'>): Promise<void> => {
+        const { error } = await supabase.from('user_notifications').insert({
+            user_id: notif.userId,
+            title: notif.title,
+            message: notif.message,
+            link: notif.link
+        });
+        if (error) throw error;
+    },
+
+    getUserNotifications: async (userId: string): Promise<AppNotification[]> => {
+        const { data, error } = await supabase
+            .from('user_notifications')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(50);
+            
+        if (error) throw error;
+        return data.map((n: any) => ({
+            id: n.id,
+            userId: n.user_id,
+            title: n.title,
+            message: n.message,
+            isRead: n.is_read,
+            link: n.link,
+            createdAt: n.created_at
+        }));
+    },
+
+    markNotificationRead: async (id: string): Promise<void> => {
+        await supabase.from('user_notifications').update({ is_read: true }).eq('id', id);
     },
 
     createPO: async (po: PORequest): Promise<string> => {

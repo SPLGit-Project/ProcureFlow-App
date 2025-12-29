@@ -1,5 +1,5 @@
 
-import { Item, PORequest, Supplier, User, SupplierCatalogItem, SupplierStockSnapshot, Site, WorkflowStep, NotificationSetting, Permission, RoleDefinition } from '../types';
+import { Item, PORequest, Supplier, User, SupplierCatalogItem, SupplierStockSnapshot, Site, WorkflowStep, NotificationRule, Permission, RoleDefinition } from '../types';
 
 export const ALL_PERMISSIONS: Permission[] = [
     { id: 'view_dashboard', label: 'View Dashboard', description: 'Access the main dashboard.', category: 'General' },
@@ -184,10 +184,60 @@ export const MOCK_WORKFLOW_STEPS: WorkflowStep[] = [
     { id: 'wf-3', stepName: 'Final Approval', approverRole: 'ADMIN', conditionType: 'AMOUNT_GT', conditionValue: 5000, order: 3, isActive: true },
 ];
 
-export const MOCK_NOTIFICATIONS: NotificationSetting[] = [
-    { id: 'notif-1', eventType: 'PO_CREATED', label: 'New Purchase Order Created', channels: { email: true, inApp: true, teams: false }, recipientRoles: ['APPROVER'] },
-    { id: 'notif-2', eventType: 'PO_APPROVED', label: 'Purchase Order Approved', channels: { email: true, inApp: true, teams: false }, recipientRoles: ['SITE_USER', 'ADMIN'] },
-    { id: 'notif-3', eventType: 'PO_REJECTED', label: 'Purchase Order Rejected', channels: { email: true, inApp: true, teams: false }, recipientRoles: ['SITE_USER'] },
-    { id: 'notif-4', eventType: 'DELIVERY_RECEIVED', label: 'Goods Received at Site', channels: { email: false, inApp: true, teams: false }, recipientRoles: ['ADMIN'] },
-    { id: 'notif-5', eventType: 'STOCK_LOW', label: 'Supplier Stock Low', channels: { email: true, inApp: false, teams: true }, recipientRoles: ['ADMIN'] },
+export const MOCK_NOTIFICATIONS: NotificationRule[] = [
+    { 
+        id: 'notif-1', 
+        eventType: 'PO_CREATED', 
+        label: 'New Purchase Order Created', 
+        isActive: true,
+        recipients: [
+            { id: 'APPROVER', type: 'ROLE', label: 'Approver', channels: { email: true, inApp: true, teams: false } }
+        ] 
+    },
+    { 
+        id: 'notif-2', 
+        eventType: 'PO_APPROVED', 
+        label: 'Purchase Order Approved', 
+        isActive: true,
+        recipients: [
+            { id: 'SITE_USER', type: 'ROLE', label: 'Site Users', channels: { email: true, inApp: true, teams: false } },
+            { id: 'ADMIN', type: 'ROLE', label: 'Admins', channels: { email: true, inApp: true, teams: false } }
+        ]
+    },
+    { 
+        id: 'notif-3', 
+        eventType: 'PO_REJECTED', 
+        label: 'Purchase Order Rejected', 
+        isActive: true,
+        recipients: [
+             { id: 'SITE_USER', type: 'ROLE', label: 'Site Users', channels: { email: true, inApp: true, teams: false } }
+        ]
+    },
+    { 
+        id: 'notif-4', 
+        eventType: 'DELIVERY_RECEIVED', 
+        label: 'Goods Received at Site', 
+        isActive: true,
+        recipients: [
+            { id: 'ADMIN', type: 'ROLE', label: 'Admins', channels: { email: false, inApp: true, teams: false } }
+        ]
+    },
+    { 
+        id: 'notif-5', 
+        eventType: 'STOCK_LOW', 
+        label: 'Supplier Stock Low', 
+        isActive: true,
+        recipients: [
+            { id: 'ADMIN', type: 'ROLE', label: 'Admins', channels: { email: true, inApp: false, teams: true } }
+        ]
+    },
+    { 
+        id: 'notif-6', 
+        eventType: 'PO_CAPITALIZED', 
+        label: 'Asset Capitalized', 
+        isActive: true,
+        recipients: [
+            { id: 'finance@company.com', type: 'EMAIL', label: 'Finance Team', channels: { email: true, inApp: false, teams: false } }
+        ] 
+    }
 ];

@@ -316,17 +316,34 @@ export interface WorkflowStep {
     isActive: boolean;
 }
 
-export type NotificationEventType = 'PO_CREATED' | 'PO_APPROVED' | 'PO_REJECTED' | 'DELIVERY_RECEIVED' | 'STOCK_LOW';
 
-export interface NotificationSetting {
-    id: string;
-    eventType: NotificationEventType;
-    label: string;
+export type NotificationEventType = 'PO_CREATED' | 'PO_APPROVED' | 'PO_REJECTED' | 'DELIVERY_RECEIVED' | 'STOCK_LOW' | 'PO_CAPITALIZED';
+
+export interface NotificationRecipient {
+    id: string; // Role ID, User ID, "requester", or email address
+    type: 'ROLE' | 'USER' | 'EMAIL' | 'REQUESTER';
+    label: string; // Display name
     channels: {
         email: boolean;
         inApp: boolean;
         teams: boolean;
     };
-    recipientRoles: UserRole[];
-    customEmails?: string[];
+}
+
+export interface NotificationRule {
+    id: string;
+    eventType: NotificationEventType;
+    label: string;
+    isActive: boolean;
+    recipients: NotificationRecipient[];
+}
+
+export interface AppNotification {
+    id: string;
+    userId: string;
+    title: string;
+    message: string;
+    isRead: boolean;
+    link?: string;
+    createdAt: string;
 }
