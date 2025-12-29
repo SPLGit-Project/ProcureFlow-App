@@ -307,9 +307,23 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
     const initializeAuth = async () => {
         setIsLoadingAuth(true);
-        console.log("Auth: Initializing (Listener-First Pattern)...");
+        console.log("Auth: Initializing (Smart-Robust Mode)...");
 
-        // 1. Check for recovery/OAuth tokens in URL
+        // 0. Cleanup Stale Locks
+        // Supabase sometimes leaves 'sb-lock' keys if a tab crashes, causing deadlocks.
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.includes('sb-lock')) {
+                    console.log("Auth: Clearing stale lock:", key);
+                    localStorage.removeItem(key);
+                }
+            }
+        } catch (e) {
+            console.warn("Auth: Failed to clear locks", e);
+        }
+
+        // 1. Check for tokens in URL
         const hash = window.location.hash;
         const searchParams = new URLSearchParams(window.location.search);
         const urlError = searchParams.get('error');
@@ -323,28 +337,28 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             return;
         }
 
-        if (hash && (hash.includes('access_token=') || hash.includes('error='))) {
-            console.log("Auth: Found OAuth fragment, processing...");
-        }
+        let manualRecoveryTimeout: NodeJS.Timeout;
 
-        // 2. Setup Listener IMMEDIATELY (Before getSession)
-        // This ensures we catch any events emitted during getSession or immediate load
+        // 2. Setup Listener IMMEDIATELY
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (!mounted) return;
-            // console.log(`Auth Event (listener): ${event}`, session?.user?.id); // Reduce noise
-            
             const eventType = event as string;
+
+            if (manualRecoveryTimeout) clearTimeout(manualRecoveryTimeout);
 
             if (eventType === 'SIGNED_IN' || eventType === 'INITIAL_SESSION') {
                 if (session) {
                     await handleUserAuth(session);
                 } else if (eventType === 'INITIAL_SESSION') {
-                     // Initial session done but no session => User is definitely logged out
                      console.log("Auth: INITIAL_SESSION - No session");
-                     setIsLoadingAuth(false);
+                     // Check if we have a hash that wasn't processed
+                     if (window.location.hash && window.location.hash.includes('access_token')) {
+                         console.warn("Auth: INITIAL_SESSION fired but hash exists. Supabase missed it?");
+                         // Let the manual recovery handle it below
+                     } else {
+                         setIsLoadingAuth(false);
+                     }
                 }
-            } else if (eventType === 'TOKEN_REFRESHED') {
-                console.log('Auth: Token refreshed');
             } else if (eventType === 'SIGNED_OUT') {
                 console.log("Auth: Signed out");
                 setCurrentUser(null);
@@ -354,28 +368,60 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
         });
 
-        // 3. Initial Session Check (Non-blocking)
-        // We use this to double-check, but we don't await it to block the UI thread/rendering
+        // 3. Manual Token Recovery / Fallback
+        // If Supabase doesn't fire SIGNED_IN within 2s and we have a token, force it.
+        if (hash && hash.includes('access_token=')) {
+            console.log("Auth: OAuth fragment detected. Arming manual recovery...");
+            manualRecoveryTimeout = setTimeout(async () => {
+                if (!mounted || isAuthenticated) return;
+                
+                console.warn("Auth: Supabase auto-detection timed out. Attempting MANUAL RECOVERY.");
+                
+                // Parse Hash
+                const params = new URLSearchParams(hash.substring(1)); // remove #
+                const access_token = params.get('access_token');
+                const refresh_token = params.get('refresh_token');
+                const expires_in = params.get('expires_in');
+                const type = params.get('token_type');
+
+                if (access_token) {
+                    try {
+                        const { data: { session }, error } = await supabase.auth.setSession({
+                            access_token,
+                            refresh_token: refresh_token || '',
+                        });
+
+                        if (error) throw error;
+                        
+                        if (session) {
+                            console.log("Auth: Manual recovery SUCCESS!", session.user.email);
+                            await handleUserAuth(session);
+                            // Clean URL
+                            window.history.replaceState({}, document.title, window.location.pathname);
+                        }
+                    } catch (e) {
+                         console.error("Auth: Manual recovery failed:", e);
+                         alert("Authentication failed. Please try signing in again.");
+                         setIsLoadingAuth(false);
+                    }
+                }
+            }, 2500); // 2.5s wait
+        }
+
+        // 4. Initial Session Check (Non-blocking)
         supabase.auth.getSession().then(({ data: { session }, error }) => {
             if (error) {
                 console.error("Auth: Manual getSession error:", error);
-                if (mounted && isLoadingAuth) setIsLoadingAuth(false);
+                if (mounted && isLoadingAuth && !hash) setIsLoadingAuth(false);
                 return;
             }
 
             if (session && mounted) {
-                // We rely on handleUserAuth being idempotent or internal checks
-                // But usually the listener catches INITIAL_SESSION anyway.
-                // We call it here just in case the listener missed it or was delayed.
+                if (manualRecoveryTimeout) clearTimeout(manualRecoveryTimeout);
                 console.log("Auth: Manual getSession found session", session.user.id);
                 handleUserAuth(session);
-            } else if (mounted) {
-                 // No session found manually. 
-                 // If the listener hasn't fired INITIAL_SESSION yet, we might want to wait for it.
-                 // But typically getSession resolving null means we are anon.
-                 // We'll let the listener's INITIAL_SESSION event handle turning off loading if it hasn't already.
-                 // If we turn it off here, we risk flashing login screen before listener confirms.
-                 // However, getting null here is a strong signal we are not logged in.
+            } else if (mounted && !hash) {
+                 // No session, no hash -> probably anon
             }
         });
 
