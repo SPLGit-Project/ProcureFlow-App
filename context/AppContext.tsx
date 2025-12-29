@@ -101,6 +101,7 @@ interface AppContextType {
   getItemFieldRegistry: () => Promise<any[]>;
   runAutoMapping: (supplierId: string) => Promise<{ confirmed: number, proposed: number }>;
   getMappingQueue: (supplierId?: string) => Promise<SupplierProductMap[]>;
+  searchDirectory: (query: string) => Promise<any[]>;
 
   // Misc
   getEffectiveStock: (itemId: string) => number;
@@ -687,7 +688,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const { error } = await supabase.auth.signInWithOAuth({
           provider: 'azure',
           options: {
-              scopes: 'openid profile email User.Read offline_access',
+              scopes: 'openid profile email User.Read User.ReadBasic.All offline_access',
               redirectTo: window.location.origin
           }
       });
@@ -1220,7 +1221,42 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     // New Admin Caps
     getItemFieldRegistry,
     runAutoMapping,
-    getMappingQueue
+    getMappingQueue,
+    searchDirectory: async (query: string) => {
+        // Find session token
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.provider_token;
+        if (!token) {
+            console.warn("Auth: No provider token found for Directory Search");
+            return [];
+        }
+        
+        try {
+            // Microsoft Graph Advanced Query
+            // Requires 'ConsistencyLevel: eventual' header for $search
+            const resp = await fetch(`https://graph.microsoft.com/v1.0/users?$search="displayName:${query}" OR "mail:${query}"&$select=id,displayName,mail,jobTitle,department,officeLocation&$top=10`, {
+                headers: { 
+                    Authorization: `Bearer ${token}`,
+                    ConsistencyLevel: 'eventual'
+                }
+            });
+            
+            if (resp.ok) {
+                const data = await resp.json();
+                return data.value.map((u: any) => ({
+                    id: u.id,
+                    name: u.displayName,
+                    email: u.mail,
+                    jobTitle: u.jobTitle,
+                    department: u.department || u.officeLocation
+                }));
+            }
+            return [];
+        } catch (e) {
+            console.error("Directory Search Failed", e);
+            return [];
+        }
+    }
   }), [
     currentUser, isAuthenticated, activeSiteId, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
