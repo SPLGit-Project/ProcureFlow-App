@@ -307,11 +307,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
     const initializeAuth = async () => {
         setIsLoadingAuth(true);
-        console.log("Auth: Initializing...");
+        console.log("Auth: Initializing (Listener-First Pattern)...");
 
         // 1. Check for recovery/OAuth tokens in URL
-        // Supabase sometimes puts the session in the URL fragment (#access_token=...)
-        // before the event listener captures it. We want to wait a beat if we see a fragment.
         const hash = window.location.hash;
         const searchParams = new URLSearchParams(window.location.search);
         const urlError = searchParams.get('error');
@@ -320,57 +318,64 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         if (urlError && mounted) {
             console.error("Auth: URL contains error:", urlError, urlErrorDesc);
             alert(`Sign-in Error: ${urlErrorDesc || urlError}`);
-            // Clean up URL
             window.history.replaceState({}, document.title, window.location.pathname);
             setIsLoadingAuth(false);
             return;
         }
 
         if (hash && (hash.includes('access_token=') || hash.includes('error='))) {
-            console.log("Auth: Found OAuth fragment, waiting for Supabase to process...");
-            // Allow a small delay for Supabase's internal listener to grab the hash
-            await new Promise(resolve => setTimeout(resolve, 500));
+            console.log("Auth: Found OAuth fragment, processing...");
         }
 
-        // 2. Initial Session Check
-        try {
-            console.log("Auth: Checking initial session...");
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session && mounted) {
-                console.log("Auth: Initial session found for user:", session.user.id);
-                await handleUserAuth(session);
-            } else {
-                console.log("Auth: No initial session found");
-                // If we're on the login page, we don't want to spin forever
-                if (mounted) setIsLoadingAuth(false);
-            }
-        } catch (err) {
-            console.error("Auth: Failed to get initial session:", err);
-            if (mounted) setIsLoadingAuth(false);
-        }
-
-        // 3. Listen for changes
+        // 2. Setup Listener IMMEDIATELY (Before getSession)
+        // This ensures we catch any events emitted during getSession or immediate load
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (!mounted) return;
-            console.log(`Auth Event (listener): ${event}`, session?.user?.id);
-
-            // Cast to string to avoid TS errors with older type definitions
+            // console.log(`Auth Event (listener): ${event}`, session?.user?.id); // Reduce noise
+            
             const eventType = event as string;
 
             if (eventType === 'SIGNED_IN' || eventType === 'INITIAL_SESSION') {
                 if (session) {
                     await handleUserAuth(session);
                 } else if (eventType === 'INITIAL_SESSION') {
+                     // Initial session done but no session => User is definitely logged out
+                     console.log("Auth: INITIAL_SESSION - No session");
                      setIsLoadingAuth(false);
                 }
             } else if (eventType === 'TOKEN_REFRESHED') {
-                // Do nothing on token refresh to prevent app reload
-                console.log('Auth: Token refreshed, skipping data reload');
+                console.log('Auth: Token refreshed');
             } else if (eventType === 'SIGNED_OUT') {
+                console.log("Auth: Signed out");
                 setCurrentUser(null);
                 setIsAuthenticated(false);
                 setIsPendingApproval(false);
                 setIsLoadingAuth(false);
+            }
+        });
+
+        // 3. Initial Session Check (Non-blocking)
+        // We use this to double-check, but we don't await it to block the UI thread/rendering
+        supabase.auth.getSession().then(({ data: { session }, error }) => {
+            if (error) {
+                console.error("Auth: Manual getSession error:", error);
+                if (mounted && isLoadingAuth) setIsLoadingAuth(false);
+                return;
+            }
+
+            if (session && mounted) {
+                // We rely on handleUserAuth being idempotent or internal checks
+                // But usually the listener catches INITIAL_SESSION anyway.
+                // We call it here just in case the listener missed it or was delayed.
+                console.log("Auth: Manual getSession found session", session.user.id);
+                handleUserAuth(session);
+            } else if (mounted) {
+                 // No session found manually. 
+                 // If the listener hasn't fired INITIAL_SESSION yet, we might want to wait for it.
+                 // But typically getSession resolving null means we are anon.
+                 // We'll let the listener's INITIAL_SESSION event handle turning off loading if it hasn't already.
+                 // If we turn it off here, we risk flashing login screen before listener confirms.
+                 // However, getting null here is a strong signal we are not logged in.
             }
         });
 
