@@ -62,7 +62,7 @@ const Settings = () => {
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping,
     // New Admin Caps
-    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile
+    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail
   } = useApp();
 
   const location = useLocation();
@@ -74,6 +74,39 @@ const Settings = () => {
       setActiveTab(state.activeTab);
     }
   }, [location.state]);
+
+  // --- Email Templates State ---
+  const [emailSubject, setEmailSubject] = useState(branding.emailTemplate?.subject || `Welcome to ${branding.appName}`);
+  const [emailBody, setEmailBody] = useState(branding.emailTemplate?.body || `
+<p>Hi {name},</p>
+<p>You have been invited to join <strong>{app_name}</strong>.</p>
+<p>Please click the link below to get started:</p>
+<p>{link}</p>
+<p>Best regards,<br/>The Admin Team</p>
+`);
+
+  const handleSaveEmailTemplate = async () => {
+       const newBranding = {
+           ...branding,
+           emailTemplate: {
+               subject: emailSubject,
+               body: emailBody
+           }
+       };
+       await updateBranding(newBranding);
+       alert("Email template saved!");
+  };
+
+  const handleTestEmail = async () => {
+      const email = prompt("Enter email to send test to:", currentUser?.email);
+      if (email) {
+         if (await sendWelcomeEmail(email, "Test User")) {
+             alert(`Test email sent to ${email}`);
+         } else {
+             alert("Failed to send test email. Check console/network.");
+         }
+      }
+  };
 
   const [fieldRegistry, setFieldRegistry] = useState<any[]>([]);
   
@@ -282,7 +315,8 @@ const Settings = () => {
         { id: 'SECURITY', label: 'Security & Users', icon: Shield },
         { id: 'NOTIFICATIONS', label: 'Notifications', icon: Bell },
         { id: 'BRANDING', label: 'Branding', icon: Palette },
-        { id: 'MIGRATION', label: 'Data Migration', icon: Upload }
+        { id: 'MIGRATION', label: 'Data Migration', icon: Upload },
+        { id: 'EMAIL', label: 'Email Templates', icon: Mail }
   ];
 
   // --- Helper Functions ---
@@ -2490,6 +2524,62 @@ if __name__ == "__main__":
                     </div>
                  </div>
              )}
+    
+             {/* Email Templates Tab */}
+             {activeTab === 'EMAIL' && (
+                 <div className="space-y-6 animate-fade-in">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Email Templates</h2>
+                              <p className="text-sm text-gray-500">Customize the welcome email sent to new users.</p>
+                          </div>
+                          <div className="flex gap-3">
+                              <button onClick={handleTestEmail} className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 font-medium transition-colors">
+                                  Send Test Email
+                              </button>
+                              <button onClick={handleSaveEmailTemplate} className="px-4 py-2 bg-[var(--color-brand)] text-white rounded-lg hover:opacity-90 font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2">
+                                  <Save size={18} /> Save Changes
+                              </button>
+                          </div>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 space-y-6">
+                           <div>
+                               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Email Subject</label>
+                               <input 
+                                  className="input-field w-full font-medium"
+                                  value={emailSubject}
+                                  onChange={(e) => setEmailSubject(e.target.value)}
+                                  placeholder="Welcome to ProcureFlow"
+                               />
+                           </div>
+
+                           <div>
+                               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Email Body (HTML)</label>
+                               <div className="text-xs text-gray-500 mb-2">
+                                   Supported Placeholders: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{name}'}</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{app_name}'}</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{link}'}</code>
+                               </div>
+                               <textarea 
+                                  className="input-field w-full font-mono text-sm min-h-[300px]"
+                                  value={emailBody}
+                                  onChange={(e) => setEmailBody(e.target.value)}
+                                  placeholder="<html>...</html>"
+                               />
+                           </div>
+                           
+                           <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-lg p-4">
+                               <h4 className="font-bold text-blue-800 dark:text-blue-300 mb-2 text-sm">Preview</h4>
+                               <div className="bg-white p-4 rounded border border-gray-200 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ 
+                                   __html: emailBody
+                                    .replace(/{name}/g, 'John Doe')
+                                    .replace(/{app_name}/g, branding.appName)
+                                    .replace(/{link}/g, '<a href="#">http://example.com</a>') 
+                                }}></div>
+                           </div>
+                      </div>
+                 </div>
+             )}
+
     </div>
   );
 };

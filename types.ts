@@ -53,6 +53,11 @@ export interface User {
   approvalReason?: string;
 }
 
+export interface EmailTemplate {
+  subject: string;
+  body: string; // HTML supported
+}
+
 export interface AppBranding {
   appName: string;
   logoUrl: string;
@@ -60,6 +65,7 @@ export interface AppBranding {
   secondaryColor: string; // Hex code
   fontFamily: 'sans' | 'serif' | 'mono';
   sidebarTheme?: 'dark' | 'light' | 'brand' | 'system';
+  emailTemplate?: EmailTemplate;
 }
 
 export interface AuthConfig {

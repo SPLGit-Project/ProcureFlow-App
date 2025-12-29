@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import { User, UserRole } from '../types';
 
 const AdminAccessHub = () => {
-    const { users, reloadData, roles, sites, searchDirectory, addUser } = useApp();
+    const { users, reloadData, roles, sites, searchDirectory, sendWelcomeEmail } = useApp();
     const [activeTab, setActiveTab] = useState<'pending' | 'directory'>('pending');
     const [filter, setFilter] = useState('');
     
@@ -81,19 +81,13 @@ const AdminAccessHub = () => {
                 })
                 .eq('id', selectedUser.id);
                 if (error) throw error;
+                
+                // Optional: Send "Access Granted" email even for existing users? 
+                // For now, let's stick to "Invite" logic for fresh adds, but maybe good to confirm.
+                // Request said "send new users an email when added". 
+                // We'll stick to the "Add New" block below for the Invite.
             } else {
                 // Add New (From Directory)
-                const newUser = {
-                    ...selectedUser,
-                    status: 'APPROVED',
-                    role: selectedRole,
-                    siteIds: finalSiteIds,
-                    createdAt: new Date().toISOString()
-                };
-                // We need to use addUser from context which handles Supabase insert? 
-                // Wait, useApp().addUser inserts into state, but we need DB insert.
-                // context/AppContext.tsx addUser implementation checks?
-                // Actually, let's just do direct DB insert for safety here as we are Admin.
                 const { error } = await supabase.from('users').insert([{
                     id: selectedUser.id,
                     email: selectedUser.email,
@@ -106,6 +100,14 @@ const AdminAccessHub = () => {
                     avatar: selectedUser.avatar
                 }]);
                  if (error) throw error;
+                 
+                 // Send Welcome Email
+                 const emailSent = await sendWelcomeEmail(selectedUser.email, selectedUser.name);
+                 if (emailSent) {
+                     alert("User added and welcome email sent.");
+                 } else {
+                     alert("User added, but failed to send welcome email.");
+                 }
             }
 
             await reloadData();

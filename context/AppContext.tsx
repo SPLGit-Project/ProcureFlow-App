@@ -702,13 +702,79 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const { error } = await supabase.auth.signInWithOAuth({
           provider: 'azure',
           options: {
-              scopes: 'openid profile email User.Read User.ReadBasic.All offline_access',
+              scopes: 'openid profile email User.Read User.ReadBasic.All Mail.Send offline_access',
               redirectTo: window.location.origin
           }
       });
       if (error) {
           console.error("Login failed:", error.message);
           alert(`Login failed: ${error.message}`);
+      }
+  };
+
+  const sendWelcomeEmail = async (toEmail: string, name: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.provider_token;
+      
+      if (!token) {
+          console.error("Auth: No provider token found for Email Send");
+          return false;
+      }
+
+      const defaultSubject = `Welcome to ${branding.appName}`;
+      const defaultBody = `
+        <p>Hi ${name},</p>
+        <p>You have been invited to join <strong>${branding.appName}</strong>.</p>
+        <p>Please click the link below to get started:</p>
+        <p><a href="${window.location.origin}">${window.location.origin}</a></p>
+        <p>Best regards,<br/>The Admin Team</p>
+      `;
+
+      const subject = branding.emailTemplate?.subject ? 
+          branding.emailTemplate.subject.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName) 
+          : defaultSubject;
+          
+      const body = branding.emailTemplate?.body ? 
+          branding.emailTemplate.body.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName).replace(/{link}/g, `<a href="${window.location.origin}">${window.location.origin}</a>`) 
+          : defaultBody;
+
+      const emailPayload = {
+          message: {
+              subject: subject,
+              body: {
+                  contentType: "HTML",
+                  content: body
+              },
+              toRecipients: [
+                  {
+                      emailAddress: {
+                          address: toEmail
+                      }
+                  }
+              ]
+          },
+          saveToSentItems: "true"
+      };
+
+      try {
+          const resp = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+              method: 'POST',
+              headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(emailPayload)
+          });
+
+          if (!resp.ok) {
+              const err = await resp.text();
+              console.error("Email send failed", err);
+              return false;
+          }
+          return true;
+      } catch (e) {
+          console.error("Email network error", e);
+          return false;
       }
   };
 
@@ -1270,7 +1336,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             console.error("Directory Search Failed", e);
             return [];
         }
-    }
+    },
+    sendWelcomeEmail
   }), [
     currentUser, isAuthenticated, activeSiteId, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
