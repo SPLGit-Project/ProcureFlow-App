@@ -605,16 +605,30 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             
             try {
                 isCheckingSessionRef.current = true;
+                // Smart Re-entry: Don't hammer auth/db if we just fetched
+                const now = Date.now();
+                if (currentUser && (now - lastFetchTime.current < 5 * 60 * 1000)) {
+                    console.log("Auth: App returned to foreground, data is fresh. Skipping checks.");
+                    return;
+                }
+
                 console.log("Auth: App returned to foreground, checking session...");
-                // Force a re-check if we are stuck or just to be safe
                 const { data: { session } } = await supabase.auth.getSession();
+                
                 if (session) {
-                     // Refresh user data silently
-                    await handleUserAuth(session, true); 
+                     // Only full refresh if we are stale
+                     if (!currentUser || session.user.email !== currentUser.email) {
+                         await handleUserAuth(session, true); 
+                     } else {
+                         // Session is valid, user matches, but data might be old (> 5 mins)
+                         // triggers silent refresh of data + user profile
+                         await handleUserAuth(session, true);
+                     }
                 } else {
-                     // If no session and we were loading, stop loading
                      if (mounted && isLoadingAuth) setIsLoadingAuth(false);
                 }
+            } catch (e) {
+                console.error("Visibility check failed", e);
             } finally {
                 isCheckingSessionRef.current = false;
             }
