@@ -295,10 +295,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     // Safety timeout to ensure we don't get stuck on loading forever
     const safetyTimeout = setTimeout(() => {
         if (mounted && isLoadingAuth) {
-            console.warn("Auth: Safety timeout triggered, forcing load state off.");
+            console.warn("Auth: Safety timeout triggered (30s), forcing load state off.");
             setIsLoadingAuth(false);
         }
-    }, 10000); // 10 seconds
+    }, 30000); // 30 seconds
 
     const initializeAuth = async () => {
         setIsLoadingAuth(true);
@@ -329,6 +329,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
         // 2. Initial Session Check
         try {
+            console.log("Auth: Checking initial session...");
             const { data: { session } } = await supabase.auth.getSession();
             if (session && mounted) {
                 console.log("Auth: Initial session found for user:", session.user.id);
