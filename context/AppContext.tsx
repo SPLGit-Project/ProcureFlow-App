@@ -432,8 +432,42 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         if (!mounted) return;
         if (!silent) setIsLoadingAuth(true);
         try {
-            console.log("Auth: Handling user auth for", session.user.email);
-            // 1. Fetch user from our DB
+            const email = session.user.email;
+            console.log("Auth: Handling user auth for", email);
+
+            // 1. Security: Domain Lock
+            if (!email?.toLowerCase().endsWith('@splservices.com.au')) {
+                console.error("Auth: Unauthorized domain:", email);
+                alert("Access Restricted: Only @splservices.com.au accounts are allowed.");
+                await supabase.auth.signOut();
+                return;
+            }
+
+            // 2. Azure AD Graph Sync (Auto-fetch Job/Dept)
+            let adProfile = { jobTitle: '', department: '', officeLocation: '' };
+            const providerToken = session.provider_token; // Captured if 'persistSession' is true & provider scopes allow
+            
+            if (providerToken) {
+                 try {
+                     console.log("Auth: Fetching profile from Microsoft Graph...");
+                     const resp = await fetch('https://graph.microsoft.com/v1.0/me', {
+                         headers: { Authorization: `Bearer ${providerToken}` }
+                     });
+                     if (resp.ok) {
+                         const data = await resp.json();
+                         adProfile = {
+                             jobTitle: data.jobTitle || '',
+                             department: data.department || '', // Sometimes checks 'officeLocation' or 'department'
+                             officeLocation: data.officeLocation || ''
+                         };
+                         console.log("Auth: Graph Sync Success", adProfile);
+                     }
+                 } catch (e) {
+                     console.warn("Auth: Graph Sync failed", e);
+                 }
+            }
+
+            // 3. Fetch user from our DB
             let { data: rawData, error } = await supabase
                 .from('users')
                 .select('*')
@@ -462,16 +496,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
             if (!userData) {
                 console.log("Auth: User not in DB, starting registration...");
-                // 2. New User - Registration Flow
-                // Use RPC to bypass RLS limitations on counting users
+                // 4. New User - Registration Flow
                 const { data: count, error: countError } = await supabase
                     .rpc('get_user_count');
 
-                if (countError) {
-                    console.warn("Auth: Failed to get user count via RPC, falling back to 1 (not first):", countError);
-                }
-
-                const isFirstUser = count === 0;
+                // Fallback count if RPC fails
+                const finalCount = countError ? 1 : count; 
+                const isFirstUser = finalCount === 0;
                 
                 const dbUser = {
                     id: session.user.id,
@@ -480,7 +511,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     role_id: isFirstUser ? 'ADMIN' : 'SITE_USER',
                     status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
                     avatar: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || '',
-                    job_title: '',
+                    // Auto-fill from AD if available
+                    job_title: adProfile.jobTitle,
+                    department: adProfile.department || adProfile.officeLocation,
                     created_at: new Date().toISOString(),
                     site_ids: []
                 };
@@ -506,9 +539,27 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     jobTitle: dbUser.job_title,
                     status: dbUser.status as any,
                     createdAt: dbUser.created_at,
-                    siteIds: []
+                    siteIds: [],
+                    department: dbUser.department,
+                    approvalReason: '' // Cleared for new wizard flow
                 };
-                console.log("Auth: Registration complete for", userData.email);
+            } else {
+                 // Update existing user with latest AD info if valid and different?
+                 // For now, only on creation or if we want to sync every login.
+                 // Let's sync if fields are empty or mismatched to keep data fresh.
+                 const newJob = adProfile.jobTitle;
+                 const newDept = adProfile.department || adProfile.officeLocation;
+                 
+                 if ((newJob && newJob !== userData.jobTitle) || (newDept && newDept !== userData.department)) {
+                     console.log("Auth: Syncing outdated profile with AD data...");
+                     await supabase.from('users').update({
+                         job_title: newJob || userData.jobTitle,
+                         department: newDept || userData.department
+                     }).eq('id', userData.id);
+                     
+                     userData.jobTitle = newJob || userData.jobTitle;
+                     userData.department = newDept || userData.department;
+                 }
             }
 
             if (mounted) {
@@ -522,8 +573,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                      if (userData.siteIds && userData.siteIds.length > 0) {
                          // Check if currently stored site is valid
                          if (!activeSiteId || !userData.siteIds.includes(activeSiteId)) {
-                             // _setActiveSiteId is technically internal, but within component we can use setActiveSiteId wrapper
-                             // Note: setActiveSiteId from scope above might be cleaner
                              if(mounted) setActiveSiteId(userData.siteIds[0]);
                          }
                      } else {

@@ -15,7 +15,7 @@ import { supabase } from '../lib/supabaseClient';
 import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 import { useLocation } from 'react-router-dom';
-import AdminUserApproval from './AdminUserApproval';
+import AdminAccessHub from './AdminAccessHub';
 import AdminMigration from './AdminMigration';
 
 
@@ -1857,7 +1857,7 @@ if __name__ == "__main__":
       {activeTab === 'SECURITY' && (
           <div className="animate-fade-in space-y-6">
               {/* User Approval Requests */}
-              <AdminUserApproval />
+              <AdminAccessHub />
 
               <div className="flex flex-col md:flex-row gap-6 h-auto md:h-[calc(100vh-200px)] min-h-[600px]">
 

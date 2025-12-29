@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import Layout from './components/Layout';
 import Login from './components/Login';
-import PendingApproval from './components/PendingApproval';
+import OnboardingWizard from './components/OnboardingWizard';
 
 // Lazy Load Heavy Components
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -50,7 +50,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/pending-approval" element={<PendingApproval />} />
+          <Route path="/pending-approval" element={<OnboardingWizard />} />
           
           <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
             <Route index element={<Suspense fallback={<LoadingSpinner />}><Dashboard /></Suspense>} />
