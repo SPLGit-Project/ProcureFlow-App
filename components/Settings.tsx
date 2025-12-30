@@ -280,15 +280,38 @@ const Settings = () => {
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [directoryResults, setDirectoryResults] = useState<any[]>([]); // Mock User Objects
   
-  // Debounced directory search
+  // Dynamic search handling: Immediate local, Debounced directory
   useEffect(() => {
+    // 1. Immediate Local Search
+    const query = directorySearch.trim().toLowerCase();
+    if (query.length > 0) {
+      const localMatches = users.filter(u => 
+          u.status !== 'ARCHIVED' && (
+          u.name.toLowerCase().includes(query) || 
+          u.email.toLowerCase().includes(query)
+      )).map(u => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          jobTitle: u.jobTitle,
+          isExisting: true,
+          currentRole: u.role,
+          currentSiteIds: u.siteIds || []
+      }));
+      
+      // Update results with local matches immediately
+      setDirectoryResults(localMatches);
+    } else {
+      setDirectoryResults([]);
+    }
+
+    // 2. Debounced Directory Search (for 3+ chars)
     const timer = setTimeout(() => {
-      if (directorySearch.trim().length >= 1) {
+      if (directorySearch.trim().length >= 3) {
         handleDirectorySearch();
-      } else if (directorySearch.trim().length === 0) {
-        setDirectoryResults([]);
       }
-    }, 400); // Slightly faster debounce
+    }, 400);
+
     return () => clearTimeout(timer);
   }, [directorySearch]);
   
@@ -733,39 +756,43 @@ if __name__ == "__main__":
 
   // --- Directory & User Search Unified ---
   const handleDirectorySearch = async () => {
+    if (directorySearch.trim().length < 3) return;
+    
     setDirectoryLoading(true);
     
-    // 1. Search Local Users (Fast, 1+ char)
-    const localMatches = users.filter(u => 
-        u.status !== 'ARCHIVED' && (
-        u.name.toLowerCase().includes(directorySearch.toLowerCase()) || 
-        u.email.toLowerCase().includes(directorySearch.toLowerCase())
-    )).map(u => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        jobTitle: u.jobTitle,
-        isExisting: true,
-        currentRole: u.role,
-        currentSiteIds: u.siteIds || []
-    }));
-
-    // 2. Directory Search (Expensive, 3+ chars)
-    let directoryMatches: any[] = [];
-    if (directorySearch.trim().length >= 3) {
-      try {
+    try {
         const results = await searchDirectory(directorySearch);
+        
         // Deduplicate: remove if already in local matches (by email or id)
-        directoryMatches = results.filter(du => 
+        const directoryMatches = results.filter(du => 
             !users.some(u => u.id === du.id || u.email === du.email)
         );
-      } catch (err) {
-        console.error("Directory search failed", err);
-      }
-    }
 
-    setDirectoryResults([...localMatches, ...directoryMatches]);
-    setDirectoryLoading(false);
+        setDirectoryResults(prev => {
+            // Re-run local search to ensure we have the latest set
+            const query = directorySearch.trim().toLowerCase();
+            const localMatches = users.filter(u => 
+                u.status !== 'ARCHIVED' && (
+                u.name.toLowerCase().includes(query) || 
+                u.email.toLowerCase().includes(query)
+            )).map(u => ({
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                jobTitle: u.jobTitle,
+                isExisting: true,
+                currentRole: u.role,
+                currentSiteIds: u.siteIds || []
+            }));
+
+            // Combine and preserve order (Local first, then directory)
+            return [...localMatches, ...directoryMatches];
+        });
+    } catch (err) {
+        console.error("Directory search failed", err);
+    } finally {
+        setDirectoryLoading(false);
+    }
   };
 
   const handleAddFromDirectory = (mockUser: any) => {

@@ -1607,8 +1607,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         
         try {
             // Microsoft Graph Advanced Query
-            // Requires 'ConsistencyLevel: eventual' header for $search
-            const resp = await fetch(`https://graph.microsoft.com/v1.0/users?$search="displayName:${query}" OR "mail:${query}"&$select=id,displayName,mail,jobTitle,department,officeLocation&$top=10`, {
+            // Use quotes for the search term to handle spaces/symbols correctly
+            const escapedQuery = query.replace(/"/g, '\\"');
+            const url = `https://graph.microsoft.com/v1.0/users?$search="displayName:${escapedQuery}" OR "mail:${escapedQuery}"&$select=id,displayName,mail,jobTitle,department,officeLocation&$top=10`;
+            
+            const resp = await fetch(url, {
                 headers: { 
                     Authorization: `Bearer ${token}`,
                     ConsistencyLevel: 'eventual'
