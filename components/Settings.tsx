@@ -2596,7 +2596,7 @@ if __name__ == "__main__":
                                                          )}
                                                      </div>
 
-                                                     {directoryLoading ? (
+                                                     {directoryLoading && directoryResults.length === 0 ? (
                                                         <div className="flex flex-col items-center justify-center py-12 text-gray-400 space-y-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
                                                              <div className="relative">
                                                                  <div className="w-8 h-8 border-2 border-[var(--color-brand)] border-t-transparent rounded-full animate-spin"></div>
