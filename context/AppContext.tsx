@@ -271,7 +271,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
         }
 
-        if (!silent) setIsLoadingData(true);
+        if (!silent && !currentUser) setIsLoadingData(true);
         try {
             // Parallel fetch with individual error handling
             const [
@@ -333,6 +333,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     
     
 
+    // ... (rest of code)
+    
+    
+  // Ref to prevent double-processing of auth events (listener + manual check overlap)
+  const isAuthProcessingRef = React.useRef(false);
   const isCheckingSessionRef = React.useRef(false);
 
   // Auth Initialization
@@ -454,28 +459,49 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }, 2500); // 2.5s wait
         }
 
-        // 4. Initial Session Check (Non-blocking)
-        supabase.auth.getSession().then(({ data: { session }, error }) => {
-            if (error) {
-                console.error("Auth: Manual getSession error:", error);
-                if (mounted && isLoadingAuth && !hash) setIsLoadingAuth(false);
-                return;
-            }
+        // 4. Initial Session Check (Debounced/Fallback)
+        // Only run this if onAuthStateChange doesn't fire within 500ms
+        const initCheckTimeout = setTimeout(() => {
+             if (!mounted) return;
+             console.log("Auth: No immediate event from listener, checking session manually...");
+             
+             supabase.auth.getSession().then(({ data: { session }, error }) => {
+                if (error) {
+                    console.error("Auth: Manual getSession error:", error);
+                    if (mounted && isLoadingAuth && !hash) setIsLoadingAuth(false);
+                    return;
+                }
 
-            if (session && mounted) {
-                if (manualRecoveryTimeout) clearTimeout(manualRecoveryTimeout);
-                console.log("Auth: Manual getSession found session", session.user.id);
-                handleUserAuth(session);
-            } else if (mounted && !hash) {
-                 // No session, no hash -> probably anon
-            }
-        });
+                if (session && mounted) {
+                    if (manualRecoveryTimeout) clearTimeout(manualRecoveryTimeout);
+                    console.log("Auth: Manual getSession found session", session.user.id);
+                    handleUserAuth(session);
+                } else if (mounted && !hash) {
+                     // No session, no hash -> probably anon
+                     setIsLoadingAuth(false);
+                }
+            });
+        }, 500);
 
-        return subscription;
+        // Store timeout in a way we can clear if event fires?
+        // Actually, we can just let it run, but check isAuthProcessingRef inside handleUserAuth
+
+        return () => {
+             subscription?.unsubscribe();
+             clearTimeout(initCheckTimeout);
+        };
     };
 
     const handleUserAuth = async (session: any, silent = false) => {
         if (!mounted) return;
+        
+        // Prevent concurrent processing
+        if (isAuthProcessingRef.current) {
+             console.log("Auth: Processing already in progress, skipping duplicate call.");
+             return;
+        }
+        isAuthProcessingRef.current = true;
+
         if (!silent) setIsLoadingAuth(true);
         try {
             const email = session.user.email;
@@ -645,6 +671,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 setCurrentUser(null);
             }
         } finally {
+            isAuthProcessingRef.current = false;
             if (mounted && !silent) setIsLoadingAuth(false);
         }
     };
@@ -701,7 +728,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         clearInterval(keepAliveInterval);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
         window.removeEventListener('focus', handleVisibilityChange);
-        authPromise.then(sub => sub?.unsubscribe());
+        authPromise.then(cleanup => cleanup && cleanup());
     };
   }, []); // Eslint might warn about reloadData dependency, but we want this to run once on mount.
 
