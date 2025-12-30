@@ -214,9 +214,9 @@ const Dashboard = () => {
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <StatCard title="Total Value (YTD)" value={`$${Math.round(totalSpend/1000)}k`} icon={TrendingUp} color="purple" onClick={() => navigate('/reports')}/>
-          <StatCard title="Pending Actions" value={myPendingApprovals.length + actionConcur.length + uncapitalizedDeliveries + myPendingDeliveries.length} icon={AlertCircle} color="red" />
-          <StatCard title="Active Suppliers" value={new Set(filteredPos.map(p=>p.supplierName)).size} icon={Truck} color="orange" />
-          <StatCard title="Avg. Approval" value={avgApprovalTime} icon={Clock} color="cyan" />
+          <StatCard title="Pending Actions" value={myPendingApprovals.length + actionConcur.length + uncapitalizedDeliveries + myPendingDeliveries.length} icon={AlertCircle} color="red" onClick={() => navigate('/requests')} />
+          <StatCard title="Active Suppliers" value={new Set(filteredPos.map(p=>p.supplierName)).size} icon={Truck} color="orange" onClick={() => navigate('/reports')} />
+          <StatCard title="Avg. Approval" value={avgApprovalTime} icon={Clock} color="cyan" onClick={() => navigate('/reports')} />
       </div>
 
       {/* Metrics & Analysis Grid */}
