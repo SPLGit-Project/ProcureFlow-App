@@ -179,9 +179,9 @@ export const MOCK_POS: PORequest[] = [
 ];
 
 export const MOCK_WORKFLOW_STEPS: WorkflowStep[] = [
-    { id: 'wf-1', stepName: 'Site Approval', approverRole: 'APPROVER', conditionType: 'ALWAYS', order: 1, isActive: true },
-    { id: 'wf-2', stepName: 'Regional Approval', approverRole: 'ADMIN', conditionType: 'AMOUNT_GT', conditionValue: 1000, order: 2, isActive: true },
-    { id: 'wf-3', stepName: 'Final Approval', approverRole: 'ADMIN', conditionType: 'AMOUNT_GT', conditionValue: 5000, order: 3, isActive: true },
+    { id: 'wf-1', stepName: 'Site Approval', approverRole: 'APPROVER', approverType: 'ROLE', approverId: 'APPROVER', conditionType: 'ALWAYS', order: 1, isActive: true },
+    { id: 'wf-2', stepName: 'Regional Approval', approverRole: 'ADMIN', approverType: 'ROLE', approverId: 'ADMIN', conditionType: 'AMOUNT_GT', conditionValue: 1000, order: 2, isActive: true },
+    { id: 'wf-3', stepName: 'Final Approval', approverRole: 'ADMIN', approverType: 'ROLE', approverId: 'ADMIN', conditionType: 'AMOUNT_GT', conditionValue: 5000, order: 3, isActive: true },
 ];
 
 export const MOCK_NOTIFICATIONS: NotificationRule[] = [
