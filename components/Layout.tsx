@@ -22,6 +22,7 @@ import {
   Shield
 } from 'lucide-react';
 import { PermissionId } from '../types';
+import PwaInstaller from './PwaInstaller';
 
 const Layout = () => {
   const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteId, setActiveSiteId, sites, siteName, originalUser, stopImpersonation } = useApp();
@@ -71,6 +72,7 @@ const Layout = () => {
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-[#15171e] text-slate-700 dark:text-slate-300 font-sans selection:bg-[var(--color-brand)] selection:text-white transition-colors duration-200" style={{fontFamily: 'var(--font-family)'}}>
+      <PwaInstaller />
       
       {/* Mobile Overlay */}
       {isMobileMenuOpen && (

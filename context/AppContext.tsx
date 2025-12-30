@@ -760,6 +760,59 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       root.style.setProperty('--color-secondary-rgb', hexToRgb(branding.secondaryColor));
 
       localStorage.setItem('app-branding', JSON.stringify(branding));
+
+      // --- Dynamic Manifest & Favicon Injection ---
+      // 1. Favicon
+      const linkFavicon = document.querySelector("link[rel*='icon']") as HTMLLinkElement || document.createElement('link');
+      linkFavicon.type = 'image/x-icon';
+      linkFavicon.rel = 'icon';
+      linkFavicon.href = branding.logoUrl;
+      document.getElementsByTagName('head')[0].appendChild(linkFavicon);
+
+      // 2. Apple Touch Icon
+      const linkApple = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement || document.createElement('link');
+      linkApple.rel = 'apple-touch-icon';
+      linkApple.href = branding.logoUrl;
+      document.getElementsByTagName('head')[0].appendChild(linkApple);
+
+      // 3. Meta Theme Color
+      const metaTheme = document.querySelector("meta[name='theme-color']") as HTMLMetaElement || document.createElement('meta');
+      metaTheme.name = 'theme-color';
+      metaTheme.content = branding.primaryColor;
+      document.getElementsByTagName('head')[0].appendChild(metaTheme);
+
+      // 4. Dynamic Manifest
+      const manifest = {
+          name: branding.appName,
+          short_name: branding.appName.length > 12 ? branding.appName.substring(0, 12) : branding.appName,
+          start_url: ".",
+          display: "standalone",
+          background_color: "#ffffff",
+          theme_color: branding.primaryColor,
+          orientation: "portrait",
+          icons: [
+              {
+                  src: branding.logoUrl,
+                  sizes: "192x192", // We assume the logo url provided scales or is vector, or browsers handle resize
+                  type: "image/png"
+              },
+              {
+                  src: branding.logoUrl,
+                  sizes: "512x512",
+                  type: "image/png"
+              }
+          ]
+      };
+      
+      const stringManifest = JSON.stringify(manifest);
+      const blob = new Blob([stringManifest], {type: 'application/json'});
+      const manifestURL = URL.createObjectURL(blob);
+      
+      const linkManifest = document.querySelector("link[rel='manifest']") as HTMLLinkElement || document.createElement('link');
+      linkManifest.rel = 'manifest';
+      linkManifest.href = manifestURL;
+      document.getElementsByTagName('head')[0].appendChild(linkManifest);
+
   }, [branding]);
 
   // authConfig removed - managed via backend
