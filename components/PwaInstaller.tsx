@@ -28,6 +28,7 @@ export default function PwaInstaller() {
 
     // Capture install prompt
     const handleBeforeInstallPrompt = (e: Event) => {
+      console.log('PWA: beforeinstallprompt fired');
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       
