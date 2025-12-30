@@ -24,13 +24,7 @@ const Dashboard = () => {
      return pos.filter(p => p.site === selectedSite);
   }, [pos, selectedSite]);
 
-  if (isLoadingData) {
-      return (
-          <div className="flex h-[50vh] w-full items-center justify-center">
-              <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-gray-900 dark:border-white"></div>
-          </div>
-      );
-  }
+
 
   // --- Pipeline Metrics (Filtered) ---
   const pendingApprovals = filteredPos.filter(p => p.status === 'PENDING_APPROVAL');
@@ -136,6 +130,14 @@ const Dashboard = () => {
     }
     return `${days.toFixed(1)} days`;
   }, [filteredPos]);
+
+  if (isLoadingData) {
+      return (
+          <div className="flex h-[50vh] w-full items-center justify-center">
+              <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-gray-900 dark:border-white"></div>
+          </div>
+      );
+  }
 
   const StatCard = ({ title, value, icon: Icon, color, onClick }: any) => (
       <div 
