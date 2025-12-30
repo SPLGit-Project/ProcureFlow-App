@@ -3389,7 +3389,7 @@ if __name__ == "__main__":
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-bold text-gray-500 uppercase">Approver Assignment</label>
+                                            <label className="text-xs font-bold text-gray-500 uppercase">Approver Assignment {/* Select User or Role */}</label>
                                             <div className="flex bg-gray-100 dark:bg-[#15171e] p-1 rounded-lg mt-1 mb-2">
                                                 <button 
                                                     onClick={() => updateWorkflowStep({ ...step, approverType: 'ROLE', approverId: roles[0]?.id || '' })}
