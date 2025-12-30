@@ -70,62 +70,80 @@ export default function PwaInstaller() {
 
   const handleDismiss = () => {
     setShowPrompt(false);
+    // Reduced dismissal time to 1 hour for better visibility during testing/rollout
     localStorage.setItem('pwa_prompt_dismissed', Date.now().toString());
   };
 
-  if (isStandalone || !showPrompt) return null;
+  if (isStandalone) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center pointer-events-none p-4 md:p-0">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity duration-300" onClick={handleDismiss} />
-      
-      <div className="bg-white dark:bg-[#1e2029] w-full max-w-md rounded-t-2xl md:rounded-2xl shadow-2xl overflow-hidden pointer-events-auto animate-slide-up relative">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-[var(--color-brand)] to-blue-600 p-6 text-white relative">
-            <button onClick={handleDismiss} className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors">
-                <X size={20} />
-            </button>
-            <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-white rounded-2xl shadow-lg flex items-center justify-center overflow-hidden">
-                    <img src={branding.logoUrl} alt="App Icon" className="w-full h-full object-cover" />
-                </div>
-                <div>
-                    <h3 className="font-bold text-lg">Install {branding.appName}</h3>
-                    <p className="text-blue-100 text-sm">Best experience on {isIOS ? 'iPhone' : 'Device'}</p>
-                </div>
-            </div>
-        </div>
+    <>
+      {/* 1. Main Modal Prompt */}
+      {showPrompt && (
+      <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center pointer-events-none p-4 md:p-0">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity duration-300" onClick={handleDismiss} />
+        
+        <div className="bg-white dark:bg-[#1e2029] w-full max-w-md rounded-t-2xl md:rounded-2xl shadow-2xl overflow-hidden pointer-events-auto animate-slide-up relative">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-[var(--color-brand)] to-blue-600 p-6 text-white relative">
+              <button onClick={handleDismiss} className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors">
+                  <X size={20} />
+              </button>
+              <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-white rounded-2xl shadow-lg flex items-center justify-center overflow-hidden">
+                      <img src={branding.logoUrl} alt="App Icon" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                      <h3 className="font-bold text-lg">Install {branding.appName}</h3>
+                      <p className="text-blue-100 text-sm">Best experience on {isIOS ? 'iPhone' : 'Device'}</p>
+                  </div>
+              </div>
+          </div>
 
-        {/* Content */}
-        <div className="p-6">
-            <div className="flex flex-col gap-4">
-                <p className="text-gray-600 dark:text-gray-300 text-sm">
-                    Install this application on your home screen for quick access and a better fullscreen experience.
-                </p>
+          {/* Content */}
+          <div className="p-6">
+              <div className="flex flex-col gap-4">
+                  <p className="text-gray-600 dark:text-gray-300 text-sm">
+                      Install this application on your home screen for quick access and a better fullscreen experience.
+                  </p>
 
-                {isIOS ? (
-                    <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-4 space-y-3 text-sm text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center gap-3">
-                            <span className="w-6 h-6 flex items-center justify-center bg-gray-200 dark:bg-white/10 rounded-full font-bold text-xs">1</span>
-                            <span>Tap the <Share size={16} className="inline mx-1 text-blue-500" /> <strong>Share</strong> button below</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <span className="w-6 h-6 flex items-center justify-center bg-gray-200 dark:bg-white/10 rounded-full font-bold text-xs">2</span>
-                            <span>Select <PlusSquare size={16} className="inline mx-1" /> <strong>Add to Home Screen</strong></span>
-                        </div>
-                    </div>
-                ) : (
-                    <button 
-                        onClick={handleInstallClick}
-                        className="w-full bg-[var(--color-brand)] hover:brightness-110 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                        <Download size={20} />
-                        Install App
-                    </button>
-                )}
-            </div>
+                  {isIOS ? (
+                      <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-4 space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                          <div className="flex items-center gap-3">
+                              <span className="w-6 h-6 flex items-center justify-center bg-gray-200 dark:bg-white/10 rounded-full font-bold text-xs">1</span>
+                              <span>Tap the <Share size={16} className="inline mx-1 text-blue-500" /> <strong>Share</strong> button below</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                              <span className="w-6 h-6 flex items-center justify-center bg-gray-200 dark:bg-white/10 rounded-full font-bold text-xs">2</span>
+                              <span>Select <PlusSquare size={16} className="inline mx-1" /> <strong>Add to Home Screen</strong></span>
+                          </div>
+                      </div>
+                  ) : (
+                      <button 
+                          onClick={handleInstallClick}
+                          className="w-full bg-[var(--color-brand)] hover:brightness-110 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                      >
+                          <Download size={20} />
+                          Install App
+                      </button>
+                  )}
+              </div>
+          </div>
         </div>
       </div>
-    </div>
+      )}
+
+      {/* 2. Persistent Floating Button (Fab) - Shows if dismissed but installable */}
+      {!showPrompt && !isStandalone && (deferredPrompt || isIOS) && (
+          <button
+            onClick={() => setShowPrompt(true)} 
+            className="fixed bottom-6 right-6 z-40 bg-[var(--color-brand)] text-white p-4 rounded-full shadow-xl shadow-blue-500/30 hover:scale-110 transition-transform animate-bounce-slow flex items-center gap-2 pr-6"
+            title="Install App"
+          >
+              <Download size={24} />
+              <span className="font-bold">Install App</span>
+          </button>
+      )}
+    </>
   );
 }
