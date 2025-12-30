@@ -62,7 +62,7 @@ const Settings = () => {
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping,
     // New Admin Caps
-    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, impersonateUser, archiveUser
+    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, impersonateUser, archiveUser, searchDirectory
   } = useApp();
 
   const location = useLocation();
@@ -279,6 +279,18 @@ const Settings = () => {
   const [directorySearch, setDirectorySearch] = useState('');
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [directoryResults, setDirectoryResults] = useState<any[]>([]); // Mock User Objects
+  
+  // Debounced directory search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (directorySearch.trim().length >= 3) {
+        handleDirectorySearch();
+      } else if (directorySearch.trim().length === 0) {
+        setDirectoryResults([]);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [directorySearch]);
   
   const [isTeamsConfigOpen, setIsTeamsConfigOpen] = useState(false);
   const [teamsUrlForm, setTeamsUrlForm] = useState(teamsWebhookUrl);
@@ -739,21 +751,19 @@ if __name__ == "__main__":
         currentSiteIds: u.siteIds || []
     }));
 
-    // 2. Mock Directory Search
-    setTimeout(() => {
-        const mockUsers = [
-            { id: uuidv4(), name: 'Alice Smith', email: 'alice.smith@company.com', jobTitle: 'Procurement Specialist' },
-            { id: uuidv4(), name: 'Bob Jones', email: 'bob.jones@company.com', jobTitle: 'Site Manager' },
-            { id: uuidv4(), name: 'Carol White', email: 'carol.white@company.com', jobTitle: 'Finance Officer' },
-            { id: uuidv4(), name: 'David Brown', email: 'david.brown@company.com', jobTitle: 'Operations' }
-        ].filter(u => 
-            (u.name.toLowerCase().includes(directorySearch.toLowerCase()) || u.email.includes(directorySearch)) &&
-            !users.some(ex => ex.email === u.email) // Don't show in mock if already local
-        ).map(u => ({ ...u, isExisting: false }));
+    // 2. Directory Search (Real)
+    let directoryMatches: any[] = [];
+    if (directorySearch.trim().length >= 3) {
+      try {
+        const results = await searchDirectory(directorySearch);
+        directoryMatches = results.filter(du => !users.some(u => u.id === du.id || u.email === du.email));
+      } catch (err) {
+        console.error("Directory search failed", err);
+      }
+    }
 
-        setDirectoryResults([...localMatches, ...mockUsers]);
-        setDirectoryLoading(false);
-    }, 600);
+    setDirectoryResults([...localMatches, ...directoryMatches]);
+    setDirectoryLoading(false);
   };
 
   const handleAddFromDirectory = (mockUser: any) => {
@@ -2177,9 +2187,10 @@ if __name__ == "__main__":
 
                           {/* Tabs or Sections */}
                           <div className="flex-1 overflow-y-auto p-6">
-                              <div className="mb-8">
-                                  <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 uppercase tracking-wider flex items-center gap-2"><Lock size={16}/> Permissions</h3>
-                                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                              {activeRole.id !== 'ALL' && (
+                                <div className="mb-8">
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 uppercase tracking-wider flex items-center gap-2"><Lock size={16}/> Permissions</h3>
+                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
                                     {['Page Access', 'Functional Access', 'Admin Access'].map((category) => {
                                         const categoryPerms = AVAILABLE_PERMISSIONS.filter(p => p.category === category);
@@ -2220,8 +2231,9 @@ if __name__ == "__main__":
                                             </div>
                                         );
                                     })}
+                                      </div>
                                   </div>
-                              </div>
+                              )}
 
                               <div>
                                   <div className="flex justify-between items-center mb-4">
@@ -2413,6 +2425,7 @@ if __name__ == "__main__":
                                        {/* Tab Switcher */}
                                        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-full md:w-fit">
                                            <button onClick={() => setInviteTab('SEARCH')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'SEARCH' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Search Users & Directory</button>
+                                           <button onClick={() => setInviteTab('MEMBERS')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MEMBERS' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Active Members</button>
                                            <button onClick={() => setInviteTab('MANUAL')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MANUAL' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Manual Entry</button>
                                        </div>
 
@@ -2421,14 +2434,17 @@ if __name__ == "__main__":
                                                <div className="relative">
                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                                                    <input 
-                                                       className="input-field pl-10 h-12 text-base" 
-                                                       placeholder="Search name or email..." 
+                                                       className="input-field pl-10 h-14 text-lg" 
+                                                       placeholder="Type name or email..." 
                                                        value={directorySearch} 
                                                        onChange={e => setDirectorySearch(e.target.value)}
-                                                       onKeyDown={e => e.key === 'Enter' && handleDirectorySearch()}
                                                        autoFocus
                                                    />
-                                                   <button onClick={handleDirectorySearch} className="absolute right-2 top-1/2 -translate-y-1/2 btn-secondary py-1 px-3 text-xs">Search</button>
+                                                   {directoryLoading && (
+                                                       <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                                            <div className="w-5 h-5 border-2 border-[var(--color-brand)] border-t-transparent rounded-full animate-spin"></div>
+                                                       </div>
+                                                   )}
                                                </div>
                                                
                                                <div className="space-y-2">
@@ -2443,16 +2459,21 @@ if __name__ == "__main__":
                                                            {directoryResults.map(u => (
                                                                <div key={u.id} className="bg-white dark:bg-[#15171e] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group hover:border-[var(--color-brand)] hover:shadow-md transition-all cursor-pointer" onClick={() => handleSelectUserForInvite(u)}>
                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="w-10 h-10 rounded-full bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center font-bold">
+                                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${u.isExisting ? 'bg-blue-100 text-blue-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>
                                                                             {u.name.charAt(0)}
                                                                         </div>
                                                                         <div>
-                                                                           <div className="font-bold text-gray-900 dark:text-white">{u.name}</div>
+                                                                           <div className="flex items-center gap-2">
+                                                                               <div className="font-bold text-gray-900 dark:text-white">{u.name}</div>
+                                                                               {u.isExisting && <span className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[9px] font-bold uppercase">Existing Member</span>}
+                                                                           </div>
                                                                            <div className="text-xs text-gray-500">{u.email}</div>
                                                                            <div className="text-[10px] text-gray-400 mt-0.5">{u.jobTitle}</div>
                                                                         </div>
                                                                    </div>
-                                                                   <button className="btn-secondary text-xs">Select &rarr;</button>
+                                                                   <button className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${u.isExisting ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 hover:bg-blue-600 hover:text-white' : 'btn-secondary'}`}>
+                                                                       {u.isExisting ? 'Edit Access' : 'Select'} &rarr;
+                                                                   </button>
                                                                </div>
                                                            ))}
                                                        </div>
@@ -2461,6 +2482,29 @@ if __name__ == "__main__":
                                                             No results found. Try a different search term or use Manual Entry.
                                                         </div>
                                                     )}
+                                               </div>
+                                           </div>
+                                       ) : inviteTab === 'MEMBERS' ? (
+                                           <div className="space-y-4">
+                                               <h4 className="text-xs font-bold text-gray-500 uppercase">Active Members</h4>
+                                               <div className="grid grid-cols-1 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                                   {users.filter(u => u.status !== 'ARCHIVED' && (userRoleFilter ? u.role !== userRoleFilter : true)).map(u => (
+                                                       <div key={u.id} onClick={() => handleSelectUserForInvite({ id: u.id, name: u.name, email: u.email, jobTitle: u.jobTitle, isExisting: true, currentRole: u.role, currentSiteIds: u.siteIds || [] })} className="bg-white dark:bg-[#15171e] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group hover:border-[var(--color-brand)] hover:shadow-md transition-all cursor-pointer">
+                                                           <div className="flex items-center gap-3">
+                                                               <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                                                                   {u.name.charAt(0)}
+                                                               </div>
+                                                               <div>
+                                                                   <div className="font-bold text-sm text-gray-900 dark:text-white">{u.name}</div>
+                                                                   <div className="text-[11px] text-gray-500">{u.email}</div>
+                                                               </div>
+                                                           </div>
+                                                           <div className="flex flex-col items-end gap-1">
+                                                               <span className="text-[10px] font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded uppercase">{u.role}</span>
+                                                               <button className="text-[10px] font-bold text-[var(--color-brand)] opacity-0 group-hover:opacity-100 transition-opacity">Select &rarr;</button>
+                                                           </div>
+                                                       </div>
+                                                   ))}
                                                </div>
                                            </div>
                                        ) : (

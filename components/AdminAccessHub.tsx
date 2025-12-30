@@ -246,14 +246,14 @@ const AdminAccessHub = () => {
                 {/* Local Directory (Active Users) */}
                 {activeTab === 'directory' && (
                     <div className="p-6">
-                        <div className="relative mb-6">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <div className="relative mb-8">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                             <input 
                                 type="text" 
-                                placeholder="Search active users..." 
+                                placeholder="Search active users by name or email..." 
                                 value={filter}
                                 onChange={e => setFilter(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-2xl outline-none focus:ring-2 focus:ring-[var(--color-brand)] text-lg shadow-sm"
                             />
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
