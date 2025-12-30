@@ -324,7 +324,9 @@ export interface WorkflowSLA {
 export interface WorkflowStep {
     id: string;
     stepName: string;
-    approverRole: UserRole;
+    approverRole?: UserRole; // Deprecated in favor of approverId + approverType
+    approverType: 'ROLE' | 'USER';
+    approverId: string; // Role ID or User ID
     conditionType: 'ALWAYS' | 'AMOUNT_GT';
     conditionValue?: number;
     order: number;

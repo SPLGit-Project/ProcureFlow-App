@@ -1840,7 +1840,10 @@ if __name__ == "__main__":
 
                         {/* STEPS */}
                        {workflowSteps.sort((a,b) => a.order - b.order).map((step, idx) => {
-                           const roleName = roles.find(r => r.id === step.approverRole)?.name || step.approverRole;
+                           const approverName = step.approverType === 'USER'
+                               ? (users.find(u => u.id === step.approverId)?.name || 'Unknown User')
+                               : (roles.find(r => r.id === step.approverId || r.id === step.approverRole)?.name || step.approverRole || step.approverId);
+
                            const notificationCount = step.notifications?.length || 0;
                            
                            // Simplified Monitor Logic: If step is active and PO is pending approval, assume it's here (approximated for demo)
@@ -1876,8 +1879,8 @@ if __name__ == "__main__":
                                             
                                             <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1 group-hover/card:text-[var(--color-brand)] transition-colors">{step.stepName}</h3>
                                             <div className="flex items-center gap-2 text-sm text-gray-500 mb-4 bg-gray-50 dark:bg-[#15171e] p-2 rounded-lg border border-gray-100 dark:border-gray-800">
-                                                <Shield size={14} className="text-purple-500"/>
-                                                <span className="font-medium text-gray-700 dark:text-gray-300">{roleName}</span>
+                                                {step.approverType === 'USER' ? <User size={14} className="text-blue-500"/> : <Shield size={14} className="text-purple-500"/>}
+                                                <span className="font-medium text-gray-700 dark:text-gray-300">{approverName}</span>
                                             </div>
 
                                             <div className="flex items-center justify-between text-xs border-t border-gray-100 dark:border-gray-800 pt-3 text-gray-400">
@@ -1981,13 +1984,16 @@ if __name__ == "__main__":
                            </thead>
                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                {workflowSteps.sort((a,b) => a.order - b.order).map((step) => {
-                                   const roleName = roles.find(r => r.id === step.approverRole)?.name || step.approverRole;
+                                   const approverName = step.approverType === 'USER'
+                                       ? (users.find(u => u.id === step.approverId)?.name || 'Unknown User')
+                                       : (roles.find(r => r.id === step.approverId || r.id === step.approverRole)?.name || step.approverRole || step.approverId);
                                    return (
                                        <tr key={step.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                                            <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{step.stepName}</td>
                                            <td className="px-6 py-4">
-                                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
-                                                   {roleName}
+                                               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${step.approverType === 'USER' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'}`}>
+                                                   {step.approverType === 'USER' ? <User size={12}/> : <Shield size={12}/>}
+                                                   {approverName}
                                                </span>
                                            </td>
                                            <td className="px-6 py-4 text-gray-500">
@@ -3383,16 +3389,43 @@ if __name__ == "__main__":
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-bold text-gray-500 uppercase">Approver Role</label>
-                                            <select 
-                                                className="input-field mt-1"
-                                                value={step.approverRole}
-                                                onChange={e => updateWorkflowStep({ ...step, approverRole: e.target.value })}
-                                            >
-                                                {roles.map(r => (
-                                                    <option key={r.id} value={r.id}>{r.name}</option>
-                                                ))}
-                                            </select>
+                                            <label className="text-xs font-bold text-gray-500 uppercase">Approver Assignment</label>
+                                            <div className="flex bg-gray-100 dark:bg-[#15171e] p-1 rounded-lg mt-1 mb-2">
+                                                <button 
+                                                    onClick={() => updateWorkflowStep({ ...step, approverType: 'ROLE', approverId: roles[0]?.id || '' })}
+                                                    className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-bold rounded-md transition-all ${step.approverType !== 'USER' ? 'bg-white dark:bg-[#2b2d3b] text-[var(--color-brand)] shadow-sm' : 'text-gray-500'}`}
+                                                >
+                                                    <Shield size={12}/> Role
+                                                </button>
+                                                <button 
+                                                    onClick={() => updateWorkflowStep({ ...step, approverType: 'USER', approverId: users.filter(u => u.status === 'APPROVED')[0]?.id || '' })}
+                                                    className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-bold rounded-md transition-all ${step.approverType === 'USER' ? 'bg-white dark:bg-[#2b2d3b] text-[var(--color-brand)] shadow-sm' : 'text-gray-500'}`}
+                                                >
+                                                    <User size={12}/> Specific User
+                                                </button>
+                                            </div>
+                                            
+                                            {step.approverType === 'USER' ? (
+                                                <select 
+                                                    className="input-field"
+                                                    value={step.approverId}
+                                                    onChange={e => updateWorkflowStep({ ...step, approverId: e.target.value })}
+                                                >
+                                                    {users.filter(u => u.status === 'APPROVED').map(u => (
+                                                        <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <select 
+                                                    className="input-field"
+                                                    value={step.approverId || step.approverRole}
+                                                    onChange={e => updateWorkflowStep({ ...step, approverId: e.target.value, approverRole: e.target.value })}
+                                                >
+                                                    {roles.map(r => (
+                                                        <option key={r.id} value={r.id}>{r.name}</option>
+                                                    ))}
+                                                </select>
+                                            )}
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>

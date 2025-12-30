@@ -413,6 +413,8 @@ export const db = {
             id: w.id,
             stepName: w.step_name,
             approverRole: w.approver_role,
+            approverType: w.approver_type || 'ROLE',
+            approverId: w.approver_id || w.approver_role,
             conditionType: w.condition_type,
             conditionValue: w.condition_value,
             order: w.order,
@@ -436,7 +438,9 @@ export const db = {
         const { error } = await supabase.from('workflow_steps').upsert({
             id: step.id,
             step_name: step.stepName,
-            approver_role: step.approverRole,
+            approver_role: step.approverRole, // Maintain for backward compatibility if needed
+            approver_type: step.approverType,
+            approver_id: step.approverId,
             condition_type: step.conditionType,
             condition_value: step.conditionValue,
             order: step.order,
