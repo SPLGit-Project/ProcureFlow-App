@@ -50,7 +50,7 @@ type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIE
 
 const Settings = () => {
   const {
-    currentUser, users, addUser, roles, hasPermission, createRole, updateRole, deleteRole, permissions, updateUserRole,
+    currentUser, users, addUser, roles, hasPermission, createRole, updateRole, deleteRole, permissions, updateUserRole, updateUserAccess,
     teamsWebhookUrl, updateTeamsWebhook,
     theme, setTheme, branding, updateBranding,
     suppliers, addSupplier, updateSupplier, deleteSupplier,
@@ -267,8 +267,9 @@ const Settings = () => {
           id: u.id,
           name: u.name,
           email: u.email,
-          jobTitle: u.jobTitle,
-          role: activeRole ? activeRole.id : 'SITE_USER'
+          jobTitle: u.jobTitle || '',
+          role: u.isExisting ? u.currentRole : (activeRole && activeRole.id !== 'ALL' ? activeRole.id : 'SITE_USER'),
+          siteIds: u.isExisting ? u.currentSiteIds : []
       });
       setInviteStep(2);
   };
@@ -718,21 +719,41 @@ if __name__ == "__main__":
       await upsertNotificationRule({ ...rule, isActive: !rule.isActive });
   };
 
-  // --- Directory Mock Logic ---
+  // --- Directory & User Search Unified ---
   const handleDirectorySearch = async () => {
     setDirectoryLoading(true);
     setDirectoryResults([]); 
-    // Mock
+    
+    // 1. Search Local Users
+    const localMatches = users.filter(u => 
+        u.status !== 'ARCHIVED' && (
+        u.name.toLowerCase().includes(directorySearch.toLowerCase()) || 
+        u.email.toLowerCase().includes(directorySearch.toLowerCase())
+    )).map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        jobTitle: u.jobTitle,
+        isExisting: true,
+        currentRole: u.role,
+        currentSiteIds: u.siteIds || []
+    }));
+
+    // 2. Mock Directory Search
     setTimeout(() => {
         const mockUsers = [
             { id: uuidv4(), name: 'Alice Smith', email: 'alice.smith@company.com', jobTitle: 'Procurement Specialist' },
             { id: uuidv4(), name: 'Bob Jones', email: 'bob.jones@company.com', jobTitle: 'Site Manager' },
             { id: uuidv4(), name: 'Carol White', email: 'carol.white@company.com', jobTitle: 'Finance Officer' },
             { id: uuidv4(), name: 'David Brown', email: 'david.brown@company.com', jobTitle: 'Operations' }
-        ].filter(u => u.name.toLowerCase().includes(directorySearch.toLowerCase()) || u.email.includes(directorySearch));
-        setDirectoryResults(mockUsers);
+        ].filter(u => 
+            (u.name.toLowerCase().includes(directorySearch.toLowerCase()) || u.email.includes(directorySearch)) &&
+            !users.some(ex => ex.email === u.email) // Don't show in mock if already local
+        ).map(u => ({ ...u, isExisting: false }));
+
+        setDirectoryResults([...localMatches, ...mockUsers]);
         setDirectoryLoading(false);
-    }, 800);
+    }, 600);
   };
 
   const handleAddFromDirectory = (mockUser: any) => {
@@ -2077,28 +2098,49 @@ if __name__ == "__main__":
               <div className="flex flex-col md:flex-row gap-6 h-auto md:h-[calc(100vh-200px)] min-h-[600px]">
 
               {/* Sidebar: Roles List */}
-              <div className="w-full md:w-64 flex-shrink-0 bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden max-h-[300px] md:max-h-none">
+              <div className="w-full md:w-80 flex-shrink-0 bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden max-h-[400px] md:max-h-none">
                   <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-                      <h3 className="font-bold text-gray-900 dark:text-white">Roles</h3>
+                      <h3 className="font-bold text-gray-900 dark:text-white">Security Roles</h3>
                       <button onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-[var(--color-brand)] transition-colors"><Plus size={18}/></button>
                   </div>
+                  
+                  {/* Global User Search in Sidebar */}
+                  <div className="p-3 border-b border-gray-50 dark:border-gray-800/50">
+                      <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                          <input 
+                              type="text" 
+                              placeholder="Find users..." 
+                              value={userSearch}
+                              onChange={e => {
+                                  setUserSearch(e.target.value);
+                                  if (activeRole?.id !== 'ALL') setActiveRole({ id: 'ALL', name: 'Search Results', description: 'Searching across all users', permissions: [], isSystem: true } as any);
+                              }}
+                              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-gray-800 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+                          />
+                      </div>
+                  </div>
+
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
                       <button
-                          onClick={() => setActiveRole({ id: 'ALL', name: 'All Users', description: 'View all users across all roles', permissions: [], isSystem: true } as any)}
-                          className={`w-full text-left px-3 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeRole?.id === 'ALL' ? 'bg-[var(--color-brand)] text-white shadow-md shadow-[var(--color-brand)]/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300'}`}
+                          onClick={() => { setActiveRole({ id: 'ALL', name: 'All Users', description: 'View all users across all roles', permissions: [], isSystem: true } as any); setUserSearch(''); }}
+                          className={`w-full text-left px-3 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeRole?.id === 'ALL' && !userSearch ? 'bg-[var(--color-brand)] text-white shadow-md shadow-[var(--color-brand)]/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300'}`}
                       >
-                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${activeRole?.id === 'ALL' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
-                                  <User size={16}/>
+                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${activeRole?.id === 'ALL' && !userSearch ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
+                                  <Users size={16}/>
                            </div>
                            <div className="flex-1 min-w-0">
                                   <div className="font-bold text-sm truncate">All Users</div>
-                                  <div className={`text-[10px] truncate ${activeRole?.id === 'ALL' ? 'text-white/80' : 'text-gray-400'}`}>{users.length} Users</div>
+                                  <div className={`text-[10px] truncate ${activeRole?.id === 'ALL' && !userSearch ? 'text-white/80' : 'text-gray-400'}`}>{users.filter(u => u.status !== 'ARCHIVED').length} Active Users</div>
                            </div>
                       </button> 
+                      
+                      <div className="pt-2 px-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Defined Roles</div>
+                      
                       {roles.map(role => (
                           <button
                               key={role.id}
-                              onClick={() => setActiveRole(role)}
+                              onClick={() => { setActiveRole(role); setUserSearch(''); }}
                               className={`w-full text-left px-3 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeRole?.id === role.id ? 'bg-[var(--color-brand)] text-white shadow-md shadow-[var(--color-brand)]/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300'}`}
                           >
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${activeRole?.id === role.id ? 'bg-white/20 text-white' : role.id === 'ADMIN' ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-600' : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600'}`}>
@@ -2183,30 +2225,71 @@ if __name__ == "__main__":
 
                               <div>
                                   <div className="flex justify-between items-center mb-4">
-                                      <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2"><Users size={16}/> Assigned Users</h3>
+                                      <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                                          <Users size={16}/> 
+                                          {activeRole.id === 'ALL' ? 'Directory Users' : `Assigned Users`}
+                                      </h3>
                                       <button onClick={() => { setIsDirectoryModalOpen(true); setUserRoleFilter(activeRole.id); }} className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"><Plus size={12}/> Add Users</button>
                                   </div>
                                   <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                                       <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400">
                                           <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                                              {users.filter(u => u.role === activeRole.id && u.status !== 'ARCHIVED').length > 0 ? (
-                                                  users.filter(u => u.role === activeRole.id && u.status !== 'ARCHIVED').map(user => (
+                                              {users.filter(u => {
+                                                  const matchesRole = activeRole.id === 'ALL' || u.role === activeRole.id;
+                                                  const matchesSearch = !userSearch || 
+                                                      u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
+                                                      u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                                  const notArchived = u.status !== 'ARCHIVED';
+                                                  return matchesRole && matchesSearch && notArchived;
+                                              }).length > 0 ? (
+                                                  users.filter(u => {
+                                                      const matchesRole = activeRole.id === 'ALL' || u.role === activeRole.id;
+                                                      const matchesSearch = !userSearch || 
+                                                          u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
+                                                          u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                                      const notArchived = u.status !== 'ARCHIVED';
+                                                      return matchesRole && matchesSearch && notArchived;
+                                                  }).map(user => (
                                                       <tr key={user.id} className="hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
                                                           <td className="px-4 py-3 flex items-center gap-3">
-                                                              <img src={user.avatar} className="w-8 h-8 rounded-full bg-white"/>
-                                                              <div>
-                                                                  <div className="font-bold text-gray-900 dark:text-white">{user.name}</div>
-                                                                  <div className="text-xs">{user.email}</div>
-                                                                  <div className="flex flex-wrap gap-1 mt-1">
+                                                               <div className="relative">
+                                                                  <img src={user.avatar} className="w-10 h-10 rounded-full bg-white border border-gray-200 dark:border-gray-700"/>
+                                                                  <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white dark:border-[#1e2029] ${user.status === 'APPROVED' ? 'bg-green-500' : 'bg-amber-500'}`}></div>
+                                                               </div>
+                                                               <div className="flex-1 min-w-0">
+                                                                  <div className="font-bold text-gray-900 dark:text-white truncate">{user.name}</div>
+                                                                  <div className="text-xs truncate">{user.email}</div>
+                                                                  <div className="flex flex-wrap gap-1 mt-1.5">
+                                                                    <span className="px-1.5 py-0.5 bg-[var(--color-brand)]/10 text-[var(--color-brand)] text-[9px] font-bold rounded uppercase tracking-wider">{user.role}</span>
                                                                     {user.siteIds && user.siteIds.map(sid => {
                                                                         const s = sites.find(x => x.id === sid);
                                                                         return s ? <span key={sid} className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] rounded text-gray-500">{s.name}</span> : null;
                                                                     })}
                                                                   </div>
-                                                              </div>
+                                                               </div>
                                                           </td>
                                                           <td className="px-4 py-3 text-right">
                                                               <div className="flex items-center justify-end gap-3">
+                                                                  {/* Quick Edit Access Button */}
+                                                                  <button 
+                                                                    onClick={() => {
+                                                                        // Open Invite Wizard but pre-filled for existing user
+                                                                        setInviteForm({
+                                                                            id: user.id,
+                                                                            name: user.name,
+                                                                            email: user.email,
+                                                                            jobTitle: user.jobTitle || '',
+                                                                            role: user.role,
+                                                                            siteIds: user.siteIds || []
+                                                                        });
+                                                                        setInviteStep(2);
+                                                                        setIsDirectoryModalOpen(true);
+                                                                    }}
+                                                                    className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white text-xs font-bold rounded-lg transition-all flex items-center gap-2"
+                                                                  >
+                                                                    <Shield size={12}/> Manage Access
+                                                                  </button>
+
                                                                   {currentUser?.id !== user.id && (
                                                                       <button 
                                                                           onClick={() => {
@@ -2214,10 +2297,10 @@ if __name__ == "__main__":
                                                                                   impersonateUser(user.id);
                                                                               }
                                                                           }}
-                                                                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                                                                          title="Sign in as this user to verify permissions"
+                                                                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                                                                          title="View As"
                                                                       >
-                                                                          <Eye size={12}/> View As
+                                                                          <Eye size={16}/>
                                                                       </button>
                                                                   )}
                                                                   <button 
@@ -2226,16 +2309,22 @@ if __name__ == "__main__":
                                                                         archiveUser(user.id);
                                                                       }
                                                                     }} 
-                                                                    className="text-xs text-red-500 hover:underline flex items-center gap-1"
+                                                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                                                    title="Archive"
                                                                   >
-                                                                    <Archive size={12}/> Archive
+                                                                    <Archive size={16}/>
                                                                   </button>
                                                               </div>
                                                           </td>
                                                       </tr>
                                                   ))
                                               ) : (
-                                                  <tr><td colSpan={2} className="px-4 py-8 text-center text-gray-400 text-xs italic">No users assigned to this role.</td></tr>
+                                                  <tr><td colSpan={2} className="px-4 py-12 text-center text-gray-400 text-sm">
+                                                      <div className="flex flex-col items-center gap-2">
+                                                          <Search size={24} className="opacity-20"/>
+                                                          <p>No users found matching your search.</p>
+                                                      </div>
+                                                  </td></tr>
                                               )}
                                           </tbody>
                                       </table>
@@ -2293,19 +2382,23 @@ if __name__ == "__main__":
                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
                        <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-2xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
                            
-                           {/* Header */}
-                           <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-white/5">
-                               <div>
-                                   <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                       <User size={24} className="text-[var(--color-brand)]"/> 
-                                       Invite New User
-                                   </h2>
-                                   <p className="text-sm text-gray-500 mt-1">Add a new user to the organization and assign access.</p>
-                               </div>
-                               <button onClick={handleResetInviteWizard} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                   <X size={24}/>
-                               </button>
-                           </div>
+                            {/* Header */}
+                            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-white/5">
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                        <User size={24} className="text-[var(--color-brand)]"/> 
+                                        {inviteForm.id && users.some(u => u.id === inviteForm.id) ? 'Manage User Access' : 'Invite New User'}
+                                    </h2>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        {inviteForm.id && users.some(u => u.id === inviteForm.id) 
+                                            ? 'Update permissions for an existing member.' 
+                                            : 'Add a new user to the organization and assign access.'}
+                                    </p>
+                                </div>
+                                <button onClick={handleResetInviteWizard} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                    <X size={24}/>
+                                </button>
+                            </div>
 
                            {/* Wizard Steps Progress */}
                            <div className="flex border-b border-gray-100 dark:border-gray-800">
@@ -2319,7 +2412,7 @@ if __name__ == "__main__":
                                    <div className="space-y-6">
                                        {/* Tab Switcher */}
                                        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-full md:w-fit">
-                                           <button onClick={() => setInviteTab('SEARCH')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'SEARCH' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Search Directory (Azure AD)</button>
+                                           <button onClick={() => setInviteTab('SEARCH')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'SEARCH' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Search Users & Directory</button>
                                            <button onClick={() => setInviteTab('MANUAL')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MANUAL' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Manual Entry</button>
                                        </div>
 
@@ -2339,16 +2432,16 @@ if __name__ == "__main__":
                                                </div>
                                                
                                                <div className="space-y-2">
-                                                    <h4 className="text-xs font-bold text-gray-500 uppercase">Search Results</h4>
+                                                    <h4 className="text-xs font-bold text-gray-500 uppercase">Results</h4>
                                                     {directoryLoading ? (
                                                        <div className="flex flex-col items-center justify-center py-8 text-gray-400 space-y-2 bg-gray-50 dark:bg-gray-800/10 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                             <div className="w-6 h-6 border-2 border-[var(--color-brand)] border-t-transparent rounded-full animate-spin"></div>
-                                                            <span className="text-xs">Searching Directory...</span>
+                                                            <span className="text-xs">Searching...</span>
                                                        </div>
                                                     ) : directoryResults.length > 0 ? (
                                                        <div className="grid grid-cols-1 gap-3">
                                                            {directoryResults.map(u => (
-                                                               <div key={u.id} className="bg-white dark:bg-[#15171e] p-4 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group hover:border-[var(--color-brand)] hover:shadow-md transition-all cursor-pointer" onClick={() => handleSelectUserForInvite(u)}>
+                                                               <div key={u.id} className="bg-white dark:bg-[#15171e] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group hover:border-[var(--color-brand)] hover:shadow-md transition-all cursor-pointer" onClick={() => handleSelectUserForInvite(u)}>
                                                                    <div className="flex items-center gap-3">
                                                                         <div className="w-10 h-10 rounded-full bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center font-bold">
                                                                             {u.name.charAt(0)}
@@ -2464,7 +2557,15 @@ if __name__ == "__main__":
                                    <button 
                                         onClick={async () => {
                                             // Handle Final Submit
-                                            if (users.some(u => u.email === inviteForm.email)) { alert('User with this email already exists.'); return; }
+                                            const isExisting = users.some(u => u.id === inviteForm.id || u.email === inviteForm.email);
+                                             
+                                             if (isExisting) {
+                                                 const targetId = users.find(u => u.id === inviteForm.id || u.email === inviteForm.email)?.id;
+                                                 if (targetId) {
+                                                     await updateUserAccess(targetId, inviteForm.role as UserRole, inviteForm.siteIds);
+                                                     alert(`Access updated for ${inviteForm.name}`);
+                                                 }
+                                             } else {
                                             
                                             // 1. Send Invite Logic
                                             let inviteSent = false;
@@ -2500,11 +2601,12 @@ if __name__ == "__main__":
                                             } as any);
 
                                             if (inviteSent) alert(`Passcode login link sent to ${inviteForm.email}`);
-                                            handleResetInviteWizard();
+                                            }
+                                             handleResetInviteWizard();
                                         }}
                                         className="btn-primary py-2 px-6 shadow-lg shadow-blue-500/20 flex items-center gap-2"
                                     >
-                                        <Mail size={16}/> Send Invite & Add User
+                                        <Shield size={16}/> {users.some(u => u.id === inviteForm.id) ? 'Update Access' : 'Send Invite & Grant Access'}
                                     </button>
                                )}
                            </div>

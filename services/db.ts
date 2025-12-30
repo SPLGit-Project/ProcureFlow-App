@@ -61,6 +61,21 @@ export const db = {
         });
         if (error) throw error;
     },
+
+    upsertUser: async (user: User): Promise<void> => {
+        const { error } = await supabase.from('users').upsert({
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role_id: user.role,
+            avatar: user.avatar,
+            job_title: user.jobTitle,
+            status: user.status || 'PENDING_APPROVAL',
+            created_at: user.createdAt || new Date().toISOString(),
+            site_ids: user.siteIds || []
+        }, { onConflict: 'id' });
+        if (error) throw error;
+    },
     
     updateUserStatus: async (id: string, status: string): Promise<void> => {
         const { error } = await supabase.from('users').update({ status }).eq('id', id);

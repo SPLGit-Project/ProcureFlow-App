@@ -33,6 +33,7 @@ interface AppContextType {
   // User Management
   users: User[];
   updateUserRole: (userId: string, role: UserRole) => void;
+  updateUserAccess: (userId: string, role: UserRole, siteIds: string[]) => Promise<void>;
   addUser: (user: User) => Promise<void>;
   archiveUser: (userId: string) => Promise<void>;
   impersonateUser: (user: User) => void;
@@ -1005,10 +1006,26 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       if (currentUser?.id === userId) {
           setCurrentUser(prev => prev ? ({ ...prev, role }) : null);
       }
-      // Note: We could add db.updateUserRole here but for now assume role editor handles it? 
-      // Actually updateUserRole in UI usually just updates local state in current code. 
-      // Let's add db persistence for this too if we want to be thorough.
-      // But for now, let's focus on addUser.
+      // Persistence handled by updateUserAccess for full updates
+  };
+
+  const updateUserAccess = async (userId: string, role: UserRole, siteIds: string[]) => {
+      const user = users.find(u => u.id === userId);
+      if(!user) return;
+      
+      const updatedUser = { ...user, role, siteIds };
+      setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
+      
+      if (currentUser?.id === userId) {
+          setCurrentUser(prev => prev ? ({ ...prev, role, siteIds }) : null);
+      }
+
+      try {
+          await db.upsertUser(updatedUser);
+      } catch (e) {
+          console.error("Failed to update user access", e);
+          reloadData();
+      }
   };
 
   const addUser = async (user: User) => {
@@ -1553,7 +1570,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // --- Context Value Memoization ---
   const contextValue = React.useMemo(() => ({
     currentUser, originalUser, isAuthenticated, activeSiteId, setActiveSiteId, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
-    users, updateUserRole, addUser, archiveUser, reloadData, impersonateUser, stopImpersonation,
+    users, updateUserRole, updateUserAccess, addUser, archiveUser, reloadData, impersonateUser, stopImpersonation,
     roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
     teamsWebhookUrl, updateTeamsWebhook,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
