@@ -173,16 +173,19 @@ const Dashboard = () => {
          </div>
          
          <div className="flex gap-3 w-full md:w-auto">
-             {currentUser.role === 'ADMIN' && (
-                 <select 
-                    value={selectedSite} 
-                    onChange={(e) => setSelectedSite(e.target.value)}
-                    className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-white py-3 px-4 rounded-xl shadow-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none font-medium"
-                 >
-                     <option value="All">All Sites</option>
-                     {allSites.map(site => <option key={site} value={site}>{site}</option>)}
-                 </select>
-             )}
+             <select 
+                value={selectedSite} 
+                onChange={(e) => setSelectedSite(e.target.value)}
+                className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-white py-3 px-4 rounded-xl shadow-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none font-medium appearance-none pr-8 cursor-pointer"
+                style={{ backgroundImage: 'none' }} 
+             >
+                 <option value="All">All Sites</option>
+                 {/* Show sites available to the user (or all for Admin) */}
+                 {(currentUser.role === 'ADMIN' ? useApp().sites : useApp().sites.filter(s => currentUser.siteIds.includes(s.id)))
+                    .map(site => (
+                     <option key={site.id} value={site.name}>{site.name}</option>
+                 ))}
+             </select>
              <button onClick={() => navigate('/create')} className="whitespace-nowrap bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-semibold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">
                  <FileText size={18} /> New Request
              </button>
