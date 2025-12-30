@@ -61,6 +61,11 @@ export const db = {
         });
         if (error) throw error;
     },
+    
+    updateUserStatus: async (id: string, status: string): Promise<void> => {
+        const { error } = await supabase.from('users').update({ status }).eq('id', id);
+        if (error) throw error;
+    },
 
     getSites: async (): Promise<Site[]> => {
         const { data, error } = await supabase.from('sites').select('*');

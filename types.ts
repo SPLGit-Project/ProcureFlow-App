@@ -46,7 +46,7 @@ export interface User {
   avatar: string;
   email: string;
   jobTitle?: string;
-  status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
+  status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED' | 'ARCHIVED';
   createdAt?: string;
   siteIds: string[]; // List of site IDs this user has access to
   department?: string;

@@ -9,7 +9,7 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient } from '../types';
@@ -62,7 +62,7 @@ const Settings = () => {
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping,
     // New Admin Caps
-    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, impersonateUser
+    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, impersonateUser, archiveUser
   } = useApp();
 
   const location = useLocation();
@@ -2105,8 +2105,8 @@ if __name__ == "__main__":
                                   <Shield size={16}/>
                               </div>
                               <div className="flex-1 min-w-0">
-                                  <div className="font-bold text-sm truncate">{role.name}</div>
-                                  <div className={`text-[10px] truncate ${activeRole?.id === role.id ? 'text-white/80' : 'text-gray-400'}`}>{role.permissions.length} Perms • {users.filter(u => u.role === role.id).length} Users</div>
+                              <div className="font-bold text-sm truncate">{role.name}</div>
+                                  <div className={`text-[10px] truncate ${activeRole?.id === role.id ? 'text-white/80' : 'text-gray-400'}`}>{role.permissions.length} Perms • {users.filter(u => u.role === role.id && u.status !== 'ARCHIVED').length} Users</div>
                               </div>
                           </button>
                       ))}
@@ -2189,8 +2189,8 @@ if __name__ == "__main__":
                                   <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                                       <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400">
                                           <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                                              {users.filter(u => u.role === activeRole.id).length > 0 ? (
-                                                  users.filter(u => u.role === activeRole.id).map(user => (
+                                              {users.filter(u => u.role === activeRole.id && u.status !== 'ARCHIVED').length > 0 ? (
+                                                  users.filter(u => u.role === activeRole.id && u.status !== 'ARCHIVED').map(user => (
                                                       <tr key={user.id} className="hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
                                                           <td className="px-4 py-3 flex items-center gap-3">
                                                               <img src={user.avatar} className="w-8 h-8 rounded-full bg-white"/>
@@ -2220,7 +2220,16 @@ if __name__ == "__main__":
                                                                           <Eye size={12}/> View As
                                                                       </button>
                                                                   )}
-                                                                  <button onClick={() => updateUserRole(user.id, 'SITE_USER')} className="text-xs text-red-500 hover:underline">Remove</button>
+                                                                  <button 
+                                                                    onClick={() => {
+                                                                      if (window.confirm(`Are you sure you want to archive ${user.name}? This will remove their access but preserve their history.`)) {
+                                                                        archiveUser(user.id);
+                                                                      }
+                                                                    }} 
+                                                                    className="text-xs text-red-500 hover:underline flex items-center gap-1"
+                                                                  >
+                                                                    <Archive size={12}/> Archive
+                                                                  </button>
                                                               </div>
                                                           </td>
                                                       </tr>

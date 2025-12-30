@@ -34,6 +34,7 @@ interface AppContextType {
   users: User[];
   updateUserRole: (userId: string, role: UserRole) => void;
   addUser: (user: User) => Promise<void>;
+  archiveUser: (userId: string) => Promise<void>;
   impersonateUser: (user: User) => void;
   stopImpersonation: () => void;
   permissions: Permission[];
@@ -940,6 +941,17 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
 
+  const archiveUser = async (userId: string) => {
+      // Optimistic update
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'ARCHIVED' } : u));
+      try {
+          await db.updateUserStatus(userId, 'ARCHIVED');
+      } catch (e) {
+          console.error("Failed to archive user", e);
+          reloadData();
+      }
+  };
+
   // --- CRUD Operations ---
 
   // --- Workflow Operations ---
@@ -1461,7 +1473,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // --- Context Value Memoization ---
   const contextValue = React.useMemo(() => ({
     currentUser, originalUser, isAuthenticated, activeSiteId, setActiveSiteId, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
-    users, updateUserRole, addUser, reloadData, impersonateUser, stopImpersonation,
+    users, updateUserRole, addUser, archiveUser, reloadData, impersonateUser, stopImpersonation,
     roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
     teamsWebhookUrl, updateTeamsWebhook,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
