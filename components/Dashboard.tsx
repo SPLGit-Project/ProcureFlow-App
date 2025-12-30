@@ -2,8 +2,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  BarChart, Bar, Cell
+  BarChart, Bar, Cell, ResponsiveContainer
 } from 'recharts';
 import { 
   TrendingUp, Clock, AlertCircle, CheckCircle2, 
@@ -59,8 +58,9 @@ const Dashboard = () => {
       : 0;
 
   // --- Depletion Analysis (Replacement vs New/Contract) ---
-  const itemDepletion = filteredPos
-    .filter(p => p.status !== 'REJECTED')
+  const itemDepletion = React.useMemo(() => {
+    return filteredPos
+    .filter(p => p.status !== 'REJECTED' && p.status !== 'DRAFT')
     .flatMap(p => p.lines)
     .reduce((acc, line) => {
         if (!acc[line.itemName]) acc[line.itemName] = { qty: 0, cost: 0 };
@@ -68,30 +68,74 @@ const Dashboard = () => {
         acc[line.itemName].cost += (line.quantityOrdered * line.unitPrice);
         return acc;
     }, {} as Record<string, { qty: number, cost: number }>);
+  }, [filteredPos]);
 
-  const topDepletionItems = (Object.entries(itemDepletion) as [string, { qty: number, cost: number }][])
+  const topDepletionItems = React.useMemo(() => 
+    (Object.entries(itemDepletion) as [string, { qty: number, cost: number }][])
     .sort((a, b) => b[1].cost - a[1].cost)
-    .slice(0, 5);
+    .slice(0, 5), [itemDepletion]);
 
-  // Spend Split (Mocked for Demo based on logic: New = 20%, Replacement = 80%)
-  const totalVisSpend = filteredPos.reduce((acc,p)=>acc+p.totalAmount,0);
-  const replacementSpend = totalVisSpend * 0.8;
-  const contractSpend = totalVisSpend * 0.2;
+  // --- Spend Split (Real Data) ---
+  const { spendSplitData, replacePct, totalSpend } = React.useMemo(() => {
+      let replacement = 0;
+      let contract = 0;
+      
+      filteredPos.forEach(p => {
+          if (p.status === 'REJECTED' || p.status === 'DRAFT') return;
+          if (p.reasonForRequest === 'Depletion') {
+              replacement += p.totalAmount;
+          } else {
+              contract += p.totalAmount;
+          }
+      });
 
-  const spendSplitData = [
-      { name: 'Replacement', value: replacementSpend, color: '#ef4444' },
-      { name: 'New (Contract)', value: contractSpend, color: '#10b981' },
-  ];
+      const total = replacement + contract;
+      const pct = total > 0 ? Math.round((replacement / total) * 100) : 0;
+      
+      return {
+          spendSplitData: [
+            { name: 'Replacement', value: replacement, color: '#ef4444' },
+            { name: 'New/Contract', value: contract, color: '#10b981' },
+          ],
+          replacePct: pct,
+          totalSpend: total // Use calculated total of valid POs instead of raw reduce
+      };
+  }, [filteredPos]);
 
-  // --- Spend Trend Data (Mock) ---
-  const spendData = [
-      { month: 'Jan', spend: 4000 },
-      { month: 'Feb', spend: 3000 },
-      { month: 'Mar', spend: 5500 },
-      { month: 'Apr', spend: 4800 },
-      { month: 'May', spend: 6200 },
-      { month: 'Jun', spend: 7800 },
-  ];
+  // --- Avg Approval Time ---
+  const avgApprovalTime = React.useMemo(() => {
+    let totalTime = 0;
+    let count = 0;
+    
+    filteredPos.forEach(po => {
+        if (po.status === 'DRAFT' || po.status === 'PENDING_APPROVAL' || po.status === 'REJECTED') return;
+        
+        // Find Submission and First Approval
+        // Heuristic: Sorted by date, first is submit, last is approve? 
+        // Or look for specific actions.
+        const submitted = po.approvalHistory.find(h => h.action === 'SUBMITTED');
+        const approved = po.approvalHistory.find(h => h.action === 'APPROVED'); // First approval usually enough for metric? Or final?
+        // Let's take the last approval for full cycle
+        const lastApproved = [...po.approvalHistory].reverse().find(h => h.action === 'APPROVED');
+        
+        if (submitted && lastApproved) {
+            const start = new Date(submitted.date).getTime();
+            const end = new Date(lastApproved.date).getTime();
+            if (end > start) {
+                totalTime += (end - start);
+                count++;
+            }
+        }
+    });
+
+    if (count === 0) return '0.0 days';
+    const days = totalTime / (1000 * 60 * 60 * 24);
+    if (days < 1) {
+        const hours = days * 24;
+        return `${hours.toFixed(1)} hrs`;
+    }
+    return `${days.toFixed(1)} days`;
+  }, [filteredPos]);
 
   const StatCard = ({ title, value, icon: Icon, color, onClick }: any) => (
       <div 
@@ -164,10 +208,10 @@ const Dashboard = () => {
 
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <StatCard title="Total Value (YTD)" value={`$${Math.round(totalVisSpend/1000)}k`} icon={TrendingUp} color="purple" onClick={() => navigate('/reports')}/>
+          <StatCard title="Total Value (YTD)" value={`$${Math.round(totalSpend/1000)}k`} icon={TrendingUp} color="purple" onClick={() => navigate('/reports')}/>
           <StatCard title="Pending Actions" value={myPendingApprovals.length + actionConcur.length + uncapitalizedDeliveries + myPendingDeliveries.length} icon={AlertCircle} color="red" />
           <StatCard title="Active Suppliers" value={new Set(filteredPos.map(p=>p.supplierName)).size} icon={Truck} color="orange" />
-          <StatCard title="Avg. Approval" value="2.4 days" icon={Clock} color="cyan" />
+          <StatCard title="Avg. Approval" value={avgApprovalTime} icon={Clock} color="cyan" />
       </div>
 
       {/* Metrics & Analysis Grid */}
@@ -185,20 +229,20 @@ const Dashboard = () => {
                           <div>
                               <div className="flex justify-between text-sm font-medium mb-1">
                                   <span className="text-red-500">Replacement / Depletion</span>
-                                  <span className="text-gray-900 dark:text-white">${Math.round(replacementSpend).toLocaleString()}</span>
+                                  <span className="text-gray-900 dark:text-white">${Math.round(spendSplitData[0].value).toLocaleString()}</span>
                               </div>
                               <div className="w-full h-3 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
-                                  <div className="h-full bg-red-500 rounded-full" style={{ width: '80%' }}></div>
+                                  <div className="h-full bg-red-500 rounded-full" style={{ width: `${replacePct}%` }}></div>
                               </div>
                               <p className="text-xs text-gray-500 mt-1">Direct cost impact from lost/damaged inventory.</p>
                           </div>
                           <div>
                               <div className="flex justify-between text-sm font-medium mb-1">
                                   <span className="text-emerald-500">New / Contract (Net Zero)</span>
-                                  <span className="text-gray-900 dark:text-white">${Math.round(contractSpend).toLocaleString()}</span>
+                                  <span className="text-gray-900 dark:text-white">${Math.round(spendSplitData[1].value).toLocaleString()}</span>
                               </div>
                               <div className="w-full h-3 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
-                                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: '20%' }}></div>
+                                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${100 - replacePct}%` }}></div>
                               </div>
                               <p className="text-xs text-gray-500 mt-1">Covered under contract hire terms.</p>
                           </div>
@@ -218,7 +262,7 @@ const Dashboard = () => {
                        </ResponsiveContainer>
                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                            <div className="text-center">
-                               <div className="text-2xl font-bold text-gray-900 dark:text-white">80%</div>
+                               <div className="text-2xl font-bold text-gray-900 dark:text-white">{replacePct}%</div>
                                <div className="text-[10px] uppercase text-gray-500 font-bold">Replacement</div>
                            </div>
                        </div>
