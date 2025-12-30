@@ -9,7 +9,7 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient } from '../types';
@@ -2102,66 +2102,146 @@ if __name__ == "__main__":
       )}
       {activeTab === 'SECURITY' && (
           <div className="animate-fade-in space-y-6">
-              {/* User Approval Requests */}
-              <AdminAccessHub />
+              {/* Security Dashboard Header */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-[var(--color-brand)] transition-all">
+                      <div className="w-12 h-12 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Users size={24}/>
+                      </div>
+                      <div>
+                          <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Total Members</div>
+                          <div className="text-2xl font-black text-gray-900 dark:text-white line-height-1">
+                              {users.filter(u => u.status !== 'ARCHIVED').length}
+                          </div>
+                      </div>
+                  </div>
+
+                  <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-amber-400 transition-all cursor-pointer">
+                      <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/20 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Clock size={24}/>
+                      </div>
+                      <div>
+                          <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Pending Access</div>
+                          <div className="text-2xl font-black text-gray-900 dark:text-white line-height-1">
+                              {users.filter(u => u.status === 'PENDING').length}
+                          </div>
+                      </div>
+                  </div>
+
+                  <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-purple-400 transition-all">
+                      <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/20 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Shield size={24}/>
+                      </div>
+                      <div>
+                          <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Security Roles</div>
+                          <div className="text-2xl font-black text-gray-900 dark:text-white line-height-1">
+                              {roles.length}
+                          </div>
+                      </div>
+                  </div>
+
+                  <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-blue-400 transition-all">
+                      <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/20 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Globe size={24}/>
+                      </div>
+                      <div>
+                          <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Sites Protected</div>
+                          <div className="text-2xl font-black text-gray-900 dark:text-white line-height-1">
+                              {sites.length}
+                          </div>
+                      </div>
+                  </div>
+              </div>
+
+              {/* User Approval Requests (Integrated) */}
+              {users.some(u => u.status === 'PENDING') && (
+                  <div className="border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-900/10 p-4 rounded-r-2xl flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                          <AlertCircle className="text-amber-500" size={20}/>
+                          <div>
+                              <div className="font-bold text-amber-900 dark:text-amber-200">Pending User Requests</div>
+                              <div className="text-xs text-amber-700 dark:text-amber-400">There are {users.filter(u => u.status === 'PENDING').length} users waiting for access approval.</div>
+                          </div>
+                      </div>
+                      <button onClick={() => { setActiveRole({ id: 'PENDING_TAB', name: 'Pending Approvals' } as any); }} className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-colors">Review Requests</button>
+                  </div>
+              )}
 
               <div className="flex flex-col md:flex-row gap-6 h-auto md:h-[calc(100vh-200px)] min-h-[600px]">
 
               {/* Sidebar: Roles List */}
               <div className="w-full md:w-80 flex-shrink-0 bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden max-h-[400px] md:max-h-none">
-                  <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-                      <h3 className="font-bold text-gray-900 dark:text-white">Security Roles</h3>
-                      <button onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-[var(--color-brand)] transition-colors"><Plus size={18}/></button>
+                  <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
+                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Security Roles</h3>
+                      <button onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl text-[var(--color-brand)] transition-all active:scale-95 shadow-sm bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800"><Plus size={18}/></button>
                   </div>
                   
-                  {/* Global User Search in Sidebar */}
-                  <div className="p-3 border-b border-gray-50 dark:border-gray-800/50">
-                      <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                  <div className="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar">
+                      {/* Search Filter (Now more compact in sidebar) */}
+                      <div className="relative mb-3 group">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[var(--color-brand)] transition-colors" size={14} />
                           <input 
                               type="text" 
-                              placeholder="Find users..." 
+                              placeholder="Quick find..." 
                               value={userSearch}
                               onChange={e => {
                                   setUserSearch(e.target.value);
-                                  if (activeRole?.id !== 'ALL') setActiveRole({ id: 'ALL', name: 'Search Results', description: 'Searching across all users', permissions: [], isSystem: true } as any);
+                                  if (activeRole?.id !== 'ALL' && activeRole?.id !== 'PENDING_TAB') {
+                                      setActiveRole({ id: 'ALL', name: 'Search Results', description: 'Searching across all users', permissions: [], isSystem: true } as any);
+                                  }
                               }}
-                              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-gray-800 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+                              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl text-xs outline-none focus:ring-4 focus:ring-[var(--color-brand)]/10 focus:bg-white dark:focus:bg-[#1e2029] transition-all"
                           />
                       </div>
-                  </div>
 
-                  <div className="flex-1 overflow-y-auto p-2 space-y-1">
                       <button
                           onClick={() => { setActiveRole({ id: 'ALL', name: 'All Users', description: 'View all users across all roles', permissions: [], isSystem: true } as any); setUserSearch(''); }}
-                          className={`w-full text-left px-3 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeRole?.id === 'ALL' && !userSearch ? 'bg-[var(--color-brand)] text-white shadow-md shadow-[var(--color-brand)]/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300'}`}
+                          className={`w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3 transition-all ${activeRole?.id === 'ALL' && !userSearch ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/20 scale-[1.02]' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300'}`}
                       >
-                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${activeRole?.id === 'ALL' && !userSearch ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
-                                  <Users size={16}/>
+                           <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${activeRole?.id === 'ALL' && !userSearch ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-[#15171e] text-gray-500'}`}>
+                                  <Users size={18}/>
                            </div>
                            <div className="flex-1 min-w-0">
-                                  <div className="font-bold text-sm truncate">All Users</div>
-                                  <div className={`text-[10px] truncate ${activeRole?.id === 'ALL' && !userSearch ? 'text-white/80' : 'text-gray-400'}`}>{users.filter(u => u.status !== 'ARCHIVED').length} Active Users</div>
+                                  <div className="font-bold text-sm truncate uppercase tracking-tight">Main Directory</div>
+                                  <div className={`text-[10px] font-bold ${activeRole?.id === 'ALL' && !userSearch ? 'text-white/80' : 'text-gray-400'}`}>{users.filter(u => u.status !== 'ARCHIVED').length} Active</div>
                            </div>
                       </button> 
-                      
-                      <div className="pt-2 px-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Defined Roles</div>
-                      
-                      {roles.map(role => (
+
+                      {users.some(u => u.status === 'PENDING') && (
                           <button
-                              key={role.id}
-                              onClick={() => { setActiveRole(role); setUserSearch(''); }}
-                              className={`w-full text-left px-3 py-3 rounded-xl flex items-center gap-3 transition-colors ${activeRole?.id === role.id ? 'bg-[var(--color-brand)] text-white shadow-md shadow-[var(--color-brand)]/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300'}`}
+                              onClick={() => { setActiveRole({ id: 'PENDING_TAB', name: 'Pending Approvals', description: 'Review and approve access requests', permissions: [], isSystem: true } as any); setUserSearch(''); }}
+                              className={`w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3 transition-all ${activeRole?.id === 'PENDING_TAB' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20 scale-[1.02]' : 'hover:bg-amber-50 dark:hover:bg-amber-900/10 text-amber-600'}`}
                           >
-                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${activeRole?.id === role.id ? 'bg-white/20 text-white' : role.id === 'ADMIN' ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-600' : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600'}`}>
-                                  <Shield size={16}/>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                              <div className="font-bold text-sm truncate">{role.name}</div>
-                                  <div className={`text-[10px] truncate ${activeRole?.id === role.id ? 'text-white/80' : 'text-gray-400'}`}>{role.permissions.length} Perms • {users.filter(u => u.role === role.id && u.status !== 'ARCHIVED').length} Users</div>
-                              </div>
-                          </button>
-                      ))}
+                               <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${activeRole?.id === 'PENDING_TAB' ? 'bg-white/20 text-white' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600'}`}>
+                                      <Clock size={18}/>
+                               </div>
+                               <div className="flex-1 min-w-0">
+                                      <div className="font-bold text-sm truncate uppercase tracking-tight">Approvals</div>
+                                      <div className={`text-[10px] font-bold ${activeRole?.id === 'PENDING_TAB' ? 'text-white/80' : 'text-amber-500'}`}>{users.filter(u => u.status === 'PENDING').length} Required</div>
+                               </div>
+                          </button> 
+                      )}
+                      
+                      <div className="pt-4 px-4 pb-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Security Roles</div>
+                      
+                      <div className="space-y-1">
+                          {roles.map(role => (
+                              <button
+                                  key={role.id}
+                                  onClick={() => { setActiveRole(role); setUserSearch(''); }}
+                                  className={`w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3 transition-all ${activeRole?.id === role.id ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/20 scale-[1.02]' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300 group'}`}
+                              >
+                                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${activeRole?.id === role.id ? 'bg-white/20 text-white' : role.id === 'ADMIN' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 group-hover:bg-purple-100' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 group-hover:bg-blue-100'}`}>
+                                      <Shield size={18}/>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                  <div className="font-bold text-sm truncate tracking-tight">{role.name}</div>
+                                      <div className={`text-[10px] font-bold ${activeRole?.id === role.id ? 'text-white/80' : 'text-gray-400'}`}>{users.filter(u => u.role === role.id && u.status !== 'ARCHIVED').length} members</div>
+                                  </div>
+                                  {activeRole?.id !== role.id && <ChevronRight size={14} className="text-gray-300 dark:text-gray-700 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all"/>}
+                              </button>
+                          ))}
+                      </div>
                   </div>
               </div>
 
@@ -2185,163 +2265,183 @@ if __name__ == "__main__":
                               )}
                           </div>
 
-                          {/* Tabs or Sections */}
-                          <div className="flex-1 overflow-y-auto p-6">
-                              {activeRole.id !== 'ALL' && (
-                                <div className="mb-8">
-                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 uppercase tracking-wider flex items-center gap-2"><Lock size={16}/> Permissions</h3>
-                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                          {/* Main Content Body */}
+                          <div className="flex-1 overflow-y-auto custom-scrollbar">
+                              {/* Integrated Pending Approvals View */}
+                              {activeRole.id === 'PENDING_TAB' ? (
+                                  <div className="p-6">
+                                      <AdminAccessHub />
+                                  </div>
+                              ) : (
+                                  <div className="p-6 space-y-8">
+                                      {activeRole.id !== 'ALL' && (
+                                          <div className="bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+                                              <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-white dark:bg-[#1e2029]">
+                                                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><Lock size={14}/> Role Permissions</h3>
+                                                  <span className="px-2 py-1 rounded bg-[var(--color-brand)]/10 text-[var(--color-brand)] text-[10px] font-bold">{activeRole.permissions.length} Active Rules</span>
+                                              </div>
+                                              <div className="p-6">
+                                                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                                      {['Page Access', 'Functional Access', 'Admin Access'].map((category) => {
+                                                          const categoryPerms = AVAILABLE_PERMISSIONS.filter(p => p.category === category);
+                                                          return (
+                                                              <div key={category} className="space-y-3">
+                                                                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">{category}</div>
+                                                                  <div className="bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl divide-y divide-gray-50 dark:divide-gray-800/50">
+                                                                      {categoryPerms.map(perm => {
+                                                                          const isEnabled = activeRole.permissions.includes(perm.id);
+                                                                          return (
+                                                                              <div key={perm.id} className="p-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                                                                  <div className="flex-1">
+                                                                                      <div className="font-bold text-xs text-gray-900 dark:text-white leading-tight">{perm.label}</div>
+                                                                                      <div className="text-[10px] text-gray-400 mt-0.5">{perm.description}</div>
+                                                                                  </div>
+                                                                                  <button 
+                                                                                      disabled={activeRole.id === 'ADMIN' && perm.id === 'manage_settings'} 
+                                                                                      onClick={() => {
+                                                                                          const newPerms = isEnabled 
+                                                                                              ? activeRole.permissions.filter(p => p !== perm.id)
+                                                                                              : [...activeRole.permissions, perm.id];
+                                                                                          const updatedRole = { ...activeRole, permissions: newPerms };
+                                                                                          updateRole(updatedRole);
+                                                                                          setActiveRole(updatedRole);
+                                                                                      }}
+                                                                                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 ${isEnabled ? 'bg-[var(--color-brand)]' : 'bg-gray-200 dark:bg-gray-700'}`}
+                                                                                  >
+                                                                                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isEnabled ? 'translate-x-[1.25rem]' : 'translate-x-[0.25rem]'}`} />
+                                                                                  </button>
+                                                                              </div>
+                                                                          );
+                                                                      })}
+                                                                  </div>
+                                                              </div>
+                                                          );
+                                                      })}
+                                                  </div>
+                                              </div>
+                                          </div>
+                                      )}
 
-                                    {['Page Access', 'Functional Access', 'Admin Access'].map((category) => {
-                                        const categoryPerms = AVAILABLE_PERMISSIONS.filter(p => p.category === category);
-                                        return (
-                                            <div key={category} className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-                                                <div className="bg-gray-50 dark:bg-[#15171e] px-4 py-2 border-b border-gray-200 dark:border-gray-800 font-bold text-xs uppercase text-gray-500">
-                                                    {category}
-                                                </div>
-                                                <div className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-[#1e2029]">
-                                                    {categoryPerms.map(perm => {
-                                                        const isEnabled = activeRole.permissions.includes(perm.id);
-                                                        return (
-                                                            <div key={perm.id} className="p-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                                                                <div>
-                                                                    <div className="font-medium text-sm text-gray-900 dark:text-white">{perm.label}</div>
-                                                                    <div className="text-[11px] text-gray-400">{perm.description}</div>
-                                                                </div>
-                                                                <button 
-                                                                    disabled={activeRole.id === 'ADMIN' && perm.id === 'manage_settings'} 
-                                                                    onClick={() => {
-                                                                        const newPerms = isEnabled 
-                                                                            ? activeRole.permissions.filter(p => p !== perm.id)
-                                                                            : [...activeRole.permissions, perm.id];
-                                                                        
-                                                                        // Update Role via context
-                                                                        const updatedRole = { ...activeRole, permissions: newPerms };
-                                                                        updateRole(updatedRole);
-                                                                        setActiveRole(updatedRole);
-                                                                    }}
-                                                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:ring-offset-2 ${isEnabled ? 'bg-[var(--color-brand)]' : 'bg-gray-200 dark:bg-gray-700'}`}
-                                                                >
-                                                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${isEnabled ? 'translate-x-4.5' : 'translate-x-1'}`} style={{ transform: isEnabled ? 'translateX(18px)' : 'translateX(2px)' }}/>
-                                                                </button>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                      <div>
+                                          <div className="flex justify-between items-end mb-6">
+                                              <div>
+                                                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">User Management</h3>
+                                                  <div className="text-xl font-bold text-gray-900 dark:text-white">
+                                                      {activeRole.id === 'ALL' ? 'Global Directory' : `${activeRole.name} Members`}
+                                                  </div>
+                                              </div>
+                                              <button onClick={() => { setIsDirectoryModalOpen(true); setUserRoleFilter(activeRole.id === 'ALL' ? '' : activeRole.id); }} className="btn-primary py-2 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20">
+                                                  <UserPlus size={16}/> Add {activeRole.id === 'ALL' ? 'User' : 'to Role'}
+                                              </button>
+                                          </div>
+
+                                          <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+                                              <table className="w-full text-left">
+                                                  <thead>
+                                                      <tr className="bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
+                                                          <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">User Profile</th>
+                                                          <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                                                      </tr>
+                                                  </thead>
+                                                  <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+                                                      {users.filter(u => {
+                                                          const matchesRole = activeRole.id === 'ALL' || u.role === activeRole.id;
+                                                          const matchesSearch = !userSearch || 
+                                                              u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
+                                                              u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                                          const notArchived = u.status !== 'ARCHIVED';
+                                                          return matchesRole && matchesSearch && notArchived;
+                                                      }).length > 0 ? (
+                                                          users.filter(u => {
+                                                              const matchesRole = activeRole.id === 'ALL' || u.role === activeRole.id;
+                                                              const matchesSearch = !userSearch || 
+                                                                  u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
+                                                                  u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                                              const notArchived = u.status !== 'ARCHIVED';
+                                                              return matchesRole && matchesSearch && notArchived;
+                                                          }).map(user => (
+                                                              <tr key={user.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
+                                                                  <td className="px-6 py-4">
+                                                                       <div className="flex items-center gap-4">
+                                                                          <div className="relative shrink-0">
+                                                                              <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white dark:border-[#1e2029] shadow-md group-hover:scale-105 transition-transform">
+                                                                                <img src={user.avatar} className="w-full h-full object-cover bg-gray-100 dark:bg-gray-800" alt={user.name}/>
+                                                                              </div>
+                                                                              <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-white dark:border-[#1e2029] ${user.status === 'APPROVED' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'}`}></div>
+                                                                          </div>
+                                                                          <div className="flex-1 min-w-0">
+                                                                             <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight leading-none mb-1">{user.name}</div>
+                                                                             <div className="text-xs text-gray-500 font-medium">{user.email}</div>
+                                                                             <div className="flex flex-wrap gap-1 mt-2">
+                                                                               <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>{user.role}</span>
+                                                                               {user.siteIds && user.siteIds.map(sid => {
+                                                                                   const s = sites.find(x => x.id === sid);
+                                                                                   return s ? <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-500 uppercase">{s.name}</span> : null;
+                                                                               })}
+                                                                             </div>
+                                                                          </div>
+                                                                       </div>
+                                                                  </td>
+                                                                  <td className="px-6 py-4 text-right">
+                                                                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                          <button 
+                                                                            onClick={() => {
+                                                                                setInviteForm({
+                                                                                    id: user.id,
+                                                                                    name: user.name,
+                                                                                    email: user.email,
+                                                                                    jobTitle: user.jobTitle || '',
+                                                                                    role: user.role,
+                                                                                    siteIds: user.siteIds || []
+                                                                                });
+                                                                                setInviteStep(2);
+                                                                                setIsDirectoryModalOpen(true);
+                                                                            }}
+                                                                            className="h-9 px-4 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-sm flex items-center gap-2"
+                                                                          >
+                                                                            <Shield size={14}/> Manage
+                                                                          </button>
+
+                                                                          {currentUser?.id !== user.id && (
+                                                                              <button 
+                                                                                  onClick={() => impersonateUser(user.id)}
+                                                                                  className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
+                                                                                  title="View As"
+                                                                              >
+                                                                                  <Eye size={16}/>
+                                                                              </button>
+                                                                          )}
+                                                                          <button 
+                                                                            onClick={() => {
+                                                                              if (window.confirm(`Are you sure you want to archive ${user.name}?`)) {
+                                                                                archiveUser(user.id);
+                                                                              }
+                                                                            }} 
+                                                                            className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-200 dark:hover:border-red-800"
+                                                                            title="Archive"
+                                                                          >
+                                                                            <Archive size={16}/>
+                                                                          </button>
+                                                                      </div>
+                                                                  </td>
+                                                              </tr>
+                                                          ))
+                                                      ) : (
+                                                          <tr><td colSpan={2} className="px-6 py-20 text-center text-gray-400">
+                                                              <div className="flex flex-col items-center gap-3">
+                                                                  <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
+                                                                      <Search size={32} className="opacity-10"/>
+                                                                  </div>
+                                                                  <p className="font-bold text-sm tracking-tight text-gray-300">No users matched your request.</p>
+                                                              </div>
+                                                          </td></tr>
+                                                      )}
+                                                  </tbody>
+                                              </table>
+                                          </div>
                                       </div>
                                   </div>
                               )}
-
-                              <div>
-                                  <div className="flex justify-between items-center mb-4">
-                                      <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                                          <Users size={16}/> 
-                                          {activeRole.id === 'ALL' ? 'Directory Users' : `Assigned Users`}
-                                      </h3>
-                                      <button onClick={() => { setIsDirectoryModalOpen(true); setUserRoleFilter(activeRole.id); }} className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"><Plus size={12}/> Add Users</button>
-                                  </div>
-                                  <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-                                      <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400">
-                                          <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                                              {users.filter(u => {
-                                                  const matchesRole = activeRole.id === 'ALL' || u.role === activeRole.id;
-                                                  const matchesSearch = !userSearch || 
-                                                      u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
-                                                      u.email.toLowerCase().includes(userSearch.toLowerCase());
-                                                  const notArchived = u.status !== 'ARCHIVED';
-                                                  return matchesRole && matchesSearch && notArchived;
-                                              }).length > 0 ? (
-                                                  users.filter(u => {
-                                                      const matchesRole = activeRole.id === 'ALL' || u.role === activeRole.id;
-                                                      const matchesSearch = !userSearch || 
-                                                          u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
-                                                          u.email.toLowerCase().includes(userSearch.toLowerCase());
-                                                      const notArchived = u.status !== 'ARCHIVED';
-                                                      return matchesRole && matchesSearch && notArchived;
-                                                  }).map(user => (
-                                                      <tr key={user.id} className="hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
-                                                          <td className="px-4 py-3 flex items-center gap-3">
-                                                               <div className="relative">
-                                                                  <img src={user.avatar} className="w-10 h-10 rounded-full bg-white border border-gray-200 dark:border-gray-700"/>
-                                                                  <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white dark:border-[#1e2029] ${user.status === 'APPROVED' ? 'bg-green-500' : 'bg-amber-500'}`}></div>
-                                                               </div>
-                                                               <div className="flex-1 min-w-0">
-                                                                  <div className="font-bold text-gray-900 dark:text-white truncate">{user.name}</div>
-                                                                  <div className="text-xs truncate">{user.email}</div>
-                                                                  <div className="flex flex-wrap gap-1 mt-1.5">
-                                                                    <span className="px-1.5 py-0.5 bg-[var(--color-brand)]/10 text-[var(--color-brand)] text-[9px] font-bold rounded uppercase tracking-wider">{user.role}</span>
-                                                                    {user.siteIds && user.siteIds.map(sid => {
-                                                                        const s = sites.find(x => x.id === sid);
-                                                                        return s ? <span key={sid} className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] rounded text-gray-500">{s.name}</span> : null;
-                                                                    })}
-                                                                  </div>
-                                                               </div>
-                                                          </td>
-                                                          <td className="px-4 py-3 text-right">
-                                                              <div className="flex items-center justify-end gap-3">
-                                                                  {/* Quick Edit Access Button */}
-                                                                  <button 
-                                                                    onClick={() => {
-                                                                        // Open Invite Wizard but pre-filled for existing user
-                                                                        setInviteForm({
-                                                                            id: user.id,
-                                                                            name: user.name,
-                                                                            email: user.email,
-                                                                            jobTitle: user.jobTitle || '',
-                                                                            role: user.role,
-                                                                            siteIds: user.siteIds || []
-                                                                        });
-                                                                        setInviteStep(2);
-                                                                        setIsDirectoryModalOpen(true);
-                                                                    }}
-                                                                    className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white text-xs font-bold rounded-lg transition-all flex items-center gap-2"
-                                                                  >
-                                                                    <Shield size={12}/> Manage Access
-                                                                  </button>
-
-                                                                  {currentUser?.id !== user.id && (
-                                                                      <button 
-                                                                          onClick={() => {
-                                                                              if (window.confirm(`View as ${user.name}?`)) {
-                                                                                  impersonateUser(user.id);
-                                                                              }
-                                                                          }}
-                                                                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                                                                          title="View As"
-                                                                      >
-                                                                          <Eye size={16}/>
-                                                                      </button>
-                                                                  )}
-                                                                  <button 
-                                                                    onClick={() => {
-                                                                      if (window.confirm(`Are you sure you want to archive ${user.name}? This will remove their access but preserve their history.`)) {
-                                                                        archiveUser(user.id);
-                                                                      }
-                                                                    }} 
-                                                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                                                    title="Archive"
-                                                                  >
-                                                                    <Archive size={16}/>
-                                                                  </button>
-                                                              </div>
-                                                          </td>
-                                                      </tr>
-                                                  ))
-                                              ) : (
-                                                  <tr><td colSpan={2} className="px-4 py-12 text-center text-gray-400 text-sm">
-                                                      <div className="flex flex-col items-center gap-2">
-                                                          <Search size={24} className="opacity-20"/>
-                                                          <p>No users found matching your search.</p>
-                                                      </div>
-                                                  </td></tr>
-                                              )}
-                                          </tbody>
-                                      </table>
-                                  </div>
-                              </div>
                           </div>
                       </>
                   ) : (
