@@ -6,10 +6,9 @@
   "scripts": {
     "dev": "vite --mode staging",
     "dev:prod": "vite --mode production",
-    "build": "npm.cmd run update-version && npm.cmd run build:prod",
-    "build:staging": "npm.cmd run update-version && tsc && vite build --mode staging",
+    "build": "npm run build:prod",
+    "build:staging": "tsc && vite build --mode staging",
     "build:prod": "tsc && vite build --mode production",
-    "update-version": "node -e \"const fs = require('fs'); fs.writeFileSync('./public/version.json', JSON.stringify({ version: Date.now().toString() }, null, 2))\"",
     "preview": "vite preview"
   },
   "dependencies": {
