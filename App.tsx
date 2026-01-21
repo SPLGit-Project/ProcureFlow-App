@@ -4,6 +4,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import Layout from './components/Layout';
 import Login from './components/Login';
 import OnboardingWizard from './components/OnboardingWizard';
+import UpdateManager from './components/UpdateManager';
 
 // Lazy Load Heavy Components
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -47,6 +48,7 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <AppProvider>
+      <UpdateManager />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
