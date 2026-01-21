@@ -87,7 +87,7 @@ const AdminAccessHub = () => {
         setSpecificSiteIds(prev => prev.includes(siteId) ? prev.filter(id => id !== siteId) : [...prev, siteId]);
     };
 
-    const UserRow = ({ user, type }: { user: User, type: 'REQUEST' | 'INVITE' }) => {
+    const UserRow = ({ user, type, key }: { user: User, type: 'REQUEST' | 'INVITE', key?: string }) => {
         const isAccountCreated = !!(user.jobTitle || user.department);
         const isExpired = user.invitationExpiresAt && new Date(user.invitationExpiresAt) < new Date();
 
