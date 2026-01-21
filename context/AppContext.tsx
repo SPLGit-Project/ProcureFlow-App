@@ -891,7 +891,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                   }
               ]
           },
-          saveToSentItems: "true"
+          saveToSentItems: true
       };
 
       try {
@@ -906,7 +906,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
           if (!resp.ok) {
               const err = await resp.text();
-              console.error("Email send failed", err);
+              console.error("Email send failed with status:", resp.status);
+              console.error("Error details:", err);
               return false;
           }
           return true;
