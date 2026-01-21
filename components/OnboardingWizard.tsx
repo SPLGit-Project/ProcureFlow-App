@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { CheckCircle2, MapPin, ArrowRight, User as UserIcon, Building2, LogOut } from 'lucide-react';
+import { CheckCircle2, MapPin, ArrowRight, User as UserIcon, Building2, LogOut, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 
 const OnboardingWizard = () => {
@@ -45,6 +45,27 @@ const OnboardingWizard = () => {
             setIsSubmitting(false);
         }
     };
+
+    const isExpired = currentUser?.invitationExpiresAt && new Date(currentUser.invitationExpiresAt) < new Date();
+
+    if (isExpired) {
+        return (
+            <div className="min-h-screen bg-gray-50 dark:bg-[#15171e] flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-full max-w-lg p-8 text-center animate-fade-in">
+                    <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Clock size={32} />
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Invitation Expired</h2>
+                    <p className="text-gray-600 dark:text-gray-400 mb-8">
+                        Your invitation to join ProcureFlow has expired (48h limit). Please contact your administrator to re-send your welcome email.
+                    </p>
+                    <button onClick={logout} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium flex items-center justify-center gap-2 w-full">
+                        <LogOut size={16} /> Sign Out
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     if (step === 3) {
         return (

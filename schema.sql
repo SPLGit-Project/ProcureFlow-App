@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
   avatar TEXT,
   job_title TEXT,
   status TEXT DEFAULT 'PENDING_APPROVAL', -- 'APPROVED', 'PENDING_APPROVAL', 'REJECTED'
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  invitation_expires_at TIMESTAMPTZ -- Added for invitation timeout
 );
 
 -- SITES

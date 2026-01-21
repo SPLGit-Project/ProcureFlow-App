@@ -62,7 +62,7 @@ const Settings = () => {
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping,
     // New Admin Caps
-    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, impersonateUser, archiveUser, searchDirectory
+    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, impersonateUser, archiveUser, searchDirectory
   } = useApp();
 
   const location = useLocation();
@@ -2407,13 +2407,21 @@ if __name__ == "__main__":
                                                                           <div className="flex-1 min-w-0">
                                                                              <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight leading-none mb-1">{user.name}</div>
                                                                              <div className="text-xs text-gray-500 font-medium">{user.email}</div>
-                                                                             <div className="flex flex-wrap gap-1 mt-2">
-                                                                               <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>{user.role}</span>
-                                                                               {user.siteIds && user.siteIds.map(sid => {
-                                                                                   const s = sites.find(x => x.id === sid);
-                                                                                   return s ? <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-500 uppercase">{s.name}</span> : null;
-                                                                               })}
-                                                                             </div>
+                                                                              <div className="flex flex-wrap gap-1 mt-2">
+                                                                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>{user.role}</span>
+                                                                                {user.siteIds && user.siteIds.map(sid => {
+                                                                                    const s = sites.find(x => x.id === sid);
+                                                                                    return s ? <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-500 uppercase">{s.name}</span> : null;
+                                                                                })}
+                                                                                {user.status === 'PENDING' && user.invitationExpiresAt && (
+                                                                                    <div className={`inline-flex items-center gap-1.5 border rounded-lg px-2 py-0.5 ${new Date(user.invitationExpiresAt) < new Date() ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/50 text-red-600' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50 text-blue-600'}`}>
+                                                                                        <Clock size={10} />
+                                                                                        <p className="text-[9px] font-black uppercase tracking-tight">
+                                                                                            {new Date(user.invitationExpiresAt) < new Date() ? 'Expired' : `Exp: ${new Date(user.invitationExpiresAt).toLocaleDateString()}`}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                )}
+                                                                              </div>
                                                                           </div>
                                                                        </div>
                                                                   </td>
@@ -2438,13 +2446,28 @@ if __name__ == "__main__":
                                                                           </button>
 
                                                                           {currentUser?.id !== user.id && (
-                                                                              <button 
-                                                                                  onClick={() => impersonateUser(user.id)}
-                                                                                  className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
-                                                                                  title="View As"
-                                                                              >
-                                                                                  <Eye size={16}/>
-                                                                              </button>
+                                                                              <div className="flex items-center gap-1">
+                                                                                {user.status === 'PENDING' && (
+                                                                                    <button 
+                                                                                        onClick={async () => {
+                                                                                            const success = await resendWelcomeEmail(user.email, user.name);
+                                                                                            if (success) alert(`Welcome email re-sent to ${user.email}`);
+                                                                                            else alert('Failed to re-send email.');
+                                                                                        }}
+                                                                                        className="w-9 h-9 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200"
+                                                                                        title="Resend Welcome Email"
+                                                                                    >
+                                                                                        <Mail size={16}/>
+                                                                                    </button>
+                                                                                )}
+                                                                                <button 
+                                                                                    onClick={() => impersonateUser(user.id)}
+                                                                                    className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
+                                                                                    title="View As"
+                                                                                >
+                                                                                    <Eye size={16}/>
+                                                                                </button>
+                                                                              </div>
                                                                           )}
                                                                           <button 
                                                                             onClick={() => {

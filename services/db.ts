@@ -43,7 +43,8 @@ export const db = {
             jobTitle: u.job_title,
             status: u.status,
             createdAt: u.created_at,
-            siteIds: u.site_ids || []
+            siteIds: u.site_ids || [],
+            invitationExpiresAt: u.invitation_expires_at
         }));
     },
 
@@ -57,7 +58,8 @@ export const db = {
             job_title: user.jobTitle,
             status: user.status || 'PENDING_APPROVAL',
             created_at: user.createdAt || new Date().toISOString(),
-            site_ids: user.siteIds || []
+            site_ids: user.siteIds || [],
+            invitation_expires_at: user.invitationExpiresAt
         });
         if (error) throw error;
     },
@@ -72,7 +74,8 @@ export const db = {
             job_title: user.jobTitle,
             status: user.status || 'PENDING_APPROVAL',
             created_at: user.createdAt || new Date().toISOString(),
-            site_ids: user.siteIds || []
+            site_ids: user.siteIds || [],
+            invitation_expires_at: user.invitationExpiresAt
         }, { onConflict: 'id' });
         if (error) throw error;
     },

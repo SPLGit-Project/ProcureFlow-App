@@ -103,7 +103,8 @@ interface AppContextType {
   
   // New Admin Capabilities
   getItemFieldRegistry: () => Promise<any[]>;
-  sendWelcomeEmail: (email: string, name: string) => Promise<void>;
+  sendWelcomeEmail: (email: string, name: string) => Promise<boolean>;
+  resendWelcomeEmail: (email: string, name: string) => Promise<boolean>;
 
 
   runAutoMapping: (supplierId: string) => Promise<{ confirmed: number, proposed: number }>;
@@ -848,7 +849,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
 
-  const sendWelcomeEmail = async (toEmail: string, name: string) => {
+  const sendWelcomeEmail = async (toEmail: string, name: string): Promise<boolean> => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.provider_token;
       
@@ -856,6 +857,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           console.error("Auth: No provider token found for Email Send");
           return false;
       }
+      // ... (body logic is fine)
 
       const defaultSubject = `Welcome to ${branding.appName}`;
       const defaultBody = `
@@ -1029,13 +1031,38 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const addUser = async (user: User) => {
-      setUsers(prev => [...prev, user]);
+      const expiry = new Date();
+      expiry.setHours(expiry.getHours() + 48);
+      const userWithExpiry = { ...user, invitationExpiresAt: expiry.toISOString() };
+      
+      setUsers(prev => [...prev, userWithExpiry]);
       try {
-          await db.createUser(user);
+          await db.createUser(userWithExpiry);
       } catch (e) {
           console.error("Failed to add user", e);
           reloadData();
       }
+  };
+
+  const resendWelcomeEmail = async (email: string, name: string): Promise<boolean> => {
+      const user = users.find(u => u.email === email);
+      if (!user) return false;
+
+      const success = await sendWelcomeEmail(email, name);
+      if (success) {
+          const expiry = new Date();
+          expiry.setHours(expiry.getHours() + 48);
+          const updatedUser = { ...user, invitationExpiresAt: expiry.toISOString() };
+          
+          setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+          try {
+              await db.upsertUser(updatedUser);
+              return true;
+          } catch (e) {
+              console.error("Failed to update user expiry on resend", e);
+          }
+      }
+      return false;
   };
 
   const archiveUser = async (userId: string) => {
@@ -1594,7 +1621,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     getItemFieldRegistry,
     runAutoMapping,
     getMappingQueue,
-
+    sendWelcomeEmail,
+    resendWelcomeEmail,
 
     searchDirectory: async (query: string) => {
         // Find session token
@@ -1634,7 +1662,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             return [];
         }
     },
-    sendWelcomeEmail,
     sendNotification
   }), [
     currentUser, originalUser, isAuthenticated, activeSiteId, isLoadingAuth, isPendingApproval, isLoadingData,

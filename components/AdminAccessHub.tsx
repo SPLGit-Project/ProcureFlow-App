@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import { User, UserRole } from '../types';
 
 const AdminAccessHub = () => {
-    const { users, reloadData, roles, sites, searchDirectory, sendWelcomeEmail } = useApp();
+    const { users, reloadData, roles, sites, searchDirectory, sendWelcomeEmail, resendWelcomeEmail } = useApp();
     
     // Approval Configuration
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -123,16 +123,37 @@ const AdminAccessHub = () => {
                                         </div>
                                         <div className="text-xs font-medium text-gray-500 mb-3">{user.email} &bull; {user.department || 'General'}</div>
                                         
-                                        <div className="inline-flex items-center gap-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/50 rounded-xl px-3 py-1.5">
-                                            <AlertCircle size={12} className="text-amber-600"/>
-                                            <p className="text-[10px] text-amber-800 dark:text-amber-400 font-bold uppercase tracking-tight">
-                                                {user.approvalReason?.replace('Requested Access: ', '') || "Awaiting Setup"}
-                                            </p>
+                                        <div className="flex flex-wrap gap-2">
+                                            <div className="inline-flex items-center gap-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/50 rounded-xl px-3 py-1.5">
+                                                <AlertCircle size={12} className="text-amber-600"/>
+                                                <p className="text-[10px] text-amber-800 dark:text-amber-400 font-bold uppercase tracking-tight">
+                                                    {user.approvalReason?.replace('Requested Access: ', '') || "Awaiting Setup"}
+                                                </p>
+                                            </div>
+                                            {user.invitationExpiresAt && (
+                                                <div className={`inline-flex items-center gap-2 border rounded-xl px-3 py-1.5 ${new Date(user.invitationExpiresAt) < new Date() ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/50 text-red-600' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50 text-blue-600'}`}>
+                                                    <Clock size={12} />
+                                                    <p className="text-[10px] font-bold uppercase tracking-tight">
+                                                        {new Date(user.invitationExpiresAt) < new Date() ? 'Invitation Expired' : `Expires: ${new Date(user.invitationExpiresAt).toLocaleDateString()}`}
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div className="flex items-center gap-2 self-center">
+                                 <div className="flex items-center gap-2 self-center">
+                                    <button 
+                                        onClick={async () => {
+                                            const success = await resendWelcomeEmail(user.email, user.name);
+                                            if (success) alert(`Welcome email re-sent to ${user.email}`);
+                                            else alert('Failed to re-send email. Please check your connection.');
+                                        }}
+                                        className="w-10 h-10 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-100"
+                                        title="Resend Welcome Email"
+                                    >
+                                        <Loader2 size={20} className={isProcessing ? "animate-spin" : ""} />
+                                    </button>
                                     <button 
                                         onClick={() => handleReject(user.id)} 
                                         className="w-10 h-10 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-100" 

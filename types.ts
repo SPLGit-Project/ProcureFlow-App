@@ -51,6 +51,7 @@ export interface User {
   siteIds: string[]; // List of site IDs this user has access to
   department?: string;
   approvalReason?: string;
+  invitationExpiresAt?: string;
 }
 
 export interface EmailTemplate {
