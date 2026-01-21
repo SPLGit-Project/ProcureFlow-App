@@ -15,7 +15,8 @@ const AdminAccessHub = () => {
     const [isProcessing, setIsProcessing] = useState(false);
 
     // Derived Lists
-    const pendingUsers = users.filter(u => u.status === 'PENDING');
+    const pendingRequests = users.filter(u => u.status === 'PENDING_APPROVAL' && !u.invitedAt);
+    const activeInvitations = users.filter(u => u.status === 'PENDING_APPROVAL' && u.invitedAt);
 
     const openApprovalModal = (user: User) => {
         const reason = user.approvalReason || '';
@@ -86,91 +87,209 @@ const AdminAccessHub = () => {
         setSpecificSiteIds(prev => prev.includes(siteId) ? prev.filter(id => id !== siteId) : [...prev, siteId]);
     };
 
+    const UserRow = ({ user, type }: { user: User, type: 'REQUEST' | 'INVITE' }) => {
+        const isAccountCreated = !!(user.jobTitle || user.department);
+        const isExpired = user.invitationExpiresAt && new Date(user.invitationExpiresAt) < new Date();
+
+        return (
+            <div className="p-6 flex flex-col md:flex-row gap-6 hover:bg-gray-50 dark:hover:bg-white/5 transition-all group">
+                <div className="flex items-start gap-4 flex-1">
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border-2 border-white dark:border-[#1e2029] shadow-md group-hover:scale-105 transition-transform">
+                        <img 
+                            src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff`} 
+                            alt={user.name} 
+                            className="w-full h-full object-cover" 
+                        />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{user.name}</h4>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${isAccountCreated ? 'bg-green-100 dark:bg-green-900/10 text-green-600' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
+                                {isAccountCreated ? 'Account Created' : 'Invite Sent'}
+                            </span>
+                        </div>
+                        <div className="text-xs font-medium text-gray-500 mb-3">{user.email} &bull; {user.department || 'General'}</div>
+                        
+                        <div className="flex flex-wrap gap-2">
+                            <div className="inline-flex items-center gap-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/50 rounded-xl px-3 py-1.5">
+                                <AlertCircle size={12} className="text-amber-600"/>
+                                <p className="text-[10px] text-amber-800 dark:text-amber-400 font-bold uppercase tracking-tight">
+                                    {user.approvalReason?.replace('Requested Access: ', '') || "Awaiting Setup"}
+                                </p>
+                            </div>
+                            {user.invitedAt && (
+                                <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/50 rounded-xl px-3 py-1.5 text-blue-600">
+                                    <Clock size={12} />
+                                    <p className="text-[10px] font-bold uppercase tracking-tight">
+                                        Invited: {new Date(user.invitedAt).toLocaleDateString()}
+                                    </p>
+                                </div>
+                            )}
+                            {user.invitationExpiresAt && (
+                                <div className={`inline-flex items-center gap-2 border rounded-xl px-3 py-1.5 ${isExpired ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/50 text-red-600' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50 text-blue-600'}`}>
+                                    <Clock size={12} />
+                                    <p className="text-[10px] font-bold uppercase tracking-tight">
+                                        {isExpired ? 'Link Expired' : `Link Expires: ${new Date(user.invitationExpiresAt).toLocaleDateString()}`}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-2 self-center">
+                    <button 
+                        onClick={async () => {
+                            const success = await resendWelcomeEmail(user.email, user.name);
+                            if (success) alert(`Welcome email re-sent to ${user.email}`);
+                            else alert('Failed to re-send email. Please check your connection.');
+                        }}
+                        className="w-10 h-10 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-100"
+                        title="Resend Welcome Email"
+                    >
+                        <Loader2 size={20} className={isProcessing ? "animate-spin" : ""} />
+                    </button>
+                    <button 
+                        onClick={() => handleReject(user.id)} 
+                        className="w-10 h-10 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-100" 
+                        title="Reject"
+                    >
+                        <UserX size={20} />
+                    </button>
+                    <button 
+                        onClick={() => openApprovalModal(user)}
+                        className="h-10 px-5 bg-amber-500 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-all flex items-center gap-2"
+                    >
+                        <Shield size={16} /> Grant Access
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    const [dirQuery, setDirQuery] = useState('');
+    const [dirResults, setDirResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+
+    useEffect(() => {
+        const delayDebounceFn = setTimeout(async () => {
+            if (dirQuery.length > 2) {
+                setIsSearching(true);
+                const results = await searchDirectory(dirQuery);
+                setDirResults(results);
+                setIsSearching(false);
+            } else {
+                setDirResults([]);
+            }
+        }, 500);
+        return () => clearTimeout(delayDebounceFn);
+    }, [dirQuery, searchDirectory]);
+
     return (
         <div className="space-y-6 animate-fade-in">
+            {/* Directory Search / Quick Invite */}
+            <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm p-6">
+                <div className="flex flex-col md:flex-row gap-4">
+                    <div className="flex-1 relative">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input 
+                            type="text" 
+                            placeholder="Search directory to invite (Name or Email)..." 
+                            className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-gray-800 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none transition-all"
+                            value={dirQuery}
+                            onChange={(e) => setDirQuery(e.target.value)}
+                        />
+                        {isSearching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--color-brand)] animate-spin" size={18} />}
+                    </div>
+                </div>
+
+                {dirResults.length > 0 && (
+                    <div className="mt-4 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden divide-y divide-gray-50 dark:divide-gray-800/50 animate-slide-up">
+                        {dirResults.map(res => {
+                            const alreadyExists = users.some(u => u.email.toLowerCase() === res.email.toLowerCase());
+                            return (
+                                <div key={res.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center font-black text-xs uppercase">
+                                            {res.name.substring(0, 2)}
+                                        </div>
+                                        <div>
+                                            <div className="text-sm font-bold text-gray-900 dark:text-white">{res.name}</div>
+                                            <div className="text-[10px] text-gray-500 font-medium">{res.email} &bull; {res.jobTitle || 'Unknown Position'}</div>
+                                        </div>
+                                    </div>
+                                    {alreadyExists ? (
+                                        <div className="px-3 py-1 rounded-full bg-green-50 dark:bg-green-900/10 text-green-600 text-[10px] font-black uppercase">Active Member</div>
+                                    ) : (
+                                        <button 
+                                            onClick={() => {
+                                                setSelectedUser({
+                                                    id: crypto.randomUUID(), // Temp ID until session creation
+                                                    name: res.name,
+                                                    email: res.email,
+                                                    jobTitle: res.jobTitle,
+                                                    department: res.department,
+                                                    avatar: '',
+                                                    role: 'SITE_USER',
+                                                    siteIds: [],
+                                                    status: 'PENDING_APPROVAL'
+                                                });
+                                                setDirQuery('');
+                                                setDirResults([]);
+                                            }}
+                                            className="px-3 py-1.5 bg-[var(--color-brand)] text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-md shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all"
+                                        >
+                                            Invite to Platform
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
             {/* Pending Inbox Integration */}
             <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden min-h-[400px]">
                 <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex justify-between items-center">
                     <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        <Clock size={14} className="text-amber-500"/> Pending Approvals
+                        <Clock size={14} className="text-amber-500"/> Pending Approvals & Invitations
                     </h2>
-                    <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-500 text-[10px] font-black">{pendingUsers.length} Requests</span>
+                    <div className="flex gap-2">
+                        <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-500 text-[10px] font-black">{pendingRequests.length} Requests</span>
+                        <span className="px-2 py-1 rounded bg-blue-500/10 text-blue-500 text-[10px] font-black">{activeInvitations.length} Invitations</span>
+                    </div>
                 </div>
 
                 <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
-                    {pendingUsers.length === 0 ? (
+                    {/* section: Pending Requests */}
+                    {pendingRequests.length > 0 && (
+                        <div className="px-6 py-2 bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Self-Requested Access</span>
+                        </div>
+                    )}
+                    {pendingRequests.map(user => (
+                        <UserRow key={user.id} user={user} type="REQUEST" />
+                    ))}
+
+                    {/* section: Active Invitations */}
+                    {activeInvitations.length > 0 && (
+                        <div className="px-6 py-2 bg-gray-50/50 dark:bg-white/5 border-y border-gray-100 dark:border-gray-800">
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sent Invitations</span>
+                        </div>
+                    )}
+                    {activeInvitations.map(user => (
+                        <UserRow key={user.id} user={user} type="INVITE" />
+                    ))}
+
+                    {pendingRequests.length === 0 && activeInvitations.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-24 text-gray-400">
                             <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center mb-4">
                                 <CheckCircle size={32} className="text-green-500/30" />
                             </div>
-                            <p className="font-bold text-sm tracking-tight text-gray-300">Clean Slate! No pending requests.</p>
+                            <p className="font-bold text-sm tracking-tight text-gray-300">Clean Slate! No pending requests or invitations.</p>
                         </div>
-                    ) : (
-                        pendingUsers.map(user => (
-                            <div key={user.id} className="p-6 flex flex-col md:flex-row gap-6 hover:bg-gray-50 dark:hover:bg-white/5 transition-all group">
-                                <div className="flex items-start gap-4 flex-1">
-                                    <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border-2 border-white dark:border-[#1e2029] shadow-md group-hover:scale-105 transition-transform">
-                                        <img 
-                                            src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff`} 
-                                            alt={user.name} 
-                                            className="w-full h-full object-cover" 
-                                        />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <h4 className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{user.name}</h4>
-                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-gray-100 dark:bg-gray-800 text-gray-500 tracking-wider font-bold">{user.jobTitle || 'New Member'}</span>
-                                        </div>
-                                        <div className="text-xs font-medium text-gray-500 mb-3">{user.email} &bull; {user.department || 'General'}</div>
-                                        
-                                        <div className="flex flex-wrap gap-2">
-                                            <div className="inline-flex items-center gap-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/50 rounded-xl px-3 py-1.5">
-                                                <AlertCircle size={12} className="text-amber-600"/>
-                                                <p className="text-[10px] text-amber-800 dark:text-amber-400 font-bold uppercase tracking-tight">
-                                                    {user.approvalReason?.replace('Requested Access: ', '') || "Awaiting Setup"}
-                                                </p>
-                                            </div>
-                                            {user.invitationExpiresAt && (
-                                                <div className={`inline-flex items-center gap-2 border rounded-xl px-3 py-1.5 ${new Date(user.invitationExpiresAt) < new Date() ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/50 text-red-600' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50 text-blue-600'}`}>
-                                                    <Clock size={12} />
-                                                    <p className="text-[10px] font-bold uppercase tracking-tight">
-                                                        {new Date(user.invitationExpiresAt) < new Date() ? 'Invitation Expired' : `Expires: ${new Date(user.invitationExpiresAt).toLocaleDateString()}`}
-                                                    </p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                 <div className="flex items-center gap-2 self-center">
-                                    <button 
-                                        onClick={async () => {
-                                            const success = await resendWelcomeEmail(user.email, user.name);
-                                            if (success) alert(`Welcome email re-sent to ${user.email}`);
-                                            else alert('Failed to re-send email. Please check your connection.');
-                                        }}
-                                        className="w-10 h-10 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-100"
-                                        title="Resend Welcome Email"
-                                    >
-                                        <Loader2 size={20} className={isProcessing ? "animate-spin" : ""} />
-                                    </button>
-                                    <button 
-                                        onClick={() => handleReject(user.id)} 
-                                        className="w-10 h-10 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-100" 
-                                        title="Reject"
-                                    >
-                                        <UserX size={20} />
-                                    </button>
-                                    <button 
-                                        onClick={() => openApprovalModal(user)}
-                                        className="h-10 px-5 bg-amber-500 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-all flex items-center gap-2"
-                                    >
-                                        <Shield size={16} /> Grant Access
-                                    </button>
-                                </div>
-                            </div>
-                        )
-                    ))}
+                    )}
                 </div>
             </div>
 

@@ -1050,9 +1050,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       const success = await sendWelcomeEmail(email, name);
       if (success) {
+          const now = new Date();
           const expiry = new Date();
           expiry.setHours(expiry.getHours() + 48);
-          const updatedUser = { ...user, invitationExpiresAt: expiry.toISOString() };
+          const updatedUser: User = { 
+            ...user, 
+            invitedAt: now.toISOString(),
+            invitationExpiresAt: expiry.toISOString() 
+          };
           
           setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
           try {

@@ -44,6 +44,7 @@ export const db = {
             status: u.status,
             createdAt: u.created_at,
             siteIds: u.site_ids || [],
+            invitedAt: u.invited_at,
             invitationExpiresAt: u.invitation_expires_at
         }));
     },
@@ -59,6 +60,7 @@ export const db = {
             status: user.status || 'PENDING_APPROVAL',
             created_at: user.createdAt || new Date().toISOString(),
             site_ids: user.siteIds || [],
+            invited_at: user.invitedAt,
             invitation_expires_at: user.invitationExpiresAt
         });
         if (error) throw error;
@@ -75,6 +77,7 @@ export const db = {
             status: user.status || 'PENDING_APPROVAL',
             created_at: user.createdAt || new Date().toISOString(),
             site_ids: user.siteIds || [],
+            invited_at: user.invitedAt,
             invitation_expires_at: user.invitationExpiresAt
         }, { onConflict: 'id' });
         if (error) throw error;

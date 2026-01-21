@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
   job_title TEXT,
   status TEXT DEFAULT 'PENDING_APPROVAL', -- 'APPROVED', 'PENDING_APPROVAL', 'REJECTED'
   created_at TIMESTAMPTZ DEFAULT NOW(),
+  invited_at TIMESTAMPTZ, -- Added to track when invitation was sent
   invitation_expires_at TIMESTAMPTZ -- Added for invitation timeout
 );
 
