@@ -12,28 +12,15 @@ import { useApp } from '../context/AppContext';
  */
 const VersionUpdater: React.FC = () => {
     const { branding } = useApp();
-    const [initialVersion, setInitialVersion] = useState<string | null>(null);
+    // Use the build-time version injected by Vite
+    const [initialVersion] = useState<string | null>(import.meta.env.VITE_APP_VERSION || null);
     const [updateAvailable, setUpdateAvailable] = useState(false);
     const [isVisible, setIsVisible] = useState(true);
     const CHECK_INTERVAL = 60 * 1000; // Check every 1 minute
 
     useEffect(() => {
-        // 1. Get the version we started with
-        const fetchInitialVersion = async () => {
-            try {
-                const res = await fetch('/version.json?t=' + Date.now());
-                if (res.ok) {
-                    const data = await res.json();
-                    setInitialVersion(data.version);
-                    console.log('App Version:', data.version);
-                }
-            } catch (e) {
-                console.warn('Could not load version.json', e);
-            }
-        };
-
-        fetchInitialVersion();
-    }, []);
+       console.log("App Version:", initialVersion);
+    }, [initialVersion]);
 
     useEffect(() => {
         if (!initialVersion) return;
