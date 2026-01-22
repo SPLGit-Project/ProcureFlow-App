@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { PermissionId } from '../types';
 import PwaInstaller from './PwaInstaller';
+import VersionUpdater from './VersionUpdater';
 
 const Layout = () => {
   const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteId, setActiveSiteId, sites, siteName, originalUser, stopImpersonation } = useApp();
@@ -265,6 +266,9 @@ const Layout = () => {
             <Outlet />
         </main>
       </div>
+      
+      {/* Smart Version Updater */}
+      <VersionUpdater />
     </div>
   );
 };
