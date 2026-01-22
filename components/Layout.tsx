@@ -19,7 +19,10 @@ import {
   Clock,
   MapPin, 
   Building,
-  Shield
+  Shield,
+  ChevronDown,
+  ChevronUp,
+  UserCog
 } from 'lucide-react';
 import { PermissionId } from '../types';
 import PwaInstaller from './PwaInstaller';
@@ -27,6 +30,7 @@ import PwaInstaller from './PwaInstaller';
 const Layout = () => {
   const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteId, setActiveSiteId, sites, siteName, originalUser, stopImpersonation } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [isProfileExpanded, setIsProfileExpanded] = React.useState(false);
   const navigate = useNavigate();
 
   // Admin Role Switcher (Mock for testing permissions)
@@ -114,7 +118,7 @@ const Layout = () => {
              <p className={`px-4 text-xs font-bold uppercase tracking-wider mb-3 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/50' : 'text-gray-400'}`}>System</p>
              <div 
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-slate-500 hover:bg-gray-100 dark:hover:bg-white/5'}`}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-slate-500 hover:bg-gray-100 hover:text-gray-900'}`}
              >
                  {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
                  <span className="font-medium text-sm">{theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
@@ -126,70 +130,102 @@ const Layout = () => {
         </nav>
 
         {/* User Profile */}
-        <div 
-          onClick={() => navigate('/settings', { state: { activeTab: 'PROFILE' } })}
-          className="p-4 m-4 rounded-2xl bg-white/10 border border-white/10 backdrop-blur-md cursor-pointer hover:bg-white/15 transition-all group"
-        >
-           <div className="flex items-center gap-3 mb-3">
-              <div className="relative">
-                <img src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`} alt="User" className="w-10 h-10 rounded-full bg-gray-200 border-2 border-white/20 shadow-sm transition-transform group-hover:scale-105" />
-                <div className="absolute inset-0 rounded-full bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                   <Settings size={12} className="text-white" />
-                </div>
-              </div>
-              <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold truncate transition-colors group-hover:text-white">{currentUser.name}</p>
-                  <p className={`text-[10px] uppercase font-bold px-1.5 rounded inline-block shadow-sm ${
-                    ['brand', 'dark'].includes(branding.sidebarTheme || '') 
-                      ? 'bg-white/20 text-white border border-white/10' 
-                      : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)] dark:bg-[rgba(var(--color-brand-rgb),0.2)] dark:text-blue-400 border border-[var(--color-brand)]/20'
-                  }`}>
-                    {roles.find(r => r.id === currentUser.role)?.name || currentUser.role}
-                  </p>
-              </div>
-           </div>
-           
-           <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
-             {/* Site Switcher */}
-             {(currentUser.role === 'ADMIN' || (currentUser.siteIds && currentUser.siteIds.length > 1)) && (
-                  <div className="space-y-1">
-                      <p className="text-[9px] uppercase font-bold text-white/40 px-1 flex items-center gap-1"><MapPin size={10}/> Site Context</p>
-                      <select 
-                        className={`w-full rounded-lg text-xs p-2.5 outline-none appearance-none cursor-pointer font-bold shadow-sm transition-all ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'bg-black/30 text-white border-white/10 hover:bg-black/40' : 'bg-white dark:bg-[#15171e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]'}`}
-                        value={activeSiteId || ''}
-                        onChange={(e) => setActiveSiteId(e.target.value === '' ? null : e.target.value)}
-                     >
-                       <option value="" className="text-gray-900 bg-white">All Sites (Global)</option>
-                       {sites.map(s => (
-                           <option key={s.id} value={s.id} className="text-gray-900 bg-white">{s.name}</option>
-                       ))}
-                     </select>
+        <div className="mx-4 mb-4">
+          <div 
+            onClick={() => setIsProfileExpanded(!isProfileExpanded)}
+            className={`p-3 rounded-xl border transition-all cursor-pointer group select-none ${
+              ['brand', 'dark'].includes(branding.sidebarTheme || '') 
+                ? 'bg-white/10 border-white/10 hover:bg-white/15' 
+                : 'bg-white border-gray-200 hover:border-gray-300 shadow-sm'
+            }`}
+          >
+             <div className="flex items-center gap-3">
+                <div className="relative">
+                  <img src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`} alt="User" className="w-10 h-10 rounded-full bg-gray-200 border-2 border-white/20 shadow-sm" />
+                  <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-[#1e2029] flex items-center justify-center ${isProfileExpanded ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-200 text-gray-500'}`}>
+                     {isProfileExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                   </div>
-             )}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-bold truncate transition-colors ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white' : 'text-gray-900'}`}>{currentUser.name}</p>
+                    <p className={`text-[10px] uppercase font-bold px-1.5 rounded inline-block shadow-sm mt-0.5 ${
+                      ['brand', 'dark'].includes(branding.sidebarTheme || '') 
+                        ? 'bg-white/20 text-white border border-white/10' 
+                        : 'bg-gray-100 text-gray-500 border border-gray-200'
+                    }`}>
+                      {roles.find(r => r.id === currentUser.role)?.name || currentUser.role}
+                    </p>
+                </div>
+             </div>
+          </div>
+          
+          {/* Collapsible Content */}
+          <div className={`space-y-3 overflow-hidden transition-all duration-300 ease-in-out ${isProfileExpanded ? 'max-h-96 opacity-100 mt-3 pl-2' : 'max-h-0 opacity-0 mt-0'}`}>
+               {/* Quick Profile Link */}
+               <button 
+                  onClick={() => navigate('/settings', { state: { activeTab: 'PROFILE' } })}
+                  className={`w-full flex items-center gap-3 text-xs font-bold px-3 py-2 rounded-lg transition-colors ${
+                      ['brand', 'dark'].includes(branding.sidebarTheme || '') 
+                      ? 'text-white/70 hover:text-white hover:bg-white/10' 
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+               >
+                   <UserCog size={16} /> Edit Profile
+               </button>
 
-             {currentUser.realRole === 'ADMIN' && (
-                 <div className="space-y-1">
-                     <p className="text-[9px] uppercase font-bold text-white/40 px-1">Switch View</p>
-                     <select 
-                        className={`w-full rounded-lg text-xs p-2.5 outline-none appearance-none cursor-pointer font-bold shadow-sm transition-all ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'bg-black/30 text-white border-white/10 hover:bg-black/40' : 'bg-white dark:bg-[#15171e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]'}`}
-                        value={currentUser.role}
-                        onChange={(e) => switchRole(e.target.value as any)}
-                     >
-                       <option value="ADMIN" className="text-gray-900 bg-white">Administrator View</option>
-                       {roles.filter(r => r.id !== 'ADMIN').map(r => (
-                           <option key={r.id} value={r.id} className="text-gray-900 bg-white">{r.name} View</option>
-                       ))}
-                     </select>
-                 </div>
-             )}
-             
-             <button 
-                onClick={logout}
-                className={`w-full flex items-center justify-center gap-2 rounded-lg text-xs p-2.5 font-bold transition-all shadow-sm ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-white dark:bg-white/5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 border border-transparent dark:border-red-500/20'}`}
-             >
-                 <LogOut size={14} /> Sign Out
-             </button>
-           </div>
+               {(currentUser.role === 'ADMIN' || (currentUser.siteIds && currentUser.siteIds.length > 1)) && (
+                    <div className="space-y-1">
+                        <p className={`text-[9px] uppercase font-bold px-1 flex items-center gap-1 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/40' : 'text-gray-400'}`}>
+                            <MapPin size={10}/> Site Context
+                        </p>
+                        <select 
+                          className={`w-full rounded-lg text-xs p-2.5 outline-none appearance-none cursor-pointer font-bold transition-all ${
+                              ['brand', 'dark'].includes(branding.sidebarTheme || '') 
+                              ? 'bg-black/30 text-white border border-white/10 hover:bg-black/40' 
+                              : 'bg-gray-50 text-gray-700 border border-gray-200 hover:border-gray-300 hover:bg-white shadow-sm'
+                          }`}
+                          value={activeSiteId || ''}
+                          onChange={(e) => setActiveSiteId(e.target.value === '' ? null : e.target.value)}
+                       >
+                         <option value="" className="text-gray-900 bg-white">All Sites (Global)</option>
+                         {sites.map(s => (
+                             <option key={s.id} value={s.id} className="text-gray-900 bg-white">{s.name}</option>
+                         ))}
+                       </select>
+                    </div>
+               )}
+
+               {currentUser.realRole === 'ADMIN' && (
+                   <div className="space-y-1">
+                       <p className={`text-[9px] uppercase font-bold px-1 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/40' : 'text-gray-400'}`}>Switch View</p>
+                       <select 
+                          className={`w-full rounded-lg text-xs p-2.5 outline-none appearance-none cursor-pointer font-bold transition-all ${
+                              ['brand', 'dark'].includes(branding.sidebarTheme || '') 
+                              ? 'bg-black/30 text-white border border-white/10 hover:bg-black/40' 
+                              : 'bg-gray-50 text-gray-700 border border-gray-200 hover:border-gray-300 hover:bg-white shadow-sm'
+                          }`}
+                          value={currentUser.role}
+                          onChange={(e) => switchRole(e.target.value as any)}
+                       >
+                         <option value="ADMIN" className="text-gray-900 bg-white">Administrator View</option>
+                         {roles.filter(r => r.id !== 'ADMIN').map(r => (
+                             <option key={r.id} value={r.id} className="text-gray-900 bg-white">{r.name} View</option>
+                         ))}
+                       </select>
+                   </div>
+               )}
+               
+               <button 
+                  onClick={logout}
+                  className={`w-full flex items-center justify-center gap-2 rounded-lg text-xs p-2.5 font-bold transition-all ${
+                      ['brand', 'dark'].includes(branding.sidebarTheme || '') 
+                      ? 'bg-white/10 text-white hover:bg-white/20 shadow-sm' 
+                      : 'bg-white text-red-500 hover:bg-red-50 hover:text-red-600 border border-gray-200 hover:border-red-200 shadow-sm'
+                  }`}
+               >
+                   <LogOut size={14} /> Sign Out
+               </button>
+            </div>
         </div>
       </aside>
 
