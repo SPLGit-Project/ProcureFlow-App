@@ -2194,6 +2194,19 @@ if __name__ == "__main__":
                                   className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl text-xs outline-none focus:ring-4 focus:ring-[var(--color-brand)]/10 focus:bg-white dark:focus:bg-[#1e2029] transition-all"
                               />
                           </div>
+                          
+                          <div className="relative w-40">
+                              <select 
+                                  value={userRoleFilter} 
+                                  onChange={e => setUserRoleFilter(e.target.value)}
+                                  className="w-full pl-3 pr-8 py-2 bg-gray-50 dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl text-xs outline-none focus:ring-4 focus:ring-[var(--color-brand)]/10 appearance-none cursor-pointer text-gray-600 dark:text-gray-300 font-medium"
+                              >
+                                  <option value="">All Roles</option>
+                                  {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                              </select>
+                              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+                          </div>
+
                           <button onClick={() => { setIsDirectoryModalOpen(true); setUserRoleFilter(''); }} className="btn-primary py-2 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20">
                               <UserPlus size={16}/> Add User
                           </button>
@@ -2210,18 +2223,24 @@ if __name__ == "__main__":
                           </thead>
                           <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
                               {users.filter(u => {
+                                  // Filters
                                   const matchesSearch = !userSearch || 
                                       u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
                                       u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                  const matchesRole = !userRoleFilter || u.role === userRoleFilter;
                                   const notArchived = u.status !== 'ARCHIVED';
-                                  return matchesSearch && notArchived;
+                                  
+                                  return matchesSearch && matchesRole && notArchived;
                               }).length > 0 ? (
                                   users.filter(u => {
+                                      // Filters (Repeat for map)
                                       const matchesSearch = !userSearch || 
                                           u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
                                           u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                      const matchesRole = !userRoleFilter || u.role === userRoleFilter;
                                       const notArchived = u.status !== 'ARCHIVED';
-                                      return matchesSearch && notArchived;
+                                      
+                                      return matchesSearch && matchesRole && notArchived;
                                   }).map(user => (
                                       <tr key={user.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
                                           <td className="px-6 py-4">
@@ -2463,142 +2482,9 @@ if __name__ == "__main__":
                                           </div>
                                       )}
 
-                                          <div className="flex justify-between items-end mb-6">
-                                              <div>
-                                                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Role Members</h3>
-                                                  <div className="text-xl font-bold text-gray-900 dark:text-white">
-                                                      {activeRole.name} Members
-                                                  </div>
-                                              </div>
-                                              <button onClick={() => { setIsDirectoryModalOpen(true); setUserRoleFilter(activeRole.id); }} className="btn-primary py-2 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20">
-                                                  <UserPlus size={16}/> Add to Role
-                                              </button>
                                           </div>
-
-                                          <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
-                                              <table className="w-full text-left">
-                                                  <thead>
-                                                      <tr className="bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
-                                                          <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">User Profile</th>
-                                                          <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
-                                                      </tr>
-                                                  </thead>
-                                                  <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
-                                                      {users.filter(u => {
-                                                          const matchesRole = u.role === activeRole.id;
-                                                          const notArchived = u.status !== 'ARCHIVED';
-                                                          return matchesRole && notArchived;
-                                                      }).length > 0 ? (
-                                                          users.filter(u => {
-                                                              const matchesRole = u.role === activeRole.id;
-                                                              const notArchived = u.status !== 'ARCHIVED';
-                                                              return matchesRole && notArchived;
-                                                          }).map(user => (
-                                                              <tr key={user.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
-                                                                  <td className="px-6 py-4">
-                                                                       <div className="flex items-center gap-4">
-                                                                          <div className="relative shrink-0">
-                                                                              <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white dark:border-[#1e2029] shadow-md group-hover:scale-105 transition-transform">
-                                                                                <img src={user.avatar} className="w-full h-full object-cover bg-gray-100 dark:bg-gray-800" alt={user.name}/>
-                                                                              </div>
-                                                                              <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-white dark:border-[#1e2029] ${user.status === 'APPROVED' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'}`}></div>
-                                                                          </div>
-                                                                          <div className="flex-1 min-w-0">
-                                                                             <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight leading-none mb-1">{user.name}</div>
-                                                                             <div className="text-xs text-gray-500 font-medium">{user.email}</div>
-                                                                              <div className="flex flex-wrap gap-1 mt-2">
-                                                                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>{user.role}</span>
-                                                                                {user.siteIds && user.siteIds.map(sid => {
-                                                                                    const s = sites.find(x => x.id === sid);
-                                                                                    return s ? <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-500 uppercase">{s.name}</span> : null;
-                                                                                })}
-                                                                                {user.status === 'PENDING' && user.invitationExpiresAt && (
-                                                                                    <div className={`inline-flex items-center gap-1.5 border rounded-lg px-2 py-0.5 ${new Date(user.invitationExpiresAt) < new Date() ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/50 text-red-600' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50 text-blue-600'}`}>
-                                                                                        <Clock size={10} />
-                                                                                        <p className="text-[9px] font-black uppercase tracking-tight">
-                                                                                            {new Date(user.invitationExpiresAt) < new Date() ? 'Expired' : `Exp: ${new Date(user.invitationExpiresAt).toLocaleDateString()}`}
-                                                                                        </p>
-                                                                                    </div>
-                                                                                )}
-                                                                              </div>
-                                                                          </div>
-                                                                       </div>
-                                                                  </td>
-                                                                  <td className="px-6 py-4 text-right">
-                                                                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                          <button 
-                                                                            onClick={() => {
-                                                                                setInviteForm({
-                                                                                    id: user.id,
-                                                                                    name: user.name,
-                                                                                    email: user.email,
-                                                                                    jobTitle: user.jobTitle || '',
-                                                                                    role: user.role,
-                                                                                    siteIds: user.siteIds || []
-                                                                                });
-                                                                                setInviteStep(2);
-                                                                                setIsDirectoryModalOpen(true);
-                                                                            }}
-                                                                            className="h-9 px-4 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-sm flex items-center gap-2"
-                                                                          >
-                                                                            <Shield size={14}/> Manage
-                                                                          </button>
-
-                                                                          {currentUser?.id !== user.id && (
-                                                                              <div className="flex items-center gap-1">
-                                                                                {user.status === 'PENDING' && (
-                                                                                    <button 
-                                                                                        onClick={async () => {
-                                                                                            const success = await resendWelcomeEmail(user.email, user.name);
-                                                                                            if (success) alert(`Welcome email re-sent to ${user.email}`);
-                                                                                            else alert('Failed to re-send email.');
-                                                                                        }}
-                                                                                        className="w-9 h-9 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200"
-                                                                                        title="Resend Welcome Email"
-                                                                                    >
-                                                                                        <Mail size={16}/>
-                                                                                    </button>
-                                                                                )}
-                                                                                <button 
-                                                                                    onClick={() => impersonateUser(user.id)}
-                                                                                    className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
-                                                                                    title="View As"
-                                                                                >
-                                                                                    <Eye size={16}/>
-                                                                                </button>
-                                                                              </div>
-                                                                          )}
-                                                                          <button 
-                                                                            onClick={() => {
-                                                                              if (window.confirm(`Are you sure you want to archive ${user.name}?`)) {
-                                                                                archiveUser(user.id);
-                                                                              }
-                                                                            }} 
-                                                                            className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-200 dark:hover:border-red-800"
-                                                                            title="Archive"
-                                                                          >
-                                                                            <Archive size={16}/>
-                                                                          </button>
-                                                                      </div>
-                                                                  </td>
-                                                              </tr>
-                                                          ))
-                                                      ) : (
-                                                          <tr><td colSpan={2} className="px-6 py-20 text-center text-gray-400">
-                                                              <div className="flex flex-col items-center gap-3">
-                                                                  <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
-                                                                      <Search size={32} className="opacity-10"/>
-                                                                  </div>
-                                                                  <p className="font-bold text-sm tracking-tight text-gray-300">No users matched your request.</p>
-                                                              </div>
-                                                          </td></tr>
-                                                      )}
-                                                  </tbody>
-                                              </table>
                                       </div>
-                                  </div>
-                              </div>
-                      </>
+                                  </>
                       ) : (
                           <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
                               <div className="w-20 h-20 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
@@ -2615,442 +2501,6 @@ if __name__ == "__main__":
               </div>
           </div>
       )}
-              {/* Role Creator Modal (Only for creating new roles now) */}
-              {isRoleEditorOpen && !activeRole && (
-                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
-                        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Create New Role</h2>
-                        <div className="space-y-4">
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Role Name</label><input className="input-field mt-1" value={roleFormName} onChange={e => setRoleFormName(e.target.value)}/></div>
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Description</label><input className="input-field mt-1" value={roleFormDesc} onChange={e => setRoleFormDesc(e.target.value)}/></div>
-                            <div className="flex justify-end gap-3 pt-4">
-                                <button onClick={() => setIsRoleEditorOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
-                                <button onClick={() => {
-                                    // Handle Create
-                                    const newRole: RoleDefinition = {
-                                        id: roleFormName.toUpperCase().replace(/\s+/g, '_'),
-                                        name: roleFormName,
-                                        description: roleFormDesc,
-                                        permissions: [], // Start empty
-                                        isSystem: false
-                                    };
-                                    createRole(newRole);
-                                    setActiveRole(newRole); // Switch to it
-                                    setIsRoleEditorOpen(false);
-                                    // Reset form
-                                    setRoleFormName('');
-                                    setRoleFormDesc('');
-                                }} className="btn-primary">Create Role</button>
-                            </div>
-                        </div>
-                    </div>
-                 </div>
-              )}
-               {/* Invite User Wizard (Replaces Directory Modal) */}
-               {isDirectoryModalOpen && (
-                   <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-2xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
-                           
-                            {/* Header */}
-                            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-white/5">
-                                <div>
-                                    <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                        <User size={24} className="text-[var(--color-brand)]"/> 
-                                        {inviteForm.id && users.some(u => u.id === inviteForm.id) ? 'Manage User Access' : 'Invite New User'}
-                                    </h2>
-                                    <p className="text-sm text-gray-500 mt-1">
-                                        {inviteForm.id && users.some(u => u.id === inviteForm.id) 
-                                            ? 'Update permissions for an existing member.' 
-                                            : 'Add a new user to the organization and assign access.'}
-                                    </p>
-                                </div>
-                                <button onClick={handleResetInviteWizard} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                    <X size={24}/>
-                                </button>
-                            </div>
-
-                           {/* Wizard Steps Progress */}
-                            {/* Enhanced Progress Header */}
-                            <div className="flex bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
-                                <div className={`flex-1 py-4 px-6 text-center transition-all duration-300 relative ${inviteStep === 1 ? 'text-[var(--color-brand)] font-black' : 'text-gray-400 font-bold'}`}>
-                                    <div className="flex items-center justify-center gap-2">
-                                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] ${inviteStep === 1 ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/20' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>1</div>
-                                        <span className="text-xs tracking-tight">Identify User</span>
-                                    </div>
-                                    {inviteStep === 1 && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[var(--color-brand)] rounded-t-full" />}
-                                </div>
-                                <div className={`flex-1 py-4 px-6 text-center transition-all duration-300 relative ${inviteStep === 2 ? 'text-[var(--color-brand)] font-black' : 'text-gray-400 font-bold'}`}>
-                                    <div className="flex items-center justify-center gap-2">
-                                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] ${inviteStep === 2 ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/20' : (inviteStep > 2 ? 'bg-emerald-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500')}`}>2</div>
-                                        <span className="text-xs tracking-tight">Access & Sites</span>
-                                    </div>
-                                    {inviteStep === 2 && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[var(--color-brand)] rounded-t-full" />}
-                                </div>
-                            </div>
-
-                           {/* Body */}
-                           <div className="p-6 overflow-y-auto min-h-[300px]">
-                               {inviteStep === 1 && (
-                                   <div className="space-y-6">
-                                       {/* Tab Switcher */}
-                                       <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-full md:w-fit">
-                                           <button onClick={() => setInviteTab('SEARCH')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'SEARCH' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Search Users & Directory</button>
-                                           <button onClick={() => setInviteTab('MEMBERS')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MEMBERS' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Active Members</button>
-                                           <button onClick={() => setInviteTab('MANUAL')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MANUAL' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Manual Entry</button>
-                                       </div>
-
-                                       {inviteTab === 'SEARCH' ? (
-                                           <div className="space-y-4">
-                                               <div className="relative">
-                                                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                                   <input 
-                                                       className="input-field pl-10 h-14 text-lg" 
-                                                       placeholder="Type name or email..." 
-                                                       value={directorySearch} 
-                                                       onChange={e => setDirectorySearch(e.target.value)}
-                                                       autoFocus
-                                                   />
-                                                   {directoryLoading && (
-                                                       <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                                                            <div className="w-5 h-5 border-2 border-[var(--color-brand)] border-t-transparent rounded-full animate-spin"></div>
-                                                       </div>
-                                                   )}
-                                               </div>
-                                                                                               <div className="space-y-3">
-                                                     <div className="flex items-center justify-between">
-                                                         <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Search Results</h4>
-                                                         {directorySearch.length > 0 && !directoryLoading && (
-                                                             <span className="text-[10px] text-gray-400 font-medium">{directoryResults.length} found</span>
-                                                         )}
-                                                     </div>
-
-                                                     {directoryLoading && directoryResults.length === 0 ? (
-                                                        <div className="flex flex-col items-center justify-center py-12 text-gray-400 space-y-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
-                                                             <div className="relative">
-                                                                 <div className="w-8 h-8 border-2 border-[var(--color-brand)] border-t-transparent rounded-full animate-spin"></div>
-                                                                 <div className="absolute inset-0 flex items-center justify-center">
-                                                                     <div className="w-2 h-2 bg-[var(--color-brand)] rounded-full animate-pulse"></div>
-                                                                 </div>
-                                                             </div>
-                                                             <span className="text-xs font-medium animate-pulse">Scanning directory...</span>
-                                                        </div>
-                                                     ) : !directorySearch ? (
-                                                        <div className="flex flex-col items-center justify-center py-16 text-gray-400 space-y-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
-                                                             <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-300">
-                                                                 <Search size={24} />
-                                                             </div>
-                                                             <div className="text-center">
-                                                                 <p className="text-sm font-bold text-gray-500">Find someone...</p>
-                                                                 <p className="text-xs text-gray-400 mt-1">Start typing a name or email to see suggestions</p>
-                                                             </div>
-                                                        </div>
-                                                     ) : directoryResults.length > 0 ? (
-                                                        <div className="grid grid-cols-1 gap-2 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar">
-                                                            {directoryResults.map(u => (
-                                                                <div 
-                                                                    key={u.id} 
-                                                                    className="group relative bg-white dark:bg-[#15171e] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center gap-4 hover:border-[var(--color-brand)] hover:shadow-xl hover:shadow-[var(--color-brand)]/5 transition-all duration-300 cursor-pointer overflow-hidden" 
-                                                                    onClick={() => handleSelectUserForInvite(u)}
-                                                                >
-                                                                    {/* Hover background effect */}
-                                                                    <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-brand)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                                    
-                                                                    <div className="relative flex-shrink-0">
-                                                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg shadow-sm group-hover:scale-105 transition-transform ${u.isExisting ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'}`}>
-                                                                            {u.name.charAt(0)}
-                                                                        </div>
-                                                                        {u.isExisting && (
-                                                                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-600 border-2 border-white dark:border-[#15171e] rounded-full flex items-center justify-center shadow-sm">
-                                                                                <Check size={8} className="text-white" />
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                    
-                                                                    <div className="relative flex-1 min-w-0">
-                                                                        <div className="flex items-center gap-2 mb-0.5">
-                                                                            <h3 className="font-bold text-gray-900 dark:text-white truncate group-hover:text-[var(--color-brand)] transition-colors">{u.name}</h3>
-                                                                            {u.isExisting && (
-                                                                                <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-[8px] font-black uppercase tracking-tighter">Member</span>
-                                                                            )}
-                                                                        </div>
-                                                                        <div className="flex items-center gap-2 text-[11px] text-gray-400 font-medium">
-                                                                            <span className="truncate">{u.email}</span>
-                                                                            {u.jobTitle && (
-                                                                                <>
-                                                                                    <span className="w-1 h-1 bg-gray-300 dark:bg-gray-700 rounded-full" />
-                                                                                    <span className="truncate italic font-normal">{u.jobTitle}</span>
-                                                                                </>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="relative flex-shrink-0 flex items-center gap-3">
-                                                                        <div className="opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all font-bold text-[10px] text-[var(--color-brand)] flex items-center gap-1">
-                                                                            {u.isExisting ? 'Update Access' : 'Select'} <ArrowRight size={10} />
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                     ) : (
-                                                        <div className="flex flex-col items-center justify-center py-16 text-gray-400 space-y-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
-                                                            <div className="w-16 h-16 rounded-full bg-amber-50 dark:bg-amber-900/10 flex items-center justify-center text-amber-500">
-                                                                <AlertCircle size={32} />
-                                                            </div>
-                                                            <div className="text-center">
-                                                                <p className="text-sm font-bold text-gray-600 dark:text-gray-300">No matches found</p>
-                                                                <p className="text-xs text-gray-400 mt-1 max-w-[200px] mx-auto">We couldn't find anyone matching "{directorySearch}" in your organization.</p>
-                                                            </div>
-                                                            <button 
-                                                                onClick={() => setInviteTab('MANUAL')}
-                                                                className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"
-                                                            >
-                                                                Add manually instead <ArrowRight size={12} />
-                                                            </button>
-                                                        </div>
-                                                     )}
-                                                </div>
-                                           </div>
-                                       ) : inviteTab === 'MEMBERS' ? (
-                                           <div className="space-y-4">
-                                               <h4 className="text-xs font-bold text-gray-500 uppercase">Active Members</h4>
-                                               <div className="grid grid-cols-1 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                                   {users.filter(u => u.status !== 'ARCHIVED' && (userRoleFilter ? u.role !== userRoleFilter : true)).map(u => (
-                                                       <div key={u.id} onClick={() => handleSelectUserForInvite({ id: u.id, name: u.name, email: u.email, jobTitle: u.jobTitle, isExisting: true, currentRole: u.role, currentSiteIds: u.siteIds || [] })} className="bg-white dark:bg-[#15171e] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group hover:border-[var(--color-brand)] hover:shadow-md transition-all cursor-pointer">
-                                                           <div className="flex items-center gap-3">
-                                                               <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
-                                                                   {u.name.charAt(0)}
-                                                               </div>
-                                                               <div>
-                                                                   <div className="font-bold text-sm text-gray-900 dark:text-white">{u.name}</div>
-                                                                   <div className="text-[11px] text-gray-500">{u.email}</div>
-                                                               </div>
-                                                           </div>
-                                                           <div className="flex flex-col items-end gap-1">
-                                                               <span className="text-[10px] font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded uppercase">{u.role}</span>
-                                                               <button className="text-[10px] font-bold text-[var(--color-brand)] opacity-0 group-hover:opacity-100 transition-opacity">Select &rarr;</button>
-                                                           </div>
-                                                       </div>
-                                                   ))}
-                                               </div>
-                                           </div>
-                                       ) : (
-                                           <div className="space-y-4 max-w-md mx-auto py-4">
-                                               <div><label className="text-xs font-bold text-gray-500 uppercase">Full Name</label><input required className="input-field mt-1" value={inviteForm.name} onChange={e => setInviteForm({...inviteForm, name: e.target.value})}/></div>
-                                               <div><label className="text-xs font-bold text-gray-500 uppercase">Email Address</label><input required type="email" className="input-field mt-1" value={inviteForm.email} onChange={e => setInviteForm({...inviteForm, email: e.target.value})}/></div>
-                                               <div><label className="text-xs font-bold text-gray-500 uppercase">Job Title</label><input className="input-field mt-1" value={inviteForm.jobTitle} onChange={e => setInviteForm({...inviteForm, jobTitle: e.target.value})}/></div>
-                                               <div className="flex justify-end pt-4">
-                                                   <button 
-                                                        disabled={!inviteForm.name || !inviteForm.email}
-                                                        onClick={() => {
-                                                            setInviteForm({ ...inviteForm, id: uuidv4() });
-                                                            setInviteStep(2);
-                                                        }} 
-                                                        className="btn-primary w-full"
-                                                    >
-                                                        Next: Assign Access &rarr;
-                                                    </button>
-                                               </div>
-                                           </div>
-                                       )}
-                                   </div>
-                               )}
-
-                               {inviteStep === 2 && (
-                                    <div className="space-y-6 animate-fade-in">
-                                         {/* Selected User Badge */}
-                                         <div className="bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-gray-800 p-4 rounded-2xl flex items-center gap-4 shadow-sm">
-                                             <div className="relative flex-shrink-0">
-                                                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--color-brand)] to-[var(--color-brand-secondary,var(--color-brand))] flex items-center justify-center text-white font-black text-xl shadow-lg">
-                                                     {inviteForm.name.charAt(0)}
-                                                 </div>
-                                                 <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white dark:bg-[#1e2029] rounded-xl shadow-md flex items-center justify-center">
-                                                     <User size={14} className="text-[var(--color-brand)]" />
-                                                 </div>
-                                             </div>
-                                             <div className="min-w-0">
-                                                 <div className="flex items-center gap-2">
-                                                     <h3 className="font-black text-gray-900 dark:text-white text-lg truncate leading-tight">{inviteForm.name}</h3>
-                                                     {users.some(u => u.id === inviteForm.id) && (
-                                                         <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[9px] font-black uppercase tracking-tighter">Existing</span>
-                                                     )}
-                                                 </div>
-                                                 <div className="text-xs text-gray-400 font-medium truncate">{inviteForm.email}</div>
-                                             </div>
-                                             <button 
-                                                onClick={() => setInviteStep(1)} 
-                                                className="ml-auto p-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-gray-400 hover:text-[var(--color-brand)] hover:border-[var(--color-brand)] transition-all shadow-sm"
-                                                title="Change User"
-                                             >
-                                                 <RefreshCw size={16}/>
-                                             </button>
-                                         </div>
-
-                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                             {/* Role Selection */}
-                                             <div className="space-y-4">
-                                                 <div className="flex items-center justify-between">
-                                                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                                                         <Shield size={14} className="text-[var(--color-brand)]"/> Assigned Role
-                                                     </label>
-                                                 </div>
-                                                 <div className="grid grid-cols-1 gap-2">
-                                                     {roles.map(r => (
-                                                         <label 
-                                                            key={r.id} 
-                                                            className={`group relative flex items-start gap-4 p-4 rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden ${inviteForm.role === r.id ? 'bg-[var(--color-brand)]/5 border-[var(--color-brand)] shadow-lg shadow-[var(--color-brand)]/5' : 'bg-white dark:bg-[#15171e] border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'}`}
-                                                         >
-                                                             <div className={`mt-1 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${inviteForm.role === r.id ? 'border-[var(--color-brand)] bg-[var(--color-brand)]' : 'border-gray-300 dark:border-gray-700'}`}>
-                                                                 {inviteForm.role === r.id && <Check size={12} className="text-white" />}
-                                                             </div>
-                                                             <input type="radio" name="role" className="hidden" checked={inviteForm.role === r.id} onChange={() => setInviteForm({...inviteForm, role: r.id})} />
-                                                             <div className="relative min-w-0">
-                                                                 <div className={`font-black text-sm mb-0.5 transition-colors ${inviteForm.role === r.id ? 'text-gray-900 dark:text-white' : 'text-gray-500 group-hover:text-gray-700 dark:group-hover:text-gray-300'}`}>{r.name}</div>
-                                                                 <div className="text-[11px] text-gray-400 leading-relaxed font-medium line-clamp-2">{r.description}</div>
-                                                             </div>
-                                                             {inviteForm.role === r.id && (
-                                                                 <div className="absolute right-0 top-0 bottom-0 w-1 bg-[var(--color-brand)]" />
-                                                             )}
-                                                         </label>
-                                                     ))}
-                                                 </div>
-                                             </div>
-
-                                             {/* Site Selection */}
-                                             <div className="flex flex-col h-full">
-                                                  <div className="flex items-center justify-between mb-4">
-                                                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                                                          <MapPin size={14} className="text-emerald-500"/> Authorized Sites
-                                                      </label>
-                                                      {sites.length > 0 && (
-                                                          <button 
-                                                            onClick={() => {
-                                                                const allIds = sites.map(s => s.id);
-                                                                const isAllSelected = inviteForm.siteIds.length === allIds.length;
-                                                                setInviteForm({ ...inviteForm, siteIds: isAllSelected ? [] : allIds });
-                                                            }}
-                                                            className="text-[10px] font-bold text-[var(--color-brand)] hover:underline"
-                                                          >
-                                                              {inviteForm.siteIds.length === sites.length ? 'Deselect All' : 'Select All'}
-                                                          </button>
-                                                      )}
-                                                  </div>
-                                                  <div className="flex-1 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800 p-2 overflow-y-auto max-h-[360px] custom-scrollbar">
-                                                      <div className="grid grid-cols-1 gap-1">
-                                                          {sites.length > 0 ? sites.map(s => (
-                                                              <label 
-                                                                key={s.id} 
-                                                                className={`group flex items-center gap-3 p-3 rounded-xl transition-all cursor-pointer ${inviteForm.siteIds.includes(s.id) ? 'bg-white dark:bg-white/10 shadow-sm' : 'hover:bg-white dark:hover:bg-white/5 opacity-70 hover:opacity-100'}`}
-                                                              >
-                                                                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${inviteForm.siteIds.includes(s.id) ? 'bg-emerald-500 border-emerald-500 shadow-sm' : 'border-gray-300 dark:border-gray-700'}`}>
-                                                                      {inviteForm.siteIds.includes(s.id) && <Check size={12} className="text-white" />}
-                                                                  </div>
-                                                                  <input 
-                                                                     type="checkbox" 
-                                                                     className="hidden"
-                                                                     checked={inviteForm.siteIds.includes(s.id)} 
-                                                                     onChange={e => {
-                                                                         const newSites = e.target.checked 
-                                                                             ? [...inviteForm.siteIds, s.id]
-                                                                             : inviteForm.siteIds.filter(id => id !== s.id);
-                                                                         setInviteForm({...inviteForm, siteIds: newSites});
-                                                                     }}
-                                                                  />
-                                                                  <div className="min-w-0">
-                                                                     <div className={`text-sm font-bold transition-colors ${inviteForm.siteIds.includes(s.id) ? 'text-gray-900 dark:text-white' : 'text-gray-500 group-hover:text-gray-700'}`}>{s.name}</div>
-                                                                     {s.suburb && <div className="text-[10px] text-gray-400 font-medium truncate">{s.suburb}, {s.state}</div>}
-                                                                  </div>
-                                                              </label>
-                                                          )) : (
-                                                              <div className="flex flex-col items-center justify-center py-12 text-gray-400 space-y-3">
-                                                                  <MapPin size={24} className="opacity-20" />
-                                                                  <div className="text-center">
-                                                                      <p className="text-xs font-bold">No sites available</p>
-                                                                      <p className="text-[10px] opacity-60">Create sites in the Sites tab first.</p>
-                                                                  </div>
-                                                              </div>
-                                                          )}
-                                                      </div>
-                                                  </div>
-                                                  <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-900/20 flex items-start gap-3">
-                                                      <Info size={14} className="text-amber-500 mt-0.5 shrink-0" />
-                                                      <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium leading-relaxed">
-                                                          Users will only have access to data and notifications related to the sites selected above.
-                                                      </p>
-                                                  </div>
-                                             </div>
-                                         </div>
-                                    </div>
-                               )}
-                           </div>
-
-                           {/* Footer */}
-                           <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 flex justify-between items-center">
-                               {inviteStep === 2 ? (
-                                   <button onClick={() => setInviteStep(1)} className="text-gray-500 font-bold text-sm hover:underline">Back</button>
-                               ) : <div></div>}
-                               
-                               {inviteStep === 2 && (
-                                   <button 
-                                        onClick={async () => {
-                                            // Handle Final Submit
-                                            const isExisting = users.some(u => u.id === inviteForm.id || u.email === inviteForm.email);
-                                             
-                                             if (isExisting) {
-                                                 const targetId = users.find(u => u.id === inviteForm.id || u.email === inviteForm.email)?.id;
-                                                 if (targetId) {
-                                                     await updateUserAccess(targetId, inviteForm.role as UserRole, inviteForm.siteIds);
-                                                     alert(`Access updated for ${inviteForm.name}`);
-                                                 }
-                                             } else {
-                                            
-                                            // 1. Send Invite Logic
-                                            let inviteSent = false;
-                                            if (inviteForm.email && inviteForm.email.includes('@')) {
-                                                const { error } = await supabase.auth.signInWithOtp({
-                                                    email: inviteForm.email,
-                                                    options: {
-                                                        emailRedirectTo: window.location.origin,
-                                                        data: {
-                                                            full_name: inviteForm.name,
-                                                            avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteForm.name)}&background=random`
-                                                        }
-                                                    }
-                                                });
-                                                if (error) {
-                                                    alert(`Could not send invite: ${error.message}`);
-                                                    return;
-                                                }
-                                                inviteSent = true;
-                                            }
-
-                                            // 2. Add to DB
-                                            await addUser({
-                                                id: inviteForm.id || uuidv4(),
-                                                name: inviteForm.name,
-                                                email: inviteForm.email,
-                                                role: inviteForm.role,
-                                                jobTitle: inviteForm.jobTitle,
-                                                siteIds: inviteForm.siteIds,
-                                                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteForm.name)}&background=random`,
-                                                status: 'APPROVED', // Invited users are pre-approved
-                                                createdAt: new Date().toISOString()
-                                            } as any);
-
-                                            if (inviteSent) alert(`Passcode login link sent to ${inviteForm.email}`);
-                                            }
-                                             handleResetInviteWizard();
-                                        }}
-                                        className="btn-primary py-2 px-6 shadow-lg shadow-blue-500/20 flex items-center gap-2"
-                                    >
-                                        <Shield size={16}/> {users.some(u => u.id === inviteForm.id) ? 'Update Access' : 'Send Invite & Grant Access'}
-                                    </button>
-                               )}
-                           </div>
-                       </div>
-                   </div>
-               )}
-
       {activeTab === 'NOTIFICATIONS' && (
           <div className="animate-fade-in space-y-6">
               <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 p-4 rounded-xl flex items-center justify-between">
@@ -3742,6 +3192,442 @@ if __name__ == "__main__":
                     </div>
                  );
              })()}
+
+              {/* Role Creator Modal (Only for creating new roles now) */}
+              {isRoleEditorOpen && !activeRole && (
+                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
+                        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Create New Role</h2>
+                        <div className="space-y-4">
+                            <div><label className="text-xs font-bold text-gray-500 uppercase">Role Name</label><input className="input-field mt-1" value={roleFormName} onChange={e => setRoleFormName(e.target.value)}/></div>
+                            <div><label className="text-xs font-bold text-gray-500 uppercase">Description</label><input className="input-field mt-1" value={roleFormDesc} onChange={e => setRoleFormDesc(e.target.value)}/></div>
+                            <div className="flex justify-end gap-3 pt-4">
+                                <button onClick={() => setIsRoleEditorOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                                <button onClick={() => {
+                                    // Handle Create
+                                    const newRole: RoleDefinition = {
+                                        id: roleFormName.toUpperCase().replace(/\s+/g, '_'),
+                                        name: roleFormName,
+                                        description: roleFormDesc,
+                                        permissions: [], // Start empty
+                                        isSystem: false
+                                    };
+                                    createRole(newRole);
+                                    setActiveRole(newRole); // Switch to it
+                                    setIsRoleEditorOpen(false);
+                                    // Reset form
+                                    setRoleFormName('');
+                                    setRoleFormDesc('');
+                                }} className="btn-primary">Create Role</button>
+                            </div>
+                        </div>
+                    </div>
+                 </div>
+              )}
+               {/* Invite User Wizard (Replaces Directory Modal) */}
+               {isDirectoryModalOpen && (
+                   <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-2xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
+                           
+                            {/* Header */}
+                            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-white/5">
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                        <User size={24} className="text-[var(--color-brand)]"/> 
+                                        {inviteForm.id && users.some(u => u.id === inviteForm.id) ? 'Manage User Access' : 'Invite New User'}
+                                    </h2>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        {inviteForm.id && users.some(u => u.id === inviteForm.id) 
+                                            ? 'Update permissions for an existing member.' 
+                                            : 'Add a new user to the organization and assign access.'}
+                                    </p>
+                                </div>
+                                <button onClick={handleResetInviteWizard} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                    <X size={24}/>
+                                </button>
+                            </div>
+
+                           {/* Wizard Steps Progress */}
+                            {/* Enhanced Progress Header */}
+                            <div className="flex bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
+                                <div className={`flex-1 py-4 px-6 text-center transition-all duration-300 relative ${inviteStep === 1 ? 'text-[var(--color-brand)] font-black' : 'text-gray-400 font-bold'}`}>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] ${inviteStep === 1 ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/20' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>1</div>
+                                        <span className="text-xs tracking-tight">Identify User</span>
+                                    </div>
+                                    {inviteStep === 1 && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[var(--color-brand)] rounded-t-full" />}
+                                </div>
+                                <div className={`flex-1 py-4 px-6 text-center transition-all duration-300 relative ${inviteStep === 2 ? 'text-[var(--color-brand)] font-black' : 'text-gray-400 font-bold'}`}>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] ${inviteStep === 2 ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/20' : (inviteStep > 2 ? 'bg-emerald-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500')}`}>2</div>
+                                        <span className="text-xs tracking-tight">Access & Sites</span>
+                                    </div>
+                                    {inviteStep === 2 && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[var(--color-brand)] rounded-t-full" />}
+                                </div>
+                            </div>
+
+                           {/* Body */}
+                           <div className="p-6 overflow-y-auto min-h-[300px]">
+                               {inviteStep === 1 && (
+                                   <div className="space-y-6">
+                                       {/* Tab Switcher */}
+                                       <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-full md:w-fit">
+                                           <button onClick={() => setInviteTab('SEARCH')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'SEARCH' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Search Users & Directory</button>
+                                           <button onClick={() => setInviteTab('MEMBERS')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MEMBERS' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Active Members</button>
+                                           <button onClick={() => setInviteTab('MANUAL')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MANUAL' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Manual Entry</button>
+                                       </div>
+
+                                       {inviteTab === 'SEARCH' ? (
+                                           <div className="space-y-4">
+                                               <div className="relative">
+                                                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                                   <input 
+                                                       className="input-field pl-10 h-14 text-lg" 
+                                                       placeholder="Type name or email..." 
+                                                       value={directorySearch} 
+                                                       onChange={e => setDirectorySearch(e.target.value)}
+                                                       autoFocus
+                                                   />
+                                                   {directoryLoading && (
+                                                       <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                                            <div className="w-5 h-5 border-2 border-[var(--color-brand)] border-t-transparent rounded-full animate-spin"></div>
+                                                       </div>
+                                                   )}
+                                               </div>
+                                                                                               <div className="space-y-3">
+                                                     <div className="flex items-center justify-between">
+                                                         <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Search Results</h4>
+                                                         {directorySearch.length > 0 && !directoryLoading && (
+                                                             <span className="text-[10px] text-gray-400 font-medium">{directoryResults.length} found</span>
+                                                         )}
+                                                     </div>
+
+                                                     {directoryLoading && directoryResults.length === 0 ? (
+                                                        <div className="flex flex-col items-center justify-center py-12 text-gray-400 space-y-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                             <div className="relative">
+                                                                 <div className="w-8 h-8 border-2 border-[var(--color-brand)] border-t-transparent rounded-full animate-spin"></div>
+                                                                 <div className="absolute inset-0 flex items-center justify-center">
+                                                                     <div className="w-2 h-2 bg-[var(--color-brand)] rounded-full animate-pulse"></div>
+                                                                 </div>
+                                                             </div>
+                                                             <span className="text-xs font-medium animate-pulse">Scanning directory...</span>
+                                                        </div>
+                                                     ) : !directorySearch ? (
+                                                        <div className="flex flex-col items-center justify-center py-16 text-gray-400 space-y-3 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                             <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-300">
+                                                                 <Search size={24} />
+                                                             </div>
+                                                             <div className="text-center">
+                                                                 <p className="text-sm font-bold text-gray-500">Find someone...</p>
+                                                                 <p className="text-xs text-gray-400 mt-1">Start typing a name or email to see suggestions</p>
+                                                             </div>
+                                                        </div>
+                                                     ) : directoryResults.length > 0 ? (
+                                                        <div className="grid grid-cols-1 gap-2 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar">
+                                                            {directoryResults.map(u => (
+                                                                <div 
+                                                                    key={u.id} 
+                                                                    className="group relative bg-white dark:bg-[#15171e] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center gap-4 hover:border-[var(--color-brand)] hover:shadow-xl hover:shadow-[var(--color-brand)]/5 transition-all duration-300 cursor-pointer overflow-hidden" 
+                                                                    onClick={() => handleSelectUserForInvite(u)}
+                                                                >
+                                                                    {/* Hover background effect */}
+                                                                    <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-brand)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                    
+                                                                    <div className="relative flex-shrink-0">
+                                                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg shadow-sm group-hover:scale-105 transition-transform ${u.isExisting ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'}`}>
+                                                                            {u.name.charAt(0)}
+                                                                        </div>
+                                                                        {u.isExisting && (
+                                                                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-600 border-2 border-white dark:border-[#15171e] rounded-full flex items-center justify-center shadow-sm">
+                                                                                <Check size={8} className="text-white" />
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    
+                                                                    <div className="relative flex-1 min-w-0">
+                                                                        <div className="flex items-center gap-2 mb-0.5">
+                                                                            <h3 className="font-bold text-gray-900 dark:text-white truncate group-hover:text-[var(--color-brand)] transition-colors">{u.name}</h3>
+                                                                            {u.isExisting && (
+                                                                                <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-[8px] font-black uppercase tracking-tighter">Member</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 text-[11px] text-gray-400 font-medium">
+                                                                            <span className="truncate">{u.email}</span>
+                                                                            {u.jobTitle && (
+                                                                                <>
+                                                                                    <span className="w-1 h-1 bg-gray-300 dark:bg-gray-700 rounded-full" />
+                                                                                    <span className="truncate italic font-normal">{u.jobTitle}</span>
+                                                                                </>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="relative flex-shrink-0 flex items-center gap-3">
+                                                                        <div className="opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all font-bold text-[10px] text-[var(--color-brand)] flex items-center gap-1">
+                                                                            {u.isExisting ? 'Update Access' : 'Select'} <ArrowRight size={10} />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                     ) : (
+                                                        <div className="flex flex-col items-center justify-center py-16 text-gray-400 space-y-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                            <div className="w-16 h-16 rounded-full bg-amber-50 dark:bg-amber-900/10 flex items-center justify-center text-amber-500">
+                                                                <AlertCircle size={32} />
+                                                            </div>
+                                                            <div className="text-center">
+                                                                <p className="text-sm font-bold text-gray-600 dark:text-gray-300">No matches found</p>
+                                                                <p className="text-xs text-gray-400 mt-1 max-w-[200px] mx-auto">We couldn't find anyone matching "{directorySearch}" in your organization.</p>
+                                                            </div>
+                                                            <button 
+                                                                onClick={() => setInviteTab('MANUAL')}
+                                                                className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"
+                                                            >
+                                                                Add manually instead <ArrowRight size={12} />
+                                                            </button>
+                                                        </div>
+                                                     )}
+                                                </div>
+                                           </div>
+                                       ) : inviteTab === 'MEMBERS' ? (
+                                           <div className="space-y-4">
+                                               <h4 className="text-xs font-bold text-gray-500 uppercase">Active Members</h4>
+                                               <div className="grid grid-cols-1 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                                   {users.filter(u => u.status !== 'ARCHIVED' && (userRoleFilter ? u.role !== userRoleFilter : true)).map(u => (
+                                                       <div key={u.id} onClick={() => handleSelectUserForInvite({ id: u.id, name: u.name, email: u.email, jobTitle: u.jobTitle, isExisting: true, currentRole: u.role, currentSiteIds: u.siteIds || [] })} className="bg-white dark:bg-[#15171e] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group hover:border-[var(--color-brand)] hover:shadow-md transition-all cursor-pointer">
+                                                           <div className="flex items-center gap-3">
+                                                               <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                                                                   {u.name.charAt(0)}
+                                                               </div>
+                                                               <div>
+                                                                   <div className="font-bold text-sm text-gray-900 dark:text-white">{u.name}</div>
+                                                                   <div className="text-[11px] text-gray-500">{u.email}</div>
+                                                               </div>
+                                                           </div>
+                                                           <div className="flex flex-col items-end gap-1">
+                                                               <span className="text-[10px] font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded uppercase">{u.role}</span>
+                                                               <button className="text-[10px] font-bold text-[var(--color-brand)] opacity-0 group-hover:opacity-100 transition-opacity">Select &rarr;</button>
+                                                           </div>
+                                                       </div>
+                                                   ))}
+                                               </div>
+                                           </div>
+                                       ) : (
+                                           <div className="space-y-4 max-w-md mx-auto py-4">
+                                               <div><label className="text-xs font-bold text-gray-500 uppercase">Full Name</label><input required className="input-field mt-1" value={inviteForm.name} onChange={e => setInviteForm({...inviteForm, name: e.target.value})}/></div>
+                                               <div><label className="text-xs font-bold text-gray-500 uppercase">Email Address</label><input required type="email" className="input-field mt-1" value={inviteForm.email} onChange={e => setInviteForm({...inviteForm, email: e.target.value})}/></div>
+                                               <div><label className="text-xs font-bold text-gray-500 uppercase">Job Title</label><input className="input-field mt-1" value={inviteForm.jobTitle} onChange={e => setInviteForm({...inviteForm, jobTitle: e.target.value})}/></div>
+                                               <div className="flex justify-end pt-4">
+                                                   <button 
+                                                        disabled={!inviteForm.name || !inviteForm.email}
+                                                        onClick={() => {
+                                                            setInviteForm({ ...inviteForm, id: uuidv4() });
+                                                            setInviteStep(2);
+                                                        }} 
+                                                        className="btn-primary w-full"
+                                                    >
+                                                        Next: Assign Access &rarr;
+                                                    </button>
+                                               </div>
+                                           </div>
+                                       )}
+                                   </div>
+                               )}
+
+                               {inviteStep === 2 && (
+                                    <div className="space-y-6 animate-fade-in">
+                                         {/* Selected User Badge */}
+                                         <div className="bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-gray-800 p-4 rounded-2xl flex items-center gap-4 shadow-sm">
+                                             <div className="relative flex-shrink-0">
+                                                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--color-brand)] to-[var(--color-brand-secondary,var(--color-brand))] flex items-center justify-center text-white font-black text-xl shadow-lg">
+                                                     {inviteForm.name.charAt(0)}
+                                                 </div>
+                                                 <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white dark:bg-[#1e2029] rounded-xl shadow-md flex items-center justify-center">
+                                                     <User size={14} className="text-[var(--color-brand)]" />
+                                                 </div>
+                                             </div>
+                                             <div className="min-w-0">
+                                                 <div className="flex items-center gap-2">
+                                                     <h3 className="font-black text-gray-900 dark:text-white text-lg truncate leading-tight">{inviteForm.name}</h3>
+                                                     {users.some(u => u.id === inviteForm.id) && (
+                                                         <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[9px] font-black uppercase tracking-tighter">Existing</span>
+                                                     )}
+                                                 </div>
+                                                 <div className="text-xs text-gray-400 font-medium truncate">{inviteForm.email}</div>
+                                             </div>
+                                             <button 
+                                                onClick={() => setInviteStep(1)} 
+                                                className="ml-auto p-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-gray-400 hover:text-[var(--color-brand)] hover:border-[var(--color-brand)] transition-all shadow-sm"
+                                                title="Change User"
+                                             >
+                                                 <RefreshCw size={16}/>
+                                             </button>
+                                         </div>
+
+                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                             {/* Role Selection */}
+                                             <div className="space-y-4">
+                                                 <div className="flex items-center justify-between">
+                                                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                                                         <Shield size={14} className="text-[var(--color-brand)]"/> Assigned Role
+                                                     </label>
+                                                 </div>
+                                                 <div className="grid grid-cols-1 gap-2">
+                                                     {roles.map(r => (
+                                                         <label 
+                                                            key={r.id} 
+                                                            className={`group relative flex items-start gap-4 p-4 rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden ${inviteForm.role === r.id ? 'bg-[var(--color-brand)]/5 border-[var(--color-brand)] shadow-lg shadow-[var(--color-brand)]/5' : 'bg-white dark:bg-[#15171e] border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'}`}
+                                                         >
+                                                             <div className={`mt-1 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${inviteForm.role === r.id ? 'border-[var(--color-brand)] bg-[var(--color-brand)]' : 'border-gray-300 dark:border-gray-700'}`}>
+                                                                 {inviteForm.role === r.id && <Check size={12} className="text-white" />}
+                                                             </div>
+                                                             <input type="radio" name="role" className="hidden" checked={inviteForm.role === r.id} onChange={() => setInviteForm({...inviteForm, role: r.id})} />
+                                                             <div className="relative min-w-0">
+                                                                 <div className={`font-black text-sm mb-0.5 transition-colors ${inviteForm.role === r.id ? 'text-gray-900 dark:text-white' : 'text-gray-500 group-hover:text-gray-700 dark:group-hover:text-gray-300'}`}>{r.name}</div>
+                                                                 <div className="text-[11px] text-gray-400 leading-relaxed font-medium line-clamp-2">{r.description}</div>
+                                                             </div>
+                                                             {inviteForm.role === r.id && (
+                                                                 <div className="absolute right-0 top-0 bottom-0 w-1 bg-[var(--color-brand)]" />
+                                                             )}
+                                                         </label>
+                                                     ))}
+                                                 </div>
+                                             </div>
+
+                                             {/* Site Selection */}
+                                             <div className="flex flex-col h-full">
+                                                  <div className="flex items-center justify-between mb-4">
+                                                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                                                          <MapPin size={14} className="text-emerald-500"/> Authorized Sites
+                                                      </label>
+                                                      {sites.length > 0 && (
+                                                          <button 
+                                                            onClick={() => {
+                                                                const allIds = sites.map(s => s.id);
+                                                                const isAllSelected = inviteForm.siteIds.length === allIds.length;
+                                                                setInviteForm({ ...inviteForm, siteIds: isAllSelected ? [] : allIds });
+                                                            }}
+                                                            className="text-[10px] font-bold text-[var(--color-brand)] hover:underline"
+                                                          >
+                                                              {inviteForm.siteIds.length === sites.length ? 'Deselect All' : 'Select All'}
+                                                          </button>
+                                                      )}
+                                                  </div>
+                                                  <div className="flex-1 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800 p-2 overflow-y-auto max-h-[360px] custom-scrollbar">
+                                                      <div className="grid grid-cols-1 gap-1">
+                                                          {sites.length > 0 ? sites.map(s => (
+                                                              <label 
+                                                                key={s.id} 
+                                                                className={`group flex items-center gap-3 p-3 rounded-xl transition-all cursor-pointer ${inviteForm.siteIds.includes(s.id) ? 'bg-white dark:bg-white/10 shadow-sm' : 'hover:bg-white dark:hover:bg-white/5 opacity-70 hover:opacity-100'}`}
+                                                              >
+                                                                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${inviteForm.siteIds.includes(s.id) ? 'bg-emerald-500 border-emerald-500 shadow-sm' : 'border-gray-300 dark:border-gray-700'}`}>
+                                                                      {inviteForm.siteIds.includes(s.id) && <Check size={12} className="text-white" />}
+                                                                  </div>
+                                                                  <input 
+                                                                     type="checkbox" 
+                                                                     className="hidden"
+                                                                     checked={inviteForm.siteIds.includes(s.id)} 
+                                                                     onChange={e => {
+                                                                         const newSites = e.target.checked 
+                                                                             ? [...inviteForm.siteIds, s.id]
+                                                                             : inviteForm.siteIds.filter(id => id !== s.id);
+                                                                         setInviteForm({...inviteForm, siteIds: newSites});
+                                                                     }}
+                                                                  />
+                                                                  <div className="min-w-0">
+                                                                     <div className={`text-sm font-bold transition-colors ${inviteForm.siteIds.includes(s.id) ? 'text-gray-900 dark:text-white' : 'text-gray-500 group-hover:text-gray-700'}`}>{s.name}</div>
+                                                                     {s.suburb && <div className="text-[10px] text-gray-400 font-medium truncate">{s.suburb}, {s.state}</div>}
+                                                                  </div>
+                                                              </label>
+                                                          )) : (
+                                                              <div className="flex flex-col items-center justify-center py-12 text-gray-400 space-y-3">
+                                                                  <MapPin size={24} className="opacity-20" />
+                                                                  <div className="text-center">
+                                                                      <p className="text-xs font-bold">No sites available</p>
+                                                                      <p className="text-[10px] opacity-60">Create sites in the Sites tab first.</p>
+                                                                  </div>
+                                                              </div>
+                                                          )}
+                                                      </div>
+                                                  </div>
+                                                  <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-900/20 flex items-start gap-3">
+                                                      <Info size={14} className="text-amber-500 mt-0.5 shrink-0" />
+                                                      <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium leading-relaxed">
+                                                          Users will only have access to data and notifications related to the sites selected above.
+                                                      </p>
+                                                  </div>
+                                             </div>
+                                         </div>
+                                    </div>
+                               )}
+                           </div>
+
+                           {/* Footer */}
+                           <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 flex justify-between items-center">
+                               {inviteStep === 2 ? (
+                                   <button onClick={() => setInviteStep(1)} className="text-gray-500 font-bold text-sm hover:underline">Back</button>
+                               ) : <div></div>}
+                               
+                               {inviteStep === 2 && (
+                                   <button 
+                                        onClick={async () => {
+                                            // Handle Final Submit
+                                            const isExisting = users.some(u => u.id === inviteForm.id || u.email === inviteForm.email);
+                                             
+                                             if (isExisting) {
+                                                 const targetId = users.find(u => u.id === inviteForm.id || u.email === inviteForm.email)?.id;
+                                                 if (targetId) {
+                                                     await updateUserAccess(targetId, inviteForm.role as UserRole, inviteForm.siteIds);
+                                                     alert(`Access updated for ${inviteForm.name}`);
+                                                 }
+                                             } else {
+                                            
+                                            // 1. Send Invite Logic
+                                            let inviteSent = false;
+                                            if (inviteForm.email && inviteForm.email.includes('@')) {
+                                                const { error } = await supabase.auth.signInWithOtp({
+                                                    email: inviteForm.email,
+                                                    options: {
+                                                        emailRedirectTo: window.location.origin,
+                                                        data: {
+                                                            full_name: inviteForm.name,
+                                                            avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteForm.name)}&background=random`
+                                                        }
+                                                    }
+                                                });
+                                                if (error) {
+                                                    alert(`Could not send invite: ${error.message}`);
+                                                    return;
+                                                }
+                                                inviteSent = true;
+                                            }
+
+                                            // 2. Add to DB
+                                            await addUser({
+                                                id: inviteForm.id || uuidv4(),
+                                                name: inviteForm.name,
+                                                email: inviteForm.email,
+                                                role: inviteForm.role,
+                                                jobTitle: inviteForm.jobTitle,
+                                                siteIds: inviteForm.siteIds,
+                                                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteForm.name)}&background=random`,
+                                                status: 'APPROVED', // Invited users are pre-approved
+                                                createdAt: new Date().toISOString()
+                                            } as any);
+
+                                            if (inviteSent) alert(`Passcode login link sent to ${inviteForm.email}`);
+                                            }
+                                             handleResetInviteWizard();
+                                        }}
+                                        className="btn-primary py-2 px-6 shadow-lg shadow-blue-500/20 flex items-center gap-2"
+                                    >
+                                        <Shield size={16}/> {users.some(u => u.id === inviteForm.id) ? 'Update Access' : 'Send Invite & Grant Access'}
+                                    </button>
+                               )}
+                           </div>
+                       </div>
+                   </div>
+               )}
     </div>
     </div>
   );
