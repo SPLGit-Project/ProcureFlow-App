@@ -46,7 +46,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Admin Access' }
 ];
 
-type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL';
+type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL';
 
 const Settings = () => {
   const {
@@ -81,7 +81,7 @@ const Settings = () => {
   
   // --- Security: Strict Role Checks ---
   useEffect(() => {
-      const restrictedTabs: AdminTab[] = ['SECURITY', 'WORKFLOW', 'BRANDING', 'NOTIFICATIONS', 'MIGRATION', 'EMAIL'];
+      const restrictedTabs: AdminTab[] = ['USERS', 'SECURITY', 'WORKFLOW', 'BRANDING', 'NOTIFICATIONS', 'MIGRATION', 'EMAIL'];
       if (currentUser?.role !== 'ADMIN' && restrictedTabs.includes(activeTab)) {
           setActiveTab('PROFILE');
       }
@@ -360,7 +360,8 @@ const Settings = () => {
         { id: 'SUPPLIERS', label: 'Suppliers', icon: Truck },
         { id: 'SITES', label: 'Sites', icon: MapPin },
         { id: 'WORKFLOW', label: 'Workflow', icon: GitMerge },
-        { id: 'SECURITY', label: 'Security & Users', icon: Shield },
+        { id: 'USERS', label: 'User Directory', icon: User },
+        { id: 'SECURITY', label: 'Security Roles', icon: Shield },
         { id: 'NOTIFICATIONS', label: 'Notifications', icon: Bell },
         { id: 'BRANDING', label: 'Branding', icon: Palette },
         { id: 'MIGRATION', label: 'Data Migration', icon: Upload },
@@ -971,7 +972,7 @@ if __name__ == "__main__":
                   <div>
                       <h3 className="font-bold text-amber-900 dark:text-amber-400">Security Note</h3>
                       <p className="text-sm text-amber-800/80 dark:text-amber-300/60 mt-1">
-                          Role assignments and site access are managed by the Procurement team. To request a change to your system level permissions, please contact support.
+                       Role assignments and site access are managed by the Procurement team. To request a change to your system level permissions, please contact support.
                       </p>
                   </div>
               </div>
@@ -981,7 +982,7 @@ if __name__ == "__main__":
 
       
       {activeTab === 'ITEMS' && (
-        <>
+
         <div className="space-y-6 animate-fade-in h-[calc(100vh-140px)] flex flex-col"> 
             
             {/* Header / Controls */}
@@ -1227,7 +1228,6 @@ if __name__ == "__main__":
                         </table>
                     </div>
                 </div>
-            </div>
 
             {/* --- Modals and Forms --- */}
             {isItemFormOpen && (
@@ -1275,8 +1275,9 @@ if __name__ == "__main__":
                     </div>
                  </div>
              )}
-        </>
-      )}
+        </div>
+
+     )}
       
 
 
@@ -2135,10 +2136,10 @@ if __name__ == "__main__":
                 </div>
           </div>
       )}
-      {activeTab === 'SECURITY' && (
+      {activeTab === 'USERS' && (
           <div className="animate-fade-in space-y-6">
-              {/* Security Dashboard Header */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* User Dashboard Header */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-[var(--color-brand)] transition-all">
                       <div className="w-12 h-12 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center group-hover:scale-110 transition-transform">
                           <Users size={24}/>
@@ -2162,7 +2163,175 @@ if __name__ == "__main__":
                           </div>
                       </div>
                   </div>
+              </div>
 
+              {/* User Approval Requests */}
+              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+                <div className="p-6 border-b border-gray-100 dark:border-gray-800">
+                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Access Approvals</h3>
+                    <p className="text-sm text-gray-500">Manage pending user requests and onboarding status.</p>
+                </div>
+                <div className="p-6">
+                    <AdminAccessHub />
+                </div>
+              </div>
+
+              {/* Global Directory */}
+              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+                  <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4">
+                      <div>
+                          <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Global User Directory</h3>
+                          <p className="text-sm text-gray-500">View and manage all active members across the organization.</p>
+                      </div>
+                      <div className="flex items-center gap-3 w-full md:w-auto">
+                           <div className="relative flex-1 md:w-64 group">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[var(--color-brand)] transition-colors" size={14} />
+                              <input 
+                                  type="text" 
+                                  placeholder="Search users..." 
+                                  value={userSearch}
+                                  onChange={e => setUserSearch(e.target.value)}
+                                  className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl text-xs outline-none focus:ring-4 focus:ring-[var(--color-brand)]/10 focus:bg-white dark:focus:bg-[#1e2029] transition-all"
+                              />
+                          </div>
+                          <button onClick={() => { setIsDirectoryModalOpen(true); setUserRoleFilter(''); }} className="btn-primary py-2 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20">
+                              <UserPlus size={16}/> Add User
+                          </button>
+                      </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                          <thead>
+                              <tr className="bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
+                                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">User Profile</th>
+                                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+                              {users.filter(u => {
+                                  const matchesSearch = !userSearch || 
+                                      u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
+                                      u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                  const notArchived = u.status !== 'ARCHIVED';
+                                  return matchesSearch && notArchived;
+                              }).length > 0 ? (
+                                  users.filter(u => {
+                                      const matchesSearch = !userSearch || 
+                                          u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
+                                          u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                      const notArchived = u.status !== 'ARCHIVED';
+                                      return matchesSearch && notArchived;
+                                  }).map(user => (
+                                      <tr key={user.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
+                                          <td className="px-6 py-4">
+                                               <div className="flex items-center gap-4">
+                                                  <div className="relative shrink-0">
+                                                      <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white dark:border-[#1e2029] shadow-md group-hover:scale-105 transition-transform">
+                                                        <img src={user.avatar} className="w-full h-full object-cover bg-gray-100 dark:bg-gray-800" alt={user.name}/>
+                                                      </div>
+                                                      <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-white dark:border-[#1e2029] ${user.status === 'APPROVED' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'}`}></div>
+                                                  </div>
+                                                  <div className="flex-1 min-w-0">
+                                                     <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight leading-none mb-1">{user.name}</div>
+                                                     <div className="text-xs text-gray-500 font-medium">{user.email}</div>
+                                                      <div className="flex flex-wrap gap-1 mt-2">
+                                                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>{user.role}</span>
+                                                        {user.siteIds && user.siteIds.map(sid => {
+                                                            const s = sites.find(x => x.id === sid);
+                                                            return s ? <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-500 uppercase">{s.name}</span> : null;
+                                                        })}
+                                                        {user.status === 'PENDING' && user.invitationExpiresAt && (
+                                                            <div className={`inline-flex items-center gap-1.5 border rounded-lg px-2 py-0.5 ${new Date(user.invitationExpiresAt) < new Date() ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/50 text-red-600' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50 text-blue-600'}`}>
+                                                                <Clock size={10} />
+                                                                <p className="text-[9px] font-black uppercase tracking-tight">
+                                                                    {new Date(user.invitationExpiresAt) < new Date() ? 'Expired' : `Exp: ${new Date(user.invitationExpiresAt).toLocaleDateString()}`}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                      </div>
+                                                  </div>
+                                               </div>
+                                          </td>
+                                          <td className="px-6 py-4 text-right">
+                                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                  <button 
+                                                    onClick={() => {
+                                                        setInviteForm({
+                                                            id: user.id,
+                                                            name: user.name,
+                                                            email: user.email,
+                                                            jobTitle: user.jobTitle || '',
+                                                            role: user.role,
+                                                            siteIds: user.siteIds || []
+                                                        });
+                                                        setInviteStep(2);
+                                                        setIsDirectoryModalOpen(true);
+                                                    }}
+                                                    className="h-9 px-4 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-sm flex items-center gap-2"
+                                                  >
+                                                    <Shield size={14}/> Manage
+                                                  </button>
+
+                                                  {currentUser?.id !== user.id && (
+                                                      <div className="flex items-center gap-1">
+                                                        {user.status === 'PENDING' && (
+                                                            <button 
+                                                                onClick={async () => {
+                                                                    const success = await resendWelcomeEmail(user.email, user.name);
+                                                                    if (success) alert(`Welcome email re-sent to ${user.email}`);
+                                                                    else alert('Failed to re-send email.');
+                                                                }}
+                                                                className="w-9 h-9 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200"
+                                                                title="Resend Welcome Email"
+                                                            >
+                                                                <Mail size={16}/>
+                                                            </button>
+                                                        )}
+                                                        <button 
+                                                            onClick={() => impersonateUser(user.id)}
+                                                            className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
+                                                            title="View As"
+                                                        >
+                                                            <Eye size={16}/>
+                                                        </button>
+                                                      </div>
+                                                  )}
+                                                  <button 
+                                                    onClick={() => {
+                                                      if (window.confirm(`Are you sure you want to archive ${user.name}?`)) {
+                                                        archiveUser(user.id);
+                                                      }
+                                                    }} 
+                                                    className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-200 dark:hover:border-red-800"
+                                                    title="Archive"
+                                                  >
+                                                    <Archive size={16}/>
+                                                  </button>
+                                              </div>
+                                          </td>
+                                      </tr>
+                                  ))
+                              ) : (
+                                  <tr><td colSpan={2} className="px-6 py-20 text-center text-gray-400">
+                                      <div className="flex flex-col items-center gap-3">
+                                          <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
+                                              <Search size={32} className="opacity-10"/>
+                                          </div>
+                                          <p className="font-bold text-sm tracking-tight text-gray-300">No users matched your search.</p>
+                                      </div>
+                                  </td></tr>
+                              )}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          </div>
+      )}
+      {activeTab === 'SECURITY' && (
+          <div className="animate-fade-in space-y-6">
+              {/* Security Dashboard Header */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-purple-400 transition-all">
                       <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/20 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                           <Shield size={24}/>
@@ -2188,19 +2357,6 @@ if __name__ == "__main__":
                   </div>
               </div>
 
-              {/* User Approval Requests (Integrated) */}
-              {users.some(u => u.status === 'PENDING') && (
-                  <div className="border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-900/10 p-4 rounded-r-2xl flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                          <AlertCircle className="text-amber-500" size={20}/>
-                          <div>
-                              <div className="font-bold text-amber-900 dark:text-amber-200">Pending User Requests</div>
-                              <div className="text-xs text-amber-700 dark:text-amber-400">There are {users.filter(u => u.status === 'PENDING').length} users waiting for access approval.</div>
-                          </div>
-                      </div>
-                      <button onClick={() => { setActiveRole({ id: 'PENDING_TAB', name: 'Pending Approvals' } as any); }} className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-colors">Review Requests</button>
-                  </div>
-              )}
 
               <div className="flex flex-col md:flex-row gap-6 h-auto md:h-[calc(100vh-200px)] min-h-[600px]">
 
@@ -2212,50 +2368,6 @@ if __name__ == "__main__":
                   </div>
                   
                   <div className="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar">
-                      {/* Search Filter (Now more compact in sidebar) */}
-                      <div className="relative mb-3 group">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[var(--color-brand)] transition-colors" size={14} />
-                          <input 
-                              type="text" 
-                              placeholder="Quick find..." 
-                              value={userSearch}
-                              onChange={e => {
-                                  setUserSearch(e.target.value);
-                                  if (activeRole?.id !== 'ALL' && activeRole?.id !== 'PENDING_TAB') {
-                                      setActiveRole({ id: 'ALL', name: 'Search Results', description: 'Searching across all users', permissions: [], isSystem: true } as any);
-                                  }
-                              }}
-                              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl text-xs outline-none focus:ring-4 focus:ring-[var(--color-brand)]/10 focus:bg-white dark:focus:bg-[#1e2029] transition-all"
-                          />
-                      </div>
-
-                      <button
-                          onClick={() => { setActiveRole({ id: 'ALL', name: 'All Users', description: 'View all users across all roles', permissions: [], isSystem: true } as any); setUserSearch(''); }}
-                          className={`w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3 transition-all ${activeRole?.id === 'ALL' && !userSearch ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/20 scale-[1.02]' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300'}`}
-                      >
-                           <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${activeRole?.id === 'ALL' && !userSearch ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-[#15171e] text-gray-500'}`}>
-                                  <Users size={18}/>
-                           </div>
-                           <div className="flex-1 min-w-0">
-                                  <div className="font-bold text-sm truncate uppercase tracking-tight">Main Directory</div>
-                                  <div className={`text-[10px] font-bold ${activeRole?.id === 'ALL' && !userSearch ? 'text-white/80' : 'text-gray-400'}`}>{users.filter(u => u.status !== 'ARCHIVED').length} Active</div>
-                           </div>
-                      </button> 
-
-                      {users.some(u => u.status === 'PENDING') && (
-                          <button
-                              onClick={() => { setActiveRole({ id: 'PENDING_TAB', name: 'Pending Approvals', description: 'Review and approve access requests', permissions: [], isSystem: true } as any); setUserSearch(''); }}
-                              className={`w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3 transition-all ${activeRole?.id === 'PENDING_TAB' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20 scale-[1.02]' : 'hover:bg-amber-50 dark:hover:bg-amber-900/10 text-amber-600'}`}
-                          >
-                               <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${activeRole?.id === 'PENDING_TAB' ? 'bg-white/20 text-white' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600'}`}>
-                                      <Clock size={18}/>
-                               </div>
-                               <div className="flex-1 min-w-0">
-                                      <div className="font-bold text-sm truncate uppercase tracking-tight">Approvals</div>
-                                      <div className={`text-[10px] font-bold ${activeRole?.id === 'PENDING_TAB' ? 'text-white/80' : 'text-amber-500'}`}>{users.filter(u => u.status === 'PENDING').length} Required</div>
-                               </div>
-                          </button> 
-                      )}
                       
                       <div className="pt-4 px-4 pb-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Security Roles</div>
                       
@@ -2282,7 +2394,7 @@ if __name__ == "__main__":
 
               {/* Main Content: Role Details */}
               <div className="flex-1 bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden">
-                  {activeRole ? (
+                  {activeRole && activeRole.id !== 'ALL' && activeRole.id !== 'PENDING_TAB' ? (
                       <>
                           {/* Header */}
                           <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-start">
@@ -2302,12 +2414,6 @@ if __name__ == "__main__":
 
                           {/* Main Content Body */}
                           <div className="flex-1 overflow-y-auto custom-scrollbar">
-                              {/* Integrated Pending Approvals View */}
-                              {activeRole.id === 'PENDING_TAB' ? (
-                                  <div className="p-6">
-                                      <AdminAccessHub />
-                                  </div>
-                              ) : (
                                   <div className="p-6 space-y-8">
                                       {activeRole.id !== 'ALL' && (
                                           <div className="bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -2357,16 +2463,15 @@ if __name__ == "__main__":
                                           </div>
                                       )}
 
-                                      <div>
                                           <div className="flex justify-between items-end mb-6">
                                               <div>
-                                                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">User Management</h3>
+                                                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Role Members</h3>
                                                   <div className="text-xl font-bold text-gray-900 dark:text-white">
-                                                      {activeRole.id === 'ALL' ? 'Global Directory' : `${activeRole.name} Members`}
+                                                      {activeRole.name} Members
                                                   </div>
                                               </div>
-                                              <button onClick={() => { setIsDirectoryModalOpen(true); setUserRoleFilter(activeRole.id === 'ALL' ? '' : activeRole.id); }} className="btn-primary py-2 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20">
-                                                  <UserPlus size={16}/> Add {activeRole.id === 'ALL' ? 'User' : 'to Role'}
+                                              <button onClick={() => { setIsDirectoryModalOpen(true); setUserRoleFilter(activeRole.id); }} className="btn-primary py-2 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20">
+                                                  <UserPlus size={16}/> Add to Role
                                               </button>
                                           </div>
 
@@ -2380,20 +2485,14 @@ if __name__ == "__main__":
                                                   </thead>
                                                   <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
                                                       {users.filter(u => {
-                                                          const matchesRole = activeRole.id === 'ALL' || u.role === activeRole.id;
-                                                          const matchesSearch = !userSearch || 
-                                                              u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
-                                                              u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                                          const matchesRole = u.role === activeRole.id;
                                                           const notArchived = u.status !== 'ARCHIVED';
-                                                          return matchesRole && matchesSearch && notArchived;
+                                                          return matchesRole && notArchived;
                                                       }).length > 0 ? (
                                                           users.filter(u => {
-                                                              const matchesRole = activeRole.id === 'ALL' || u.role === activeRole.id;
-                                                              const matchesSearch = !userSearch || 
-                                                                  u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
-                                                                  u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                                              const matchesRole = u.role === activeRole.id;
                                                               const notArchived = u.status !== 'ARCHIVED';
-                                                              return matchesRole && matchesSearch && notArchived;
+                                                              return matchesRole && notArchived;
                                                           }).map(user => (
                                                               <tr key={user.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
                                                                   <td className="px-6 py-4">
@@ -2496,26 +2595,26 @@ if __name__ == "__main__":
                                                       )}
                                                   </tbody>
                                               </table>
-                                          </div>
                                       </div>
                                   </div>
-                              )}
-                          </div>
+                              </div>
                       </>
-                  ) : (
-                      <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
-                          <div className="w-20 h-20 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
-                              <Shield size={40} className="opacity-20"/>
+                      ) : (
+                          <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
+                              <div className="w-20 h-20 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
+                                  <Shield size={40} className="opacity-20"/>
+                              </div>
+                              <div>
+                                  <h3 className="text-lg font-bold text-gray-900 dark:text-white text-center">Select a Role</h3>
+                                  <p className="text-sm">Select a role from the sidebar to configure permissions and view users.</p>
+                              </div>
+                              <button onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="btn-primary">Create New Role</button>
                           </div>
-                          <div>
-                              <h3 className="text-lg font-bold text-gray-900 dark:text-white text-center">Select a Role</h3>
-                              <p className="text-sm">Select a role from the sidebar to configure permissions and view users.</p>
-                          </div>
-                          <button onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="btn-primary">Create New Role</button>
-                      </div>
-                  )}
+                      )}
+                  </div>
               </div>
-
+          </div>
+      )}
               {/* Role Creator Modal (Only for creating new roles now) */}
               {isRoleEditorOpen && !activeRole && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
@@ -2951,9 +3050,6 @@ if __name__ == "__main__":
                        </div>
                    </div>
                )}
-              </div>
-          </div>
-      )}
 
       {activeTab === 'NOTIFICATIONS' && (
           <div className="animate-fade-in space-y-6">
@@ -3232,7 +3328,6 @@ if __name__ == "__main__":
               <AdminMigration />
           </div>
       )}
-      </div>
       
 
       
@@ -3366,10 +3461,10 @@ if __name__ == "__main__":
                                     .replace(/{app_name}/g, branding.appName)
                                     .replace(/{link}/g, '<a href="#">http://example.com</a>') 
                                 }}></div>
-                           </div>
-                      </div>
-                 </div>
-             )}
+                            </div>
+                       </div>
+                  </div>
+              )}
              {/* WORKFLOW STEP MODAL */}
              {editingStepId && (() => {
                  const step = workflowSteps.find(s => s.id === editingStepId);
@@ -3647,6 +3742,7 @@ if __name__ == "__main__":
                     </div>
                  );
              })()}
+    </div>
     </div>
   );
 };
