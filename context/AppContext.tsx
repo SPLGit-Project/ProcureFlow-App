@@ -569,55 +569,107 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             } : null;
 
             if (!userData) {
-                console.log("Auth: User not in DB, starting registration...");
-                // 4. New User - Registration Flow
-                const { data: count, error: countError } = await supabase
-                    .rpc('get_user_count');
-
-                // Fallback count if RPC fails
-                const finalCount = countError ? 1 : count; 
-                const isFirstUser = finalCount === 0;
+                // 4. New User - Registration or Merge Logic
+                console.log("Auth: User not found by ID. Checking by email to merge invitations...");
                 
-                const dbUser = {
-                    id: session.user.id,
-                    email: session.user.email || '',
-                    name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'Unknown User',
-                    role_id: isFirstUser ? 'ADMIN' : 'SITE_USER',
-                    status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
-                    avatar: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || '',
-                    // Auto-fill from AD if available
-                    job_title: adProfile.jobTitle,
-                    department: adProfile.department || adProfile.officeLocation,
-                    created_at: new Date().toISOString(),
-                    site_ids: []
-                };
-
-                console.log("Auth: Inserting new user:", dbUser.email, "Is First:", isFirstUser);
-                const { error: insertError } = await supabase
+                // Check if user exists by email (Invited by Admin)
+                const { data: existingByEmail } = await supabase
                     .from('users')
-                    .insert([dbUser]);
+                    .select('*')
+                    .ilike('email', email) // Case insensitive check
+                    .single();
 
-                if (insertError) {
-                    console.error("Auth: Registration failed:", insertError);
-                    alert(`Registration failed: ${insertError.message}. Please contact your administrator.`);
-                    throw insertError;
+                if (existingByEmail) {
+                    console.log("Auth: Found pre-invited user. Merging Auth ID...", existingByEmail.id, "->", session.user.id);
+                    // Update the placeholder ID to the real Auth ID
+                    // This is critical for RLS and consistency
+                    const { error: mergeError } = await supabase
+                        .from('users')
+                        .update({ 
+                            id: session.user.id, // Migrate to Auth ID
+                            status: 'APPROVED', // Auto-confirm invited users
+                            avatar: session.user.user_metadata.avatar_url || existingByEmail.avatar || '',
+                            last_sign_in_at: new Date().toISOString()
+                        })
+                        .eq('id', existingByEmail.id); // Target the old ID
+
+                    if (mergeError) {
+                        console.error("Auth: Merge failed", mergeError);
+                        // If merge fails (e.g. FK constraints), we might be stuck. 
+                        // But for new invites, it usually works.
+                        alert("Account setup error: Could not link invitation. Please contact support.");
+                        return;
+                    }
+                    
+                    // Reload successfully merged user
+                     const { data: mergedUser } = await supabase.from('users').select('*').eq('id', session.user.id).single();
+                     if (mergedUser) {
+                         userData = {
+                            id: mergedUser.id,
+                            name: mergedUser.name,
+                            email: mergedUser.email,
+                            role: mergedUser.role_id,
+                            realRole: mergedUser.role_id,
+                            avatar: mergedUser.avatar,
+                            jobTitle: mergedUser.job_title,
+                            status: mergedUser.status,
+                            createdAt: mergedUser.created_at,
+                            siteIds: mergedUser.site_ids || [],
+                            department: mergedUser.department,
+                             approvalReason: mergedUser.approval_reason
+                        };
+                     }
+                } else {
+                    // Truly New User
+                    console.log("Auth: User not in DB, starting registration...");
+                    const { data: count, error: countError } = await supabase
+                        .rpc('get_user_count');
+
+                    // Fallback count if RPC fails
+                    const finalCount = countError ? 1 : count; 
+                    const isFirstUser = finalCount === 0;
+                    
+                    const dbUser = {
+                        id: session.user.id,
+                        email: session.user.email || '',
+                        name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'Unknown User',
+                        role_id: isFirstUser ? 'ADMIN' : 'SITE_USER',
+                        status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
+                        avatar: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || '',
+                        // Auto-fill from AD if available
+                        job_title: adProfile.jobTitle,
+                        department: adProfile.department || adProfile.officeLocation,
+                        created_at: new Date().toISOString(),
+                        site_ids: []
+                    };
+
+                    console.log("Auth: Inserting new user:", dbUser.email, "Is First:", isFirstUser);
+                    const { error: insertError } = await supabase
+                        .from('users')
+                        .insert([dbUser]);
+
+                    if (insertError) {
+                        console.error("Auth: Registration failed", insertError);
+                        throw insertError;
+                    }
+                    
+                    // Local object for immediate state
+                    userData = {
+                        id: dbUser.id,
+                        name: dbUser.name,
+                        email: dbUser.email,
+                        role: dbUser.role_id as UserRole,
+                        realRole: dbUser.role_id as UserRole,
+                        avatar: dbUser.avatar,
+                        jobTitle: dbUser.job_title,
+                        status: dbUser.status === 'APPROVED' ? 'APPROVED' : 'PENDING_APPROVAL',
+                        createdAt: dbUser.created_at,
+                        siteIds: [],
+                        department: dbUser.department
+                    };
                 }
-                
-                userData = {
-                    id: dbUser.id,
-                    name: dbUser.name,
-                    email: dbUser.email,
-                    role: dbUser.role_id as any,
-                    realRole: dbUser.role_id as any,
-                    avatar: dbUser.avatar,
-                    jobTitle: dbUser.job_title,
-                    status: dbUser.status as any,
-                    createdAt: dbUser.created_at,
-                    siteIds: [],
-                    department: dbUser.department,
-                    approvalReason: '' // Cleared for new wizard flow
-                };
-            } else {
+            }
+            else {
                  // Update existing user with latest AD info if valid and different?
                  // For now, only on creation or if we want to sync every login.
                  // Let's sync if fields are empty or mismatched to keep data fresh.
@@ -1050,8 +1102,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const user = users.find(u => u.email === email);
       if (!user) return false;
 
-      const success = await sendWelcomeEmail(email, name);
-      if (success) {
+      console.log(`Auth: Resending invite (OTP) to ${email}`);
+      const { error } = await supabase.auth.signInWithOtp({
+            email,
+            options: {
+                emailRedirectTo: window.location.origin,
+                data: {
+                    full_name: name,
+                    avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`
+                }
+            }
+      });
+
+      if (!error) {
           const now = new Date();
           const expiry = new Date();
           expiry.setHours(expiry.getHours() + 48);
@@ -1067,9 +1130,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               return true;
           } catch (e) {
               console.error("Failed to update user expiry on resend", e);
+              // Return true anyway as email sent
+              return true; 
           }
+      } else {
+          console.error("Auth: Failed to resend invite", error);
+          return false;
       }
-      return false;
   };
 
   const archiveUser = async (userId: string) => {

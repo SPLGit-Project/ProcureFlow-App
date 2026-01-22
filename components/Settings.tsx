@@ -3406,7 +3406,21 @@ if __name__ == "__main__":
                                                            </div>
                                                            <div className="flex flex-col items-end gap-1">
                                                                <span className="text-[10px] font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded uppercase">{u.role}</span>
-                                                               <button className="text-[10px] font-bold text-[var(--color-brand)] opacity-0 group-hover:opacity-100 transition-opacity">Select &rarr;</button>
+                                                               <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                   <button 
+                                                                       onClick={(e) => {
+                                                                           e.stopPropagation();
+                                                                           if(confirm(`Resend invitation to ${u.name}?`)) {
+                                                                               resendWelcomeEmail(u.email, u.name).then(ok => ok && alert('Invitation sent successfully!'));
+                                                                           }
+                                                                       }}
+                                                                       className="text-[10px] font-bold text-gray-400 hover:text-[var(--color-brand)] flex items-center gap-1 hover:bg-gray-100 dark:hover:bg-white/5 py-1 px-1.5 rounded"
+                                                                       title="Resend Magic Link"
+                                                                   >
+                                                                       <Mail size={10} /> Resend
+                                                                   </button>
+                                                                   <span className="text-[10px] font-bold text-[var(--color-brand)]">Select &rarr;</span>
+                                                               </div>
                                                            </div>
                                                        </div>
                                                    ))}
