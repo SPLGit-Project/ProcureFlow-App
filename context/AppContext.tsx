@@ -115,19 +115,19 @@ interface AppContextType {
   getEffectiveStock: (itemId: string) => number;
 
   // Item Master CRUD
-  addItem: (item: Item) => void;
-  updateItem: (item: Item) => void;
-  deleteItem: (itemId: string) => void;
+  addItem: (item: Item) => Promise<void>;
+  updateItem: (item: Item) => Promise<void>;
+  deleteItem: (itemId: string) => Promise<void>;
 
   // Supplier CRUD
-  addSupplier: (s: Supplier) => void;
-  updateSupplier: (s: Supplier) => void;
-  deleteSupplier: (id: string) => void;
+  addSupplier: (s: Supplier) => Promise<void>;
+  updateSupplier: (s: Supplier) => Promise<void>;
+  deleteSupplier: (id: string) => Promise<void>;
 
   // Site CRUD
-  addSite: (s: Site) => void;
-  updateSite: (s: Site) => void;
-  deleteSite: (id: string) => void;
+  addSite: (s: Site) => Promise<void>;
+  updateSite: (s: Site) => Promise<void>;
+  deleteSite: (id: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -1448,7 +1448,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   };
 
-  const updateFinanceInfo = (poId: string, deliveryId: string, lineId: string, updates: Partial<DeliveryLineItem>) => {
+  const updateFinanceInfo = async (poId: string, deliveryId: string, lineId: string, updates: Partial<DeliveryLineItem>) => {
+      // Optimistic Update
       setPos(prev => prev.map(p => {
           if(p.id !== poId) return p;
           const updatedDeliveries = p.deliveries.map(d => {
@@ -1458,6 +1459,15 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           });
           return { ...p, deliveries: updatedDeliveries };
       }));
+
+      // Persistence
+      try {
+          await db.updateDeliveryLineFinanceInfo(lineId, updates);
+      } catch (error) {
+          console.error('Failed to persist finance info:', error);
+          alert('Failed to save changes. Please try again.');
+          reloadData(); // Revert
+      }
   };
 
   const addSnapshot = async (snapshot: SupplierStockSnapshot) => {
@@ -1636,17 +1646,89 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         await refreshAvailability(undefined, [...mappings.filter(m => m.id !== mapping.id), mapping]);
   };
 
-  const addItem = (item: Item) => setItems(prev => [...prev, item]);
-  const updateItem = (item: Item) => setItems(prev => prev.map(i => i.id === item.id ? item : i));
-  const deleteItem = (itemId: string) => setItems(prev => prev.filter(i => i.id !== itemId));
+  const addItem = async (item: Item) => {
+        try {
+            await db.addItem(item);
+            setItems(prev => [...prev, item]);
+        } catch (e) {
+            console.error(e);
+            alert("Failed to add item");
+        }
+  };
+  const updateItem = async (item: Item) => {
+        try {
+            await db.updateItem(item);
+            setItems(prev => prev.map(i => i.id === item.id ? item : i));
+        } catch (e) {
+             console.error(e);
+             alert("Failed to update item");
+        }
+  };
+  const deleteItem = async (itemId: string) => {
+        try {
+            await db.deleteItem(itemId);
+            setItems(prev => prev.filter(i => i.id !== itemId));
+        } catch (e) {
+             console.error(e);
+             alert("Failed to delete item");
+        }
+  };
 
-  const addSupplier = (s: Supplier) => setSuppliers(prev => [...prev, s]);
-  const updateSupplier = (s: Supplier) => setSuppliers(prev => prev.map(existing => existing.id === s.id ? s : existing));
-  const deleteSupplier = (id: string) => setSuppliers(prev => prev.filter(s => s.id !== id));
+  const addSupplier = async (s: Supplier) => {
+        try {
+            await db.addSupplier(s);
+            setSuppliers(prev => [...prev, s]);
+        } catch (e) {
+             console.error(e);
+             alert("Failed to add supplier");
+        }
+  };
+  const updateSupplier = async (s: Supplier) => {
+        try {
+            await db.updateSupplier(s);
+            setSuppliers(prev => prev.map(existing => existing.id === s.id ? s : existing));
+        } catch (e) {
+             console.error(e);
+             alert("Failed to update supplier");
+        }
+  };
+  const deleteSupplier = async (id: string) => {
+        try {
+            await db.deleteSupplier(id);
+            setSuppliers(prev => prev.filter(s => s.id !== id));
+        } catch (e) {
+             console.error(e);
+             alert("Failed to delete supplier");
+        }
+  };
 
-  const addSite = (s: Site) => setSites(prev => [...prev, s]);
-  const updateSite = (s: Site) => setSites(prev => prev.map(existing => existing.id === s.id ? s : existing));
-  const deleteSite = (id: string) => setSites(prev => prev.filter(s => s.id !== id));
+  const addSite = async (s: Site) => {
+        try {
+            await db.addSite(s);
+            setSites(prev => [...prev, s]);
+        } catch (e) {
+             console.error(e);
+             alert("Failed to add site");
+        }
+  };
+  const updateSite = async (s: Site) => {
+        try {
+            await db.updateSite(s);
+            setSites(prev => prev.map(existing => existing.id === s.id ? s : existing));
+        } catch (e) {
+             console.error(e);
+             alert("Failed to update site");
+        }
+  };
+  const deleteSite = async (id: string) => {
+        try {
+            await db.deleteSite(id);
+            setSites(prev => prev.filter(s => s.id !== id));
+        } catch (e) {
+             console.error(e);
+             alert("Failed to delete site");
+        }
+  };
 
   // --- Impersonation ---
   const impersonateUser = (targetUser: User) => {

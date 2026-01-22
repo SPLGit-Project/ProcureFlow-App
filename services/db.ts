@@ -102,6 +102,36 @@ export const db = {
         }));
     },
 
+    addSite: async (s: Site): Promise<void> => {
+        const { error } = await supabase.from('sites').insert({
+            id: s.id,
+            name: s.name,
+            suburb: s.suburb,
+            address: s.address,
+            state: s.state,
+            zip: s.zip,
+            contact_person: s.contactPerson
+        });
+        if (error) throw error;
+    },
+
+    updateSite: async (s: Site): Promise<void> => {
+        const { error } = await supabase.from('sites').update({
+            name: s.name,
+            suburb: s.suburb,
+            address: s.address,
+            state: s.state,
+            zip: s.zip,
+            contact_person: s.contactPerson
+        }).eq('id', s.id);
+        if (error) throw error;
+    },
+
+    deleteSite: async (id: string): Promise<void> => {
+        const { error } = await supabase.from('sites').delete().eq('id', id);
+        if (error) throw error;
+    },
+
     getSuppliers: async (): Promise<Supplier[]> => {
         const { data, error } = await supabase.from('suppliers').select('*');
         if (error) throw error;
@@ -114,6 +144,36 @@ export const db = {
             address: s.address,
             categories: s.categories || []
         }));
+    },
+
+    addSupplier: async (s: Supplier): Promise<void> => {
+        const { error } = await supabase.from('suppliers').insert({
+            id: s.id,
+            name: s.name,
+            contact_email: s.contactEmail,
+            key_contact: s.keyContact,
+            phone: s.phone,
+            address: s.address,
+            categories: s.categories
+        });
+        if (error) throw error;
+    },
+
+    updateSupplier: async (s: Supplier): Promise<void> => {
+        const { error } = await supabase.from('suppliers').update({
+            name: s.name,
+            contact_email: s.contactEmail,
+            key_contact: s.keyContact,
+            phone: s.phone,
+            address: s.address,
+            categories: s.categories
+        }).eq('id', s.id);
+        if (error) throw error;
+    },
+
+    deleteSupplier: async (id: string): Promise<void> => {
+        const { error } = await supabase.from('suppliers').delete().eq('id', id);
+        if (error) throw error;
     },
 
     getItems: async (): Promise<Item[]> => {
@@ -568,6 +628,15 @@ export const db = {
         return data?.display_id || po.id;
     },
     
+    updateDeliveryLineFinanceInfo: async (lineId: string, updates: Partial<DeliveryLineItem>): Promise<void> => {
+        const { error } = await supabase.from('delivery_lines').update({
+            invoice_number: updates.invoiceNumber,
+            is_capitalised: updates.isCapitalised,
+            capitalised_date: updates.capitalisedDate
+        }).eq('id', lineId);
+        if (error) throw error;
+    },
+    
     addSnapshot: async (snapshot: SupplierStockSnapshot): Promise<void> => {
          const { error } = await supabase.from('stock_snapshots').insert({
               id: snapshot.id,
@@ -779,6 +848,98 @@ export const db = {
             updated: existingItems.length,
             deactivated
         };
+    },
+
+    addItem: async (item: Item): Promise<void> => {
+        const norm = normalizeItemCode(item.sku);
+        const { error } = await supabase.from('items').insert({
+            id: item.id,
+            sku: item.sku,
+            name: item.name,
+            description: item.description,
+            unit_price: item.unitPrice,
+            uom: item.uom,
+            category: item.category,
+            sub_category: item.subCategory,
+            stock_level: item.stockLevel,
+            supplier_id: item.supplierId,
+            is_rfid: item.isRfid,
+            is_cog: item.isCog,
+            
+            // Normalize
+            sap_item_code_raw: item.sku,
+            sap_item_code_norm: norm.normalized,
+            
+            // Categorization
+            range_name: item.rangeName,
+            stock_type: item.stockType,
+            active_flag: item.activeFlag !== undefined ? item.activeFlag : true,
+            created_at: item.createdAt || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            
+            // Extended Attributes
+            item_weight: item.itemWeight,
+            item_pool: item.itemPool,
+            item_catalog: item.itemCatalog,
+            item_type: item.itemType,
+            rfid_flag: item.rfidFlag,
+            item_colour: item.itemColour,
+            item_pattern: item.itemPattern,
+            item_material: item.itemMaterial,
+            item_size: item.itemSize,
+            measurements: item.measurements,
+            cog_flag: item.cogFlag,
+            cog_customer: item.cogCustomer,
+            
+            specs: item.specs
+        });
+        if (error) throw error;
+    },
+
+    updateItem: async (item: Item): Promise<void> => {
+        const norm = normalizeItemCode(item.sku);
+        const { error } = await supabase.from('items').update({
+            sku: item.sku,
+            name: item.name,
+            description: item.description,
+            unit_price: item.unitPrice,
+            uom: item.uom,
+            category: item.category,
+            sub_category: item.subCategory,
+            stock_level: item.stockLevel,
+            supplier_id: item.supplierId,
+            is_rfid: item.isRfid,
+            is_cog: item.isCog,
+            
+            sap_item_code_raw: item.sku,
+            sap_item_code_norm: norm.normalized,
+            
+            range_name: item.rangeName,
+            stock_type: item.stockType,
+            active_flag: item.activeFlag,
+            updated_at: new Date().toISOString(),
+            
+            item_weight: item.itemWeight,
+            item_pool: item.itemPool,
+            item_catalog: item.itemCatalog,
+            item_type: item.itemType,
+            rfid_flag: item.rfidFlag,
+            item_colour: item.itemColour,
+            item_pattern: item.itemPattern,
+            item_material: item.itemMaterial,
+            item_size: item.itemSize,
+            measurements: item.measurements,
+            cog_flag: item.cogFlag,
+            cog_customer: item.cogCustomer,
+            
+            specs: item.specs
+        }).eq('id', item.id);
+        if (error) throw error;
+    },
+
+    deleteItem: async (itemId: string): Promise<void> => {
+        const { error } = await supabase.from('items').delete().eq('id', itemId);
+        if (error) throw error;
     },
 
     runAutoMapping: async (supplierId: string): Promise<{ confirmed: number, proposed: number }> => {
