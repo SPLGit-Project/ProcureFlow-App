@@ -3572,10 +3572,15 @@ if __name__ == "__main__":
                                    <button 
                                         onClick={async () => {
                                             // Handle Final Submit
-                                            const isExisting = users.some(u => u.id === inviteForm.id || u.email === inviteForm.email);
+                                            // Case-insensitive check for existing user
+                                            const normalizedEmail = inviteForm.email?.toLowerCase();
+                                            const existingUser = users.find(u => 
+                                                u.id === inviteForm.id || 
+                                                (u.email && u.email.toLowerCase() === normalizedEmail)
+                                            );
                                              
-                                             if (isExisting) {
-                                                 const targetId = users.find(u => u.id === inviteForm.id || u.email === inviteForm.email)?.id;
+                                             if (existingUser) {
+                                                 const targetId = existingUser.id;
                                                  if (targetId) {
                                                      await updateUserAccess(targetId, inviteForm.role as UserRole, inviteForm.siteIds);
                                                      alert(`Access updated for ${inviteForm.name}`);
@@ -3603,19 +3608,30 @@ if __name__ == "__main__":
                                             }
 
                                             // 2. Add to DB
-                                            await addUser({
-                                                id: inviteForm.id || uuidv4(),
-                                                name: inviteForm.name,
-                                                email: inviteForm.email,
-                                                role: inviteForm.role,
-                                                jobTitle: inviteForm.jobTitle,
-                                                siteIds: inviteForm.siteIds,
-                                                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteForm.name)}&background=random`,
-                                                status: 'APPROVED', // Invited users are pre-approved
-                                                createdAt: new Date().toISOString()
-                                            } as any);
+                                            try {
+                                                await addUser({
+                                                    id: inviteForm.id || uuidv4(),
+                                                    name: inviteForm.name,
+                                                    email: inviteForm.email,
+                                                    role: inviteForm.role,
+                                                    jobTitle: inviteForm.jobTitle,
+                                                    siteIds: inviteForm.siteIds,
+                                                    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteForm.name)}&background=random`,
+                                                    status: 'APPROVED', // Invited users are pre-approved
+                                                    createdAt: new Date().toISOString()
+                                                } as any);
 
-                                            if (inviteSent) alert(`Passcode login link sent to ${inviteForm.email}`);
+                                                if (inviteSent) alert(`Passcode login link sent to ${inviteForm.email}`);
+                                            } catch (err: any) {
+                                                console.error("User creation failed:", err);
+                                                if (err.message && err.message.includes('unique constraint') && err.message.includes('users_email_key')) {
+                                                    alert("A user with this email address already exists in the system (possibly archived). Please search for them or ask an administrator.");
+                                                } else {
+                                                    alert(`Failed to create user record: ${err.message || 'Unknown error'}`);
+                                                }
+                                                // Don't reset wizard so they can fix it
+                                                return; 
+                                            }
                                             }
                                              handleResetInviteWizard();
                                         }}

@@ -1042,6 +1042,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       } catch (e) {
           console.error("Failed to add user", e);
           reloadData();
+          throw e;
       }
   };
 
