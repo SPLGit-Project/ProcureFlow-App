@@ -10,6 +10,7 @@
     <meta name="theme-color" content="#2563eb" />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="app-version" content="dynamic" />
     <link rel="manifest" href="/manifest.json" />
     <title>ProcureFlow</title>
     <script>
@@ -37,11 +38,16 @@
               slideUp: {
                 '0%': { transform: 'translateY(20px)', opacity: '0' },
                 '100%': { transform: 'translateY(0)', opacity: '1' },
+              },
+              slideDown: {
+                '0%': { transform: 'translateY(-100%)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
               }
             },
             animation: {
               'fade-in': 'fadeIn 0.3s ease-out',
-              'slide-up': 'slideUp 0.4s ease-out'
+              'slide-up': 'slideUp 0.4s ease-out',
+              'slide-down': 'slideDown 0.4s ease-out'
             }
           }
         }
