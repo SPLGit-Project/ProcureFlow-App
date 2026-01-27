@@ -1239,25 +1239,55 @@ if __name__ == "__main__":
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up max-h-[90vh] overflow-y-auto">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{editingItem ? 'Edit Item' : 'New Item'}</h2>
-                        <form onSubmit={handleItemFormSubmit} className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">SKU</label><input required className="input-field mt-1" value={itemForm.sku} onChange={e => setItemForm({...itemForm, sku: e.target.value})}/></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Category</label><input required className="input-field mt-1" value={itemForm.category} onChange={e => setItemForm({...itemForm, category: e.target.value})}/></div>
+                        <form onSubmit={handleItemFormSubmit} className="space-y-5">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SKU</label>
+                                    <input required className="input-field" value={itemForm.sku} onChange={e => setItemForm({...itemForm, sku: e.target.value})}/>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Category</label>
+                                    <input required className="input-field" value={itemForm.category} onChange={e => setItemForm({...itemForm, category: e.target.value})}/>
+                                </div>
                             </div>
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Name</label><input required className="input-field mt-1" value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})}/></div>
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Description</label><input className="input-field mt-1" value={itemForm.description} onChange={e => setItemForm({...itemForm, description: e.target.value})}/></div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Unit Price</label><input required type="number" step="0.01" className="input-field mt-1" value={itemForm.unitPrice} onChange={e => setItemForm({...itemForm, unitPrice: parseFloat(e.target.value)})}/></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">UOM</label><input required className="input-field mt-1" value={itemForm.uom} onChange={e => setItemForm({...itemForm, uom: e.target.value})}/></div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Name</label>
+                                <input required className="input-field" value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})}/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
+                                <input className="input-field" value={itemForm.description} onChange={e => setItemForm({...itemForm, description: e.target.value})}/>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Unit price</label>
+                                    <input required type="number" step="0.01" className="input-field" value={itemForm.unitPrice} onChange={e => setItemForm({...itemForm, unitPrice: parseFloat(e.target.value)})}/>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">UOM</label>
+                                    <input required className="input-field" value={itemForm.uom} onChange={e => setItemForm({...itemForm, uom: e.target.value})}/>
+                                </div>
                             </div>
                             
-                             <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100 dark:border-gray-800">
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Weight</label><input type="number" step="0.01" className="input-field mt-1" value={itemForm.itemWeight || ''} onChange={e => setItemForm({...itemForm, itemWeight: parseFloat(e.target.value)})}/></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Pool</label><input className="input-field mt-1" value={itemForm.itemPool || ''} onChange={e => setItemForm({...itemForm, itemPool: e.target.value})}/></div>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-gray-100 dark:border-gray-800">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Weight</label>
+                                    <input type="number" step="0.01" className="input-field" value={itemForm.itemWeight || ''} onChange={e => setItemForm({...itemForm, itemWeight: parseFloat(e.target.value)})}/>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Pool</label>
+                                    <input className="input-field" value={itemForm.itemPool || ''} onChange={e => setItemForm({...itemForm, itemPool: e.target.value})}/>
+                                </div>
                             </div>
-                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Range</label><input className="input-field mt-1" value={itemForm.rangeName || ''} onChange={e => setItemForm({...itemForm, rangeName: e.target.value})}/></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Stock Type</label><input className="input-field mt-1" value={itemForm.stockType || ''} onChange={e => setItemForm({...itemForm, stockType: e.target.value})}/></div>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Range</label>
+                                    <input className="input-field" value={itemForm.rangeName || ''} onChange={e => setItemForm({...itemForm, rangeName: e.target.value})}/>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Stock type</label>
+                                    <input className="input-field" value={itemForm.stockType || ''} onChange={e => setItemForm({...itemForm, stockType: e.target.value})}/>
+                                </div>
                             </div>
                             <div className="flex gap-6 py-2">
                                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
@@ -1270,7 +1300,10 @@ if __name__ == "__main__":
                                 </label>
                             </div>
                             {itemForm.cogFlag && (
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">COG Customer</label><input className="input-field mt-1" value={itemForm.cogCustomer || ''} onChange={e => setItemForm({...itemForm, cogCustomer: e.target.value})}/></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">COG customer</label>
+                                    <input className="input-field" value={itemForm.cogCustomer || ''} onChange={e => setItemForm({...itemForm, cogCustomer: e.target.value})}/>
+                                </div>
                             )}
                             <div className="flex justify-end gap-3 pt-4">
                                 <button type="button" onClick={() => setIsItemFormOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
@@ -1737,12 +1770,33 @@ if __name__ == "__main__":
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{editingSupplier ? 'Edit Supplier' : 'New Supplier'}</h2>
-                        <form onSubmit={handleSupplierFormSubmit} className="space-y-4">
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Company Name</label><input required className="input-field mt-1" value={supplierForm.name} onChange={e => setSupplierForm({...supplierForm, name: e.target.value})}/></div>
-                            <div className="grid grid-cols-2 gap-4"><div><label className="text-xs font-bold text-gray-500 uppercase">Key Contact</label><input required className="input-field mt-1" value={supplierForm.keyContact} onChange={e => setSupplierForm({...supplierForm, keyContact: e.target.value})}/></div><div><label className="text-xs font-bold text-gray-500 uppercase">Phone</label><input required className="input-field mt-1" value={supplierForm.phone} onChange={e => setSupplierForm({...supplierForm, phone: e.target.value})}/></div></div>
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Email</label><input required type="email" className="input-field mt-1" value={supplierForm.contactEmail} onChange={e => setSupplierForm({...supplierForm, contactEmail: e.target.value})}/></div>
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Address</label><input required className="input-field mt-1" value={supplierForm.address} onChange={e => setSupplierForm({...supplierForm, address: e.target.value})}/></div>
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Categories (comma sep)</label><input className="input-field mt-1" value={supplierForm.categories} onChange={e => setSupplierForm({...supplierForm, categories: e.target.value})}/></div>
+                        <form onSubmit={handleSupplierFormSubmit} className="space-y-5">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Company name</label>
+                                <input required className="input-field" value={supplierForm.name} onChange={e => setSupplierForm({...supplierForm, name: e.target.value})}/>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Key contact</label>
+                                    <input required className="input-field" value={supplierForm.keyContact} onChange={e => setSupplierForm({...supplierForm, keyContact: e.target.value})}/>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Phone</label>
+                                    <input required className="input-field" value={supplierForm.phone} onChange={e => setSupplierForm({...supplierForm, phone: e.target.value})}/>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email</label>
+                                <input required type="email" className="input-field" value={supplierForm.contactEmail} onChange={e => setSupplierForm({...supplierForm, contactEmail: e.target.value})}/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Address</label>
+                                <input required className="input-field" value={supplierForm.address} onChange={e => setSupplierForm({...supplierForm, address: e.target.value})}/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Categories (comma separated)</label>
+                                <input className="input-field" value={supplierForm.categories} onChange={e => setSupplierForm({...supplierForm, categories: e.target.value})}/>
+                            </div>
                             <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setIsSupplierFormOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="btn-primary">Save Supplier</button></div>
                         </form>
                     </div>
@@ -1777,12 +1831,33 @@ if __name__ == "__main__":
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{editingSite ? 'Edit Site' : 'New Site'}</h2>
-                        <form onSubmit={handleSiteFormSubmit} className="space-y-4">
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Site Name</label><input required className="input-field mt-1" value={siteForm.name} onChange={e => setSiteForm({...siteForm, name: e.target.value})}/></div>
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Suburb</label><input required className="input-field mt-1" value={siteForm.suburb} onChange={e => setSiteForm({...siteForm, suburb: e.target.value})}/></div>
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Address</label><input required className="input-field mt-1" value={siteForm.address} onChange={e => setSiteForm({...siteForm, address: e.target.value})}/></div>
-                            <div className="grid grid-cols-2 gap-4"><div><label className="text-xs font-bold text-gray-500 uppercase">State</label><input required className="input-field mt-1" value={siteForm.state} onChange={e => setSiteForm({...siteForm, state: e.target.value})}/></div><div><label className="text-xs font-bold text-gray-500 uppercase">Postcode</label><input required className="input-field mt-1" value={siteForm.zip} onChange={e => setSiteForm({...siteForm, zip: e.target.value})}/></div></div>
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Contact Person</label><input required className="input-field mt-1" value={siteForm.contactPerson} onChange={e => setSiteForm({...siteForm, contactPerson: e.target.value})}/></div>
+                        <form onSubmit={handleSiteFormSubmit} className="space-y-5">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Site name</label>
+                                <input required className="input-field" value={siteForm.name} onChange={e => setSiteForm({...siteForm, name: e.target.value})}/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Suburb</label>
+                                <input required className="input-field" value={siteForm.suburb} onChange={e => setSiteForm({...siteForm, suburb: e.target.value})}/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Address</label>
+                                <input required className="input-field" value={siteForm.address} onChange={e => setSiteForm({...siteForm, address: e.target.value})}/>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">State</label>
+                                    <input required className="input-field" value={siteForm.state} onChange={e => setSiteForm({...siteForm, state: e.target.value})}/>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Postcode</label>
+                                    <input required className="input-field" value={siteForm.zip} onChange={e => setSiteForm({...siteForm, zip: e.target.value})}/>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Contact person</label>
+                                <input required className="input-field" value={siteForm.contactPerson} onChange={e => setSiteForm({...siteForm, contactPerson: e.target.value})}/>
+                            </div>
                             <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setIsSiteFormOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="btn-primary">Save Site</button></div>
                         </form>
                     </div>
@@ -2069,9 +2144,9 @@ if __name__ == "__main__":
                     <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Visual Identity</h3>
                         
-                        <div className="space-y-6">
+                        <div className="space-y-5">
                             <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Application Name</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Application name</label>
                                 <input 
                                     className="input-field" 
                                     value={brandingForm.appName}
@@ -2080,7 +2155,7 @@ if __name__ == "__main__":
                             </div>
 
                             <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Logo</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Logo</label>
                                 <div className="flex items-center gap-4">
                                     <div className="w-16 h-16 rounded-xl bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 flex items-center justify-center overflow-hidden relative group">
                                         {brandingForm.logoUrl ? (
@@ -2103,7 +2178,7 @@ if __name__ == "__main__":
                             </div>
 
                             <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase block mb-3">Font Family</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Font family</label>
                                 <div className="grid grid-cols-3 gap-3">
                                     {[
                                         { id: 'sans', name: 'Clean Sans', font: 'font-sans' },
@@ -3185,10 +3260,10 @@ if __name__ == "__main__":
                                              <p className="text-xs text-gray-500">Service Level Agreements help keep approvals moving by warning or escalating stalled items.</p>
                                         </div>
 
-                                        <div className="grid grid-cols-2 gap-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                             <div>
-                                                <label className="text-xs font-bold text-gray-500 uppercase">Warning Threshold</label>
-                                                <div className="flex items-center gap-2 mt-1">
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Warning threshold</label>
+                                                <div className="flex items-center gap-2">
                                                     <input 
                                                         type="number"
                                                         className="input-field text-right"
@@ -3201,8 +3276,8 @@ if __name__ == "__main__":
                                                 <p className="text-[10px] text-gray-400 mt-1">Send a reminder notification after this time.</p>
                                             </div>
                                             <div>
-                                                <label className="text-xs font-bold text-gray-500 uppercase">Escalation Threshold</label>
-                                                <div className="flex items-center gap-2 mt-1">
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Escalation threshold</label>
+                                                <div className="flex items-center gap-2">
                                                     <input 
                                                         type="number"
                                                         className="input-field text-right"
@@ -3233,9 +3308,15 @@ if __name__ == "__main__":
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Create New Role</h2>
-                        <div className="space-y-4">
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Role Name</label><input className="input-field mt-1" value={roleFormName} onChange={e => setRoleFormName(e.target.value)}/></div>
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Description</label><input className="input-field mt-1" value={roleFormDesc} onChange={e => setRoleFormDesc(e.target.value)}/></div>
+                        <div className="space-y-5">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Role name</label>
+                                <input className="input-field" value={roleFormName} onChange={e => setRoleFormName(e.target.value)}/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
+                                <input className="input-field" value={roleFormDesc} onChange={e => setRoleFormDesc(e.target.value)}/>
+                            </div>
                             <div className="flex justify-end gap-3 pt-4">
                                 <button onClick={() => setIsRoleEditorOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
                                 <button onClick={() => {
