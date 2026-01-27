@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserCheck, UserX, Clock, Search, Shield, Building2, MapPin, X, LayoutGrid, ListFilter, CheckCircle, UserPlus, Loader2, AlertCircle, Check } from 'lucide-react';
+import { UserCheck, UserX, Clock, Search, Shield, Building2, MapPin, X, LayoutGrid, ListFilter, CheckCircle, UserPlus, Loader2, AlertCircle, Check, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { User, UserRole } from '../types';
+import { useToast, ToastContainer } from './ToastNotification';
+import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers';
 
 const AdminAccessHub = () => {
     const { users, reloadData, roles, sites, searchDirectory, sendWelcomeEmail, resendWelcomeEmail } = useApp();
+    const { toasts, dismissToast, success, error, warning } = useToast();
     
     // Approval Configuration
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -13,6 +16,7 @@ const AdminAccessHub = () => {
     const [specificSiteIds, setSpecificSiteIds] = useState<string[]>([]);
     const [selectedRole, setSelectedRole] = useState<string>('SITE_USER');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [resendingUserId, setResendingUserId] = useState<string | null>(null);
 
     // Derived Lists
     const pendingRequests = users.filter(u => u.status === 'PENDING_APPROVAL' && !u.invitedAt);
@@ -89,7 +93,31 @@ const AdminAccessHub = () => {
 
     const UserRow = ({ user, type, key }: { user: User, type: 'REQUEST' | 'INVITE', key?: string }) => {
         const isAccountCreated = !!(user.jobTitle || user.department);
-        const isExpired = user.invitationExpiresAt && new Date(user.invitationExpiresAt) < new Date();
+        const expiryInfo = user.invitationExpiresAt ? getTimeUntilExpiry(user.invitationExpiresAt) : null;
+        const isResending = resendingUserId === user.id;
+
+        const handleResendInvite = async () => {
+            // Confirmation dialog
+            if (!confirm(`Resend invitation to ${user.name} (${user.email})?\n\nThis will generate a new invitation link valid for 48 hours.`)) {
+                return;
+            }
+
+            setResendingUserId(user.id);
+            try {
+                const success = await resendWelcomeEmail(user.email, user.name);
+                if (success) {
+                    success(`Invitation sent to ${user.name}`, 4000);
+                    await reloadData(); // Refresh to show updated expiry
+                } else {
+                    error('Failed to send invitation. Please try again.', 5000);
+                }
+            } catch (err) {
+                error('An error occurred while sending the invitation.', 5000);
+                console.error('Resend error:', err);
+            } finally {
+                setResendingUserId(null);
+            }
+        };
 
         return (
             <div className="p-6 flex flex-col md:flex-row gap-6 hover:bg-gray-50 dark:hover:bg-white/5 transition-all group">
@@ -121,15 +149,21 @@ const AdminAccessHub = () => {
                                 <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/50 rounded-xl px-3 py-1.5 text-blue-600">
                                     <Clock size={12} />
                                     <p className="text-[10px] font-bold uppercase tracking-tight">
-                                        Invited: {new Date(user.invitedAt).toLocaleDateString()}
+                                        Invited: {formatInviteDate(user.invitedAt)}
                                     </p>
                                 </div>
                             )}
-                            {user.invitationExpiresAt && (
-                                <div className={`inline-flex items-center gap-2 border rounded-xl px-3 py-1.5 ${isExpired ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/50 text-red-600' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50 text-blue-600'}`}>
+                            {expiryInfo && (
+                                <div className={`inline-flex items-center gap-2 border rounded-xl px-3 py-1.5 ${
+                                    expiryInfo.isExpired 
+                                        ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/50 text-red-600' 
+                                        : expiryInfo.isExpiringSoon
+                                        ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-800/50 text-amber-600 animate-pulse'
+                                        : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50 text-blue-600'
+                                }`}>
                                     <Clock size={12} />
                                     <p className="text-[10px] font-bold uppercase tracking-tight">
-                                        {isExpired ? 'Link Expired' : `Link Expires: ${new Date(user.invitationExpiresAt).toLocaleDateString()}`}
+                                        {expiryInfo.displayText}
                                     </p>
                                 </div>
                             )}
@@ -139,18 +173,23 @@ const AdminAccessHub = () => {
                 
                 <div className="flex items-center gap-2 self-center">
                     <button 
-                        onClick={async () => {
-                            const success = await resendWelcomeEmail(user.email, user.name);
-                            if (success) alert(`Welcome email re-sent to ${user.email}`);
-                            else alert('Failed to re-send email. Please check your connection.');
-                        }}
-                        className="w-10 h-10 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-100"
+                        onClick={handleResendInvite}
+                        disabled={isResending}
+                        className="w-10 h-10 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Resend Welcome Email"
                     >
-                        <Loader2 size={20} className={isProcessing ? "animate-spin" : ""} />
+                        {isResending ? (
+                            <Loader2 size={20} className="animate-spin" />
+                        ) : (
+                            <Mail size={20} />
+                        )}
                     </button>
                     <button 
-                        onClick={() => handleReject(user.id)} 
+                        onClick={() => {
+                            if (confirm(`Are you sure you want to reject ${user.name}'s request?`)) {
+                                handleReject(user.id);
+                            }
+                        }} 
                         className="w-10 h-10 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-100" 
                         title="Reject"
                     >
@@ -186,7 +225,8 @@ const AdminAccessHub = () => {
     }, [dirQuery, searchDirectory]);
 
     return (
-        <div className="space-y-6 animate-fade-in">
+        <>
+            <div className="space-y-6 animate-fade-in">
             {/* Directory Search / Quick Invite */}
             <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm p-6">
                 <div className="flex flex-col md:flex-row gap-4">
@@ -376,6 +416,8 @@ const AdminAccessHub = () => {
                 </div>
             )}
         </div>
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+        </>
     );
 };
 

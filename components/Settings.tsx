@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext';
 
@@ -9,8 +9,10 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2
 } from 'lucide-react';
+import { useToast, ToastContainer } from './ToastNotification';
+import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers';
 import { supabase } from '../lib/supabaseClient';
 import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
@@ -64,6 +66,8 @@ const Settings = () => {
     // New Admin Caps
     getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, impersonateUser, archiveUser, searchDirectory
   } = useApp();
+  const { toasts, dismissToast, success, error, warning } = useToast();
+  const [resendingUserId, setResendingUserId] = useState<string | null>(null);
 
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<AdminTab>('PROFILE');
@@ -850,6 +854,7 @@ if __name__ == "__main__":
         <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 font-mono">Custom</span>
             </div>
         </div>
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 
@@ -2260,14 +2265,23 @@ if __name__ == "__main__":
                                                             const s = sites.find(x => x.id === sid);
                                                             return s ? <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-500 uppercase">{s.name}</span> : null;
                                                         })}
-                                                        {user.status === 'PENDING' && user.invitationExpiresAt && (
-                                                            <div className={`inline-flex items-center gap-1.5 border rounded-lg px-2 py-0.5 ${new Date(user.invitationExpiresAt) < new Date() ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/50 text-red-600' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50 text-blue-600'}`}>
-                                                                <Clock size={10} />
-                                                                <p className="text-[9px] font-black uppercase tracking-tight">
-                                                                    {new Date(user.invitationExpiresAt) < new Date() ? 'Expired' : `Exp: ${new Date(user.invitationExpiresAt).toLocaleDateString()}`}
-                                                                </p>
-                                                            </div>
-                                                        )}
+                                                        {user.status === 'PENDING' && user.invitationExpiresAt && (() => {
+                                                            const expiryInfo = getTimeUntilExpiry(user.invitationExpiresAt);
+                                                            return (
+                                                                <div className={`inline-flex items-center gap-1.5 border rounded-lg px-2 py-0.5 ${
+                                                                    expiryInfo.isExpired
+                                                                        ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/50 text-red-600'
+                                                                        : expiryInfo.isExpiringSoon
+                                                                        ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-800/50 text-amber-600 animate-pulse'
+                                                                        : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/50 text-blue-600'
+                                                                }`}>
+                                                                    <Clock size={10} />
+                                                                    <p className="text-[9px] font-black uppercase tracking-tight">
+                                                                        {expiryInfo.displayText}
+                                                                    </p>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                       </div>
                                                   </div>
                                                </div>
@@ -2297,14 +2311,35 @@ if __name__ == "__main__":
                                                         {user.status === 'PENDING' && (
                                                             <button 
                                                                 onClick={async () => {
-                                                                    const success = await resendWelcomeEmail(user.email, user.name);
-                                                                    if (success) alert(`Welcome email re-sent to ${user.email}`);
-                                                                    else alert('Failed to re-send email.');
+                                                                    if (!confirm(`Resend invitation to ${user.name} (${user.email})?\\n\\nThis will generate a new invitation link valid for 48 hours.`)) {
+                                                                        return;
+                                                                    }
+                                                                    
+                                                                    setResendingUserId(user.id);
+                                                                    try {
+                                                                        const result = await resendWelcomeEmail(user.email, user.name);
+                                                                        if (result) {
+                                                                            success(`Invitation sent to ${user.name}`, 4000);
+                                                                            await reloadData();
+                                                                        } else {
+                                                                            error('Failed to send invitation. Please try again.', 5000);
+                                                                        }
+                                                                    } catch (err) {
+                                                                        error('An error occurred while sending the invitation.', 5000);
+                                                                        console.error('Resend error:', err);
+                                                                    } finally {
+                                                                        setResendingUserId(null);
+                                                                    }
                                                                 }}
-                                                                className="w-9 h-9 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200"
+                                                                disabled={resendingUserId === user.id}
+                                                                className="w-9 h-9 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 title="Resend Welcome Email"
                                                             >
-                                                                <Mail size={16}/>
+                                                                {resendingUserId === user.id ? (
+                                                                    <Loader2 size={16} className="animate-spin" />
+                                                                ) : (
+                                                                    <Mail size={16}/>
+                                                                )}
                                                             </button>
                                                         )}
                                                         <button 
