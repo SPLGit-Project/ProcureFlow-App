@@ -916,18 +916,18 @@ if __name__ == "__main__":
                           </button>
                       </div>
 
-                      <div className="flex-1 space-y-4 w-full">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="space-y-3">
-                                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Full Name</label>
+                      <div className="flex-1 space-y-5 w-full">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Full name</label>
                                   <input 
                                     className="input-field" 
                                     value={profileForm.name} 
                                     onChange={e => setProfileForm({...profileForm, name: e.target.value})}
                                   />
                               </div>
-                              <div className="space-y-3">
-                                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Email Address</label>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email address</label>
                                   <input 
                                     className="input-field opacity-60 cursor-not-allowed" 
                                     value={currentUser?.email} 
@@ -936,8 +936,8 @@ if __name__ == "__main__":
                               </div>
                           </div>
 
-                          <div className="space-y-3">
-                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Job Title</label>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Job title</label>
                               <input 
                                 className="input-field" 
                                 placeholder="e.g. Site Manager"
@@ -946,8 +946,8 @@ if __name__ == "__main__":
                               />
                           </div>
 
-                          <div className="space-y-3">
-                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Avatar URL</label>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Avatar URL</label>
                               <input 
                                 className="input-field font-mono text-xs" 
                                 placeholder="https://example.com/photo.jpg"

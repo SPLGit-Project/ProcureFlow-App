@@ -5,6 +5,20 @@ import Layout from './components/Layout';
 import Login from './components/Login';
 import OnboardingWizard from './components/OnboardingWizard';
 import UpdateManager from './components/UpdateManager';
+import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => {
+        console.log('SW: Service Worker registered successfully:', registration.scope);
+      })
+      .catch(error => {
+        console.error('SW: Service Worker registration failed:', error);
+      });
+  });
+}
 
 // Lazy Load Heavy Components
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -49,6 +63,7 @@ function App() {
   return (
     <AppProvider>
       <UpdateManager />
+      <PWAInstallPrompt />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />

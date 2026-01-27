@@ -131,3 +131,56 @@
 .transition-elevation:hover {
   transform: translateY(-1px);
 }
+
+/* ============================================
+   FORM INPUT STYLES
+   ============================================ */
+
+.input-field {
+  width: 100%;
+  background-color: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #111827;
+  outline: none;
+  transition: all 0.2s ease-in-out;
+}
+
+.input-field::placeholder {
+  color: #9ca3af;
+}
+
+.input-field:focus {
+  border-color: var(--color-brand, #2563eb);
+  box-shadow: 0 0 0 1px var(--color-brand, #2563eb);
+}
+
+/* Dark Mode Input Styles */
+.dark .input-field {
+  background-color: #15171e;
+  border-color: #374151;
+  color: #ffffff !important;
+}
+
+.dark .input-field::placeholder {
+  color: #6b7280;
+}
+
+.dark .input-field:focus {
+  border-color: var(--color-brand, #2563eb);
+}
+
+/* Ensure text color is always visible */
+input.input-field,
+textarea.input-field,
+select.input-field {
+  color: #111827;
+}
+
+.dark input.input-field,
+.dark textarea.input-field,
+.dark select.input-field {
+  color: #ffffff !important;
+}
