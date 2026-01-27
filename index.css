@@ -1,4 +1,94 @@
-/* Main CSS */
+/* Main CSS - Enhanced Theme System */
+
+/* ============================================
+   CSS VARIABLES - Design Token System
+   ============================================ */
+
+:root {
+  /* Light Mode - Enhanced Contrast */
+  --bg-primary: #f8f9fa;           /* Main background - slightly darker than gray-50 */
+  --bg-secondary: #ffffff;         /* Tiles and cards */
+  --bg-tertiary: #f1f3f5;          /* Nested elements */
+  --bg-elevated: #ffffff;          /* Elevated/important cards */
+  
+  --border-subtle: #e9ecef;        /* Lighter borders */
+  --border-default: #dee2e6;       /* Standard borders */
+  --border-strong: #ced4da;        /* Emphasized borders */
+  
+  /* Elevation System - Light Mode */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  
+  --elevation-0: var(--shadow-sm);
+  --elevation-1: var(--shadow-md);
+  --elevation-2: var(--shadow-lg);
+  --elevation-3: var(--shadow-xl);
+  
+  /* Text Colors */
+  --text-primary: #212529;
+  --text-secondary: #6c757d;
+  --text-tertiary: #adb5bd;
+}
+
+.dark {
+  /* Dark Mode - Enhanced Depth */
+  --bg-primary: #15171e;           /* Main background */
+  --bg-secondary: #1e2029;         /* Tiles and cards */
+  --bg-tertiary: #252831;          /* Nested elements */
+  --bg-elevated: #2b2d3b;          /* Elevated/important cards */
+  
+  --border-subtle: #2b2d3b;
+  --border-default: #363945;
+  --border-strong: #4a4d5e;
+  
+  /* Elevation System - Dark Mode (stronger shadows) */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 8px 10px -6px rgb(0 0 0 / 0.6);
+  
+  --elevation-0: var(--shadow-sm);
+  --elevation-1: var(--shadow-md);
+  --elevation-2: var(--shadow-lg);
+  --elevation-3: var(--shadow-xl);
+  
+  /* Text Colors */
+  --text-primary: #f8f9fa;
+  --text-secondary: #adb5bd;
+  --text-tertiary: #6c757d;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Background Utilities */
+.bg-app { background-color: var(--bg-primary); }
+.bg-surface { background-color: var(--bg-secondary); }
+.bg-surface-raised { background-color: var(--bg-tertiary); }
+.bg-elevated { background-color: var(--bg-elevated); }
+
+/* Border Utilities */
+.border-subtle { border-color: var(--border-subtle); }
+.border-default { border-color: var(--border-default); }
+.border-strong { border-color: var(--border-strong); }
+
+/* Elevation Utilities */
+.elevation-0 { box-shadow: var(--elevation-0); }
+.elevation-1 { box-shadow: var(--elevation-1); }
+.elevation-2 { box-shadow: var(--elevation-2); }
+.elevation-3 { box-shadow: var(--elevation-3); }
+
+/* Text Utilities */
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-tertiary { color: var(--text-tertiary); }
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
 
 @keyframes slide-up {
   from {
@@ -28,4 +118,16 @@
 
 .animate-slide-down {
   animation: slide-down 0.3s ease-out;
+}
+
+/* ============================================
+   TRANSITION HELPERS
+   ============================================ */
+
+.transition-elevation {
+  transition: box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out;
+}
+
+.transition-elevation:hover {
+  transform: translateY(-1px);
 }

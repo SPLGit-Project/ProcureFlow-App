@@ -50,7 +50,7 @@ const OnboardingWizard = () => {
 
     if (isExpired) {
         return (
-            <div className="min-h-screen bg-gray-50 dark:bg-[#15171e] flex items-center justify-center p-4">
+            <div className="min-h-screen bg-app flex items-center justify-center p-4">
                 <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-full max-w-lg p-8 text-center animate-fade-in">
                     <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
                         <Clock size={32} />
@@ -69,7 +69,7 @@ const OnboardingWizard = () => {
 
     if (step === 3) {
         return (
-            <div className="min-h-screen bg-gray-50 dark:bg-[#15171e] flex items-center justify-center p-4">
+            <div className="min-h-screen bg-app flex items-center justify-center p-4">
                 <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-full max-w-lg p-8 text-center animate-fade-in">
                     <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
                         <CheckCircle2 size={32} />

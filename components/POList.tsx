@@ -57,7 +57,7 @@ const POList = ({ filter = 'ALL' }: { filter?: 'ALL' | 'PENDING' }) => {
           )}
       </div>
 
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="bg-surface rounded-2xl elevation-1 border border-default overflow-hidden">
           {/* Toolbar */}
           <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col md:flex-row gap-3">
               <div className="relative flex-1">

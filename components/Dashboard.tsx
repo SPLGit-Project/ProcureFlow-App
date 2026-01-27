@@ -142,7 +142,7 @@ const Dashboard = () => {
   const StatCard = ({ title, value, icon: Icon, color, onClick }: any) => (
       <div 
         onClick={onClick}
-        className={`group bg-white dark:bg-[#1e2029] p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden cursor-pointer hover:shadow-md hover:border-${color}-500/50 transition-all duration-300`}
+        className={`group bg-surface border border-default elevation-1 hover:elevation-2 transition-elevation p-5 rounded-2xl relative overflow-hidden cursor-pointer`}
       >
           <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl opacity-0 group-hover:opacity-10 transition-opacity bg-${color}-500`}></div>
           <div className="flex justify-between items-start mb-3">
@@ -193,7 +193,7 @@ const Dashboard = () => {
       </div>
 
       {/* Pipeline Flow Visual */}
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+      <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 overflow-hidden">
           <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Request Pipeline {selectedSite !== 'All' ? `(${selectedSite})` : ''}</h3>
           <div className="flex flex-col md:flex-row gap-2 relative">
              {[
@@ -225,7 +225,7 @@ const Dashboard = () => {
           {/* Depletion/Replacement Analysis */}
           <div className="lg:col-span-2 space-y-6">
               {/* Cost Impact Breakdown */}
-              <div className="bg-white dark:bg-[#1e2029] rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col md:flex-row items-center gap-6">
+              <div className="bg-elevated rounded-2xl p-6 border border-strong elevation-2 flex flex-col md:flex-row items-center gap-6">
                   <div className="flex-1">
                       <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Cost Impact Analysis</h3>
                       <p className="text-sm text-gray-500 mb-6">Financial impact of replacements (Depletion) vs Contract inclusions.</p>
@@ -275,7 +275,7 @@ const Dashboard = () => {
               </div>
 
                {/* Top Depletion Items */}
-               <div className="bg-white dark:bg-[#1e2029] rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm flex-1">
+               <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 flex-1">
                   <div className="flex items-center justify-between mb-4">
                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Highest Depletion Items</h3>
                        <button onClick={() => navigate('/reports')} className="text-xs text-[var(--color-brand)] font-medium hover:underline">Full Report</button>
@@ -283,7 +283,7 @@ const Dashboard = () => {
                   
                   <div className="space-y-3">
                       {topDepletionItems.length > 0 ? topDepletionItems.map(([item, data]) => (
-                          <div key={item} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/5 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+                          <div key={item} className="flex items-center justify-between p-3 bg-surface-raised rounded-xl hover:elevation-0 transition-elevation">
                               <div className="flex items-center gap-3">
                                   <div className="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/20 text-red-600 flex items-center justify-center font-bold text-xs shadow-sm">
                                       {Math.round(data.qty)}
@@ -308,7 +308,7 @@ const Dashboard = () => {
           </div>
 
           {/* User Tasks (Right Column) */}
-          <div className="bg-white dark:bg-[#1e2029] rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col h-full">
+          <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 flex flex-col h-full">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">My Tasks</h3>
               <div className="space-y-3 overflow-y-auto max-h-[600px] custom-scrollbar">
                      {myPendingApprovals.length > 0 && (

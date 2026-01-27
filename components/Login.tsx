@@ -15,7 +15,7 @@ const Login = () => {
   }, [isAuthenticated, navigate]);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[#15171e] flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-app flex flex-col items-center justify-center p-4">
        
        <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 p-8 w-full max-w-md animate-slide-up">
            <div className="flex flex-col items-center mb-8">

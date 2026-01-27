@@ -76,7 +76,7 @@ const Layout = () => {
   if (!currentUser) return null;
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-[#15171e] text-slate-700 dark:text-slate-300 font-sans selection:bg-[var(--color-brand)] selection:text-white transition-colors duration-200" style={{fontFamily: 'var(--font-family)'}}>
+    <div className="flex h-screen bg-app text-slate-700 dark:text-slate-300 font-sans selection:bg-[var(--color-brand)] selection:text-white transition-colors duration-200" style={{fontFamily: 'var(--font-family)'}}>
       <PwaInstaller />
       
       {/* Mobile Overlay */}
