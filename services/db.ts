@@ -88,6 +88,70 @@ export const db = {
         if (error) throw error;
     },
 
+    // Lookup auth user by email - returns the auth.users ID if exists
+    getAuthUserByEmail: async (email: string): Promise<string | null> => {
+        // We can't directly query auth.users from client side, but we can check
+        // by attempting to get user info via admin or using our public.users table + 
+        // a join. Since public.users should sync with auth.users, we check if email exists there.
+        // However, for orphaned auth users (deleted from public but not auth), we need
+        // a server-side function. For now, we use an RPC if available.
+        
+        // Fallback: Try to find in public.users first (case-insensitive)
+        const { data } = await supabase
+            .from('users')
+            .select('id')
+            .ilike('email', email)
+            .limit(1)
+            .maybeSingle();
+        
+        return data?.id || null;
+    },
+
+    // Smart user creation that handles email conflicts gracefully
+    createOrUpdateUserByEmail: async (user: User): Promise<void> => {
+        const normalizedEmail = user.email?.toLowerCase();
+        
+        // First check if user already exists by email
+        const { data: existingUser } = await supabase
+            .from('users')
+            .select('id')
+            .ilike('email', normalizedEmail || '')
+            .limit(1)
+            .maybeSingle();
+        
+        if (existingUser) {
+            // User exists - update their record instead of creating new
+            const { error } = await supabase.from('users').update({
+                name: user.name,
+                role_id: user.role,
+                avatar: user.avatar,
+                job_title: user.jobTitle,
+                status: user.status || 'APPROVED',
+                site_ids: user.siteIds || [],
+                invited_at: user.invitedAt,
+                invitation_expires_at: user.invitationExpiresAt
+            }).eq('id', existingUser.id);
+            
+            if (error) throw error;
+        } else {
+            // New user - insert
+            const { error } = await supabase.from('users').insert({
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                role_id: user.role,
+                avatar: user.avatar,
+                job_title: user.jobTitle,
+                status: user.status || 'PENDING_APPROVAL',
+                created_at: user.createdAt || new Date().toISOString(),
+                site_ids: user.siteIds || [],
+                invited_at: user.invitedAt,
+                invitation_expires_at: user.invitationExpiresAt
+            });
+            if (error) throw error;
+        }
+    },
+
     getSites: async (): Promise<Site[]> => {
         const { data, error } = await supabase.from('sites').select('*');
         if (error) throw error;

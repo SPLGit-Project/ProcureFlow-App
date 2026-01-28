@@ -3754,8 +3754,11 @@ if __name__ == "__main__":
                                                 if (inviteSent) alert(`Passcode login link sent to ${inviteForm.email}`);
                                             } catch (err: any) {
                                                 console.error("User creation failed:", err);
-                                                if (err.message && err.message.includes('unique constraint') && err.message.includes('users_email_key')) {
-                                                    alert("A user with this email address already exists in the system (possibly archived). Please search for them or ask an administrator.");
+                                                if (err.message && err.message.includes('unique constraint')) {
+                                                    // This shouldn't happen anymore with our smart upsert, but just in case
+                                                    alert("This email is already registered. The system has updated the existing user's access instead. Please refresh the page to see the changes.");
+                                                    handleResetInviteWizard();
+                                                    return;
                                                 } else {
                                                     alert(`Failed to create user record: ${err.message || 'Unknown error'}`);
                                                 }

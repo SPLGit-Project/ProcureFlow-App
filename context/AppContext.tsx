@@ -1088,13 +1088,30 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       expiry.setHours(expiry.getHours() + 48);
       const userWithExpiry = { ...user, invitationExpiresAt: expiry.toISOString() };
       
-      setUsers(prev => [...prev, userWithExpiry]);
-      try {
-          await db.createUser(userWithExpiry);
-      } catch (e) {
-          console.error("Failed to add user", e);
-          reloadData();
-          throw e;
+      // Check if user with this email already exists (handles re-inviting deleted users)
+      const existingUser = users.find(u => u.email?.toLowerCase() === user.email?.toLowerCase());
+      
+      if (existingUser) {
+          // Update existing user instead of creating new
+          const updatedUser = { ...existingUser, ...userWithExpiry, id: existingUser.id };
+          setUsers(prev => prev.map(u => u.id === existingUser.id ? updatedUser : u));
+          try {
+              await db.createOrUpdateUserByEmail(updatedUser);
+          } catch (e) {
+              console.error("Failed to update existing user", e);
+              reloadData();
+              throw e;
+          }
+      } else {
+          // New user - add to list
+          setUsers(prev => [...prev, userWithExpiry]);
+          try {
+              await db.createOrUpdateUserByEmail(userWithExpiry);
+          } catch (e) {
+              console.error("Failed to add user", e);
+              reloadData();
+              throw e;
+          }
       }
   };
 
