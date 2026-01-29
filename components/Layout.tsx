@@ -26,7 +26,8 @@ import {
 } from 'lucide-react';
 import { PermissionId } from '../types';
 import PwaInstaller from './PwaInstaller';
-import VersionUpdater from './VersionUpdater';
+import UpdateToast from './UpdateToast';
+import VersionBadge from './VersionBadge';
 
 const Layout = () => {
   const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteId, setActiveSiteId, sites, siteName, originalUser, stopImpersonation } = useApp();
@@ -228,6 +229,11 @@ const Layout = () => {
                </button>
             </div>
         </div>
+
+        {/* Version Badge */}
+        <div className="mx-4 mb-4 mt-2">
+            <VersionBadge />
+        </div>
       </aside>
 
       {/* Main Content */}
@@ -267,8 +273,8 @@ const Layout = () => {
         </main>
       </div>
       
-      {/* Smart Version Updater */}
-      <VersionUpdater />
+      {/* Update Toast Notification */}
+      <UpdateToast />
     </div>
   );
 };

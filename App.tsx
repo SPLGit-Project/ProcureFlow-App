@@ -4,7 +4,6 @@ import { AppProvider, useApp } from './context/AppContext';
 import Layout from './components/Layout';
 import Login from './components/Login';
 import OnboardingWizard from './components/OnboardingWizard';
-import UpdateManager from './components/UpdateManager';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 
 // Register Service Worker
@@ -62,7 +61,6 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <AppProvider>
-      <UpdateManager />
       <PWAInstallPrompt />
       <BrowserRouter>
         <Routes>
