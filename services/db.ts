@@ -1140,8 +1140,7 @@ export const db = {
                          mapping_status: 'PROPOSED',
                          mapping_method: 'AUTO_FUZZY',
                          confidence_score: bestScore,
-                         supplier_customer_stock_code_norm: norm,
-                         mapping_reason: `Name Similarity: ${(bestScore * 100).toFixed(0)}%`
+                         supplier_customer_stock_code_norm: norm
                      });
                      proposed++;
                  }

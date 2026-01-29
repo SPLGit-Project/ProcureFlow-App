@@ -1414,6 +1414,7 @@ if __name__ == "__main__":
                                           <th className="p-2 text-right">Cmtd</th>
                                           <th className="p-2 text-right">B/O</th>
                                           <th className="p-2 text-right">Avail</th>
+                                          <th className="p-2 text-right">Total</th>
                                           <th className="p-2 text-right">Sell $</th>
                                           <th className="p-2 text-right">Value</th>
                                       </tr>
@@ -1432,6 +1433,7 @@ if __name__ == "__main__":
                                             <td className="p-2 text-right font-mono text-orange-500">{r.committedQty}</td>
                                             <td className="p-2 text-right font-mono text-red-500">{r.backOrderedQty}</td>
                                             <td className={`p-2 text-right font-bold font-mono ${r.availableQty < 0 ? 'text-red-500' : 'text-green-600'}`}>{r.availableQty}</td>
+                                            <td className="p-2 text-right font-mono">{r.totalStockQty ?? '-'}</td>
                                             <td className="p-2 text-right font-mono">{r.sellPrice ? `$${r.sellPrice.toFixed(2)}` : '-'}</td>
                                             <td className="p-2 text-right font-mono">{r.sohValueAtSell ? `$${r.sohValueAtSell.toLocaleString()}` : '-'}</td>
                                         </tr>
@@ -1466,6 +1468,7 @@ if __name__ == "__main__":
                                   <th className="px-4 py-4 text-right">Cmtd</th>
                                   <th className="px-4 py-4 text-right">B/O</th>
                                   <th className="px-4 py-4 text-right">Avail</th>
+                                  <th className="px-4 py-4 text-right">Total</th>
                                   <th className="px-4 py-4 text-right">Val @ Sell</th>
                                   <th className="px-4 py-4">Incoming</th>
                               </tr>
@@ -1514,6 +1517,7 @@ if __name__ == "__main__":
                                      <td className="px-4 py-4 text-right font-mono text-orange-500">{snap.committedQty}</td>
                                      <td className="px-4 py-4 text-right font-mono text-red-500">{snap.backOrderedQty}</td>
                                      <td className="px-4 py-4 text-right font-bold text-green-600 dark:text-green-500 font-mono text-base">{snap.availableQty}</td>
+                                     <td className="px-4 py-4 text-right font-mono">{snap.totalStockQty ?? '-'}</td>
                                      <td className="px-4 py-4 text-right font-mono text-gray-400">{snap.sohValueAtSell ? `$${snap.sohValueAtSell.toLocaleString()}` : '-'}</td>
                                      <td className="px-4 py-4 text-xs">{snap.incomingStock && snap.incomingStock.length > 0 ? snap.incomingStock.map((inc, i) => <span key={i} className="inline-block bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded mr-1 mb-1">{inc.month}: {inc.qty}</span>) : <span className="text-gray-300">-</span>}</td>
                                  </tr>
