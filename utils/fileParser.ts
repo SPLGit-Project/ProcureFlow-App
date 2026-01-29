@@ -1,22 +1,102 @@
 import * as XLSX from 'xlsx';
 import { SupplierStockSnapshot } from '../types';
 
-interface ParseResult {
-    success: boolean;
-    data?: Partial<SupplierStockSnapshot>[];
-    errors?: string[];
-    warnings?: string[];
+// Enhanced interfaces for mapping confirmation
+export interface ColumnMapping {
+    [ourField: string]: {
+        sourceColumn: string | null;
+        confidence: number;  // 0-1 score
+        alternatives: string[];  // Other possible matches
+    };
 }
 
-// Column mapping dictionary with common aliases
-const COLUMN_ALIASES: Record<string, string[]> = {
-    supplierSku: ['sku', 'stock code', 'item code', 'product code', 'supplier sku', 'suppliersku', 'code'],
-    productName: ['product', 'product name', 'item name', 'description', 'item', 'name'],
-    stockOnHand: ['soh', 'stock on hand', 'stock', 'quantity', 'qty', 'on hand', 'stock_on_hand'],
-    availableQty: ['available', 'avail', 'available qty', 'available stock', 'avail qty', 'available_qty'],
-    committedQty: ['committed', 'committed qty', 'allocated', 'committed_qty'],
-    backOrderedQty: ['back ordered', 'backorder', 'back order qty', 'backorder qty', 'back_ordered_qty'],
-    customerStockCode: ['customer code', 'customer stock code', 'cust code', 'customer sku', 'customer_stock_code']
+export interface MappingConfidence {
+    overall: number;  // 0-1
+    hasErrors: boolean;
+    missingRequired: string[];
+}
+
+export interface DateColumn {
+    columnName: string;
+    parsedDate: string;  // ISO format YYYY-MM
+    format: string;  // e.g., "MMM YYYY"
+    isIncomingStock: boolean;
+}
+
+export interface EnhancedParseResult {
+    success: boolean;
+    data?: Partial<SupplierStockSnapshot>[];
+    mapping: ColumnMapping;
+    confidence: MappingConfidence;
+    errors: string[];
+    warnings: string[];
+    allColumns: string[];  // All detected columns from file
+    dateColumns: DateColumn[];  // Detected date columns for incoming stock
+    rawData?: any[];  // Raw data for preview
+}
+
+// Field definitions with aliases and confidence weights
+const FIELD_DEFINITIONS = {
+    supplierSku: {
+        aliases: ['sku', 'stock code', 'item code', 'product code', 'supplier sku', 'suppliersku', 'code', 'customer stock code', 'cust code'],
+        required: true,
+        weight: 1.0
+    },
+    productName: {
+        aliases: ['product', 'product name', 'item name', 'description', 'item', 'name', 'range'],
+        required: false,
+        weight: 0.9
+    },
+    stockOnHand: {
+        aliases: ['soh', 'stock on hand', 'stock', 'on hand', 'stock_on_hand', 'total stock'],
+        required: false,
+        weight: 0.95
+    },
+    availableQty: {
+        aliases: ['available', 'avail', 'available qty', 'available stock', 'avail qty', 'available_qty', 'orders available'],
+        required: false,
+        weight: 0.9
+    },
+    committedQty: {
+        aliases: ['committed', 'committed qty', 'allocated', 'committed_qty'],
+        required: false,
+        weight: 0.85
+    },
+    backOrderedQty: {
+        aliases: ['back ordered', 'backorder', 'back order qty', 'backorder qty', 'back_ordered_qty'],
+        required: false,
+        weight: 0.85
+    },
+    customerStockCode: {
+        aliases: ['customer code', 'customer stock code', 'cust code', 'customer sku', 'customer_stock_code'],
+        required: false,
+        weight: 0.7
+    },
+    range: {
+        aliases: ['range', 'product range', 'category'],
+        required: false,
+        weight: 0.6
+    },
+    category: {
+        aliases: ['category', 'cat', 'product category'],
+        required: false,
+        weight: 0.6
+    },
+    subCategory: {
+        aliases: ['sub category', 'subcategory', 'sub cat', 'sub_category'],
+        required: false,
+        weight: 0.6
+    },
+    stockType: {
+        aliases: ['stock type', 'stocktype', 'type', 'stock_type'],
+        required: false,
+        weight: 0.5
+    },
+    cartonQty: {
+        aliases: ['carton qty', 'carton', 'carton quantity', 'carton_qty'],
+        required: false,
+        weight: 0.5
+    }
 };
 
 /**
@@ -27,24 +107,250 @@ function normalizeHeader(header: string): string {
 }
 
 /**
- * Maps a raw header to a known field
+ * Calculate similarity score between two strings using Levenshtein-like algorithm
  */
-function mapHeader(rawHeader: string): string | null {
-    const normalized = normalizeHeader(rawHeader);
+function calculateSimilarity(str1: string, str2: string): number {
+    const s1 = normalizeHeader(str1);
+    const s2 = normalizeHeader(str2);
     
-    for (const [fieldName, aliases] of Object.entries(COLUMN_ALIASES)) {
-        if (aliases.some(alias => normalized === normalizeHeader(alias))) {
-            return fieldName;
-        }
+    // Exact match
+    if (s1 === s2) return 1.0;
+    
+    // Contains match
+    if (s1.includes(s2) || s2.includes(s1)) {
+        const longer = Math.max(s1.length, s2.length);
+        const shorter = Math.min(s1.length, s2.length);
+        return 0.7 + (0.3 * (shorter / longer));
+    }
+    
+    // Partial word match
+    const words1 = s1.split(' ');
+    const words2 = s2.split(' ');
+    const matchingWords = words1.filter(w => words2.includes(w)).length;
+    if (matchingWords > 0) {
+        return 0.5 * (matchingWords / Math.max(words1.length, words2.length));
+    }
+    
+    return 0;
+}
+
+/**
+ * Detect if a column name represents a date for incoming stock
+ */
+function detectDateColumn(header: string): DateColumn | null {
+    const normalized = normalizeHeader(header);
+    
+    // Pattern: "Jan 2026", "Feb 2026", etc.
+    const monthYearPattern = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(\d{4})$/i;
+    const match = normalized.match(monthYearPattern);
+    
+    if (match) {
+        const monthMap: Record<string, string> = {
+            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+            'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+            'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+        };
+        
+        const month = monthMap[match[1].toLowerCase()];
+        const year = match[2];
+        
+        return {
+            columnName: header,
+            parsedDate: `${year}-${month}`,
+            format: 'MMM YYYY',
+            isIncomingStock: true
+        };
+    }
+    
+    // Pattern: "01/2026", "02/2026", etc.
+    const slashPattern = /^(\d{1,2})\s*\/\s*(\d{4})$/;
+    const slashMatch = normalized.match(slashPattern);
+    
+    if (slashMatch) {
+        const month = slashMatch[1].padStart(2, '0');
+        const year = slashMatch[2];
+        
+        return {
+            columnName: header,
+            parsedDate: `${year}-${month}`,
+            format: 'MM/YYYY',
+            isIncomingStock: true
+        };
     }
     
     return null;
 }
 
 /**
- * Parses stock file (Excel, CSV, TSV) and returns structured data
+ * Maps headers to fields with confidence scoring
  */
-export function parseStockFile(file: File): Promise<ParseResult> {
+function createMapping(headers: string[]): { mapping: ColumnMapping; dateColumns: DateColumn[] } {
+    const mapping: ColumnMapping = {};
+    const dateColumns: DateColumn[] = [];
+    
+    // Initialize all fields
+    Object.keys(FIELD_DEFINITIONS).forEach(field => {
+        mapping[field] = {
+            sourceColumn: null,
+            confidence: 0,
+            alternatives: []
+        };
+    });
+    
+    // Process each header
+    headers.forEach(header => {
+        // Check if it's a date column first
+        const dateCol = detectDateColumn(header);
+        if (dateCol) {
+            dateColumns.push(dateCol);
+            return;
+        }
+        
+        // Find best field match
+        let bestField: string | null = null;
+        let bestScore = 0;
+        const scores: Array<{ field: string; score: number }> = [];
+        
+        Object.entries(FIELD_DEFINITIONS).forEach(([fieldName, fieldDef]) => {
+            let maxSimilarity = 0;
+            
+            fieldDef.aliases.forEach(alias => {
+                const similarity = calculateSimilarity(header, alias);
+                if (similarity > maxSimilarity) {
+                    maxSimilarity = similarity;
+                }
+            });
+            
+            // Apply field weight
+            const weightedScore = maxSimilarity * fieldDef.weight;
+            
+            if (weightedScore > 0.4) {  // Minimum threshold
+                scores.push({ field: fieldName, score: weightedScore });
+            }
+            
+            if (weightedScore > bestScore) {
+                bestScore = weightedScore;
+                bestField = fieldName;
+            }
+        });
+        
+        // Assign best match
+        if (bestField && bestScore > 0.4) {
+            mapping[bestField] = {
+                sourceColumn: header,
+                confidence: bestScore,
+                alternatives: scores
+                    .filter(s => s.field !== bestField && s.score > 0.3)
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, 3)
+                    .map(s => s.field)
+            };
+        }
+    });
+    
+    return { mapping, dateColumns };
+}
+
+/**
+ * Calculate overall mapping confidence
+ */
+function calculateConfidence(mapping: ColumnMapping): MappingConfidence {
+    const requiredFields = Object.entries(FIELD_DEFINITIONS)
+        .filter(([_, def]) => def.required)
+        .map(([name, _]) => name);
+    
+    const missingRequired = requiredFields.filter(
+        field => !mapping[field]?.sourceColumn
+    );
+    
+    const mappedFields = Object.values(mapping).filter(m => m.sourceColumn !== null);
+    const avgConfidence = mappedFields.length > 0
+        ? mappedFields.reduce((sum, m) => sum + m.confidence, 0) / mappedFields.length
+        : 0;
+    
+    return {
+        overall: avgConfidence,
+        hasErrors: missingRequired.length > 0,
+        missingRequired
+    };
+}
+
+/**
+ * Parse data rows using the mapping
+ */
+export function parseDataRows(
+    rawData: any[],
+    mapping: ColumnMapping,
+    dateColumns: DateColumn[]
+): Partial<SupplierStockSnapshot>[] {
+    const parsedData: Partial<SupplierStockSnapshot>[] = [];
+    
+    rawData.forEach((row, index) => {
+        const snapshot: Record<string, any> = {};
+        
+        // Map standard fields
+        Object.entries(mapping).forEach(([fieldName, fieldMapping]) => {
+            if (!fieldMapping.sourceColumn) return;
+            
+            const value = row[fieldMapping.sourceColumn];
+            if (value === undefined || value === null || value === '') return;
+            
+            switch (fieldName) {
+                case 'supplierSku':
+                case 'productName':
+                case 'customerStockCode':
+                case 'range':
+                case 'category':
+                case 'subCategory':
+                case 'stockType':
+                    snapshot[fieldName] = String(value).trim();
+                    break;
+                    
+                case 'stockOnHand':
+                case 'availableQty':
+                case 'committedQty':
+                case 'backOrderedQty':
+                case 'cartonQty':
+                    const numValue = typeof value === 'number' ? value : parseInt(String(value).replace(/,/g, ''), 10);
+                    if (!isNaN(numValue)) {
+                        snapshot[fieldName] = numValue;
+                    }
+                    break;
+            }
+        });
+        
+        // Parse incoming stock from date columns
+        const incomingStock: Array<{ month: string; qty: number }> = [];
+        dateColumns.forEach(dateCol => {
+            const value = row[dateCol.columnName];
+            if (value !== undefined && value !== null && value !== '') {
+                const qty = typeof value === 'number' ? value : parseInt(String(value).replace(/,/g, ''), 10);
+                if (!isNaN(qty) && qty > 0) {
+                    incomingStock.push({
+                        month: dateCol.parsedDate,
+                        qty
+                    });
+                }
+            }
+        });
+        
+        if (incomingStock.length > 0) {
+            snapshot.incomingStock = incomingStock;
+        }
+        
+        // Only add if we have at least a SKU
+        if (snapshot.supplierSku) {
+            parsedData.push(snapshot as Partial<SupplierStockSnapshot>);
+        }
+    });
+    
+    return parsedData;
+}
+
+/**
+ * Enhanced file parser with confidence scoring and mapping
+ */
+export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult> {
     return new Promise((resolve) => {
         const reader = new FileReader();
         
@@ -61,112 +367,74 @@ export function parseStockFile(file: File): Promise<ParseResult> {
                 if (jsonData.length === 0) {
                     resolve({
                         success: false,
-                        errors: ['The file appears to be empty or has no data rows']
+                        mapping: {} as ColumnMapping,
+                        confidence: { overall: 0, hasErrors: true, missingRequired: ['supplierSku'] },
+                        errors: ['The file appears to be empty or has no data rows'],
+                        warnings: [],
+                        allColumns: [],
+                        dateColumns: []
                     });
                     return;
                 }
                 
-                // Analyze headers
+                // Extract headers
                 const firstRow = jsonData[0] as Record<string, any>;
                 const headers = Object.keys(firstRow);
-                const mapping: Record<string, string> = {};
-                const unmappedHeaders: string[] = [];
                 
-                headers.forEach(header => {
-                    const mappedField = mapHeader(header);
-                    if (mappedField) {
-                        mapping[header] = mappedField;
-                    } else {
-                        unmappedHeaders.push(header);
-                    }
-                });
+                // Create mapping
+                const { mapping, dateColumns } = createMapping(headers);
+                const confidence = calculateConfidence(mapping);
                 
-                // Validate required fields
-                const requiredFields = ['supplierSku'];
-                const mappedFields = Object.values(mapping);
-                const missingFields = requiredFields.filter(f => !mappedFields.includes(f));
-                
-                if (missingFields.length > 0) {
-                    resolve({
-                        success: false,
-                        errors: [
-                            `Missing required columns: ${missingFields.join(', ')}`,
-                            `\nExpected columns (one of):`,
-                            `  - SKU: ${COLUMN_ALIASES.supplierSku.join(', ')}`,
-                            `\nFound columns: ${headers.join(', ')}`
-                        ]
-                    });
-                    return;
-                }
-                
-                // Parse rows
-                const parsedData: Partial<SupplierStockSnapshot>[] = [];
+                const errors: string[] = [];
                 const warnings: string[] = [];
                 
-                jsonData.forEach((row: any, index) => {
-                    const snapshot: Partial<SupplierStockSnapshot> = {};
-                    
-                    // Map each field
-                    Object.entries(mapping).forEach(([originalHeader, fieldName]) => {
-                        const value = row[originalHeader];
-                        
-                        switch (fieldName) {
-                            case 'supplierSku':
-                                snapshot.supplierSku = String(value).trim();
-                                break;
-                            case 'productName':
-                                snapshot.productName = String(value).trim();
-                                break;
-                            case 'stockOnHand':
-                                snapshot.stockOnHand = parseInt(value) || 0;
-                                break;
-                            case 'availableQty':
-                                snapshot.availableQty = parseInt(value) || 0;
-                                break;
-                            case 'committedQty':
-                                snapshot.committedQty = parseInt(value) || 0;
-                                break;
-                            case 'backOrderedQty':
-                                snapshot.backOrderedQty = parseInt(value) || 0;
-                                break;
-                            case 'customerStockCode':
-                                snapshot.customerStockCode = String(value).trim();
-                                break;
-                        }
-                    });
-                    
-                    // Validate row has minimum required data
-                    if (!snapshot.supplierSku) {
-                        warnings.push(`Row ${index + 2}: Skipped (missing SKU)`);
-                        return;
-                    }
-                    
-                    parsedData.push(snapshot);
-                });
-                
-                if (parsedData.length === 0) {
-                    resolve({
-                        success: false,
-                        errors: ['No valid data rows found after parsing']
-                    });
-                    return;
+                // Check for required fields
+                if (confidence.missingRequired.length > 0) {
+                    errors.push(
+                        `Missing required fields: ${confidence.missingRequired.join(', ')}`
+                    );
                 }
                 
-                // Add warnings about unmapped columns
-                if (unmappedHeaders.length > 0) {
-                    warnings.push(`Unmapped columns (ignored): ${unmappedHeaders.join(', ')}`);
+                // Parse data if we have minimum requirements
+                let parsedData: Partial<SupplierStockSnapshot>[] | undefined;
+                if (!confidence.hasErrors) {
+                    parsedData = parseDataRows(jsonData, mapping, dateColumns);
+                    
+                    if (parsedData.length === 0) {
+                        warnings.push('No valid data rows found after parsing');
+                    }
+                }
+                
+                // Add warnings about confidence
+                const lowConfidenceMappings = Object.entries(mapping)
+                    .filter(([_, m]) => m.sourceColumn && m.confidence < 0.7)
+                    .map(([field, m]) => `${field} → ${m.sourceColumn} (${Math.round(m.confidence * 100)}%)`);
+                
+                if (lowConfidenceMappings.length > 0) {
+                    warnings.push(`Low confidence mappings: ${lowConfidenceMappings.join(', ')}`);
                 }
                 
                 resolve({
-                    success: true,
+                    success: !confidence.hasErrors,
                     data: parsedData,
-                    warnings: warnings.length > 0 ? warnings : undefined
+                    mapping,
+                    confidence,
+                    errors,
+                    warnings,
+                    allColumns: headers,
+                    dateColumns,
+                    rawData: jsonData.slice(0, 10)  // First 10 rows for preview
                 });
                 
             } catch (error: any) {
                 resolve({
                     success: false,
-                    errors: [`Failed to parse file: ${error.message}`]
+                    mapping: {} as ColumnMapping,
+                    confidence: { overall: 0, hasErrors: true, missingRequired: [] },
+                    errors: [`Failed to parse file: ${error.message}`],
+                    warnings: [],
+                    allColumns: [],
+                    dateColumns: []
                 });
             }
         };
@@ -174,10 +442,18 @@ export function parseStockFile(file: File): Promise<ParseResult> {
         reader.onerror = () => {
             resolve({
                 success: false,
-                errors: ['Failed to read file']
+                mapping: {} as ColumnMapping,
+                confidence: { overall: 0, hasErrors: true, missingRequired: [] },
+                errors: ['Failed to read file'],
+                warnings: [],
+                allColumns: [],
+                dateColumns: []
             });
         };
         
         reader.readAsArrayBuffer(file);
     });
 }
+
+// Keep original function for backward compatibility
+export { parseStockFileEnhanced as parseStockFile };

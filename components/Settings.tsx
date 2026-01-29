@@ -19,6 +19,8 @@ import { normalizeItemCode } from '../utils/normalization';
 import { useLocation } from 'react-router-dom';
 import AdminAccessHub from './AdminAccessHub';
 import AdminMigration from './AdminMigration';
+import StockMappingConfirmation from './StockMappingConfirmation';
+import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser';
 
 
 const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, category: 'Page Access' | 'Functional Access' | 'Admin Access' }[] = [
@@ -184,6 +186,8 @@ const Settings = () => {
   // importSupplierId removed -> use stockSupplierId
   const [pasteData, setPasteData] = useState('');
   const [importDate, setImportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [showMappingConfirmation, setShowMappingConfirmation] = useState(false);
+  const [parseResult, setParseResult] = useState<EnhancedParseResult | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedSnapshot, setSelectedSnapshot] = useState<SupplierStockSnapshot | null>(null);
 
@@ -604,42 +608,20 @@ const Settings = () => {
     }
 
     try {
-        const { parseStockFile } = await import('../utils/fileParser');
-        const result = await parseStockFile(file);
+        // Use the enhanced parser with confidence scoring
+        const { parseStockFileEnhanced } = await import('../utils/fileParser');
+        const result = await parseStockFileEnhanced(file);
 
-        if (!result.success) {
-            alert(`Failed to parse file:\n${result.errors?.join('\n')}`);
+        // If parsing failed completely, show errors
+        if (result.errors.length > 0 && !result.success) {
+            alert(`Failed to parse file:\n\n${result.errors.join('\n')}`);
             e.target.value = '';
             return;
         }
 
-        // Convert parsed data to full SupplierStockSnapshot format
-        const fullSnapshots: SupplierStockSnapshot[] = (result.data || []).map(partial => ({
-            id: uuidv4(),
-            supplierId:  stockSupplierId,
-            supplierSku: partial.supplierSku || '',
-            productName: partial.productName || 'Unknown Product',
-            customerStockCode: partial.customerStockCode,
-            stockOnHand: partial.stockOnHand || 0,
-            committedQty: partial.committedQty || 0,
-            backOrderedQty: partial.backOrderedQty || 0,
-            availableQty: partial.availableQty || 0,
-            totalStockQty: partial.stockOnHand || 0,
-            snapshotDate: importDate,
-            sourceReportName: `File Import: ${file.name}`,
-            incomingStock: []
-        }));
-
-        setImportPreview(fullSnapshots);
-        setIsImporting(true);
-
-        // Show warnings if any
-        if (result.warnings && result.warnings.length > 0) {
-            console.warn('File parsing warnings:', result.warnings);
-            success(`File loaded with ${fullSnapshots.length} records. ${result.warnings.length} warning(s) - check console for details.`);
-        } else {
-            success(`File loaded successfully with ${fullSnapshots.length} records`);
-        }
+        // Store parse result and show mapping confirmation modal
+        setParseResult(result);
+        setShowMappingConfirmation(true);
 
         // Clear file input
         e.target.value = '';
@@ -647,6 +629,60 @@ const Settings = () => {
     } catch (error: any) {
         alert(`Error processing file: ${error.message}`);
         e.target.value = '';
+    }
+  };
+
+  // Handler for mapping confirmation
+  const handleMappingConfirm = async (mapping: ColumnMapping, dateColumns: DateColumn[]) => {
+    try {
+        // Close the modal first
+        setShowMappingConfirmation(false);
+
+        if (!parseResult || !stockSupplierId) return;
+
+        // Re-parse data with confirmed mapping
+        const { parseDataRows } = await import('../utils/fileParser');
+        const parsedSnapshots = parseDataRows(
+            parseResult.rawData || [],
+            mapping,
+            dateColumns
+        );
+
+        // Convert to full snap shots with metadata
+        const fullSnapshots: SupplierStockSnapshot[] = parsedSnapshots.map((partial: any) => ({
+            id: uuidv4(),
+            supplierId: stockSupplierId,
+            supplierSku: partial.supplierSku || '',
+            productName: partial.productName || 'Unknown Product',
+            customerStockCode: partial.customerStockCode,
+            range: partial.range,
+            category: partial.category,
+            subCategory: partial.subCategory,
+            stockType: partial.stockType,
+            cartonQty: partial.cartonQty,
+            stockOnHand: partial.stockOnHand || 0,
+            committedQty: partial.committedQty || 0,
+            backOrderedQty: partial.backOrderedQty || 0,
+            availableQty: partial.availableQty || 0,
+            totalStockQty: partial.stockOnHand || 0,
+            snapshotDate: importDate,
+            sourceReportName: `Enhanced Import`,
+            incomingStock: partial.incomingStock || []
+        }));
+
+        setImportPreview(fullSnapshots);
+        setIsImporting(true);
+
+        // Show success message with stats
+        const dateColsCount = dateColumns.length;
+        success(
+            `Mapped ${fullSnapshots.length} products${dateColsCount > 0 ? ` with ${dateColsCount} incoming stock dates` : ''}`
+        );
+        
+        setParseResult(null);
+
+    } catch (error: any) {
+        alert(`Error processing mapped data: ${error.message}`);
     }
   };
 
@@ -3877,6 +3913,18 @@ if __name__ == "__main__":
                        </div>
                    </div>
                )}
+
+      {/* Stock Mapping Confirmation Modal */}
+      {showMappingConfirmation && parseResult && (
+        <StockMappingConfirmation
+          parseResult={parseResult}
+          onConfirm={handleMappingConfirm}
+          onCancel={() => {
+            setShowMappingConfirmation(false);
+            setParseResult(null);
+          }}
+        />
+      )}
     </div>
     </div>
   );
