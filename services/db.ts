@@ -1139,8 +1139,7 @@ export const db = {
                          supplier_sku: snap.supplier_sku,
                          mapping_status: 'PROPOSED',
                          mapping_method: 'AUTO_FUZZY',
-                         confidence_score: bestScore,
-                         supplier_customer_stock_code_norm: norm
+                         confidence_score: bestScore
                      });
                      proposed++;
                  }
