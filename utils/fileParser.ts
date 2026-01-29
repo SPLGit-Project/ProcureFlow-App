@@ -423,7 +423,7 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
                     warnings,
                     allColumns: headers,
                     dateColumns,
-                    rawData: jsonData.slice(0, 10)  // First 10 rows for preview
+                    rawData: jsonData  // Full data for processing
                 });
                 
             } catch (error: any) {

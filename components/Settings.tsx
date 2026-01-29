@@ -612,8 +612,8 @@ const Settings = () => {
         const { parseStockFileEnhanced } = await import('../utils/fileParser');
         const result = await parseStockFileEnhanced(file);
 
-        // If parsing failed completely, show errors
-        if (result.errors.length > 0 && !result.success) {
+        // If parsing failed completely (no data to map), show errors
+        if (result.errors.length > 0 && (!result.rawData || result.rawData.length === 0)) {
             alert(`Failed to parse file:\n\n${result.errors.join('\n')}`);
             e.target.value = '';
             return;
