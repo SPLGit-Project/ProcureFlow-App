@@ -43,9 +43,9 @@ const FIELD_DEFINITIONS = {
         weight: 1.0
     },
     productName: {
-        aliases: ['product', 'product name', 'item name', 'description', 'item', 'name', 'range'],
+        aliases: ['product', 'product name', 'item name', 'description', 'item', 'name'],
         required: false,
-        weight: 0.9
+        weight: 1.0 // Increased weight to prioritize 'Product' over 'Range'
     },
     stockOnHand: {
         aliases: ['soh', 'stock on hand', 'stock', 'on hand', 'stock_on_hand', 'total stock'],
@@ -73,9 +73,9 @@ const FIELD_DEFINITIONS = {
         weight: 0.7
     },
     range: {
-        aliases: ['range', 'product range', 'category'],
+        aliases: ['range', 'product range'],
         required: false,
-        weight: 0.6
+        weight: 0.8 // High weight for specific 'Range' column
     },
     category: {
         aliases: ['category', 'cat', 'product category'],
@@ -103,6 +103,7 @@ const FIELD_DEFINITIONS = {
  * Normalizes a header string for matching
  */
 function normalizeHeader(header: string): string {
+    if (!header || typeof header !== 'string') return '';
     return header.toLowerCase().trim().replace(/[_\s-]+/g, ' ');
 }
 
@@ -206,11 +207,7 @@ function createMapping(headers: string[]): { mapping: ColumnMapping; dateColumns
             return;
         }
         
-        // Find best field match
-        let bestField: string | null = null;
-        let bestScore = 0;
-        const scores: Array<{ field: string; score: number }> = [];
-        
+        // Find best field match for this header
         Object.entries(FIELD_DEFINITIONS).forEach(([fieldName, fieldDef]) => {
             let maxSimilarity = 0;
             
@@ -224,31 +221,71 @@ function createMapping(headers: string[]): { mapping: ColumnMapping; dateColumns
             // Apply field weight
             const weightedScore = maxSimilarity * fieldDef.weight;
             
-            if (weightedScore > 0.4) {  // Minimum threshold
-                scores.push({ field: fieldName, score: weightedScore });
-            }
-            
-            if (weightedScore > bestScore) {
-                bestScore = weightedScore;
-                bestField = fieldName;
+            // If this is a better match than previous mapping for this field
+            if (weightedScore > 0.4 && weightedScore > mapping[fieldName].confidence) {
+                // If this header was previously used by another field, we don't handle that here
+                // We just want the BEST header for EACH field.
+                mapping[fieldName] = {
+                    sourceColumn: header,
+                    confidence: weightedScore,
+                    alternatives: [] // Computed later if needed
+                };
             }
         });
-        
-        // Assign best match
-        if (bestField && bestScore > 0.4) {
-            mapping[bestField] = {
-                sourceColumn: header,
-                confidence: bestScore,
-                alternatives: scores
-                    .filter(s => s.field !== bestField && s.score > 0.3)
-                    .sort((a, b) => b.score - a.score)
-                    .slice(0, 3)
-                    .map(s => s.field)
-            };
-        }
     });
     
     return { mapping, dateColumns };
+}
+
+/**
+ * Intelligent scan to find the header row in a 2D array of data
+ */
+function findHeaderRow(data: any[][]): { index: number; headers: string[] } {
+    let bestRowIndex = 0;
+    let maxMatches = 0;
+    let bestHeaders: string[] = [];
+
+    // Scan first 20 rows
+    const scanLimit = Math.min(data.length, 20);
+    
+    for (let i = 0; i < scanLimit; i++) {
+        const row = data[i];
+        if (!row || !Array.isArray(row)) continue;
+
+        let matches = 0;
+        const potentialHeaders: string[] = row.map(cell => String(cell || '').trim());
+        
+        potentialHeaders.forEach(header => {
+            if (!header) return;
+            
+            // Re-use logic from createMapping to see if this header matches ANY alias
+            Object.values(FIELD_DEFINITIONS).forEach(fieldDef => {
+                fieldDef.aliases.forEach(alias => {
+                    if (calculateSimilarity(header, alias) > 0.7) {
+                        matches++;
+                    }
+                });
+            });
+            
+            // Also check for date columns
+            if (detectDateColumn(header)) {
+                matches += 1.5; // Date columns are a strong signal of a header row
+            }
+        });
+
+        if (matches > maxMatches) {
+            maxMatches = matches;
+            bestRowIndex = i;
+            bestHeaders = potentialHeaders;
+        }
+    }
+
+    // Default to first row if no matches found
+    if (maxMatches === 0 && data.length > 0) {
+        bestHeaders = data[0].map(cell => String(cell || '').trim());
+    }
+
+    return { index: bestRowIndex, headers: bestHeaders };
 }
 
 /**
@@ -362,9 +399,11 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
                 // Get first sheet
                 const sheetName = workbook.SheetNames[0];
                 const sheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(sheet, { defval: '' });
                 
-                if (jsonData.length === 0) {
+                // Read as 2D array first to find headers
+                const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
+                
+                if (rawRows.length === 0) {
                     resolve({
                         success: false,
                         mapping: {} as ColumnMapping,
@@ -377,10 +416,21 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
                     return;
                 }
                 
-                // Extract headers
-                const firstRow = jsonData[0] as Record<string, any>;
-                const headers = Object.keys(firstRow);
+                // Find the intelligent header row
+                const { index: headerIndex, headers } = findHeaderRow(rawRows);
                 
+                // Slice data starting from below headers
+                const dataRows = rawRows.slice(headerIndex + 1);
+                
+                // Convert to objects based on detected headers for current mapping logic compatibility
+                const jsonData = dataRows.map(row => {
+                    const obj: Record<string, any> = {};
+                    headers.forEach((header, i) => {
+                        if (header) obj[header] = row[i];
+                    });
+                    return obj;
+                });
+
                 // Create mapping
                 const { mapping, dateColumns } = createMapping(headers);
                 const confidence = calculateConfidence(mapping);
@@ -388,6 +438,10 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
                 const errors: string[] = [];
                 const warnings: string[] = [];
                 
+                if (headerIndex > 0) {
+                    warnings.push(`Skipped ${headerIndex} header/metadata rows at the top of the file.`);
+                }
+
                 // Check for required fields
                 if (confidence.missingRequired.length > 0) {
                     errors.push(
