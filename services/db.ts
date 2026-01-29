@@ -740,6 +740,7 @@ export const db = {
                 back_ordered_qty: s.backOrderedQty,
                 soh_value_at_sell: s.sohValueAtSell,
                 sell_price: s.sellPrice,
+                total_stock_qty: s.totalStockQty,
                 
                 // Normalization
                 customer_stock_code_raw: s.customerStockCode || s.supplierSku,

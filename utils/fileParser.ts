@@ -96,6 +96,21 @@ const FIELD_DEFINITIONS = {
         aliases: ['carton qty', 'carton', 'carton quantity', 'carton_qty'],
         required: false,
         weight: 0.5
+    },
+    sellPrice: {
+        aliases: ['sell $', 'sell price', 'unit price', 'price', 'cost', 'sell'],
+        required: false,
+        weight: 0.8
+    },
+    sohValueAtSell: {
+        aliases: ['soh $ @ sell', 'stock value', 'value', 'soh value', 'soh $'],
+        required: false,
+        weight: 0.8
+    },
+    totalStockQty: {
+        aliases: ['total stock', 'total qty', 'total soh'],
+        required: false,
+        weight: 0.8
     }
 };
 
@@ -348,11 +363,20 @@ export function parseDataRows(
                 case 'committedQty':
                 case 'backOrderedQty':
                 case 'cartonQty':
+                case 'totalStockQty':
                     const numValue = typeof value === 'number' ? value : parseInt(String(value).replace(/,/g, ''), 10);
                     if (!isNaN(numValue)) {
                         snapshot[fieldName] = numValue;
                     }
                     break;
+
+                case 'sellPrice':
+                case 'sohValueAtSell':
+                     const floatValue = typeof value === 'number' ? value : parseFloat(String(value).replace(/[$,]/g, ''));
+                     if (!isNaN(floatValue)) {
+                         snapshot[fieldName] = floatValue;
+                     }
+                     break;
             }
         });
         
