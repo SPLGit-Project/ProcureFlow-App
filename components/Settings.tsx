@@ -214,7 +214,8 @@ const Settings = () => {
   const [profileForm, setProfileForm] = useState({ 
       name: currentUser?.name || '', 
       jobTitle: currentUser?.jobTitle || '', 
-      avatar: currentUser?.avatar || '' 
+      avatar: currentUser?.avatar || '',
+      pwaInstallPromptHidden: currentUser?.pwaInstallPromptHidden ?? false
   });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
@@ -593,6 +594,62 @@ const Settings = () => {
     setIsImporting(true);
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!stockSupplierId) { 
+        alert('Please select a supplier from the top of the tab'); 
+        e.target.value = ''; 
+        return; 
+    }
+
+    try {
+        const { parseStockFile } = await import('../utils/fileParser');
+        const result = await parseStockFile(file);
+
+        if (!result.success) {
+            alert(`Failed to parse file:\n${result.errors?.join('\n')}`);
+            e.target.value = '';
+            return;
+        }
+
+        // Convert parsed data to full SupplierStockSnapshot format
+        const fullSnapshots: SupplierStockSnapshot[] = (result.data || []).map(partial => ({
+            id: uuidv4(),
+            supplierId:  stockSupplierId,
+            supplierSku: partial.supplierSku || '',
+            productName: partial.productName || 'Unknown Product',
+            customerStockCode: partial.customerStockCode,
+            stockOnHand: partial.stockOnHand || 0,
+            committedQty: partial.committedQty || 0,
+            backOrderedQty: partial.backOrderedQty || 0,
+            availableQty: partial.availableQty || 0,
+            totalStockQty: partial.stockOnHand || 0,
+            snapshotDate: importDate,
+            sourceReportName: `File Import: ${file.name}`,
+            incomingStock: []
+        }));
+
+        setImportPreview(fullSnapshots);
+        setIsImporting(true);
+
+        // Show warnings if any
+        if (result.warnings && result.warnings.length > 0) {
+            console.warn('File parsing warnings:', result.warnings);
+            success(`File loaded with ${fullSnapshots.length} records. ${result.warnings.length} warning(s) - check console for details.`);
+        } else {
+            success(`File loaded successfully with ${fullSnapshots.length} records`);
+        }
+
+        // Clear file input
+        e.target.value = '';
+
+    } catch (error: any) {
+        alert(`Error processing file: ${error.message}`);
+        e.target.value = '';
+    }
+  };
+
   const confirmImport = async () => {
     try {
         if (!stockSupplierId) return;
@@ -954,6 +1011,27 @@ if __name__ == "__main__":
                                 value={profileForm.avatar} 
                                 onChange={e => setProfileForm({...profileForm, avatar: e.target.value})}
                               />
+                          </div>
+
+                          {/* PWA Install Prompt Preference */}
+                          <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
+                              <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-3">App Preferences</h4>
+                              <label className="flex items-start gap-3 cursor-pointer group">
+                                  <input 
+                                    type="checkbox"
+                                    className="mt-1 w-4 h-4 text-[var(--color-brand)] bg-gray-100 border-gray-300 rounded focus:ring-[var(--color-brand)] dark:focus:ring-[var(--color-brand)] dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                                    checked={currentUser?.pwaInstallPromptHidden ?? false}
+                                    onChange={(e) => setProfileForm({...profileForm, pwaInstallPromptHidden: e.target.checked})}
+                                  />
+                                  <div className="flex-1">
+                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white">
+                                          Hide PWA install prompt
+                                      </span>
+                                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                          When enabled, the app install prompt and floating install button will be hidden. Uncheck to show them again.
+                                      </p>
+                                  </div>
+                              </label>
                           </div>
 
                           <div className="pt-4 flex justify-end">
@@ -1348,10 +1426,10 @@ if __name__ == "__main__":
                           </div>
                       </div>
                   </div>
-                  
-                  {/* NEW PASTE IMPORT AREA */}
-                  {/* NEW PASTE IMPORT AREA - Only visible if supplier selected */}
-                  {stockSupplierId ? (
+
+                 {/* NEW PASTE IMPORT AREA */}
+                 {/* NEW PASTE IMPORT AREA - Only visible if supplier selected */}
+                 {stockSupplierId ? (
                       <div className="bg-gray-50 dark:bg-white/5 p-4 rounded-xl border border-gray-200 dark:border-gray-800 mb-6 relative overflow-hidden">
                          {/* Watermark/Label */}
                          <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
@@ -1368,19 +1446,41 @@ if __name__ == "__main__":
                                <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded text-xs text-blue-800 dark:text-blue-200 border border-blue-100 dark:border-blue-800">
                                     <b>Note:</b> Uploading will add new snapshot records for this date. It is recommended to use the current date for fresh stock.
                                </div>
-                               <button onClick={handlePasteParse} className="btn-primary w-full flex items-center justify-center gap-2 mt-4">
-                                    <FileText size={16}/> Preview Data
+                               <button onClick={handlePasteParse} disabled={!pasteData.trim()} className="btn-primary w-full flex items-center justify-center gap-2 mt-4 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <FileText size={16}/> Preview Pasted Data
                                </button>
                             </div>
-                            <div className="w-full md:w-2/3">
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Paste from Excel (Header + Data)</label>
-                                <textarea 
-                                    className="w-full h-40 input-field font-mono text-xs whitespace-pre" 
-                                    placeholder={`SKU\tProduct\tCustomer Stock Code\tRange\t...\n...`}
-                                    value={pasteData}
-                                    onChange={e => setPasteData(e.target.value)}
-                                />
-                                <p className="text-[10px] text-gray-400 mt-1">Accepts TAB delimited content. Ensure headers match exactly: SKU, Product, Customer Stock Code...</p>
+                            <div className="w-full md:w-2/3 space-y-4">
+                                {/* FILE UPLOAD OPTION */}
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Upload File (Excel, CSV, TSV)</label>
+                                    <input 
+                                        type="file" 
+                                        accept=".xlsx,.xls,.csv,.tsv"
+                                        onChange={handleFileUpload}
+                                        className="input-field file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[var(--color-brand)] file:text-white hover:file:bg-[var(--color-brand)]/90 file:cursor-pointer"
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1">Supports Excel, CSV, TSV with automatic column detection</p>
+                                </div>
+                                
+                                {/* DIVIDER */}
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700"></div>
+                                    <span className="text-xs text-gray-400">OR</span>
+                                    <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700"></div>
+                                </div>
+
+                                {/* PASTE AREA */}
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Paste from Excel (Header + Data)</label>
+                                    <textarea 
+                                        className="w-full h-32 input-field font-mono text-xs whitespace-pre" 
+                                        placeholder={`SKU\tProduct\tCustomer Stock Code\tRange\t...\n...`}
+                                        value={pasteData}
+                                        onChange={e => setPasteData(e.target.value)}
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1">Accepts TAB delimited content. Ensure headers match exactly: SKU, Product, Customer Stock Code...</p>
+                                </div>
                             </div>
                          </div>
                       </div>
