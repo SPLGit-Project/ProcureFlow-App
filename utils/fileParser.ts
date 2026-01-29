@@ -399,8 +399,11 @@ export function parseDataRows(
             snapshot.incomingStock = incomingStock;
         }
         
-        // Only add if we have at least a SKU
-        if (snapshot.supplierSku) {
+        // Validate required fields - Skip rows with no SKU
+        // User request: "when there is no SKU or Product found, these rows must be ignored"
+        const hasSku = snapshot.supplierSku && snapshot.supplierSku.trim().length > 0 && snapshot.supplierSku !== '-';
+        
+        if (hasSku) {
             parsedData.push(snapshot as Partial<SupplierStockSnapshot>);
         }
     });
