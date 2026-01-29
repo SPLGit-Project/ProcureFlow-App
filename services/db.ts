@@ -1080,8 +1080,7 @@ export const db = {
                      supplier_sku: snap.supplier_sku,
                      mapping_status: 'CONFIRMED',
                      mapping_method: method,
-                     confidence_score: 1.0,
-                     supplier_customer_stock_code_norm: norm
+                     confidence_score: 1.0
                  });
                  confirmed++;
              } else {
