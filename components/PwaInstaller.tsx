@@ -64,10 +64,13 @@ export default function PwaInstaller() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // For iOS (no beforeinstallprompt) - show if not standalone and not hidden
-    if (isIosDevice && !isStandaloneMode && userEngaged && !promptHidden) {
-        setShowBanner(true);
+    // For iOS (no beforeinstallprompt) - show floating button immediately if not standalone and not hidden
+    if (isIosDevice && !isStandaloneMode && !promptHidden) {
         setShowFloatingButton(true);
+        // Only show banner after user engagement
+        if (userEngaged) {
+            setShowBanner(true);
+        }
     }
 
     return () => {

@@ -104,7 +104,7 @@ export default function VersionBadge() {
       case 'checking':
         return 'Checking...';
       case 'up-to-date':
-        return 'Up to date';
+        return 'Current'; // Changed from "Up to date" to be more concise
       case 'update-available':
         return 'Update available';
       case 'error':

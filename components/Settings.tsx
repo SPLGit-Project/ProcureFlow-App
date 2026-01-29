@@ -184,7 +184,6 @@ const Settings = () => {
   
   // Import State (Derived)
   // importSupplierId removed -> use stockSupplierId
-  const [pasteData, setPasteData] = useState('');
   const [importDate, setImportDate] = useState(new Date().toISOString().split('T')[0]);
   const [showMappingConfirmation, setShowMappingConfirmation] = useState(false);
   const [parseResult, setParseResult] = useState<EnhancedParseResult | null>(null);
@@ -485,118 +484,6 @@ const Settings = () => {
       setIsItemFormOpen(false); 
   };
 
-  const handlePasteParse = () => {
-    if (!pasteData.trim()) { alert('Please paste data first'); return; }
-    if (!stockSupplierId) { alert('Please select a supplier from the top of the tab'); return; }
-
-    const lines = pasteData.split(/\r\n|\n/); // Don't trim immediately to preserve tab structure check if needed? No, split is fine.
-    // However, user might paste with trailing newlines. split trims? No.
-    // Let's filter empty lines.
-    const validLines = lines.filter(l => l.trim().length > 0);
-    if (validLines.length < 2) { alert('Not enough data rows found (Need Header + Data)'); return; }
-
-    // Parse Headers
-    const headers = validLines[0].split('\t').map(h => h.trim());
-    
-    // Mapping keys to indices
-    const keys = {
-        sku: 'SKU',
-        product: 'Product',
-        custCode: 'Customer Stock Code',
-        range: 'Range',
-        category: 'Category',
-        subCategory: 'Sub Category', 
-        stockType: 'StockType',
-        carton: 'Carton Qty',
-        sohVal: 'SOH $ @ Sell',
-        sell: 'Sell $',
-        soh: 'SOH',
-        committed: 'Committed',
-        backOrder: 'Back Ordered',
-        avail: 'Available'
-    };
-
-    const map: Record<string, number> = {};
-    Object.entries(keys).forEach(([key, label]) => {
-        map[key] = headers.findIndex(h => h.equalsIgnoreCase ? h.toLowerCase() === label.toLowerCase() : h === label);
-        // Fallback: Try strict case insensitive match if exact fails
-        if (map[key] === -1) {
-            map[key] = headers.findIndex(h => h.toLowerCase() === label.toLowerCase());
-        }
-    });
-
-    if (map.sku === -1) { alert('Missing "SKU" column. Please check headers.'); return; }
-    
-    const parsed: SupplierStockSnapshot[] = [];
-
-    try {
-        for (let i = 1; i < validLines.length; i++) {
-            const line = validLines[i];
-            const cols = line.split('\t');
-
-            // Helper to clean string
-            const str = (idx: number) => (idx >= 0 && cols[idx]) ? cols[idx].trim() : ''; 
-            
-            // Helper to clean Int
-            const intParams = (idx: number, label: string): number => {
-                if (idx === -1) return 0;
-                let val = cols[idx]?.trim().replace(/,/g, '');
-                if (!val) return 0;
-                const n = parseInt(val, 10);
-                if (isNaN(n)) return 0; // Invalid number treated as 0? Or fail? Spec says "Fail validation" for negative. Invalid format usually fail or 0.
-                if (n < 0) throw new Error(`Row ${i+1}: Negative value in column "${label}"`);
-                return n;
-            };
-
-            // Helper to clean Decimal
-            const decParams = (idx: number, label: string): number | undefined => {
-                if (idx === -1) return undefined;
-                let val = cols[idx]?.trim().replace(/[$,]/g, ''); // Remove $ and ,
-                if (!val) return undefined;
-                const n = parseFloat(val);
-                if (isNaN(n)) return undefined; // Fail? 
-                if (n < 0) throw new Error(`Row ${i+1}: Negative value in column "${label}"`);
-                return n;
-            };
-
-            const sku = str(map.sku);
-            if (!sku) continue; // Skip empty SKU
-
-            parsed.push({
-                id: uuidv4(),
-                supplierId: stockSupplierId,
-                supplierSku: sku,
-                productName: str(map.product) || 'Unknown Product',
-                
-                customerStockCode: str(map.custCode) || undefined,
-                range: str(map.range) || undefined,
-                category: str(map.category) || undefined,
-                subCategory: str(map.subCategory) || undefined,
-                stockType: str(map.stockType) || undefined,
-                
-                cartonQty: intParams(map.carton, keys.carton),
-                sohValueAtSell: decParams(map.sohVal, keys.sohVal),
-                sellPrice: decParams(map.sell, keys.sell),
-                
-                stockOnHand: intParams(map.soh, keys.soh),
-                committedQty: intParams(map.committed, keys.committed),
-                backOrderedQty: intParams(map.backOrder, keys.backOrder),
-                availableQty: intParams(map.avail, keys.avail),
-                totalStockQty: intParams(map.soh, keys.soh), // Default total to SOH
-
-                snapshotDate: importDate,
-                sourceReportName: 'Paste Import',
-                incomingStock: [] 
-            });
-        }
-    } catch (e: any) {
-        alert(e.message);
-        return;
-    }
-
-    setImportPreview(parsed);
-    setIsImporting(true);
-  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -707,7 +594,6 @@ const Settings = () => {
 
         setImportPreview([]);
         setIsImporting(false);
-        setPasteData('');
         
         alert(`Successfully imported ${importPreview.length} records.\n\nAuto-Mapping Results:\nConfirms: ${mappingResults.confirmed}\nProposed: ${mappingResults.proposed}\n\nStock availability has been refreshed.`);
     } catch (e: any) {
@@ -1482,11 +1368,8 @@ if __name__ == "__main__":
                                <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded text-xs text-blue-800 dark:text-blue-200 border border-blue-100 dark:border-blue-800">
                                     <b>Note:</b> Uploading will add new snapshot records for this date. It is recommended to use the current date for fresh stock.
                                </div>
-                               <button onClick={handlePasteParse} disabled={!pasteData.trim()} className="btn-primary w-full flex items-center justify-center gap-2 mt-4 disabled:opacity-50 disabled:cursor-not-allowed">
-                                    <FileText size={16}/> Preview Pasted Data
-                               </button>
                             </div>
-                            <div className="w-full md:w-2/3 space-y-4">
+                            <div className="w-full space-y-4">
                                 {/* FILE UPLOAD OPTION */}
                                 <div>
                                     <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Upload File (Excel, CSV, TSV)</label>
@@ -1497,25 +1380,6 @@ if __name__ == "__main__":
                                         className="input-field file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[var(--color-brand)] file:text-white hover:file:bg-[var(--color-brand)]/90 file:cursor-pointer"
                                     />
                                     <p className="text-[10px] text-gray-400 mt-1">Supports Excel, CSV, TSV with automatic column detection</p>
-                                </div>
-                                
-                                {/* DIVIDER */}
-                                <div className="flex items-center gap-2">
-                                    <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700"></div>
-                                    <span className="text-xs text-gray-400">OR</span>
-                                    <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700"></div>
-                                </div>
-
-                                {/* PASTE AREA */}
-                                <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Paste from Excel (Header + Data)</label>
-                                    <textarea 
-                                        className="w-full h-32 input-field font-mono text-xs whitespace-pre" 
-                                        placeholder={`SKU\tProduct\tCustomer Stock Code\tRange\t...\n...`}
-                                        value={pasteData}
-                                        onChange={e => setPasteData(e.target.value)}
-                                    />
-                                    <p className="text-[10px] text-gray-400 mt-1">Accepts TAB delimited content. Ensure headers match exactly: SKU, Product, Customer Stock Code...</p>
                                 </div>
                             </div>
                          </div>
