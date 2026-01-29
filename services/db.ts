@@ -730,7 +730,7 @@ export const db = {
                 stock_on_hand: s.stockOnHand,
                 snapshot_date: s.snapshotDate,
                 source_report_name: s.sourceReportName,
-                customer_stock_code: s.customerStockCode,
+                // customer_stock_code: s.customerStockCode, // Removed as column doesn't exist in DB, using raw/norm instead
                 range_name: s.range,
                 stock_type: s.stockType,
                 carton_qty: s.cartonQty,

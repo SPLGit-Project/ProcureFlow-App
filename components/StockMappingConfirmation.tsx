@@ -324,10 +324,10 @@ export default function StockMappingConfirmation({
                                             <tr className="border-b border-gray-200 dark:border-gray-700">
                                                 {Object.entries(currentMapping)
                                                     .filter(([_, m]: [string, any]) => m.sourceColumn)
-                                                    .slice(0, 6)
                                                     .map(([field, mapping]: [string, any]) => (
                                                         <th key={field} className="text-left p-2 font-medium text-gray-700 dark:text-gray-300 text-xs">
                                                             {mapping.sourceColumn}
+                                                            <div className="text-[10px] text-gray-400 font-normal">{field}</div>
                                                         </th>
                                                     ))}
                                             </tr>
@@ -337,7 +337,6 @@ export default function StockMappingConfirmation({
                                                 <tr key={idx} className="border-b border-gray-100 dark:border-gray-800">
                                                     {Object.entries(currentMapping)
                                                         .filter(([_, m]: [string, any]) => m.sourceColumn)
-                                                        .slice(0, 6)
                                                         .map(([field, mapping]: [string, any]) => (
                                                             <td key={field} className="p-2 text-gray-900 dark:text-white text-xs">
                                                                 {row[mapping.sourceColumn!] || '-'}
