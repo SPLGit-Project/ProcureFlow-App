@@ -3853,27 +3853,7 @@ if __name__ == "__main__":
                                                  }
                                              } else {
                                             
-                                            // 1. Send Invite Logic
-                                            let inviteSent = false;
-                                            if (inviteForm.email && inviteForm.email.includes('@')) {
-                                                const { error } = await supabase.auth.signInWithOtp({
-                                                    email: inviteForm.email,
-                                                    options: {
-                                                        emailRedirectTo: window.location.origin,
-                                                        data: {
-                                                            full_name: inviteForm.name,
-                                                            avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteForm.name)}&background=random`
-                                                        }
-                                                    }
-                                                });
-                                                if (error) {
-                                                    alert(`Could not send invite: ${error.message}`);
-                                                    return;
-                                                }
-                                                inviteSent = true;
-                                            }
-
-                                            // 2. Add to DB
+                                            // 1. Add to DB and Send Invite
                                             try {
                                                 await addUser({
                                                     id: inviteForm.id || uuidv4(),
@@ -3885,9 +3865,9 @@ if __name__ == "__main__":
                                                     avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteForm.name)}&background=random`,
                                                     status: 'APPROVED', // Invited users are pre-approved
                                                     createdAt: new Date().toISOString()
-                                                } as any);
+                                                } as any, true); // Pass true to trigger custom welcome email
 
-                                                if (inviteSent) alert(`Passcode login link sent to ${inviteForm.email}`);
+                                                alert(`User created and welcome email sent to ${inviteForm.email}`);
                                             } catch (err: any) {
                                                 console.error("User creation failed:", err);
                                                 if (err.message && err.message.includes('unique constraint')) {

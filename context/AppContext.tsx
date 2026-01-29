@@ -34,7 +34,7 @@ interface AppContextType {
   users: User[];
   updateUserRole: (userId: string, role: UserRole) => void;
   updateUserAccess: (userId: string, role: UserRole, siteIds: string[]) => Promise<void>;
-  addUser: (user: User) => Promise<void>;
+  addUser: (user: User, shouldSendInvite?: boolean) => Promise<void>;
   archiveUser: (userId: string) => Promise<void>;
   impersonateUser: (user: User) => void;
   stopImpersonation: () => void;
@@ -621,26 +621,46 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                      }
                 } else {
                     // Truly New User
-                    console.log("Auth: User not in DB, starting registration...");
-                    const { data: count, error: countError } = await supabase
-                        .rpc('get_user_count');
-
-                    // Fallback count if RPC fails
+                    console.log("Auth: User not in DB, checking for pre-provisioned email...");
+                    
+                    const { data: count, error: countError } = await supabase.rpc('get_user_count');
                     const finalCount = countError ? 1 : count; 
                     const isFirstUser = finalCount === 0;
+
+                    // Check for pre-provisioned user (by email) with different ID
+                    const { data: preUser } = await supabase.from('users').select('*').ilike('email', session.user.email || '').maybeSingle();
                     
+                    let roleToUse = isFirstUser ? 'ADMIN' : 'SITE_USER';
+                    let statusToUse = isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL';
+                    let sitesToUse: string[] = [];
+                    let invitedAtToUse = null;
+                    let invitationExpiresAtToUse = null;
+
+                    if (preUser) {
+                        console.log("Auth: Found pre-provisioned user, migrating to Auth ID...");
+                        roleToUse = preUser.role_id;
+                        statusToUse = preUser.status;
+                        sitesToUse = preUser.site_ids || [];
+                        invitedAtToUse = preUser.invited_at;
+                        invitationExpiresAtToUse = preUser.invitation_expires_at;
+
+                        // Delete the placeholder so we can insert the real Auth user
+                        await supabase.from('users').delete().eq('id', preUser.id);
+                    }
+
                     const dbUser = {
                         id: session.user.id,
                         email: session.user.email || '',
                         name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'Unknown User',
-                        role_id: isFirstUser ? 'ADMIN' : 'SITE_USER',
-                        status: isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL',
+                        role_id: roleToUse,
+                        status: statusToUse,
                         avatar: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || '',
-                        // Auto-fill from AD if available
                         job_title: adProfile.jobTitle,
                         department: adProfile.department || adProfile.officeLocation,
                         created_at: new Date().toISOString(),
-                        site_ids: []
+                        site_ids: sitesToUse,
+                        invited_at: invitedAtToUse,
+                        invitation_expires_at: invitationExpiresAtToUse
                     };
 
                     console.log("Auth: Inserting new user:", dbUser.email, "Is First:", isFirstUser);
@@ -1083,11 +1103,22 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
 
-  const addUser = async (user: User) => {
+  const addUser = async (user: User, shouldSendInvite: boolean = false) => {
       const expiry = new Date();
       expiry.setHours(expiry.getHours() + 48);
-      const userWithExpiry = { ...user, invitationExpiresAt: expiry.toISOString() };
+      let userWithExpiry = { ...user, invitationExpiresAt: expiry.toISOString() };
       
+      if (shouldSendInvite && user.email) {
+          try {
+              const emailSent = await sendWelcomeEmail(user.email, user.name || 'User');
+              if (emailSent) {
+                  userWithExpiry = { ...userWithExpiry, invitedAt: new Date().toISOString() };
+              }
+          } catch (e) {
+              console.error("Failed to make invite email request", e);
+          }
+      }
+
       // Check if user with this email already exists (handles re-inviting deleted users)
       const existingUser = users.find(u => u.email?.toLowerCase() === user.email?.toLowerCase());
       
@@ -1119,19 +1150,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const user = users.find(u => u.email === email);
       if (!user) return false;
 
-      console.log(`Auth: Resending invite (OTP) to ${email}`);
-      const { error } = await supabase.auth.signInWithOtp({
-            email,
-            options: {
-                emailRedirectTo: window.location.origin,
-                data: {
-                    full_name: name,
-                    avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`
-                }
-            }
-      });
+      console.log(`Auth: Resending custom invite to ${email}`);
+      
+      // Use Custom Email Logic
+      const emailSent = await sendWelcomeEmail(email, name);
 
-      if (!error) {
+      if (emailSent) {
           const now = new Date();
           const expiry = new Date();
           expiry.setHours(expiry.getHours() + 48);
@@ -1147,11 +1171,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               return true;
           } catch (e) {
               console.error("Failed to update user expiry on resend", e);
-              // Return true anyway as email sent
               return true; 
           }
       } else {
-          console.error("Auth: Failed to resend invite", error);
+          console.error("Auth: Failed to resend custom invite email");
           return false;
       }
   };
