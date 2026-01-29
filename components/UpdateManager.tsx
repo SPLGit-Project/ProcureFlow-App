@@ -25,21 +25,53 @@ export default function UpdateManager() {
   const checkInterval = useRef<NodeJS.Timeout | null>(null);
 
   /**
-   * Initialize version tracking
+   * Initialize version tracking - compare stored version with server version
    */
   const initializeVersion = useCallback(async () => {
     try {
       const versionInfo = await fetchCurrentVersion();
-      if (versionInfo?.version) {
-        currentVersion.current = versionInfo.version;
-        
-        // Store in localStorage for persistence
-        const storedVersion = getStoredVersion();
-        if (!storedVersion) {
-          storeVersion(versionInfo.version);
+      if (!versionInfo?.version) {
+        console.warn('UpdateManager: Could not fetch version info');
+        return;
+      }
+
+      const serverVersion = versionInfo.version;
+      const storedVersion = getStoredVersion();
+
+      console.log('UpdateManager: Version check', {
+        server: serverVersion,
+        stored: storedVersion
+      });
+
+      // Set current version for periodic checks
+      currentVersion.current = serverVersion;
+
+      // First-time user: store version and continue
+      if (!storedVersion) {
+        storeVersion(serverVersion);
+        console.log('UpdateManager: First launch, stored version:', serverVersion);
+        return;
+      }
+
+      // Existing user: check if server has newer version
+      if (versionsAreDifferent(serverVersion, storedVersion)) {
+        console.warn('UpdateManager: Update available!', {
+          stored: storedVersion,
+          server: serverVersion
+        });
+
+        // Show notification to user
+        setShowNotification(true);
+
+        // Auto-dismiss after 30 seconds
+        if (dismissTimer.current) {
+          clearTimeout(dismissTimer.current);
         }
-        
-        console.log('UpdateManager: Initialized with version', currentVersion.current);
+        dismissTimer.current = setTimeout(() => {
+          setShowNotification(false);
+        }, AUTO_DISMISS_MS);
+      } else {
+        console.log('UpdateManager: App is up to date');
       }
     } catch (error) {
       console.error('UpdateManager: Failed to initialize version', error);
@@ -47,7 +79,7 @@ export default function UpdateManager() {
   }, []);
 
   /**
-   * Check for updates with retry logic
+   * Check for updates - compare stored version with server version
    */
   const checkForUpdates = useCallback(async () => {
     try {
@@ -60,13 +92,15 @@ export default function UpdateManager() {
       const serverVersion = versionInfo.version;
       const storedVersion = getStoredVersion();
 
-      // Check if version has changed
-      if (currentVersion.current && versionsAreDifferent(serverVersion, currentVersion.current)) {
-        console.warn('UpdateManager: New version detected!', {
-          current: currentVersion.current,
-          new: serverVersion,
-          stored: storedVersion
+      // Check if server version is different from stored version
+      if (storedVersion && versionsAreDifferent(serverVersion, storedVersion)) {
+        console.warn('UpdateManager: New version detected during periodic check!', {
+          stored: storedVersion,
+          server: serverVersion
         });
+
+        // Update current version ref
+        currentVersion.current = serverVersion;
 
         // Show notification to user
         setShowNotification(true);
