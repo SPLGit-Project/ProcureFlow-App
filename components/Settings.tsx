@@ -1703,6 +1703,8 @@ if __name__ == "__main__":
                           <th className="px-6 py-4">Status</th>
                           <th className="px-6 py-4">Internal Master Item</th>
                           <th className="px-6 py-4">Supplier Product</th>
+                          <th className="px-6 py-4">Details</th>
+                          <th className="px-6 py-4 text-right">Price (Sell)</th>
                           <th className="px-6 py-4 text-right">Stock (SOH)</th>
                           <th className="px-6 py-4 text-center">Confidence</th>
                           <th className="px-6 py-4 text-center">Action</th>
@@ -1734,11 +1736,58 @@ if __name__ == "__main__":
                                           {map.supplierCustomerStockCode && (
                                               <div className="mt-1">
                                                   <div className="text-[10px] bg-gray-100 dark:bg-white/10 px-1 rounded inline-block">Ref: {map.supplierCustomerStockCode}</div>
-                                                  {supNorm && (
-                                                      <div className="text-[10px] text-gray-400 font-mono">Norm: {supNorm.normalized}</div>
-                                                  )}
                                               </div>
                                           )}
+                                          {(function() {
+                                              // Find matching snapshot for extra details
+                                              const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                              if (snapshot?.productName) {
+                                                  return <div className="text-xs text-gray-500 mt-1 italic line-clamp-2" title={snapshot.productName}>{snapshot.productName}</div>
+                                              }
+                                              return null;
+                                          })()}
+                                      </td>
+                                      <td className="px-6 py-4">
+                                          {(function() {
+                                              const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                              if (!snapshot) return <span className="text-gray-300 text-xs">-</span>;
+                                              
+                                              return (
+                                                  <div className="space-y-1">
+                                                      {(snapshot.customerStockCode || map.supplierCustomerStockCode) ? (
+                                                          <div className="text-xs">
+                                                              <span className="text-gray-400 font-bold text-[10px] uppercase">Cust:</span> <span className="font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1 rounded">{snapshot.customerStockCode || map.supplierCustomerStockCode}</span>
+                                                          </div>
+                                                      ) : null}
+                                                      {snapshot.cartonQty ? (
+                                                          <div className="text-xs">
+                                                              <span className="text-gray-400 font-bold text-[10px] uppercase">UPQ:</span> <span className="font-medium">{snapshot.cartonQty}</span>
+                                                          </div>
+                                                      ) : null}
+                                                      {snapshot.category ? (
+                                                           <div className="text-xs">
+                                                              <span className="text-gray-400 font-bold text-[10px] uppercase">Cat:</span> <span className="badge-gray">{snapshot.category}</span>
+                                                           </div>
+                                                      ) : null}
+                                                      {snapshot.stockType ? (
+                                                          <div className="text-xs">
+                                                              <span className="text-gray-400 font-bold text-[10px] uppercase">Type:</span> <span className="font-medium">{snapshot.stockType}</span>
+                                                          </div>
+                                                      ): null}
+                                                  </div>
+                                              )
+                                          })()}
+                                      </td>
+                                      <td className="px-6 py-4 text-right">
+                                           {(function() {
+                                              const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                              if (!snapshot || !snapshot.sellPrice) return <span className="text-gray-300 text-xs">-</span>;
+                                              return (
+                                                  <div className="font-mono text-xs font-bold text-gray-700 dark:text-gray-300">
+                                                      ${Number(snapshot.sellPrice).toFixed(2)}
+                                                  </div>
+                                              );
+                                          })()}
                                       </td>
                                       <td className="px-6 py-4 text-right">
                                          {(() => {
@@ -1776,7 +1825,7 @@ if __name__ == "__main__":
                               );
                           })}
                           {mappings.filter(m => m.mappingStatus === mappingSubTab).length === 0 && (
-                              <tr><td colSpan={5} className="text-center p-8 text-gray-400">No mappings found in this tab.</td></tr>
+                              <tr><td colSpan={8} className="text-center p-8 text-gray-400">No mappings found in this tab.</td></tr>
                           )}
                       </tbody>
                   </table>

@@ -1016,11 +1016,30 @@ export const db = {
 
         const { data: items } = await supabase.from('items').select('*').eq('active_flag', true);
         
+        // [SMART MAPPING] Fetch existing mappings to avoid overwriting decisions
+        const { data: existingMappings } = await supabase.from('supplier_product_map')
+            .select('supplier_sku, mapping_status')
+            .eq('supplier_id', supplierId);
+
         if (!snapshots || !items) return { confirmed: 0, proposed: 0 };
+
+        // Create a set of SKUs that are already handled (Confirmed or Rejected or Manually Mapped)
+        // We only want to auto-map things that are either new OR previously just 'PROPOSED' (and thus not yet actioned)
+        // Actually, if it's 'PROPOSED' we might want to re-run to see if we find a better match? 
+        // For now, let's say if it is CONFIRMED, REJECTED or MANUAL, we skip.
+        // If it is PROPOSED, we can overwrite it with a potentially better match (or same match).
+        const handledSkus = new Set(
+            (existingMappings || [])
+                .filter((m: any) => m.mapping_status === 'CONFIRMED' || m.mapping_status === 'REJECTED')
+                .map((m: any) => m.supplier_sku)
+        );
         
         // Group snapshots by normalized code to identify distinct products
         const uniqueProducts = new Map<string, any>(); // key -> snapshot
         snapshots.forEach((s: any) => {
+             // Skip if we already have a firm decision on this SKU
+             if (handledSkus.has(s.supplier_sku)) return;
+
              if (!uniqueProducts.has(s.customer_stock_code_norm)) {
                  uniqueProducts.set(s.customer_stock_code_norm, s);
              }
@@ -1078,6 +1097,7 @@ export const db = {
                      supplier_id: supplierId,
                      product_id: match.id,
                      supplier_sku: snap.supplier_sku,
+                     supplier_customer_stock_code: snap.customer_stock_code,
                      mapping_status: 'CONFIRMED',
                      mapping_method: method,
                      confidence_score: 1.0
@@ -1136,6 +1156,7 @@ export const db = {
                          supplier_id: supplierId,
                          product_id: bestMatch.id,
                          supplier_sku: snap.supplier_sku,
+                         supplier_customer_stock_code: snap.customer_stock_code,
                          mapping_status: 'PROPOSED',
                          mapping_method: 'AUTO_FUZZY',
                          confidence_score: bestScore
