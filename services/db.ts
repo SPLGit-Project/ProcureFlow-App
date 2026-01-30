@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification } from '../types';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 
 export const db = {
@@ -250,6 +250,7 @@ export const db = {
             description: i.description,
             unitPrice: i.unit_price,
             uom: i.uom,
+            upq: i.upq,
             category: i.category,
             subCategory: i.sub_category,
             stockLevel: i.stock_level,
@@ -788,6 +789,44 @@ export const db = {
         return data; // Return raw rows for now
     },
 
+    // --- Catalog Management ---
+
+    getAttributeOptions: async (type?: string): Promise<AttributeOption[]> => {
+        let query = supabase.from('attribute_options').select('*').eq('active_flag', true);
+        if (type) {
+            query = query.eq('type', type);
+        }
+        const { data, error } = await query.order('value');
+        if (error) throw error;
+        return data.map((o: any) => ({
+             id: o.id,
+             type: o.type,
+             value: o.value,
+             parentId: o.parent_id,
+             activeFlag: o.active_flag,
+             createdAt: o.created_at,
+             updatedAt: o.updated_at
+        }));
+    },
+
+    upsertAttributeOption: async (option: Partial<AttributeOption>): Promise<void> => {
+        const { error } = await supabase.from('attribute_options').upsert({
+             id: option.id, // Optional, if new
+             type: option.type,
+             value: option.value,
+             parent_id: option.parentId,
+             active_flag: option.activeFlag !== undefined ? option.activeFlag : true,
+             updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+    },
+
+    deleteAttributeOption: async (id: string): Promise<void> => {
+        // Soft delete
+        const { error } = await supabase.from('attribute_options').update({ active_flag: false }).eq('id', id);
+        if (error) throw error;
+    },
+
     // --- Auto-Mapping & Registry ---
 
     upsertMasterItemsBulk: async (
@@ -835,6 +874,7 @@ export const db = {
                 sub_category: input.subCategory,
                 range_name: input.rangeName,
                 stock_type: input.stockType,
+                upq: input.upq,
                 
                 // Extended Fields
                 item_weight: input.itemWeight,
@@ -924,6 +964,7 @@ export const db = {
             description: item.description,
             unit_price: item.unitPrice,
             uom: item.uom,
+            upq: item.upq,
             category: item.category,
             sub_category: item.subCategory,
             stock_level: item.stockLevel,
@@ -969,6 +1010,7 @@ export const db = {
             description: item.description,
             unit_price: item.unitPrice,
             uom: item.uom,
+            upq: item.upq,
             category: item.category,
             sub_category: item.subCategory,
             stock_level: item.stockLevel,

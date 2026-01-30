@@ -9,7 +9,7 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen
 } from 'lucide-react';
 import { useToast, ToastContainer } from './ToastNotification';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers';
@@ -23,6 +23,7 @@ import StockMappingConfirmation from './StockMappingConfirmation';
 import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser';
 import { ConfirmDialog } from './ConfirmDialog';
 import * as XLSX from 'xlsx';
+import CatalogManagement from './CatalogManagement'; // Import CatalogManagement
 
 
 const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, category: 'Page Access' | 'Functional Access' | 'Admin Access' }[] = [
@@ -69,7 +70,9 @@ const Settings = () => {
     mappings, generateMappings, updateMapping,
     // New Admin Caps
     getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, impersonateUser, archiveUser, searchDirectory,
-    archiveItem
+    archiveItem,
+    // Catalog Management
+    attributeOptions, upsertAttributeOption, deleteAttributeOption
   } = useApp();
   const { toasts, dismissToast, success, error, warning } = useToast();
   const [resendingUserId, setResendingUserId] = useState<string | null>(null);
@@ -153,6 +156,10 @@ const Settings = () => {
            'Sub Category': i.subCategory,
            'Unit Price': i.unitPrice,
            UOM: i.uom,
+           'UPQ': i.upq,
+           'Catalog': i.itemCatalog,
+           'Type': i.itemType,
+           'Pool': i.itemPool,
            'Stock Level': i.stockLevel,
            'Supplier ID': i.supplierId,
            'Status': i.activeFlag !== false ? 'Active' : 'Archived'
@@ -187,6 +194,10 @@ const Settings = () => {
                    subCategory: row['Sub Category'] || row['sub_category'],
                    unitPrice: parseFloat(row['Unit Price'] || row['unit_price'] || '0'),
                    uom: row['UOM'] || row['uom'],
+                   upq: parseInt(row['UPQ'] || row['upq'] || '1'),
+                   itemCatalog: row['Catalog'] || row['item_catalog'],
+                   itemType: row['Type'] || row['item_type'],
+                   itemPool: row['Pool'] || row['item_pool'],
                    stockLevel: parseInt(row['Stock Level'] || row['stock_level'] || '0'),
                    supplierId: row['Supplier ID'] || row['supplier_id'],
                    // Note: We don't map active_flag from import typically, we assume import = active unless specified logic
@@ -305,8 +316,8 @@ const Settings = () => {
   const [isItemFormOpen, setIsItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [itemForm, setItemForm] = useState<Partial<Item>>({ 
-      sku: '', name: '', description: '', unitPrice: 0, uom: 'Each', category: '',
-      supplierId: '', itemCatalog: '', itemType: '', itemColour: '', itemPattern: '', itemMaterial: '', itemSize: '', measurements: ''
+      sku: '', name: '', description: '', unitPrice: 0, uom: 'Each', upq: 1, category: '', subCategory: '',
+      supplierId: '', itemCatalog: '', itemPool: '', itemType: '', itemColour: '', itemPattern: '', itemMaterial: '', itemSize: '', measurements: ''
   });
   const [itemSearch, setItemSearch] = useState('');
 
@@ -460,6 +471,7 @@ const Settings = () => {
 
   const allTabs = [
       { id: 'ITEMS', icon: Box, label: 'Items' },
+      { id: 'CATALOG', icon: BookOpen, label: 'Catalog' },
       { id: 'STOCK', icon: Database, label: 'Stock' },
         { id: 'MAPPING', label: 'Mapping', icon: GitMerge },
         { id: 'SUPPLIERS', label: 'Suppliers', icon: Truck },
@@ -549,7 +561,7 @@ const Settings = () => {
   const handleItemFormSubmit = (e: React.FormEvent) => { 
       e.preventDefault(); 
       // Basic validation
-      if (!itemForm.sku || !itemForm.name) { alert('SKU and Name are required'); return; }
+      if (!itemForm.sku || !itemForm.name) { alert('SAP Code and Name are required'); return; }
 
       const newItem: Item = { 
           id: editingItem ? editingItem.id : uuidv4(), 
@@ -558,7 +570,9 @@ const Settings = () => {
           description: itemForm.description || '', 
           unitPrice: Number(itemForm.unitPrice) || 0, 
           uom: itemForm.uom || 'Each', 
+          upq: Number(itemForm.upq) || 1,
           category: itemForm.category || '', 
+          subCategory: itemForm.subCategory,
           stockLevel: itemForm.stockLevel || 0,
           rangeName: itemForm.rangeName,
           stockType: itemForm.stockType,
@@ -579,6 +593,17 @@ const Settings = () => {
       }; 
       editingItem ? updateItem(newItem) : addItem(newItem); 
       setIsItemFormOpen(false); 
+  };
+
+  const suggestShortName = () => {
+      if (!itemForm.description) return;
+      // Simple suggestion: Uppercase, remove special chars, truncate
+      const suggestion = itemForm.description
+        .slice(0, 30)
+        .toUpperCase()
+        .replace(/[^A-Z0-9 ]/g, '')
+        .trim();
+      setItemForm(prev => ({ ...prev, name: suggestion }));
   };
 
 
@@ -1181,7 +1206,7 @@ if __name__ == "__main__":
                                         </div>
                                     </th>
                                     <th className="px-6 py-4">Price</th>
-                                    <th className="px-6 py-4">SKU / Code</th>
+                                    <th className="px-6 py-4">SAP Code</th>
                                     <th className="px-6 py-4">Mapping</th>
                                     <th className="px-6 py-4">Attributes</th>
                                     </>
@@ -1247,7 +1272,7 @@ if __name__ == "__main__":
                                             <button onClick={() => { 
                                                 setEditingItem(item); 
                                                 setItemForm({ 
-                                                    sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, category: item.category, 
+                                                    sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, upq: Number(item.upq) || 1, category: item.category, subCategory: item.subCategory || '',
                                                     stockLevel: item.stockLevel || 0, stockType: item.stockType || '', rangeName: item.rangeName || '', 
                                                     itemWeight: item.itemWeight || 0, itemPool: item.itemPool || '', itemCatalog: item.itemCatalog || '', 
                                                     itemType: item.itemType || '', rfidFlag: item.rfidFlag || false, cogFlag: item.cogFlag || false, 
@@ -1287,6 +1312,7 @@ if __name__ == "__main__":
                                                 </td>
                                                 <td className="px-6 py-4 text-xs text-gray-500 space-y-1">
                                                     <div>{item.itemWeight ? `${item.itemWeight}kg` : ''} {item.itemPool}</div>
+                                                    <div>UPQ: {item.upq || 1}</div>
                                                     <div className="flex gap-1">
                                                         {item.rfidFlag && <span className="bg-purple-100 text-purple-700 px-1 rounded">RFID</span>}
                                                         {item.cogFlag && <span className="bg-orange-100 text-orange-700 px-1 rounded">COG</span>}
@@ -1297,7 +1323,7 @@ if __name__ == "__main__":
                                                         <button onClick={() => { 
                                                             setEditingItem(item); 
                                                             setItemForm({ 
-                                                                sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, category: item.category, 
+                                                                sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, upq: Number(item.upq) || 1, category: item.category, subCategory: item.subCategory || '',
                                                                 stockLevel: item.stockLevel || 0, stockType: item.stockType || '', rangeName: item.rangeName || '', 
                                                                 itemWeight: item.itemWeight || 0, itemPool: item.itemPool || '', itemCatalog: item.itemCatalog || '', 
                                                                 itemType: item.itemType || '', rfidFlag: item.rfidFlag || false, cogFlag: item.cogFlag || false, 
@@ -1330,132 +1356,143 @@ if __name__ == "__main__":
                     </div>
                 </div>
 
-            {/* --- Modals and Forms --- */}
-            {isItemFormOpen && (
-                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up max-h-[90vh] overflow-y-auto">
-                        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{editingItem ? 'Edit Item' : 'New Item'}</h2>
-                        <form onSubmit={handleItemFormSubmit} className="space-y-5">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SKU</label>
-                                    <input required className="input-field" value={itemForm.sku} onChange={e => setItemForm({...itemForm, sku: e.target.value})}/>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Category</label>
-                                    <input required className="input-field" value={itemForm.category} onChange={e => setItemForm({...itemForm, category: e.target.value})}/>
-                                </div>
-                            </div>
+             {/* --- Modals and Forms --- */}
+             {isItemFormOpen && (
+                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                     <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-2xl p-6 animate-slide-up max-h-[90vh] overflow-y-auto">
+                         <div className="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-800 pb-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Name</label>
-                                <input required className="input-field" value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})}/>
+                                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{editingItem ? 'Edit Item' : 'New Item Wizard'}</h2>
+                                <p className="text-sm text-gray-500">Create or update master item details</p>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
-                                <input className="input-field" value={itemForm.description} onChange={e => setItemForm({...itemForm, description: e.target.value})}/>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Supplier</label>
-                                <select 
-                                    className="input-field"
-                                    value={itemForm.supplierId || ''}
-                                    onChange={e => setItemForm({...itemForm, supplierId: e.target.value})}
-                                >
-                                    <option value="">-- Select Supplier --</option>
-                                    {suppliers.map(s => (
-                                        <option key={s.id} value={s.id}>{s.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Unit price</label>
-                                    <input required type="number" step="0.01" className="input-field" value={itemForm.unitPrice} onChange={e => setItemForm({...itemForm, unitPrice: parseFloat(e.target.value)})}/>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">UOM</label>
-                                    <input required className="input-field" value={itemForm.uom} onChange={e => setItemForm({...itemForm, uom: e.target.value})}/>
-                                </div>
-                            </div>
+                            <button onClick={() => setIsItemFormOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"><X size={20} className="text-gray-500"/></button>
+                         </div>
+                         
+                         <form onSubmit={handleItemFormSubmit} className="space-y-6">
                             
+                            {/* Step 1: Identification */}
+                            <div className="bg-gray-50 dark:bg-white/5 p-4 rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
+                                <h3 className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-2"><Tag size={16}/> Essential Info</h3>
+                                <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SAP Code (Required)</label>
+                                     <input required className="input-field font-mono" value={itemForm.sku} onChange={e => setItemForm({...itemForm, sku: e.target.value})} placeholder="e.g. 100456"/>
+                                 </div>
+                                 <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description / Long Name (Primary)</label>
+                                     <textarea 
+                                        required 
+                                        className="input-field min-h-[80px]" 
+                                        value={itemForm.description} 
+                                        onChange={e => setItemForm({...itemForm, description: e.target.value})}
+                                        placeholder="Detailed description of the item..."
+                                    />
+                                 </div>
+                                 <div className="grid grid-cols-1 md:grid-cols-[1fr,auto] gap-2 items-end">
+                                     <div>
+                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Short Name (Standardised)</label>
+                                         <input required className="input-field" value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})}/>
+                                     </div>
+                                     <button type="button" onClick={suggestShortName} className="mb-[2px] px-3 py-2.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-200 transition-colors text-sm font-bold flex items-center gap-2">
+                                        <Wand2 size={16}/> Suggest
+                                     </button>
+                                 </div>
+                            </div>
+
+                            {/* Step 2: Categorization */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                 <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Category</label>
+                                     <select className="input-field" value={itemForm.category} onChange={e => setItemForm({...itemForm, category: e.target.value, subCategory: ''})}>
+                                         <option value="">-- Select Category --</option>
+                                         {attributeOptions.filter(o => o.type === 'CATEGORY').map(o => <option key={o.id} value={o.value}>{o.value}</option>)}
+                                         <option value="Uncategorized">Other/Uncategorized</option>
+                                     </select>
+                                 </div>
+                                 <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Sub Category</label>
+                                     <select className="input-field" value={itemForm.subCategory || ''} onChange={e => setItemForm({...itemForm, subCategory: e.target.value})}>
+                                         <option value="">-- Select Sub Category --</option>
+                                         {attributeOptions.filter(o => o.type === 'SUB_CATEGORY' && (!itemForm.category || !o.parentId || attributeOptions.find(p => p.value === itemForm.category)?.id === o.parentId)).map(o => (
+                                             <option key={o.id} value={o.value}>{o.value}</option>
+                                         ))}
+                                     </select>
+                                 </div>
+                                 <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Item Pool</label>
+                                     <select className="input-field" value={itemForm.itemPool || ''} onChange={e => setItemForm({...itemForm, itemPool: e.target.value})}>
+                                        <option value="">-- Select Pool --</option>
+                                        {attributeOptions.filter(o => o.type === 'POOL').map(o => <option key={o.id} value={o.value}>{o.value}</option>)}
+                                     </select>
+                                 </div>
+                                 <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Catalog</label>
+                                     <select className="input-field" value={itemForm.itemCatalog || ''} onChange={e => setItemForm({...itemForm, itemCatalog: e.target.value})}>
+                                        <option value="">-- Select Catalog --</option>
+                                        {attributeOptions.filter(o => o.type === 'CATALOG').map(o => <option key={o.id} value={o.value}>{o.value}</option>)}
+                                     </select>
+                                 </div>
+                            </div>
+
+                            {/* Step 3: Pricing & Unit */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                                 <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">UOM</label>
+                                     <select className="input-field" value={itemForm.uom} onChange={e => setItemForm({...itemForm, uom: e.target.value})}>
+                                        <option value="Each">Each</option>
+                                        {attributeOptions.filter(o => o.type === 'UOM').map(o => <option key={o.id} value={o.value}>{o.value}</option>)}
+                                     </select>
+                                 </div>
+                                 <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">UPQ (Unit Per Qty)</label>
+                                     <input type="number" step="1" className="input-field" value={itemForm.upq || 1} onChange={e => setItemForm({...itemForm, upq: parseInt(e.target.value)})}/>
+                                 </div>
+                                 <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Unit Price ($)</label>
+                                     <input required type="number" step="0.01" className="input-field" value={itemForm.unitPrice} onChange={e => setItemForm({...itemForm, unitPrice: parseFloat(e.target.value)})}/>
+                                 </div>
+                            </div>
+                             
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-gray-100 dark:border-gray-800">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Weight</label>
-                                    <input type="number" step="0.01" className="input-field" value={itemForm.itemWeight || ''} onChange={e => setItemForm({...itemForm, itemWeight: parseFloat(e.target.value)})}/>
-                                </div>
-                                <div>
-                                    <input className="input-field" value={itemForm.itemPool || ''} onChange={e => setItemForm({...itemForm, itemPool: e.target.value})}/>
-                                </div>
-                            </div>
-                            
-                            {/* Detailed Attributes Section */}
-                            <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
-                                <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Attributes & Details</h4>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-xs font-bold text-gray-500 uppercase">Dictionary / Catalog</label>
-                                        <input className="input-field mt-1" value={itemForm.itemCatalog || ''} onChange={e => setItemForm({...itemForm, itemCatalog: e.target.value})}/>
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-gray-500 uppercase">Item Type</label>
-                                        <input className="input-field mt-1" value={itemForm.itemType || ''} onChange={e => setItemForm({...itemForm, itemType: e.target.value})}/>
-                                    </div>
-                                     <div>
-                                        <label className="text-xs font-bold text-gray-500 uppercase">Color</label>
-                                        <input className="input-field mt-1" value={itemForm.itemColour || ''} onChange={e => setItemForm({...itemForm, itemColour: e.target.value})}/>
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-gray-500 uppercase">Pattern</label>
-                                        <input className="input-field mt-1" value={itemForm.itemPattern || ''} onChange={e => setItemForm({...itemForm, itemPattern: e.target.value})}/>
-                                    </div>
-                                     <div>
-                                        <label className="text-xs font-bold text-gray-500 uppercase">Material</label>
-                                        <input className="input-field mt-1" value={itemForm.itemMaterial || ''} onChange={e => setItemForm({...itemForm, itemMaterial: e.target.value})}/>
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-gray-500 uppercase">Size</label>
-                                        <input className="input-field mt-1" value={itemForm.itemSize || ''} onChange={e => setItemForm({...itemForm, itemSize: e.target.value})}/>
-                                    </div>
-                                    <div className="col-span-2">
-                                        <label className="text-xs font-bold text-gray-500 uppercase">Measurements</label>
-                                        <input className="input-field mt-1" placeholder="e.g. 200x200mm" value={itemForm.measurements || ''} onChange={e => setItemForm({...itemForm, measurements: e.target.value})}/>
-                                    </div>
-                                </div>
-                            </div>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Range</label>
-                                    <input className="input-field" value={itemForm.rangeName || ''} onChange={e => setItemForm({...itemForm, rangeName: e.target.value})}/>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Stock type</label>
-                                    <input className="input-field" value={itemForm.stockType || ''} onChange={e => setItemForm({...itemForm, stockType: e.target.value})}/>
-                                </div>
-                            </div>
-                            <div className="flex gap-6 py-2">
-                                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-                                    <input type="checkbox" checked={itemForm.rfidFlag || false} onChange={e => setItemForm({...itemForm, rfidFlag: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500"/>
-                                    RFID Enabled
-                                </label>
-                                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-                                    <input type="checkbox" checked={itemForm.cogFlag || false} onChange={e => setItemForm({...itemForm, cogFlag: e.target.checked})} className="rounded text-amber-600 focus:ring-amber-500"/>
-                                    COG Item
-                                </label>
-                            </div>
-                            {itemForm.cogFlag && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">COG customer</label>
-                                    <input className="input-field" value={itemForm.cogCustomer || ''} onChange={e => setItemForm({...itemForm, cogCustomer: e.target.value})}/>
-                                </div>
-                            )}
-                            <div className="flex justify-end gap-3 pt-4">
-                                <button type="button" onClick={() => setIsItemFormOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
-                                <button type="submit" className="btn-primary">Save Item</button>
-                            </div>
-                        </form>
-                    </div>
-                 </div>
-             )}
+                                 <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Weight (kg)</label>
+                                     <input type="number" step="0.01" className="input-field" value={itemForm.itemWeight || ''} onChange={e => setItemForm({...itemForm, itemWeight: parseFloat(e.target.value)})}/>
+                                 </div>
+                                 <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Preferred Supplier</label>
+                                     <select 
+                                         className="input-field"
+                                         value={itemForm.supplierId || ''}
+                                         onChange={e => setItemForm({...itemForm, supplierId: e.target.value})}
+                                     >
+                                         <option value="">-- Select Supplier --</option>
+                                         {suppliers.map(s => (
+                                             <option key={s.id} value={s.id}>{s.name}</option>
+                                         ))}
+                                     </select>
+                                 </div>
+                             </div>
+
+                             <div className="flex gap-6 py-2">
+                                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                                     <input type="checkbox" checked={itemForm.rfidFlag || false} onChange={e => setItemForm({...itemForm, rfidFlag: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500"/>
+                                     RFID Enabled
+                                 </label>
+                                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                                     <input type="checkbox" checked={itemForm.cogFlag || false} onChange={e => setItemForm({...itemForm, cogFlag: e.target.checked})} className="rounded text-amber-600 focus:ring-amber-500"/>
+                                     COG Item
+                                 </label>
+                             </div>
+
+                             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
+                                 <button type="button" onClick={() => setIsItemFormOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">Cancel</button>
+                                 <button type="submit" className="btn-primary flex items-center gap-2">
+                                    <Save size={18}/> {editingItem ? 'Save Changes' : 'Create Item'}
+                                 </button>
+                             </div>
+                         </form>
+                     </div>
+                  </div>
+              )}
      
      <ConfirmDialog 
         isOpen={confirmDialog.isOpen}
@@ -1469,6 +1506,26 @@ if __name__ == "__main__":
      </div>
 
   )}
+      
+      {activeTab === 'CATALOG' && (
+        <div className="animate-fade-in space-y-6">
+            <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+                <div className="mb-6">
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <BookOpen className="text-blue-600" size={24} />
+                        Catalog Management
+                    </h2>
+                    <p className="text-gray-500 dark:text-gray-400 mt-1">Manage dynamic attributes for your items including Categories, Groups, and Units of Measure.</p>
+                </div>
+                
+                <CatalogManagement 
+                    options={attributeOptions}
+                    upsertOption={upsertAttributeOption}
+                    deleteOption={deleteAttributeOption}
+                />
+            </div>
+        </div>
+      )}
       
 
 

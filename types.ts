@@ -105,6 +105,7 @@ export interface Item {
   description: string;
   unitPrice: number; // Default/Internal Price
   uom: string; // Unit of Measure
+  upq?: number; // Unit per Quantity
   category: string;
   subCategory?: string; // New field for hierarchy
   stockLevel: number; // Deprecated
@@ -368,3 +369,16 @@ export interface AppNotification {
     link?: string;
     createdAt: string;
 }
+
+export type AttributeType = 'CATEGORY' | 'SUB_CATEGORY' | 'POOL' | 'CATALOG' | 'UOM';
+
+export interface AttributeOption {
+    id: string;
+    type: AttributeType;
+    value: string;
+    parentId?: string; // For SubCategory -> Category
+    activeFlag: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+

@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { User, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification } from '../types';
+import { User, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification, AttributeOption } from '../types';
 import { db } from '../services/db';
 import { supabase } from '../lib/supabaseClient';
 
@@ -101,6 +101,12 @@ interface AppContextType {
   updateCatalogItem: (item: SupplierCatalogItem) => Promise<void>;
   upsertProductMaster: (items: Partial<Item>[], archiveMissing?: boolean) => Promise<any>;
   
+  // Catalog Management
+  attributeOptions: AttributeOption[];
+  getAttributeOptions: (type?: string) => Promise<AttributeOption[]>;
+  upsertAttributeOption: (option: Partial<AttributeOption>) => Promise<void>;
+  deleteAttributeOption: (id: string) => Promise<void>;
+
   // New Admin Capabilities
   getItemFieldRegistry: () => Promise<any[]>;
   sendWelcomeEmail: (email: string, name: string) => Promise<boolean>;
@@ -224,6 +230,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // New State
   const [mappings, setMappings] = useState<SupplierProductMap[]>([]);
   const [availability, setAvailability] = useState<ProductAvailability[]>([]);
+  const [attributeOptions, setAttributeOptions] = useState<AttributeOption[]>([]);
 
   // Admin Data State
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
@@ -291,7 +298,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 fetchedMappings,
                 fetchedAvailability,
                 fetchedTeamsUrl,
-                fetchedBranding
+                fetchedBranding,
+                fetchedOptions
             ] = await Promise.all([
                 safeFetch(db.getRoles(), [], 'roles'),
                 safeFetch(db.getUsers(), [], 'users'),
@@ -306,7 +314,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getMappings(), [], 'mappings'),
                 safeFetch(db.getProductAvailability(), [], 'availability'),
                 safeFetch(db.getTeamsConfig(), '', 'teamsConfig'),
-                safeFetch(db.getBranding(), null, 'branding')
+                safeFetch(db.getBranding(), null, 'branding'),
+                safeFetch(db.getAttributeOptions(), [], 'attributeOptions')
             ]);
 
             setRoles(fetchedRoles);
@@ -323,6 +332,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setAvailability(fetchedAvailability);
             setTeamsWebhookUrl(fetchedTeamsUrl);
             if (fetchedBranding) setBranding(fetchedBranding);
+            setAttributeOptions(fetchedOptions);
             
             lastFetchTime.current = Date.now();
         } catch (error) {
