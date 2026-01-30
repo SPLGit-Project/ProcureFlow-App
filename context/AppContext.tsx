@@ -1792,6 +1792,45 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
   };
 
+
+    // --- Catalog Management ---
+    const getAttributeOptions = async (type?: string) => {
+        try {
+            const options = await db.getAttributeOptions(type);
+             // If fetching all, update global state
+            if (!type) {
+                setAttributeOptions(options);
+            }
+            return options;
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    };
+
+    const upsertAttributeOption = async (option: Partial<AttributeOption>) => {
+        try {
+            await db.upsertAttributeOption(option);
+            // Refresh local state
+            const updated = await db.getAttributeOptions();
+            setAttributeOptions(updated);
+        } catch (e) {
+            console.error(e);
+            alert("Failed to save attribute option");
+        }
+    };
+
+    const deleteAttributeOption = async (id: string) => {
+        try {
+            await db.deleteAttributeOption(id);
+             // Refresh local state
+             setAttributeOptions(prev => prev.filter(o => o.id !== id));
+        } catch (e) {
+            console.error(e);
+            alert("Failed to delete attribute option");
+        }
+    };
+
   // --- Impersonation ---
   const impersonateUser = (targetUser: User) => {
         if (!currentUser) return;
@@ -1830,6 +1869,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     createPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
     updateProfile, switchRole,
     addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: importMasterProducts,
+    getAttributeOptions, upsertAttributeOption, deleteAttributeOption,
     getEffectiveStock,
     addItem, updateItem, deleteItem, archiveItem,
     addSupplier, updateSupplier, deleteSupplier,

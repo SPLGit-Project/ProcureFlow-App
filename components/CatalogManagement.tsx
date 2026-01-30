@@ -18,7 +18,13 @@ const TABS: { id: AttributeType, label: string, icon: any }[] = [
     { id: 'UOM', label: 'Units of Measure', icon: Scale },
 ];
 
-const CatalogManagement: React.FC<CatalogManagementProps> = ({ options, upsertOption, deleteOption }) => {
+const CatalogManagement: React.FC<CatalogManagementProps> = ({ 
+    options = [], 
+    upsertOption, 
+    deleteOption 
+}) => {
+    // Defensive check
+    const safeOptions = Array.isArray(options) ? options : [];
     const { success, error } = useToast();
     const [activeTab, setActiveTab] = useState<AttributeType>('CATEGORY');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,8 +34,8 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ options, upsertOp
     const [value, setValue] = useState('');
     const [parentId, setParentId] = useState<string>('');
 
-    const filteredOptions = options.filter(o => o.type === activeTab);
-    const parentOptions = options.filter(o => o.type === 'CATEGORY'); // Only Categories are parents for now
+    const filteredOptions = safeOptions.filter(o => o.type === activeTab);
+    const parentOptions = safeOptions.filter(o => o.type === 'CATEGORY'); // Only Categories are parents for now
 
     const handleOpenModal = (option?: AttributeOption) => {
         if (option) {
