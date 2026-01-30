@@ -1241,6 +1241,8 @@ if __name__ == "__main__":
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Name</label>
                                 <input required className="input-field" value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})}/>
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
                                 <input className="input-field" value={itemForm.description} onChange={e => setItemForm({...itemForm, description: e.target.value})}/>
                             </div>
                             <div>
