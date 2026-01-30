@@ -927,7 +927,7 @@ export const db = {
             category: item.category,
             sub_category: item.subCategory,
             stock_level: item.stockLevel,
-            supplier_id: item.supplierId,
+            supplier_id: item.supplierId || null,
             is_rfid: item.isRfid,
             is_cog: item.isCog,
             
@@ -972,7 +972,7 @@ export const db = {
             category: item.category,
             sub_category: item.subCategory,
             stock_level: item.stockLevel,
-            supplier_id: item.supplierId,
+            supplier_id: item.supplierId || null,
             is_rfid: item.isRfid,
             is_cog: item.isCog,
             
