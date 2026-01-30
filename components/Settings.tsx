@@ -24,6 +24,8 @@ import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/filePar
 import { ConfirmDialog } from './ConfirmDialog';
 import * as XLSX from 'xlsx';
 import CatalogManagement from './CatalogManagement'; // Import CatalogManagement
+import { ItemWizard } from './ItemWizard';
+import { seedCatalogData } from '../utils/catalogSeeder';
 
 
 const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, category: 'Page Access' | 'Functional Access' | 'Admin Access' }[] = [
@@ -74,6 +76,39 @@ const Settings = () => {
     // Catalog Management
     attributeOptions, upsertAttributeOption, deleteAttributeOption
   } = useApp();
+
+
+    const handleWizardSave = async (itemData: Partial<Item>) => {
+        try {
+            if (editingItem) {
+                await updateItem({ ...editingItem, ...itemData });
+                success('Item updated successfully');
+            } else {
+                await addItem(itemData);
+                success('Item created successfully');
+            }
+            setIsItemFormOpen(false);
+            setEditingItem(null);
+            reloadData(true);
+        } catch (e) {
+            console.error(e);
+            error('Failed to save item');
+        }
+    };
+
+    const handleSeedCatalog = async () => {
+        if (!confirm('This will populate default categories/pools/UOMs from the verified list. Existing data will be preserved. Continue?')) return;
+        try {
+            const count = await seedCatalogData();
+            success(`Generated ${count} catalog entries.`);
+            await reloadData(false);
+        } catch (e) {
+            console.error(e);
+            error('Failed to seed catalog data.');
+        }
+    };
+
+  // Data Loading
   const { toasts, dismissToast, success, error, warning } = useToast();
   const [resendingUserId, setResendingUserId] = useState<string | null>(null);
 
@@ -1144,15 +1179,11 @@ if __name__ == "__main__":
                         </div>
                         <button onClick={() => { 
                             setEditingItem(null); 
-                            setItemForm({ 
-                                sku: '', name: '', description: '', unitPrice: 0, uom: 'Each', category: '',
-                                supplierId: '', itemCatalog: '', itemType: '', itemColour: '', itemPattern: '', itemMaterial: '', itemSize: '', measurements: ''
-                            }); 
                             setIsItemFormOpen(true); 
-                        }} className="btn-primary flex items-center gap-2 text-sm">
-                            <Plus size={16} /> Add 
+                        }} className="btn-primary flex items-center gap-2 text-sm shadow-sm" title="Add New Item">
+                            <Plus size={16} />
+                            <span className="hidden md:inline">Add Item</span>
                         </button>
-                    </div>
                 </div>
             </div>
 
@@ -1322,15 +1353,6 @@ if __name__ == "__main__":
                                                     <div className="flex justify-end gap-2">
                                                         <button onClick={() => { 
                                                             setEditingItem(item); 
-                                                            setItemForm({ 
-                                                                sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, upq: Number(item.upq) || 1, category: item.category, subCategory: item.subCategory || '',
-                                                                stockLevel: item.stockLevel || 0, stockType: item.stockType || '', rangeName: item.rangeName || '', 
-                                                                itemWeight: item.itemWeight || 0, itemPool: item.itemPool || '', itemCatalog: item.itemCatalog || '', 
-                                                                itemType: item.itemType || '', rfidFlag: item.rfidFlag || false, cogFlag: item.cogFlag || false, 
-                                                                itemColour: item.itemColour || '', itemPattern: item.itemPattern || '', itemMaterial: item.itemMaterial || '', 
-                                                                itemSize: item.itemSize || '', measurements: item.measurements || '', cogCustomer: item.cogCustomer || '',
-                                                                supplierId: item.supplierId || ''
-                                                            }); 
                                                             setIsItemFormOpen(true); 
                                                         }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500">
                                                             <Edit2 size={16} />
@@ -1355,167 +1377,47 @@ if __name__ == "__main__":
                         </table>
                     </div>
                 </div>
-
+            </div>
+             
              {/* --- Modals and Forms --- */}
              {isItemFormOpen && (
-                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                     <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-2xl p-6 animate-slide-up max-h-[90vh] overflow-y-auto">
-                         <div className="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-800 pb-4">
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{editingItem ? 'Edit Item' : 'New Item Wizard'}</h2>
-                                <p className="text-sm text-gray-500">Create or update master item details</p>
-                            </div>
-                            <button onClick={() => setIsItemFormOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"><X size={20} className="text-gray-500"/></button>
-                         </div>
-                         
-                         <form onSubmit={handleItemFormSubmit} className="space-y-6">
-                            
-                            {/* Step 1: Identification */}
-                            <div className="bg-gray-50 dark:bg-white/5 p-4 rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
-                                <h3 className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-2"><Tag size={16}/> Essential Info</h3>
-                                <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SAP Code (Required)</label>
-                                     <input required className="input-field font-mono" value={itemForm.sku} onChange={e => setItemForm({...itemForm, sku: e.target.value})} placeholder="e.g. 100456"/>
-                                 </div>
-                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description / Long Name (Primary)</label>
-                                     <textarea 
-                                        required 
-                                        className="input-field min-h-[80px]" 
-                                        value={itemForm.description} 
-                                        onChange={e => setItemForm({...itemForm, description: e.target.value})}
-                                        placeholder="Detailed description of the item..."
-                                    />
-                                 </div>
-                                 <div className="grid grid-cols-1 md:grid-cols-[1fr,auto] gap-2 items-end">
-                                     <div>
-                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Short Name (Standardised)</label>
-                                         <input required className="input-field" value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})}/>
-                                     </div>
-                                     <button type="button" onClick={suggestShortName} className="mb-[2px] px-3 py-2.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-200 transition-colors text-sm font-bold flex items-center gap-2">
-                                        <Wand2 size={16}/> Suggest
-                                     </button>
-                                 </div>
-                            </div>
-
-                            {/* Step 2: Categorization */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Category</label>
-                                     <select className="input-field" value={itemForm.category} onChange={e => setItemForm({...itemForm, category: e.target.value, subCategory: ''})}>
-                                         <option value="">-- Select Category --</option>
-                                         {attributeOptions.filter(o => o.type === 'CATEGORY').map(o => <option key={o.id} value={o.value}>{o.value}</option>)}
-                                         <option value="Uncategorized">Other/Uncategorized</option>
-                                     </select>
-                                 </div>
-                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Sub Category</label>
-                                     <select className="input-field" value={itemForm.subCategory || ''} onChange={e => setItemForm({...itemForm, subCategory: e.target.value})}>
-                                         <option value="">-- Select Sub Category --</option>
-                                         {attributeOptions.filter(o => o.type === 'SUB_CATEGORY' && (!itemForm.category || !o.parentId || attributeOptions.find(p => p.value === itemForm.category)?.id === o.parentId)).map(o => (
-                                             <option key={o.id} value={o.value}>{o.value}</option>
-                                         ))}
-                                     </select>
-                                 </div>
-                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Item Pool</label>
-                                     <select className="input-field" value={itemForm.itemPool || ''} onChange={e => setItemForm({...itemForm, itemPool: e.target.value})}>
-                                        <option value="">-- Select Pool --</option>
-                                        {attributeOptions.filter(o => o.type === 'POOL').map(o => <option key={o.id} value={o.value}>{o.value}</option>)}
-                                     </select>
-                                 </div>
-                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Catalog</label>
-                                     <select className="input-field" value={itemForm.itemCatalog || ''} onChange={e => setItemForm({...itemForm, itemCatalog: e.target.value})}>
-                                        <option value="">-- Select Catalog --</option>
-                                        {attributeOptions.filter(o => o.type === 'CATALOG').map(o => <option key={o.id} value={o.value}>{o.value}</option>)}
-                                     </select>
-                                 </div>
-                            </div>
-
-                            {/* Step 3: Pricing & Unit */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">UOM</label>
-                                     <select className="input-field" value={itemForm.uom} onChange={e => setItemForm({...itemForm, uom: e.target.value})}>
-                                        <option value="Each">Each</option>
-                                        {attributeOptions.filter(o => o.type === 'UOM').map(o => <option key={o.id} value={o.value}>{o.value}</option>)}
-                                     </select>
-                                 </div>
-                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">UPQ (Unit Per Qty)</label>
-                                     <input type="number" step="1" className="input-field" value={itemForm.upq || 1} onChange={e => setItemForm({...itemForm, upq: parseInt(e.target.value)})}/>
-                                 </div>
-                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Unit Price ($)</label>
-                                     <input required type="number" step="0.01" className="input-field" value={itemForm.unitPrice} onChange={e => setItemForm({...itemForm, unitPrice: parseFloat(e.target.value)})}/>
-                                 </div>
-                            </div>
-                             
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-gray-100 dark:border-gray-800">
-                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Weight (kg)</label>
-                                     <input type="number" step="0.01" className="input-field" value={itemForm.itemWeight || ''} onChange={e => setItemForm({...itemForm, itemWeight: parseFloat(e.target.value)})}/>
-                                 </div>
-                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Preferred Supplier</label>
-                                     <select 
-                                         className="input-field"
-                                         value={itemForm.supplierId || ''}
-                                         onChange={e => setItemForm({...itemForm, supplierId: e.target.value})}
-                                     >
-                                         <option value="">-- Select Supplier --</option>
-                                         {suppliers.map(s => (
-                                             <option key={s.id} value={s.id}>{s.name}</option>
-                                         ))}
-                                     </select>
-                                 </div>
-                             </div>
-
-                             <div className="flex gap-6 py-2">
-                                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-                                     <input type="checkbox" checked={itemForm.rfidFlag || false} onChange={e => setItemForm({...itemForm, rfidFlag: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500"/>
-                                     RFID Enabled
-                                 </label>
-                                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-                                     <input type="checkbox" checked={itemForm.cogFlag || false} onChange={e => setItemForm({...itemForm, cogFlag: e.target.checked})} className="rounded text-amber-600 focus:ring-amber-500"/>
-                                     COG Item
-                                 </label>
-                             </div>
-
-                             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
-                                 <button type="button" onClick={() => setIsItemFormOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">Cancel</button>
-                                 <button type="submit" className="btn-primary flex items-center gap-2">
-                                    <Save size={18}/> {editingItem ? 'Save Changes' : 'Create Item'}
-                                 </button>
-                             </div>
-                         </form>
-                     </div>
-                  </div>
-              )}
+                <ItemWizard
+                    isOpen={isItemFormOpen}
+                    onClose={() => setIsItemFormOpen(false)}
+                    onSave={handleWizardSave}
+                    existingItem={editingItem}
+                    suppliers={suppliers}
+                    attributeOptions={attributeOptions}
+                    upsertAttributeOption={upsertAttributeOption}
+                />
+             )}
      
-     <ConfirmDialog 
-        isOpen={confirmDialog.isOpen}
-        title={confirmDialog.title}
-        message={confirmDialog.message}
-        onConfirm={confirmDialog.onConfirm}
-        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
-        confirmLabel="Archive"
-        variant="danger"
-     />
-     </div>
-
-  )}
+             <ConfirmDialog 
+                isOpen={confirmDialog.isOpen}
+                title={confirmDialog.title}
+                message={confirmDialog.message}
+                onConfirm={confirmDialog.onConfirm}
+                onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                confirmLabel="Archive"
+                variant="danger"
+             />
+        </div>
+    )}
       
       {activeTab === 'CATALOG' && (
         <div className="animate-fade-in space-y-6">
             <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
-                <div className="mb-6">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <BookOpen className="text-blue-600" size={24} />
-                        Catalog Management
-                    </h2>
-                    <p className="text-gray-500 dark:text-gray-400 mt-1">Manage dynamic attributes for your items including Categories, Groups, and Units of Measure.</p>
+                <div className="mb-6 flex justify-between items-start">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <BookOpen className="text-blue-600" size={24} />
+                            Catalog Management
+                        </h2>
+                        <p className="text-gray-500 dark:text-gray-400 mt-1">Manage dynamic attributes for your items including Categories, Groups, and Units of Measure.</p>
+                    </div>
+                    <button onClick={handleSeedCatalog} className="px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200 dark:border-blue-800 flex items-center gap-2">
+                        <Wand2 size={16}/> Initialise Defaults
+                    </button>
                 </div>
                 
                 <CatalogManagement 
