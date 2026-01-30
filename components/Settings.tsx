@@ -135,7 +135,7 @@ const Settings = () => {
   }, [activeTab, getItemFieldRegistry]);
 
   // --- Item Tab Improvements ---
-  const [isEditMode, setIsEditMode] = useState(false);
+  // Removed isEditMode state as per user request
   
   // Unique Values for Dropdowns (Memoized)
   const uniqueValues = React.useMemo(() => {
@@ -210,7 +210,10 @@ const Settings = () => {
   // --- Item Master Form State ---
   const [isItemFormOpen, setIsItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [itemForm, setItemForm] = useState<Partial<Item>>({ sku: '', name: '', description: '', unitPrice: 0, uom: 'Each', category: '' });
+  const [itemForm, setItemForm] = useState<Partial<Item>>({ 
+      sku: '', name: '', description: '', unitPrice: 0, uom: 'Each', category: '',
+      supplierId: '', itemCatalog: '', itemType: '', itemColour: '', itemPattern: '', itemMaterial: '', itemSize: '', measurements: ''
+  });
   const [itemSearch, setItemSearch] = useState('');
 
   // --- Profile State ---
@@ -477,7 +480,7 @@ const Settings = () => {
           itemSize: itemForm.itemSize,
           measurements: itemForm.measurements,
           cogCustomer: itemForm.cogCustomer,
-          supplierId: '',
+          supplierId: itemForm.supplierId || '',
           activeFlag: true
       }; 
       editingItem ? updateItem(newItem) : addItem(newItem); 
@@ -998,21 +1001,6 @@ if __name__ == "__main__":
                         <span className="text-xs font-normal text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{items.length} Items</span>
                     </h3>
                     <div className="flex gap-3">
-                         <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 p-1 rounded-lg border border-gray-200 dark:border-gray-700 mr-2">
-                            <button 
-                                onClick={() => setIsEditMode(false)}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${!isEditMode ? 'bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white' : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-300'}`}
-                            >
-                                View
-                            </button>
-                            <button 
-                                onClick={() => setIsEditMode(true)}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${isEditMode ? 'bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white' : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-300'}`}
-                            >
-                                Edit Mode
-                            </button>
-                        </div>
-
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                             <input 
@@ -1023,7 +1011,14 @@ if __name__ == "__main__":
                                 onChange={e => setItemSearch(e.target.value)}
                             />
                         </div>
-                        <button onClick={() => { setEditingItem(null); setItemForm({ sku: '', name: '', description: '', unitPrice: 0, uom: 'Each', category: '' }); setIsItemFormOpen(true); }} className="btn-primary flex items-center gap-2 text-sm">
+                        <button onClick={() => { 
+                            setEditingItem(null); 
+                            setItemForm({ 
+                                sku: '', name: '', description: '', unitPrice: 0, uom: 'Each', category: '',
+                                supplierId: '', itemCatalog: '', itemType: '', itemColour: '', itemPattern: '', itemMaterial: '', itemSize: '', measurements: ''
+                            }); 
+                            setIsItemFormOpen(true); 
+                        }} className="btn-primary flex items-center gap-2 text-sm">
                             <Plus size={16} /> Add 
                         </button>
                     </div>
@@ -1123,40 +1118,8 @@ if __name__ == "__main__":
                                                  );
                                              }
 
-                                             // 2. Edit Mode Inputs
-                                             if (isEditMode) {
-                                                  // Dropdowns for specific fields
-                                                  const isDropdown = ['category', 'subCategory', 'itemPool', 'itemCatalog', 'itemType'].includes(f.field_key) || f.field_key.includes('Category');
-                                                  
-                                                  if (isDropdown) {
-                                                      const options = Array.from(uniqueValues[f.field_key] || []);
-                                                      return (
-                                                         <td key={f.field_key} className="px-2 py-2 text-sm">
-                                                             <select 
-                                                                className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500"
-                                                                value={String(val || '')}
-                                                                onChange={(e) => handleCellUpdate(item.id, f.field_key, e.target.value)}
-                                                             >
-                                                                 <option value="">-</option>
-                                                                 {options.sort().map(opt => (
-                                                                     <option key={opt} value={opt}>{opt}</option>
-                                                                 ))}
-                                                             </select>
-                                                         </td>
-                                                      );
-                                                  }
-                                                  
-                                                  // Text/Number Inputs
-                                                  return (
-                                                     <td key={f.field_key} className="px-2 py-2 text-sm">
-                                                         <input 
-                                                            className="w-full bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none px-1 py-0.5 text-xs text-gray-900 dark:text-gray-200"
-                                                            value={val === undefined || val === null ? '' : String(val)}
-                                                            onChange={(e) => handleCellUpdate(item.id, f.field_key, f.data_type === 'number' ? parseFloat(e.target.value) : e.target.value)}
-                                                         />
-                                                     </td>
-                                                  );
-                                             }
+                                             // 2. Edit Mode Inputs REMOVED
+
 
                                              // 3. Read Mode Display
                                              return (
@@ -1172,7 +1135,19 @@ if __name__ == "__main__":
                                     }
                                     <td className="px-4 py-3 text-right sticky right-0 z-20 bg-white dark:bg-[#1e2029] shadow-[-10px_0_10px_-10px_rgba(0,0,0,0.1)]">
                                         <div className="flex justify-end gap-2">
-                                            <button onClick={() => { setEditingItem(item); setItemForm({ sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, category: item.category, stockLevel: item.stockLevel || 0, stockType: item.stockType || '', rangeName: item.rangeName || '', itemWeight: item.itemWeight || 0, itemPool: item.itemPool || '', itemCatalog: item.itemCatalog || '', itemType: item.itemType || '', rfidFlag: item.rfidFlag || false, cogFlag: item.cogFlag || false, itemColour: item.itemColour || '', itemPattern: item.itemPattern || '', itemMaterial: item.itemMaterial || '', itemSize: item.itemSize || '', measurements: item.measurements || '', cogCustomer: item.cogCustomer || '' }); setIsItemFormOpen(true); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500">
+                                            <button onClick={() => { 
+                                                setEditingItem(item); 
+                                                setItemForm({ 
+                                                    sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, category: item.category, 
+                                                    stockLevel: item.stockLevel || 0, stockType: item.stockType || '', rangeName: item.rangeName || '', 
+                                                    itemWeight: item.itemWeight || 0, itemPool: item.itemPool || '', itemCatalog: item.itemCatalog || '', 
+                                                    itemType: item.itemType || '', rfidFlag: item.rfidFlag || false, cogFlag: item.cogFlag || false, 
+                                                    itemColour: item.itemColour || '', itemPattern: item.itemPattern || '', itemMaterial: item.itemMaterial || '', 
+                                                    itemSize: item.itemSize || '', measurements: item.measurements || '', cogCustomer: item.cogCustomer || '',
+                                                    supplierId: item.supplierId || ''
+                                                }); 
+                                                setIsItemFormOpen(true); 
+                                            }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500">
                                                 <Edit2 size={16} />
                                             </button>
                                             <button onClick={() => deleteItem(item.id)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500">
@@ -1210,7 +1185,19 @@ if __name__ == "__main__":
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end gap-2">
-                                                        <button onClick={() => { setEditingItem(item); setItemForm({ sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, category: item.category, stockLevel: item.stockLevel || 0, stockType: item.stockType || '', rangeName: item.rangeName || '', itemWeight: item.itemWeight || 0, itemPool: item.itemPool || '', itemCatalog: item.itemCatalog || '', itemType: item.itemType || '', rfidFlag: item.rfidFlag || false, cogFlag: item.cogFlag || false, itemColour: item.itemColour || '', itemPattern: item.itemPattern || '', itemMaterial: item.itemMaterial || '', itemSize: item.itemSize || '', measurements: item.measurements || '', cogCustomer: item.cogCustomer || '' }); setIsItemFormOpen(true); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500">
+                                                        <button onClick={() => { 
+                                                            setEditingItem(item); 
+                                                            setItemForm({ 
+                                                                sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, category: item.category, 
+                                                                stockLevel: item.stockLevel || 0, stockType: item.stockType || '', rangeName: item.rangeName || '', 
+                                                                itemWeight: item.itemWeight || 0, itemPool: item.itemPool || '', itemCatalog: item.itemCatalog || '', 
+                                                                itemType: item.itemType || '', rfidFlag: item.rfidFlag || false, cogFlag: item.cogFlag || false, 
+                                                                itemColour: item.itemColour || '', itemPattern: item.itemPattern || '', itemMaterial: item.itemMaterial || '', 
+                                                                itemSize: item.itemSize || '', measurements: item.measurements || '', cogCustomer: item.cogCustomer || '',
+                                                                supplierId: item.supplierId || ''
+                                                            }); 
+                                                            setIsItemFormOpen(true); 
+                                                        }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500">
                                                             <Edit2 size={16} />
                                                         </button>
                                                         <button onClick={() => deleteItem(item.id)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500">
@@ -1254,9 +1241,20 @@ if __name__ == "__main__":
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Name</label>
                                 <input required className="input-field" value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})}/>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
                                 <input className="input-field" value={itemForm.description} onChange={e => setItemForm({...itemForm, description: e.target.value})}/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Supplier</label>
+                                <select 
+                                    className="input-field"
+                                    value={itemForm.supplierId || ''}
+                                    onChange={e => setItemForm({...itemForm, supplierId: e.target.value})}
+                                >
+                                    <option value="">-- Select Supplier --</option>
+                                    {suppliers.map(s => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 <div>
@@ -1275,8 +1273,42 @@ if __name__ == "__main__":
                                     <input type="number" step="0.01" className="input-field" value={itemForm.itemWeight || ''} onChange={e => setItemForm({...itemForm, itemWeight: parseFloat(e.target.value)})}/>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Pool</label>
                                     <input className="input-field" value={itemForm.itemPool || ''} onChange={e => setItemForm({...itemForm, itemPool: e.target.value})}/>
+                                </div>
+                            </div>
+                            
+                            {/* Detailed Attributes Section */}
+                            <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                                <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Attributes & Details</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Dictionary / Catalog</label>
+                                        <input className="input-field mt-1" value={itemForm.itemCatalog || ''} onChange={e => setItemForm({...itemForm, itemCatalog: e.target.value})}/>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Item Type</label>
+                                        <input className="input-field mt-1" value={itemForm.itemType || ''} onChange={e => setItemForm({...itemForm, itemType: e.target.value})}/>
+                                    </div>
+                                     <div>
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Color</label>
+                                        <input className="input-field mt-1" value={itemForm.itemColour || ''} onChange={e => setItemForm({...itemForm, itemColour: e.target.value})}/>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Pattern</label>
+                                        <input className="input-field mt-1" value={itemForm.itemPattern || ''} onChange={e => setItemForm({...itemForm, itemPattern: e.target.value})}/>
+                                    </div>
+                                     <div>
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Material</label>
+                                        <input className="input-field mt-1" value={itemForm.itemMaterial || ''} onChange={e => setItemForm({...itemForm, itemMaterial: e.target.value})}/>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Size</label>
+                                        <input className="input-field mt-1" value={itemForm.itemSize || ''} onChange={e => setItemForm({...itemForm, itemSize: e.target.value})}/>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Measurements</label>
+                                        <input className="input-field mt-1" placeholder="e.g. 200x200mm" value={itemForm.measurements || ''} onChange={e => setItemForm({...itemForm, measurements: e.target.value})}/>
+                                    </div>
                                 </div>
                             </div>
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
