@@ -234,45 +234,65 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
         const newItem = items.find(i => i.id === newItemId);
         if (!newItem) return;
 
+        // Normalization helper for robust matching
+        // Removes all whitespace and casing issues
+        const normalize = (str: string) => str.toLowerCase().replace(/[\s\u00A0_-]+/g, '');
+        const target = normalize(mappingTargetSku);
+
         let updateCount = 0;
-        const target = mappingTargetSku.toLowerCase().trim();
 
-        // Update all instances of this SKU in the preview data
-        setPreviewData(prev => {
-            return prev.map(po => {
-                let poModified = false;
-                const newLines = po.lines.map(line => {
-                    // Smart Fix: Check case-insensitive trim match
-                    if (line.sku.toLowerCase().trim() === target && !line.isValid) {
-                        poModified = true;
-                        updateCount++;
-                        return {
-                            ...line,
-                            isValid: true,
-                            error: undefined,
-                            mappedItemId: newItem.id,
-                            mappedSku: newItem.sku
-                        };
-                    }
-                    return line;
-                });
-
-                // Re-evaluate PO validity
-                if (poModified) {
-                    const stillInvalid = newLines.some(l => !l.isValid);
+        // Calculate functionality synchronously using current state
+        // This ensures consistent application and accurate counting
+        const nextPreviewData = previewData.map(po => {
+            let poModified = false;
+            const newLines = po.lines.map(line => {
+                // Check against normalized target
+                // Also check if line is invalid OR if it's the exact target we are fixing
+                // (Even if somehow marked valid, if we are explicitly fixing it, we should update it)
+                const lineSkuNorm = normalize(line.sku);
+                
+                if (lineSkuNorm === target && (!line.isValid || line.mappedItemId !== newItem.id)) {
+                    poModified = true;
+                    updateCount++;
                     return {
-                        ...po,
-                        lines: newLines,
-                        isValid: !stillInvalid,
-                        errors: stillInvalid ? [`${newLines.filter(l => !l.isValid).length} invalid lines left`] : [] 
+                        ...line,
+                        isValid: true,
+                        error: undefined,
+                        mappedItemId: newItem.id,
+                        mappedSku: newItem.sku
                     };
                 }
-                return po;
+                return line;
             });
+
+            if (poModified) {
+                const stillInvalid = newLines.some(l => !l.isValid);
+                return {
+                    ...po,
+                    lines: newLines,
+                    isValid: !stillInvalid,
+                    errors: stillInvalid ? [`${newLines.filter(l => !l.isValid).length} invalid lines left`] : [] 
+                };
+            }
+            return po;
         });
+
+        if (updateCount === 0) {
+            // Fallback debugging
+            console.log('Smart Fix Failed. Target:', target);
+            console.log('Available Invalid SKUs:', previewData.flatMap(p => p.lines.filter(l => !l.isValid).map(l => normalize(l.sku))));
+            alert(`No matches found for '${mappingTargetSku}'. This might be an exact string mismatch.`);
+            return;
+        }
+
+        setPreviewData(nextPreviewData);
         
         addLog(`Smart Fix: Mapped ${updateCount} occurrences of '${mappingTargetSku}' to '${newItem.sku}'`);
-        alert(`Successfully mapped ${updateCount} items to ${newItem.sku}`);
+        // Small delay to ensure UI render before alert (optional, but good UX)
+        setTimeout(() => {
+             alert(`Successfully mapped ${updateCount} items to ${newItem.sku}`);
+        }, 100);
+        
         setIsMappingModalOpen(false);
     };
 
