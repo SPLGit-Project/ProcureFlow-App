@@ -21,6 +21,8 @@ import AdminAccessHub from './AdminAccessHub';
 import AdminMigration from './AdminMigration';
 import StockMappingConfirmation from './StockMappingConfirmation';
 import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser';
+import { ConfirmDialog } from './ConfirmDialog';
+import * as XLSX from 'xlsx';
 
 
 const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, category: 'Page Access' | 'Functional Access' | 'Admin Access' }[] = [
@@ -66,7 +68,8 @@ const Settings = () => {
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping,
     // New Admin Caps
-    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, impersonateUser, archiveUser, searchDirectory
+    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, impersonateUser, archiveUser, searchDirectory,
+    archiveItem
   } = useApp();
   const { toasts, dismissToast, success, error, warning } = useToast();
   const [resendingUserId, setResendingUserId] = useState<string | null>(null);
@@ -134,7 +137,98 @@ const Settings = () => {
      }
   }, [activeTab, getItemFieldRegistry]);
 
-  // --- Item Tab Improvements ---
+   // --- Item Management Improvements ---
+   const [showArchived, setShowArchived] = useState(false);
+   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean, title: string, message: string, onConfirm: () => void }>({ 
+       isOpen: false, title: '', message: '', onConfirm: () => {} 
+   });
+   const itemImportInputRef = useRef<HTMLInputElement>(null);
+
+   const handleExportItems = () => {
+       const data = items.map(i => ({
+           SKU: i.sku,
+           Name: i.name,
+           Description: i.description,
+           Category: i.category,
+           'Sub Category': i.subCategory,
+           'Unit Price': i.unitPrice,
+           UOM: i.uom,
+           'Stock Level': i.stockLevel,
+           'Supplier ID': i.supplierId,
+           'Status': i.activeFlag !== false ? 'Active' : 'Archived'
+       }));
+       
+       const ws = XLSX.utils.json_to_sheet(data);
+       const wb = XLSX.utils.book_new();
+       XLSX.utils.book_append_sheet(wb, ws, "Master Items");
+       XLSX.writeFile(wb, `Master_Items_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+       success('Item list exported successfully');
+   };
+
+   const handleImportItems = async (e: React.ChangeEvent<HTMLInputElement>) => {
+       const file = e.target.files?.[0];
+       if (!file) return;
+
+       try {
+           const reader = new FileReader();
+           reader.onload = async (evt) => {
+               const bstr = evt.target?.result;
+               const wb = XLSX.read(bstr, { type: 'binary' });
+               const wsname = wb.SheetNames[0];
+               const ws = wb.Sheets[wsname];
+               const data = XLSX.utils.sheet_to_json(ws) as any[];
+
+               // Basic mapping
+               const mappedItems: Partial<Item>[] = data.map(row => ({
+                   sku: row['SKU'] || row['sku'],
+                   name: row['Name'] || row['name'],
+                   description: row['Description'] || row['description'],
+                   category: row['Category'] || row['category'],
+                   subCategory: row['Sub Category'] || row['sub_category'],
+                   unitPrice: parseFloat(row['Unit Price'] || row['unit_price'] || '0'),
+                   uom: row['UOM'] || row['uom'],
+                   stockLevel: parseInt(row['Stock Level'] || row['stock_level'] || '0'),
+                   supplierId: row['Supplier ID'] || row['supplier_id'],
+                   // Note: We don't map active_flag from import typically, we assume import = active unless specified logic
+               })).filter(i => i.sku); // Ensure SKU exists
+
+               if (mappedItems.length === 0) {
+                   alert("No valid items found in file. Ensure 'SKU' column exists.");
+                   return;
+               }
+
+               const shouldArchiveMissing = window.confirm(
+                   `Found ${mappedItems.length} items to import.\n\nDo you want to ARCHIVE items that are NOT in this list?\n\nClick OK to Archive missing items (Replica Mode).\nClick Cancel to Update/Add only (Merge Mode).`
+               );
+
+               await upsertProductMaster(mappedItems, shouldArchiveMissing);
+               success(`Successfully processed ${mappedItems.length} items.`);
+               if (shouldArchiveMissing) warning("Missing items have been archived.");
+               
+               if (itemImportInputRef.current) itemImportInputRef.current.value = '';
+           };
+           reader.readAsBinaryString(file);
+       } catch (error: any) {
+           console.error(error);
+           alert('Failed to process import file: ' + error.message);
+           if (itemImportInputRef.current) itemImportInputRef.current.value = '';
+       }
+   };
+
+   const requestDelete = (item: Item) => {
+       setConfirmDialog({
+           isOpen: true,
+           title: 'Delete Item?',
+           message: `Are you sure you want to delete "${item.name}" (${item.sku})? This will archive the item and hiding it from standard lists.`,
+           onConfirm: async () => {
+               await archiveItem(item.id);
+               setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+               success('Item archived successfully');
+           }
+       });
+   };
+
+   // --- Item Tab Improvements ---
   // Removed isEditMode state as per user request
   
   // Unique Values for Dropdowns (Memoized)
@@ -1000,7 +1094,19 @@ if __name__ == "__main__":
                         Master Item List 
                         <span className="text-xs font-normal text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{items.length} Items</span>
                     </h3>
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 items-center">
+                        <label className="flex items-center gap-2 text-xs font-bold text-gray-500 cursor-pointer mr-2">
+                           <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded text-gray-500 focus:ring-gray-400"/>
+                           Show Archived
+                        </label>
+                        <button onClick={handleExportItems} className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700" title="Export to Excel">
+                            <Download size={16}/>
+                        </button>
+                        <button onClick={() => itemImportInputRef.current?.click()} className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700" title="Import from Excel">
+                            <Upload size={16}/>
+                        </button>
+                        <input type="file" ref={itemImportInputRef} onChange={handleImportItems} className="hidden" accept=".xlsx,.xls,.csv" />
+                        <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1"></div>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                             <input 
@@ -1085,6 +1191,9 @@ if __name__ == "__main__":
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                             {items.filter(i => {
+                                    // 0. Archive Filter
+                                    if (!showArchived && i.activeFlag === false) return false;
+
                                     // 1. Search Filter
                                     const searchMatch = (i.name || '').toLowerCase().includes(itemSearch.toLowerCase()) || (i.sku || '').toLowerCase().includes(itemSearch.toLowerCase());
                                     if (!searchMatch) return false;
@@ -1150,8 +1259,8 @@ if __name__ == "__main__":
                                             }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500">
                                                 <Edit2 size={16} />
                                             </button>
-                                            <button onClick={() => deleteItem(item.id)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500">
-                                                <Trash2 size={16} />
+                                            <button onClick={() => requestDelete(item)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500" title="Archive Item">
+                                                <Archive size={16} />
                                             </button>
                                         </div>
                                     </td>
@@ -1200,8 +1309,8 @@ if __name__ == "__main__":
                                                         }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500">
                                                             <Edit2 size={16} />
                                                         </button>
-                                                        <button onClick={() => deleteItem(item.id)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500">
-                                                            <Trash2 size={16} />
+                                                        <button onClick={() => requestDelete(item)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500" title="Archive Item">
+                                                            <Archive size={16} />
                                                         </button>
                                                     </div>
                                                 </td>
@@ -1347,9 +1456,19 @@ if __name__ == "__main__":
                     </div>
                  </div>
              )}
-        </div>
+     
+     <ConfirmDialog 
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        confirmLabel="Archive"
+        variant="danger"
+     />
+     </div>
 
-     )}
+  )}
       
 
 

@@ -1,0 +1,2 @@
+ALTER TABLE supplier_product_map
+ADD CONSTRAINT supplier_product_map_supplier_id_supplier_sku_key UNIQUE (supplier_id, supplier_sku);

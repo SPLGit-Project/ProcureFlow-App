@@ -99,7 +99,7 @@ interface AppContextType {
   addSnapshot: (snapshot: SupplierStockSnapshot) => void;
   importStockSnapshot: (supplierId: string, date: string, snapshots: SupplierStockSnapshot[]) => Promise<void>;
   updateCatalogItem: (item: SupplierCatalogItem) => Promise<void>;
-  upsertProductMaster: (items: Item[]) => Promise<void>;
+  upsertProductMaster: (items: Partial<Item>[], archiveMissing?: boolean) => Promise<any>;
   
   // New Admin Capabilities
   getItemFieldRegistry: () => Promise<any[]>;
@@ -118,6 +118,7 @@ interface AppContextType {
   addItem: (item: Item) => Promise<void>;
   updateItem: (item: Item) => Promise<void>;
   deleteItem: (itemId: string) => Promise<void>;
+  archiveItem: (itemId: string) => Promise<void>;
 
   // Supplier CRUD
   addSupplier: (s: Supplier) => Promise<void>;
@@ -1645,10 +1646,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   };
 
-  const importMasterProducts = async (newItems: Item[]) => {
-      await db.upsertProductMaster(newItems);
+  const importMasterProducts = async (newItems: Partial<Item>[], archiveMissing: boolean = false) => {
+      const result = await db.upsertMasterItemsBulk(newItems, archiveMissing);
       const fresh = await db.getItems();
       setItems(fresh);
+      return result;
   };
 
   const getMappingQueue = async (supplierId?: string) => {
@@ -1711,6 +1713,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         } catch (e) {
              console.error(e);
              alert("Failed to delete item");
+        }
+  };
+
+  const archiveItem = async (itemId: string) => {
+        try {
+            await db.archiveItem(itemId);
+            setItems(prev => prev.map(i => i.id === itemId ? { ...i, activeFlag: false } : i));
+        } catch (e) {
+             console.error(e);
+             alert("Failed to archive item");
         }
   };
 
@@ -1807,9 +1819,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     theme, setTheme, branding, updateBranding,
     createPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
     updateProfile, switchRole,
-    addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: db.upsertProductMaster,
+    addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: importMasterProducts,
     getEffectiveStock,
-    addItem, updateItem, deleteItem,
+    addItem, updateItem, deleteItem, archiveItem,
     addSupplier, updateSupplier, deleteSupplier,
     addSite, updateSite, deleteSite,
     

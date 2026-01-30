@@ -1007,6 +1007,11 @@ export const db = {
         if (error) throw error;
     },
 
+    archiveItem: async (itemId: string): Promise<void> => {
+        const { error } = await supabase.from('items').update({ active_flag: false }).eq('id', itemId);
+        if (error) throw error;
+    },
+
     runAutoMapping: async (supplierId: string): Promise<{ confirmed: number, proposed: number }> => {
         // 1. Fetch Unmapped Snapshots (latest) & Active Items
         const { data: snapshots } = await supabase.from('stock_snapshots')
