@@ -4,6 +4,7 @@ import { useDropzone, DropzoneOptions } from 'react-dropzone';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
+import { db } from '../services/db';
 import { Upload, FileSpreadsheet, CheckCircle, AlertTriangle, Loader2, Edit2, Search, X, Calendar, Wand2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -29,6 +30,9 @@ interface ParsedLine {
     error?: string;
     mappedItemId?: string; // If manually fixed
     mappedSku?: string;
+    // New: Original Status Logic
+    isPartial?: boolean;
+
 }
 
 interface ParsedPO {
@@ -64,7 +68,7 @@ const levenshtein = (a: string, b: string): number => {
     return matrix[b.length][a.length];
 };
 
-const AdminMigration: React.FC<AdminMigrationProps> = () => {
+const AdminMigration = () => {
     const { items, sites, addItem } = useApp();
     const [file, setFile] = useState<File | null>(null);
     const [previewData, setPreviewData] = useState<ParsedPO[]>([]);
@@ -114,7 +118,7 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
         addLog(`Parsing file: ${fileToParse.name}`);
 
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const data = new Uint8Array(e.target?.result as ArrayBuffer);
                 const workbook = XLSX.read(data, { type: 'array' });
@@ -124,6 +128,20 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
 
                 addLog(`Found ${rows.length} rows.`);
 
+                addLog(`Found ${rows.length} rows.`);
+
+                // Fetch Global Migration Mappings
+                let knownMappings: Record<string, string> = {};
+                addLog('Fetching existing migration mappings...');
+                try {
+                    knownMappings = await db.getMigrationMappings();
+                    addLog(`Loaded ${Object.keys(knownMappings).length} known mappings.`);
+                } catch (err) {
+                    console.error('Failed to load mappings', err);
+                }
+
+
+                
                 // Group by PO
                 const poGroups: Record<string, ParsedPO> = {};
                 
@@ -132,10 +150,14 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                     if (!poNum) return;
 
                     if (!poGroups[poNum]) {
+                        // Smart Status Logic
+                        // We will calculate this after lines are added, or defaulted here.
+                        // Actually, we need to sum lines to know real status?
+                        // Let's set default here and update later.
                         poGroups[poNum] = {
                             poNum,
                             date: excelDateToJSDate(row['Order Date']) || new Date(),
-                            status: row['Order Status'] === 'Received in Full' ? 'COMPLETED' : 'PENDING_DELIVERY',
+                            status: 'PENDING_DELIVERY', // Default, will refine
                             lines: [],
                             isValid: true,
                             errors: [],
@@ -147,7 +169,27 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                     // Line parsing
                     const sku = row['Product Code'] ? String(row['Product Code']).trim() : '';
                     let item = items.find(i => i.sku === sku);
-                    const isValid = !!item;
+                    
+                    let mappedItemId: string | undefined;
+                    let mappedSku: string | undefined;
+
+
+
+                    // Try Known Global Mapping
+                    if (!item) {
+                        const cleanSku = sku.toLowerCase();
+                        if (knownMappings[cleanSku]) {
+                            const foundId = knownMappings[cleanSku];
+                            const foundItem = items.find(i => i.id === foundId);
+                            if (foundItem) {
+                                mappedItemId = foundItem.id;
+                                mappedSku = foundItem.sku;
+                            }
+                        }
+                    }
+
+
+                    const isValid = !!item || !!mappedItemId;
 
                     // Cap Data
                     let capDate = excelDateToJSDate(row['Capitalized Month']);
@@ -165,6 +207,8 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                         assetTag: row['Asset Tag'], // If exists in sheet
                         isValid,
                         error: isValid ? undefined : `Unknown SKU: ${sku}`,
+                        mappedItemId,
+                        mappedSku
                     });
                 });
 
@@ -174,6 +218,18 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                     if (invalidLines.length > 0) {
                         po.isValid = false;
                         po.errors.push(`${invalidLines.length} invalid lines (Unknown SKUs)`);
+                    }
+
+                    // Refine Status based on Quantities
+                    const totalOrdered = po.lines.reduce((s, l) => s + (l.qtyOrdered || 0), 0);
+                    const totalReceived = po.lines.reduce((s, l) => s + (l.qtyReceived || 0), 0);
+                    
+                    if (totalReceived >= totalOrdered && totalOrdered > 0) {
+                        po.status = 'COMPLETED';
+                    } else if (totalReceived > 0) {
+                        po.status = 'PENDING_DELIVERY';
+                    } else {
+                        po.status = 'PENDING_DELIVERY';
                     }
                 });
 
@@ -196,16 +252,29 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
         const target = targetSku.toLowerCase();
         
         const scored = items.map(item => {
-            const skuScore = levenshtein(target, (item.sku || '').toLowerCase());
-            const nameScore = levenshtein(target, (item.name || '').toLowerCase());
+            // Enhanced Matching:
+            // 1. Strip common suffixes like (RFID), -RFID, etc from BOTH
+            const clean = (s: string) => s.toLowerCase().replace(/[\(\)\-_\s]rfid/g, '').replace(/[\(\)\-_\s]colour/g, '').trim();
+            
+            const tClean = clean(target);
+            const iClean = clean(item.sku || '');
+            const iNameClean = clean(item.name || '');
+
+            const skuScore = levenshtein(tClean, iClean);
+            const nameScore = levenshtein(tClean, iNameClean);
             
             // Normalize score (0-1, 1 is best)
             // Length based normalization
-            const maxLenSku = Math.max(target.length, (item.sku || '').length);
-            const normSku = 1 - (skuScore / maxLenSku);
+            const maxLenSku = Math.max(tClean.length, iClean.length);
+            let normSku = 1 - (skuScore / maxLenSku);
 
-            const maxLenName = Math.max(target.length, (item.name || '').length);
+            const maxLenName = Math.max(tClean.length, iNameClean.length);
             const normName = 1 - (nameScore / maxLenName);
+
+            // Boosts
+            if (iClean.includes(tClean) || tClean.includes(iClean)) {
+                normSku += 0.2; // Significant boost for containment (e.g. PCC1 inside PCC1RFID)
+            }
 
             return {
                 item,
@@ -230,7 +299,7 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
         setIsMappingModalOpen(true);
     };
 
-    const applyMapping = (newItemId: string) => {
+    const applyMapping = async (newItemId: string) => {
         const newItem = items.find(i => i.id === newItemId);
         if (!newItem) return;
 
@@ -286,9 +355,18 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
         }
 
         setPreviewData(nextPreviewData);
+
+        // Persistent Mapping Update (Global)
+        try {
+            await db.saveMigrationMapping(mappingTargetSku, newItemId);
+            addLog(`Saved global mapping for future imports.`);
+        } catch (err) {
+            console.error('Failed to save mapping', err);
+        }
         
         addLog(`Smart Fix: Mapped ${updateCount} occurrences of '${mappingTargetSku}' to '${newItem.sku}'`);
         // Small delay to ensure UI render before alert (optional, but good UX)
+
         setTimeout(() => {
              alert(`Successfully mapped ${updateCount} items to ${newItem.sku}`);
         }, 100);
@@ -504,6 +582,16 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
         setUploadStatus('DONE');
         addLog(`Import Complete. Success: ${successCount}, Failed/Skipped: ${failCount}, Created Placeholders: ${createdItemsCount}`);
         alert(`Import Complete!\nSuccessful: ${successCount}\nFailed/Skipped: ${failCount}\nCreated Placeholders: ${createdItemsCount}`);
+
+        // Auto-Refresh / Reset on Success
+        if (successCount > 0) {
+             setTimeout(() => {
+                 setPreviewData([]);
+                 setFile(null);
+                 setUploadStatus('IDLE');
+                 setLogs([]);
+             }, 500);
+        }
     };
 
     return (
@@ -516,6 +604,7 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
                 <div {...getRootProps()} className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${isDragActive ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5' : 'border-gray-300 dark:border-gray-700 hover:border-gray-400'}`}>
                     <input {...getInputProps()} />
                     <Upload className="mx-auto text-gray-400 mb-4" size={48} />
+
                     {file ? (
                         <p className="font-bold text-[var(--color-brand)]">{file.name}</p>
                     ) : (
