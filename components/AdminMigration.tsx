@@ -234,13 +234,18 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
         const newItem = items.find(i => i.id === newItemId);
         if (!newItem) return;
 
+        let updateCount = 0;
+        const target = mappingTargetSku.toLowerCase().trim();
+
         // Update all instances of this SKU in the preview data
         setPreviewData(prev => {
             return prev.map(po => {
                 let poModified = false;
                 const newLines = po.lines.map(line => {
-                    if (line.sku === mappingTargetSku && !line.isValid) {
+                    // Smart Fix: Check case-insensitive trim match
+                    if (line.sku.toLowerCase().trim() === target && !line.isValid) {
                         poModified = true;
+                        updateCount++;
                         return {
                             ...line,
                             isValid: true,
@@ -266,7 +271,8 @@ const AdminMigration: React.FC<AdminMigrationProps> = () => {
             });
         });
         
-        addLog(`Mapped '${mappingTargetSku}' to '${newItem.sku}'`);
+        addLog(`Smart Fix: Mapped ${updateCount} occurrences of '${mappingTargetSku}' to '${newItem.sku}'`);
+        alert(`Successfully mapped ${updateCount} items to ${newItem.sku}`);
         setIsMappingModalOpen(false);
     };
 
