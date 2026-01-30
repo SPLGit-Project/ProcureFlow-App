@@ -1152,7 +1152,7 @@ if __name__ == "__main__":
                 <div className="flex justify-between items-center">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         Master Item List 
-                        <span className="text-xs font-normal text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{items.length} Items</span>
+                        <span className="text-xs font-normal text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{(items || []).length} Items</span>
                     </h3>
                     <div className="flex gap-3 items-center">
                         <label className="flex items-center gap-2 text-xs font-bold text-gray-500 cursor-pointer mr-2">
@@ -1194,10 +1194,10 @@ if __name__ == "__main__":
                         <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1e2029] shadow-sm">
                             <tr className="border-b border-gray-200 dark:border-gray-700">
                                 {fieldRegistry.length > 0 ? (
-                                    fieldRegistry.filter(f => f.is_visible).map(f => {
+                                    (fieldRegistry || []).filter(f => f && f.is_visible && f.field_key !== 'range_name' && f.field_key !== 'stock_type').map(f => {
                                         // Check if this field should have a filter
-                                        const isFilterable = ['category', 'subCategory', 'itemPool', 'itemCatalog', 'itemType', 'stockType'].includes(f.field_key) || f.field_key.includes('Category');
-                                        const uniqueOptions = isFilterable ? Array.from(uniqueValues[f.field_key] || []).sort() : [];
+                                        const isFilterable = ['category', 'subCategory', 'itemPool', 'itemCatalog', 'itemType'].includes(f.field_key) || f.field_key?.includes('Category');
+                                        const uniqueOptions = isFilterable ? Array.from((uniqueValues || {})[f.field_key] || []).sort() : [];
 
                                         return (
                                             <th key={f.field_key} className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">
@@ -1232,7 +1232,7 @@ if __name__ == "__main__":
                                                 onChange={(e) => setItemFilters(prev => ({ ...prev, ['category']: e.target.value }))}
                                             >
                                                 <option value="">All</option>
-                                                {Array.from(uniqueValues['category'] || []).sort().map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                {Array.from((uniqueValues || {})['category'] || []).sort().map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                             </select>
                                         </div>
                                     </th>
@@ -1246,16 +1246,17 @@ if __name__ == "__main__":
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {items.filter(i => {
+                            {(items || []).filter(i => {
+                                    if (!i) return false;
                                     // 0. Archive Filter
                                     if (!showArchived && i.activeFlag === false) return false;
 
                                     // 1. Search Filter
-                                    const searchMatch = (i.name || '').toLowerCase().includes(itemSearch.toLowerCase()) || (i.sku || '').toLowerCase().includes(itemSearch.toLowerCase());
+                                    const searchMatch = (i.name || '').toLowerCase().includes((itemSearch || '').toLowerCase()) || (i.sku || '').toLowerCase().includes((itemSearch || '').toLowerCase());
                                     if (!searchMatch) return false;
                                     
                                     // 2. Column Filters
-                                    for (const [key, filterVal] of Object.entries(itemFilters)) {
+                                    for (const [key, filterVal] of Object.entries(itemFilters || {})) {
                                         if (filterVal) {
                                             const itemVal = String(i[key as keyof Item] || '');
                                             if (itemVal !== filterVal) return false;
@@ -1263,10 +1264,10 @@ if __name__ == "__main__":
                                     }
                                     return true;
                                 }).map(item => (
-                                <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
-                                    {fieldRegistry.length > 0 ? (
+                                        <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
+                                    {(fieldRegistry || []).length > 0 ? (
                                         <>
-                                        {fieldRegistry.filter(f => f.is_visible).map(f => {
+                                        {(fieldRegistry || []).filter(f => f && f.is_visible).map(f => {
                                              const val = item[f.field_key as keyof Item];
                                              
                                              // 1. Boolean Toggle
@@ -1304,12 +1305,12 @@ if __name__ == "__main__":
                                                 setEditingItem(item); 
                                                 setItemForm({ 
                                                     sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, upq: Number(item.upq) || 1, category: item.category, subCategory: item.subCategory || '',
-                                                    stockLevel: item.stockLevel || 0, stockType: item.stockType || '', rangeName: item.rangeName || '', 
                                                     itemWeight: item.itemWeight || 0, itemPool: item.itemPool || '', itemCatalog: item.itemCatalog || '', 
                                                     itemType: item.itemType || '', rfidFlag: item.rfidFlag || false, cogFlag: item.cogFlag || false, 
                                                     itemColour: item.itemColour || '', itemPattern: item.itemPattern || '', itemMaterial: item.itemMaterial || '', 
                                                     itemSize: item.itemSize || '', measurements: item.measurements || '', cogCustomer: item.cogCustomer || '',
-                                                    supplierId: item.supplierId || ''
+                                                    supplierId: item.supplierId || '',
+                                                    minLevel: item.minLevel, maxLevel: item.maxLevel
                                                 }); 
                                                 setIsItemFormOpen(true); 
                                             }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500">

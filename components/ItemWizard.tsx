@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
     X, Check, ChevronRight, ChevronLeft, Package, Tag, 
-    Truck, BarChart2, Save, FileText, AlertCircle, Plus 
+    Truck, BarChart2, Save, FileText, AlertCircle, Plus, Layers
 } from 'lucide-react';
 import { Item, AttributeOption, Supplier, Site } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
@@ -21,6 +21,7 @@ const STEPS = [
     { id: 'CLASSIFICATION', label: 'Classification', icon: Tag },
     { id: 'INVENTORY', label: 'Inventory', icon: Truck },
     { id: 'ATTRIBUTES', label: 'Attributes', icon: BarChart2 },
+    { id: 'STOCK', label: 'Stock Levels', icon: Layers },
     { id: 'REVIEW', label: 'Review', icon: Check },
 ];
 
@@ -62,12 +63,30 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
         }
     };
 
+    const handleDescriptionChange = (val: string) => {
+        setFormData(prev => {
+            const updates: any = { description: val };
+            // If name is empty or matches previous description, update it
+            // Limit name to 60 chars for display sanity
+            if (!prev.name || prev.name === prev.description?.substring(0, prev.name.length)) {
+                updates.name = val.length > 61 ? val.substring(0, 58) + '...' : val;
+            }
+            return { ...prev, ...updates };
+        });
+        if (errors.description) setErrors(prev => {
+            const newErrors = { ...prev };
+            delete newErrors.description;
+            return newErrors;
+        });
+    };
+
     const validateStep = (stepIndex: number): boolean => {
         const newErrors: Record<string, string> = {};
         let isValid = true;
 
         if (stepIndex === 0) { // Identity
             if (!formData.sku) newErrors.sku = 'SAP Code is required';
+            if (!formData.description) newErrors.description = 'Description is required';
             if (!formData.name) newErrors.name = 'Item Name is required';
         } else if (stepIndex === 1) { // Classification
             if (!formData.category) newErrors.category = 'Category is required';
@@ -122,11 +141,12 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
         setShowNewCatInput(false);
     };
 
-    // Filtered Options
-    const categories = attributeOptions.filter(o => o.type === 'CATEGORY').sort((a,b) => a.value.localeCompare(b.value));
-    const catalogs = attributeOptions.filter(o => o.type === 'CATALOG');
-    const pools = attributeOptions.filter(o => o.type === 'POOL');
-    const uoms = attributeOptions.filter(o => o.type === 'UOM');
+    // Filtered Options (Defensive)
+    const safeOptions = Array.isArray(attributeOptions) ? attributeOptions : [];
+    const categories = safeOptions.filter(o => o.type === 'CATEGORY').sort((a,b) => (a.value || '').localeCompare(b.value || ''));
+    const catalogs = safeOptions.filter(o => o.type === 'CATALOG');
+    const pools = safeOptions.filter(o => o.type === 'POOL');
+    const uoms = safeOptions.filter(o => o.type === 'UOM');
 
     // UI Helpers
     const StepIcon = STEPS[currentStep].icon;
@@ -200,26 +220,30 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                     </div>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Item Name *</label>
-                                    <input 
-                                        type="text"
-                                        value={formData.name || ''}
-                                        onChange={(e) => handleInputChange('name', e.target.value)}
-                                        className={`w-full p-3 rounded-lg border ${errors.name ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'} dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none`}
-                                        placeholder="e.g. Towel Bath White"
-                                    />
-                                    {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
-                                </div>
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Detailed Description *</label>
+                                        <textarea 
+                                            value={formData.description || ''}
+                                            onChange={(e) => handleDescriptionChange(e.target.value)}
+                                            className={`w-full p-4 rounded-xl border ${errors.description ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'} dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none h-32 resize-none transition-all text-lg`}
+                                            placeholder="Enter full item description here (e.g. Towel Bath White 600gsm cotton)..."
+                                        />
+                                        {errors.description && <p className="text-xs text-red-500">{errors.description}</p>}
+                                        <p className="text-[10px] text-gray-400 italic">This is the primary way items are searched. Be as descriptive as possible.</p>
+                                    </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
-                                    <textarea 
-                                        value={formData.description || ''}
-                                        onChange={(e) => handleInputChange('description', e.target.value)}
-                                        className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none"
-                                        placeholder="Detailed description..."
-                                    />
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Short Name / Display Title *</label>
+                                        <input 
+                                            type="text"
+                                            value={formData.name || ''}
+                                            onChange={(e) => handleInputChange('name', e.target.value)}
+                                            className={`w-full p-3 rounded-lg border ${errors.name ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'} dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none`}
+                                            placeholder="Short version for lists..."
+                                        />
+                                        {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -398,20 +422,71 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                         </div>
                                     </label>
 
-                                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                                        <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">Stock Settings</h3>
-                                        <div className="grid grid-cols-2 gap-6">
-                                            <div className="space-y-2">
-                                                <label className="text-sm text-gray-600 dark:text-gray-400">Stock Level</label>
-                                                <input 
-                                                    type="number"
-                                                    value={formData.stockLevel || 0}
-                                                    onChange={(e) => handleInputChange('stockLevel', parseInt(e.target.value))}
-                                                    className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white text-sm"
-                                                />
-                                            </div>
+                                    {formData.cogFlag && (
+                                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">COG Customer *</label>
+                                            <input 
+                                                type="text" 
+                                                value={formData.cogCustomer || ''}
+                                                onChange={(e) => handleInputChange('cogCustomer', e.target.value)}
+                                                className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white"
+                                                placeholder="Enter customer name"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* STEP 5: STOCK LEVELS */}
+                        {currentStep === 4 && (
+                            <div className="space-y-6">
+                                <div className="p-6 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-800 flex gap-4 items-start">
+                                    <BarChart2 className="text-blue-600 shrink-0 mt-1" size={20} />
+                                    <div>
+                                        <h4 className="font-bold text-blue-900 dark:text-blue-300">Stock Thresholds</h4>
+                                        <p className="text-sm text-blue-700 dark:text-blue-400">Set minimum and maximum levels to trigger automated restock alerts and manage availability.</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Minimum (Par) Level</label>
+                                        <div className="relative">
+                                            <input 
+                                                type="number"
+                                                value={formData.minLevel || 0}
+                                                onChange={(e) => handleInputChange('minLevel', parseInt(e.target.value))}
+                                                className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                                placeholder="0"
+                                            />
+                                            <span className="absolute right-3 top-3 text-xs text-gray-400 font-medium">MIN</span>
                                         </div>
                                     </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Maximum Level</label>
+                                        <div className="relative">
+                                            <input 
+                                                type="number"
+                                                value={formData.maxLevel || 0}
+                                                onChange={(e) => handleInputChange('maxLevel', parseInt(e.target.value))}
+                                                className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                                placeholder="0"
+                                            />
+                                            <span className="absolute right-3 top-3 text-xs text-gray-400 font-medium">MAX</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Initial Stock Level</label>
+                                    <input 
+                                        type="number"
+                                        value={formData.stockLevel || 0}
+                                        onChange={(e) => handleInputChange('stockLevel', parseInt(e.target.value))}
+                                        className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                        placeholder="0"
+                                    />
                                 </div>
                             </div>
                         )}
@@ -421,14 +496,14 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                             <div className="space-y-6">
                                 <div className="bg-gray-50 dark:bg-[#1a1c23] p-6 rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
                                     <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-4">
-                                        <div>
+                                        <div className="flex-1">
                                             <p className="text-xs text-gray-500 uppercase tracking-wider">Item Details</p>
-                                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">{formData.name}</h3>
-                                            <p className="text-sm text-blue-500 font-mono">{formData.sku}</p>
+                                            <h3 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">{formData.name}</h3>
+                                            <p className="text-sm text-blue-500 font-mono mt-0.5">{formData.sku}</p>
                                         </div>
-                                        <div className="text-right">
+                                        <div className="text-right ml-4">
                                             <p className="text-xs text-gray-500 uppercase tracking-wider">Price</p>
-                                            <h3 className="text-xl font-bold text-gray-900 dark:text-white">${formData.unitPrice?.toFixed(2)}</h3>
+                                            <h3 className="text-xl font-bold text-gray-900 dark:text-white">${(formData.unitPrice || 0).toFixed(2)}</h3>
                                             <p className="text-sm text-gray-500">per {formData.uom}</p>
                                         </div>
                                     </div>
@@ -455,16 +530,23 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                         <div>
                                             <span className="text-gray-500">Type:</span>
                                             <div className="inline-flex gap-2 ml-2">
-                                                {formData.cogFlag && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">COG</span>}
+                                                {formData.cogFlag && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">COG ({formData.cogCustomer})</span>}
                                                 {formData.rfidFlag && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">RFID</span>}
                                                 {!formData.cogFlag && !formData.rfidFlag && <span className="text-gray-400 italic">Standard</span>}
                                             </div>
                                         </div>
+                                        <div className="col-span-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex justify-between">
+                                            <div className="space-x-4">
+                                                <span className="text-gray-500">Par/Min: <b className="text-gray-900 dark:text-white font-semibold">{formData.minLevel || 0}</b></span>
+                                                <span className="text-gray-500">Max: <b className="text-gray-900 dark:text-white font-semibold">{formData.maxLevel || 0}</b></span>
+                                            </div>
+                                            <span className="text-gray-500">Initial Stock: <b className="text-blue-600 dark:text-blue-400 font-semibold">{formData.stockLevel || 0}</b></span>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2 text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
-                                    <AlertCircle size={20} />
-                                    <p className="text-sm">Please review all details carefully. Once created, the SAP Code cannot be easily changed.</p>
+                                <div className="flex items-center gap-2 text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-100 dark:border-yellow-900/40">
+                                    <AlertCircle size={20} className="shrink-0" />
+                                    <p className="text-sm">Please review all details carefully. Once created, the SAP Code cannot be easily changed without data migration.</p>
                                 </div>
                             </div>
                         )}

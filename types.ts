@@ -150,6 +150,8 @@ export interface Item {
   measurements?: string;
   cogFlag?: boolean;
   cogCustomer?: string;
+  minLevel?: number;
+  maxLevel?: number;
 }
 
 export interface SupplierCatalogItem {
