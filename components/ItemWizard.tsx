@@ -316,7 +316,8 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                             .filter(s => {
                                                 if (!formData.category) return true; // Show all if no category selected
                                                 const selectedCat = categories.find(c => c.value === formData.category);
-                                                return !s.parentId || s.parentId === selectedCat?.id;
+                                                if (!selectedCat) return true;
+                                                return (s.parentIds?.includes(selectedCat.id)) || (s.parentId === selectedCat.id);
                                             })
                                             .map(opt => (
                                                 <option key={opt.id} value={opt.value}>{opt.value}</option>

@@ -379,6 +379,7 @@ export interface AttributeOption {
     type: AttributeType;
     value: string;
     parentId?: string; // For SubCategory -> Category
+    parentIds?: string[]; // Multi-parent support
     activeFlag: boolean;
     createdAt?: string;
     updatedAt?: string;

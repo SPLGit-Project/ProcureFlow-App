@@ -803,6 +803,7 @@ export const db = {
              type: o.type,
              value: o.value,
              parentId: o.parent_id,
+             parentIds: o.parent_ids || [],
              activeFlag: o.active_flag,
              createdAt: o.created_at,
              updatedAt: o.updated_at
@@ -815,6 +816,7 @@ export const db = {
              type: option.type,
              value: option.value,
              parent_id: option.parentId,
+             parent_ids: option.parentIds || [],
              active_flag: option.activeFlag !== undefined ? option.activeFlag : true,
              updated_at: new Date().toISOString()
         });
