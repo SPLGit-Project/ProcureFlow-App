@@ -96,17 +96,6 @@ const Settings = () => {
         }
     };
 
-    const handleSeedCatalog = async () => {
-        if (!confirm('This will populate default categories/pools/UOMs from the verified list. Existing data will be preserved. Continue?')) return;
-        try {
-            const count = await seedCatalogData();
-            success(`Generated ${count} catalog entries.`);
-            await reloadData(false);
-        } catch (e) {
-            console.error(e);
-            error('Failed to seed catalog data.');
-        }
-    };
 
   // Data Loading
   const { toasts, dismissToast, success, error, warning } = useToast();
@@ -1416,9 +1405,6 @@ if __name__ == "__main__":
                         </h2>
                         <p className="text-gray-500 dark:text-gray-400 mt-1">Manage dynamic attributes for your items including Categories, Groups, and Units of Measure.</p>
                     </div>
-                    <button onClick={handleSeedCatalog} className="px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200 dark:border-blue-800 flex items-center gap-2">
-                        <Wand2 size={16}/> Initialise Defaults
-                    </button>
                 </div>
                 
                 <CatalogManagement 

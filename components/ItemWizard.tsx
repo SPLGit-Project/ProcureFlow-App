@@ -91,7 +91,6 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
         } else if (stepIndex === 1) { // Classification
             if (!formData.category) newErrors.category = 'Category is required';
         } else if (stepIndex === 2) { // Inventory
-            if (!formData.supplierId) newErrors.supplierId = 'Supplier is required';
             if (!formData.uom) newErrors.uom = 'UOM is required';
             if ((formData.unitPrice || 0) <= 0) newErrors.unitPrice = 'Valid Price is required';
         }
@@ -147,6 +146,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
     const catalogs = safeOptions.filter(o => o.type === 'CATALOG');
     const pools = safeOptions.filter(o => o.type === 'POOL');
     const uoms = safeOptions.filter(o => o.type === 'UOM');
+    const subcategories = safeOptions.filter(o => o.type === 'SUB_CATEGORY').sort((a,b) => (a.value || '').localeCompare(b.value || ''));
 
     // UI Helpers
     const StepIcon = STEPS[currentStep].icon;
@@ -305,6 +305,27 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                 </div>
 
                                 <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Sub Category</label>
+                                    <select 
+                                        value={formData.subCategory || ''}
+                                        onChange={(e) => handleInputChange('subCategory', e.target.value)}
+                                        className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                    >
+                                        <option value="">Select Sub Category...</option>
+                                        {subcategories
+                                            .filter(s => {
+                                                if (!formData.category) return true; // Show all if no category selected
+                                                const selectedCat = categories.find(c => c.value === formData.category);
+                                                return !s.parentId || s.parentId === selectedCat?.id;
+                                            })
+                                            .map(opt => (
+                                                <option key={opt.id} value={opt.value}>{opt.value}</option>
+                                            ))
+                                        }
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2">
                                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Item Pool</label>
                                     <select 
                                         value={formData.itemPool || ''}
@@ -324,18 +345,17 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                         {currentStep === 2 && (
                             <div className="space-y-6">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Supplier *</label>
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Supplier</label>
                                     <select 
                                         value={formData.supplierId || ''}
                                         onChange={(e) => handleInputChange('supplierId', e.target.value)}
-                                        className={`w-full p-3 rounded-lg border ${errors.supplierId ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'} dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none`}
+                                        className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                                     >
                                         <option value="">Select Supplier...</option>
                                         {suppliers.map(s => (
                                             <option key={s.id} value={s.id}>{s.name}</option>
                                         ))}
                                     </select>
-                                    {errors.supplierId && <p className="text-xs text-red-500">{errors.supplierId}</p>}
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-6">
