@@ -1859,7 +1859,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     teamsWebhookUrl, updateTeamsWebhook,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
     suppliers, items, sites, catalog, stockSnapshots,
-    mappings, availability,
+    mappings, availability, attributeOptions,
     
     // Methods
     importMasterProducts, generateMappings, updateMapping: upsertMapping, upsertMapping, refreshAvailability, runDataBackfill,
@@ -1924,7 +1924,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   }), [
     currentUser, originalUser, isAuthenticated, activeSiteId, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
-    filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability,
+    filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
     reloadData, siteName
   ]);
