@@ -57,6 +57,25 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     const [isDragging, setIsDragging] = useState(false);
     const dragStart = useRef({ x: 0, y: 0 });
 
+    // --- Miller Columns UI Polish State ---
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [minimizedColumns, setMinimizedColumns] = useState<Record<string, boolean>>({});
+
+    const toggleMinimize = (colId: string) => {
+        setMinimizedColumns(prev => ({ ...prev, [colId]: !prev[colId] }));
+    };
+
+    const scrollToRight = () => {
+        setTimeout(() => {
+            if (scrollContainerRef.current) {
+                scrollContainerRef.current.scrollTo({
+                    left: scrollContainerRef.current.scrollWidth,
+                    behavior: 'smooth'
+                });
+            }
+        }, 100);
+    };
+
     // Data Filtering
     const allCategories = useMemo(() => safeOptions.filter(o => o.type === 'CATEGORY').sort((a,b) => a.value.localeCompare(b.value)), [safeOptions]);
     const allSubCategories = useMemo(() => safeOptions.filter(o => o.type === 'SUB_CATEGORY').sort((a,b) => a.value.localeCompare(b.value)), [safeOptions]);
@@ -335,51 +354,102 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             <div className="flex-1 min-h-[600px] flex flex-col">
                 {viewMode === 'TAXONOMY' ? (
                     /* 5-LEVEL HIERARCHY TAXONOMY VIEW */
-                    <div className="flex-1 flex gap-4 overflow-x-auto p-4 custom-scrollbar">
+                    <div ref={scrollContainerRef} className="flex-1 flex gap-4 overflow-x-auto p-4 custom-scrollbar scroll-smooth">
                         {/* 1. POOLS */}
-                        <div className="min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden">
+                        <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden ${minimizedColumns['POOL'] ? 'min-w-[80px] w-[80px]' : 'min-w-[280px] w-[280px]'}`}>
                             <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
-                                <h4 className="text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                                    <Layers size={14} /> Pools
-                                </h4>
-                                <button onClick={() => handleOpenModal(undefined, 'POOL')} className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg hover:bg-blue-200"><Plus size={14} /></button>
+                                {!minimizedColumns['POOL'] && (
+                                    <h4 className="text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                                        <Layers size={14} /> Pools
+                                    </h4>
+                                )}
+                                <div className="flex items-center gap-1">
+                                    {!minimizedColumns['POOL'] && (
+                                        <button onClick={() => handleOpenModal(undefined, 'POOL')} className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg hover:bg-blue-200"><Plus size={14} /></button>
+                                    )}
+                                    <button onClick={() => toggleMinimize('POOL')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                        {minimizedColumns['POOL'] ? <Maximize2 size={14} className="mx-auto" /> : <Minimize2 size={14} />}
+                                    </button>
+                                </div>
                             </div>
                             <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                                {safeOptions.filter(o => o.type === 'POOL').sort((a,b) => a.value.localeCompare(b.value)).map(pool => (
-                                    <div 
-                                        key={pool.id}
-                                        onClick={() => { setSelectedPoolId(pool.id); setSelectedCatalogId(null); setSelectedTypeId(null); setSelectedParentId(null); }}
-                                        className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedPoolId === pool.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
-                                    >
-                                        <span>{pool.value}</span>
-                                        {selectedPoolId === pool.id && <ChevronRight size={14} />}
+                                {minimizedColumns['POOL'] ? (
+                                    <div className="h-full flex flex-col items-center pt-4 space-y-4">
+                                        {selectedPoolId && (
+                                            <div className="vertical-text text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest whitespace-nowrap rotate-180" style={{ writingMode: 'vertical-rl' }}>
+                                                {safeOptions.find(o => o.id === selectedPoolId)?.value}
+                                            </div>
+                                        )}
                                     </div>
-                                ))}
+                                ) : (
+                                    safeOptions.filter(o => o.type === 'POOL').sort((a,b) => a.value.localeCompare(b.value)).map(pool => (
+                                        <div 
+                                            key={pool.id}
+                                            onClick={() => { 
+                                                setSelectedPoolId(pool.id); 
+                                                setSelectedCatalogId(null); 
+                                                setSelectedTypeId(null); 
+                                                setSelectedParentId(null);
+                                                scrollToRight();
+                                            }}
+                                            className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedPoolId === pool.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                        >
+                                            <span>{pool.value}</span>
+                                            {selectedPoolId === pool.id && <ChevronRight size={14} />}
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
 
                         {/* 2. CATALOGS */}
                         {selectedPoolId && (
-                            <div className="min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['CATALOG'] ? 'min-w-[80px] w-[80px]' : 'min-w-[280px] w-[280px]'}`}>
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
-                                    <h4 className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                                        <BookOpen size={14} /> Catalogs
-                                    </h4>
-                                    <button onClick={() => handleOpenModal(undefined, 'CATALOG')} className="p-1.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-lg hover:bg-emerald-200"><Plus size={14} /></button>
+                                    {!minimizedColumns['CATALOG'] && (
+                                        <h4 className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                                            <BookOpen size={14} /> Catalogs
+                                        </h4>
+                                    )}
+                                    <div className="flex items-center gap-1">
+                                        {!minimizedColumns['CATALOG'] && (
+                                            <button onClick={() => handleOpenModal(undefined, 'CATALOG')} className="p-1.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-lg hover:bg-emerald-200"><Plus size={14} /></button>
+                                        )}
+                                        <button onClick={() => toggleMinimize('CATALOG')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                            {minimizedColumns['CATALOG'] ? <Maximize2 size={14} className="mx-auto" /> : <Minimize2 size={14} />}
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                                    {safeOptions.filter(o => o.type === 'CATALOG' && (o.parentIds?.includes(selectedPoolId) || o.parentId === selectedPoolId)).sort((a,b) => a.value.localeCompare(b.value)).map(cat => (
-                                        <div 
-                                            key={cat.id}
-                                            onClick={() => { setSelectedCatalogId(cat.id); setSelectedTypeId(null); setSelectedParentId(null); }}
-                                            className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedCatalogId === cat.id ? 'bg-emerald-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
-                                        >
-                                            <span>{cat.value}</span>
-                                            {selectedCatalogId === cat.id && <ChevronRight size={14} />}
+                                    {minimizedColumns['CATALOG'] ? (
+                                        <div className="h-full flex flex-col items-center pt-4 space-y-4">
+                                            {selectedCatalogId && (
+                                                <div className="vertical-text text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest whitespace-nowrap rotate-180" style={{ writingMode: 'vertical-rl' }}>
+                                                    {safeOptions.find(o => o.id === selectedCatalogId)?.value}
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
-                                    {safeOptions.filter(o => o.type === 'CATALOG' && (o.parentIds?.includes(selectedPoolId) || o.parentId === selectedPoolId)).length === 0 && (
-                                        <div className="p-4 text-center text-xs text-gray-400 italic">No catalogs in this pool.</div>
+                                    ) : (
+                                        <>
+                                            {safeOptions.filter(o => o.type === 'CATALOG' && (o.parentIds?.includes(selectedPoolId) || o.parentId === selectedPoolId)).sort((a,b) => a.value.localeCompare(b.value)).map(cat => (
+                                                <div 
+                                                    key={cat.id}
+                                                    onClick={() => { 
+                                                        setSelectedCatalogId(cat.id); 
+                                                        setSelectedTypeId(null); 
+                                                        setSelectedParentId(null);
+                                                        scrollToRight();
+                                                    }}
+                                                    className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedCatalogId === cat.id ? 'bg-emerald-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                                >
+                                                    <span>{cat.value}</span>
+                                                    {selectedCatalogId === cat.id && <ChevronRight size={14} />}
+                                                </div>
+                                            ))}
+                                            {safeOptions.filter(o => o.type === 'CATALOG' && (o.parentIds?.includes(selectedPoolId) || o.parentId === selectedPoolId)).length === 0 && (
+                                                <div className="p-4 text-center text-xs text-gray-400 italic">No catalogs in this pool.</div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -387,26 +457,51 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
 
                         {/* 3. TYPES */}
                         {selectedCatalogId && (
-                            <div className="min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['TYPE'] ? 'min-w-[80px] w-[80px]' : 'min-w-[280px] w-[280px]'}`}>
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
-                                    <h4 className="text-xs font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center gap-2">
-                                        <Tag size={14} /> Types
-                                    </h4>
-                                    <button onClick={() => handleOpenModal(undefined, 'TYPE')} className="p-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 rounded-lg hover:bg-purple-200"><Plus size={14} /></button>
+                                    {!minimizedColumns['TYPE'] && (
+                                        <h4 className="text-xs font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center gap-2">
+                                            <Tag size={14} /> Types
+                                        </h4>
+                                    )}
+                                    <div className="flex items-center gap-1">
+                                        {!minimizedColumns['TYPE'] && (
+                                            <button onClick={() => handleOpenModal(undefined, 'TYPE')} className="p-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 rounded-lg hover:bg-purple-200"><Plus size={14} /></button>
+                                        )}
+                                        <button onClick={() => toggleMinimize('TYPE')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                            {minimizedColumns['TYPE'] ? <Maximize2 size={14} className="mx-auto" /> : <Minimize2 size={14} />}
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                                    {safeOptions.filter(o => o.type === 'TYPE' && (o.parentIds?.includes(selectedCatalogId) || o.parentId === selectedCatalogId)).sort((a,b) => a.value.localeCompare(b.value)).map(type => (
-                                        <div 
-                                            key={type.id}
-                                            onClick={() => { setSelectedTypeId(type.id); setSelectedParentId(null); }}
-                                            className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedTypeId === type.id ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
-                                        >
-                                            <span>{type.value}</span>
-                                            {selectedTypeId === type.id && <ChevronRight size={14} />}
+                                    {minimizedColumns['TYPE'] ? (
+                                        <div className="h-full flex flex-col items-center pt-4 space-y-4">
+                                            {selectedTypeId && (
+                                                <div className="vertical-text text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest whitespace-nowrap rotate-180" style={{ writingMode: 'vertical-rl' }}>
+                                                    {safeOptions.find(o => o.id === selectedTypeId)?.value}
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
-                                    {safeOptions.filter(o => o.type === 'TYPE' && (o.parentIds?.includes(selectedCatalogId) || o.parentId === selectedCatalogId)).length === 0 && (
-                                        <div className="p-4 text-center text-xs text-gray-400 italic">No types in this catalog.</div>
+                                    ) : (
+                                        <>
+                                            {safeOptions.filter(o => o.type === 'TYPE' && (o.parentIds?.includes(selectedCatalogId) || o.parentId === selectedCatalogId)).sort((a,b) => a.value.localeCompare(b.value)).map(type => (
+                                                <div 
+                                                    key={type.id}
+                                                    onClick={() => { 
+                                                        setSelectedTypeId(type.id); 
+                                                        setSelectedParentId(null);
+                                                        scrollToRight();
+                                                    }}
+                                                    className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedTypeId === type.id ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                                >
+                                                    <span>{type.value}</span>
+                                                    {selectedTypeId === type.id && <ChevronRight size={14} />}
+                                                </div>
+                                            ))}
+                                            {safeOptions.filter(o => o.type === 'TYPE' && (o.parentIds?.includes(selectedCatalogId) || o.parentId === selectedCatalogId)).length === 0 && (
+                                                <div className="p-4 text-center text-xs text-gray-400 italic">No types in this catalog.</div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -414,26 +509,50 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
 
                         {/* 4. CATEGORIES */}
                         {selectedTypeId && (
-                            <div className="min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['CATEGORY'] ? 'min-w-[80px] w-[80px]' : 'min-w-[280px] w-[280px]'}`}>
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
-                                    <h4 className="text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                                        <FolderTree size={14} /> Categories
-                                    </h4>
-                                    <button onClick={() => handleOpenModal(undefined, 'CATEGORY')} className="p-1.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-lg hover:bg-amber-200"><Plus size={14} /></button>
+                                    {!minimizedColumns['CATEGORY'] && (
+                                        <h4 className="text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                                            <FolderTree size={14} /> Categories
+                                        </h4>
+                                    )}
+                                    <div className="flex items-center gap-1">
+                                        {!minimizedColumns['CATEGORY'] && (
+                                            <button onClick={() => handleOpenModal(undefined, 'CATEGORY')} className="p-1.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-lg hover:bg-amber-200"><Plus size={14} /></button>
+                                        )}
+                                        <button onClick={() => toggleMinimize('CATEGORY')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                            {minimizedColumns['CATEGORY'] ? <Maximize2 size={14} className="mx-auto" /> : <Minimize2 size={14} />}
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                                    {safeOptions.filter(o => o.type === 'CATEGORY' && (o.parentIds?.includes(selectedTypeId) || o.parentId === selectedTypeId)).sort((a,b) => a.value.localeCompare(b.value)).map(cat => (
-                                        <div 
-                                            key={cat.id}
-                                            onClick={() => setSelectedParentId(cat.id)}
-                                            className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedParentId === cat.id ? 'bg-amber-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
-                                        >
-                                            <span>{cat.value}</span>
-                                            {selectedParentId === cat.id && <ChevronRight size={14} />}
+                                    {minimizedColumns['CATEGORY'] ? (
+                                        <div className="h-full flex flex-col items-center pt-4 space-y-4">
+                                            {selectedParentId && (
+                                                <div className="vertical-text text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest whitespace-nowrap rotate-180" style={{ writingMode: 'vertical-rl' }}>
+                                                    {safeOptions.find(o => o.id === selectedParentId)?.value}
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
-                                    {safeOptions.filter(o => o.type === 'CATEGORY' && (o.parentIds?.includes(selectedTypeId) || o.parentId === selectedTypeId)).length === 0 && (
-                                        <div className="p-4 text-center text-xs text-gray-400 italic">No categories in this type.</div>
+                                    ) : (
+                                        <>
+                                            {safeOptions.filter(o => o.type === 'CATEGORY' && (o.parentIds?.includes(selectedTypeId) || o.parentId === selectedTypeId)).sort((a,b) => a.value.localeCompare(b.value)).map(cat => (
+                                                <div 
+                                                    key={cat.id}
+                                                    onClick={() => {
+                                                        setSelectedParentId(cat.id);
+                                                        scrollToRight();
+                                                    }}
+                                                    className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedParentId === cat.id ? 'bg-amber-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                                >
+                                                    <span>{cat.value}</span>
+                                                    {selectedParentId === cat.id && <ChevronRight size={14} />}
+                                                </div>
+                                            ))}
+                                            {safeOptions.filter(o => o.type === 'CATEGORY' && (o.parentIds?.includes(selectedTypeId) || o.parentId === selectedTypeId)).length === 0 && (
+                                                <div className="p-4 text-center text-xs text-gray-400 italic">No categories in this type.</div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             </div>
