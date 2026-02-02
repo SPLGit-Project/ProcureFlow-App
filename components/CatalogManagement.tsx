@@ -917,19 +917,20 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             </div>
 
             {/* Premium Dynamic Modal */}
+{/* Premium Dynamic Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-gray-950/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={() => setIsModalOpen(false)} />
-                    <div className="relative bg-white dark:bg-[#1e2029] rounded-[40px] shadow-[0_35px_80px_-15px_rgba(0,0,0,0.8)] w-full max-w-xl overflow-hidden border border-gray-200 dark:border-gray-800 animate-in slide-in-from-bottom-12 duration-500">
+                    <div className="relative bg-white dark:bg-[#1e2029] rounded-[40px] shadow-[0_35px_80px_-15px_rgba(0,0,0,0.8)] w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-800 animate-in slide-in-from-bottom-12 duration-500 flex flex-col max-h-[90vh]">
                         {/* Modal Header */}
-                        <div className="px-10 py-8 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gradient-to-br from-gray-50 to-white dark:from-[#1e2029] dark:to-[#181a21]">
+                        <div className="px-10 py-8 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gradient-to-br from-gray-50 to-white dark:from-[#1e2029] dark:to-[#181a21] flex-shrink-0">
                             <div className="flex items-center gap-6">
                                 <div className={`p-4 rounded-3xl text-white shadow-2xl ${selectedType === 'CATEGORY' ? 'bg-blue-600 shadow-blue-500/20' : 'bg-emerald-600 shadow-emerald-500/20'}`}>
                                     {editingOption ? <Edit2 size={24} /> : <Plus size={24} />}
                                 </div>
                                 <div>
                                     <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tighter">
-                                        {editingOption ? 'Edit Attribute' : 'Create New'}
+                                        {editingOption ? 'Edit Attribute' : 'Manage Links'}
                                     </h3>
                                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Classification Engine</p>
                                 </div>
@@ -939,64 +940,157 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                             </button>
                         </div>
                         
+                        {/* Mode Tabs (Only for Create/Link context) */}
+                        {!editingOption && selectedType !== 'POOL' && (
+                            <div className="flex border-b border-gray-100 dark:border-gray-800 px-10 pt-4 gap-4 bg-gray-50/50 dark:bg-gray-800/20 flex-shrink-0">
+                                <button
+                                    onClick={() => { setValue(''); setSelectedChildIds([]); }} 
+                                    className={`pb-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${
+                                        !value && selectedChildIds.length > 0 ? 'border-transparent text-gray-400 hover:text-gray-600' : 'border-blue-600 text-blue-600'
+                                    }`}
+                                >
+                                    Create New
+                                </button>
+                                <button
+                                     onClick={() => { setValue(''); /* Logic to switch to Link Existing focus if needed */ }}
+                                     className={`pb-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${
+                                        selectedChildIds.length > 0 ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'
+                                     }`}
+                                >
+                                    Link Existing
+                                </button>
+                            </div>
+                        )}
+
                         {/* Modal Body */}
-                        <div className="p-10 space-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
-                            <div className="grid grid-cols-2 gap-4">
-                                <button 
-                                    onClick={() => setSelectedType('POOL')}
-                                    className={`flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest ${selectedType === 'POOL' ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-200 text-gray-400'}`}
-                                >
-                                    <Layers size={14} /> Pool
-                                </button>
-                                <button 
-                                    onClick={() => setSelectedType('CATALOG')}
-                                    className={`flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest ${selectedType === 'CATALOG' ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-gray-200 text-gray-400'}`}
-                                >
-                                    <BookOpen size={14} /> Catalog
-                                </button>
-                                <button 
-                                    onClick={() => setSelectedType('TYPE')}
-                                    className={`flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest ${selectedType === 'TYPE' ? 'bg-purple-600 border-purple-600 text-white' : 'border-gray-200 text-gray-400'}`}
-                                >
-                                    <Tag size={14} /> Type
-                                </button>
-                                <button 
-                                    onClick={() => setSelectedType('CATEGORY')}
-                                    className={`flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest ${selectedType === 'CATEGORY' ? 'bg-amber-600 border-amber-600 text-white' : 'border-gray-200 text-gray-400'}`}
-                                >
-                                    <FolderTree size={14} /> Category
-                                </button>
-                                <button 
-                                    onClick={() => setSelectedType('SUB_CATEGORY')}
-                                    className={`col-span-2 flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest ${selectedType === 'SUB_CATEGORY' ? 'bg-rose-600 border-rose-600 text-white' : 'border-gray-200 text-gray-400'}`}
-                                >
-                                    <Network size={14} /> Sub-Category
-                                </button>
+                        <div className="p-10 space-y-8 overflow-y-auto custom-scrollbar flex-1">
+                            
+                            {/* Type Selector  */}
+                            <div className="grid grid-cols-5 gap-2">
+                                {(['POOL', 'CATALOG', 'TYPE', 'CATEGORY', 'SUB_CATEGORY'] as AttributeType[]).map(t => (
+                                    <button 
+                                        key={t}
+                                        onClick={() => setSelectedType(t)}
+                                        className={`flex flex-col items-center justify-center gap-1 p-2 rounded-xl border transition-all font-bold text-[9px] uppercase tracking-widest ${
+                                            selectedType === t 
+                                            ? t === 'POOL' ? 'bg-blue-600 border-blue-600 text-white'
+                                            : t === 'CATALOG' ? 'bg-emerald-600 border-emerald-600 text-white'
+                                            : t === 'TYPE' ? 'bg-purple-600 border-purple-600 text-white'
+                                            : t === 'CATEGORY' ? 'bg-amber-600 border-amber-600 text-white'
+                                            : 'bg-rose-600 border-rose-600 text-white'
+                                            : 'border-gray-200 text-gray-400 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        {t === 'POOL' && <Layers size={12} />}
+                                        {t === 'CATALOG' && <BookOpen size={12} />}
+                                        {t === 'TYPE' && <Tag size={12} />}
+                                        {t === 'CATEGORY' && <FolderTree size={12} />}
+                                        {t === 'SUB_CATEGORY' && <Network size={12} />}
+                                        <span className="truncate w-full text-center">{t.replace('_', ' ')}</span>
+                                    </button>
+                                ))}
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 px-1">Attribute Name</label>
-                                <input
-                                    type="text"
-                                    value={value}
-                                    onChange={e => setValue(e.target.value)}
-                                    placeholder="e.g. Bedspreads, Medical Supplies..."
-                                    className="w-full px-6 py-5 text-xl font-bold border-2 border-gray-200 dark:border-gray-800 rounded-3xl bg-gray-50 dark:bg-[#1a1c23] text-gray-900 dark:text-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all placeholder:text-gray-300 dark:placeholder:text-gray-700"
-                                    autoFocus
-                                />
-                            </div>
-
-                            {selectedType !== 'POOL' && (
-                                <div className="space-y-4 animate-in slide-in-from-top-4 duration-500">
-                                    <div className="flex items-center justify-between px-1">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Parent Associations ({selectedType === 'CATALOG' ? 'POOLS' : selectedType === 'TYPE' ? 'CATALOGS' : selectedType === 'CATEGORY' ? 'TYPES' : 'CATEGORIES'})</label>
-                                        <span className="text-[10px] font-black bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400 px-3 py-1 rounded-full">{selectedParentIds.length} Linked</span>
+                            {/* ITEM SELECTION / CREATION AREA */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 px-1">
+                                        {selectedType.replace('_', ' ')} Selection
+                                    </label>
+                                    {!editingOption && <span className="text-[10px] text-gray-400 italic">Create new OR select existing</span>}
+                                </div>
+                                
+                                {/* 1. Create Input */}
+                                <div className="relative group">
+                                    <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                                        <Plus size={18} className="text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                                     </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[220px] overflow-y-auto p-4 bg-gray-50/50 dark:bg-black/20 rounded-3xl border border-gray-100 dark:border-gray-800 custom-scrollbar">
+                                    <input
+                                        type="text"
+                                        value={value}
+                                        onChange={e => {
+                                            setValue(e.target.value);
+                                            if (e.target.value) setSelectedChildIds([]); // Clear selections if typing new
+                                        }}
+                                        placeholder={`Create New ${selectedType.replace('_', ' ')} Name...`}
+                                        className={`w-full pl-12 pr-6 py-4 text-lg font-bold border-2 rounded-2xl outline-none transition-all ${
+                                            value 
+                                            ? 'border-blue-500 bg-blue-50/10 text-gray-900 dark:text-white shadow-lg shadow-blue-500/10'
+                                            : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#1a1c23] text-gray-500 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                                        }`}
+                                    />
+                                </div>
+
+                                {/* 2. Link Existing List (OR Separator) */}
+                                {!editingOption && selectedType !== 'POOL' && (
+                                    <>
+                                        { !value && <div className="flex items-center gap-4 py-2">
+                                            <div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div>
+                                            <span className="text-[10px] font-black uppercase text-gray-300">OR SELECT EXISTING</span>
+                                            <div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div>
+                                        </div> }
+
+                                        <div className={`transition-all duration-300 ${value ? 'opacity-40 pointer-events-none grayscale' : 'opacity-100'}`}>
+                                            <div className="bg-gray-50 dark:bg-black/20 rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col max-h-[240px]">
+                                                {/* Search Existing */}
+                                                <div className="p-3 border-b border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-gray-800/50 flex gap-2">
+                                                    <Search size={14} className="text-gray-400 my-auto" />
+                                                    <input 
+                                                        className="bg-transparent w-full text-xs font-bold outline-none text-gray-700 dark:text-gray-300 placeholder:text-gray-300"
+                                                        placeholder={`Search existing ${selectedType.toLowerCase().replace('_', ' ')}s...`}
+                                                    />
+                                                </div>
+                                                <div className="p-3 overflow-y-auto custom-scrollbar grid grid-cols-2 md:grid-cols-3 gap-2">
+                                                    {(selectedType === 'CATALOG' ? allCatalogs : 
+                                                      selectedType === 'TYPE' ? allTypes : 
+                                                      selectedType === 'CATEGORY' ? allCategories : 
+                                                      selectedType === 'SUB_CATEGORY' ? allSubCategories : 
+                                                      []).map(child => (
+                                                        <button
+                                                            key={child.id}
+                                                            onClick={() => toggleChildSelection(child.id)}
+                                                            className={`flex items-center gap-2 p-2.5 rounded-xl text-[11px] font-bold text-left transition-all border ${
+                                                                selectedChildIds.includes(child.id)
+                                                                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-md ring-2 ring-emerald-500/20'
+                                                                    : 'bg-white dark:bg-[#1a1c23] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800 hover:border-emerald-500/50 hover:bg-emerald-50/10'
+                                                            }`}
+                                                        >
+                                                            <div className={`flex-shrink-0 w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${
+                                                                selectedChildIds.includes(child.id) ? 'bg-white border-white' : 'border-gray-300 dark:border-gray-600'
+                                                            }`}>
+                                                                {selectedChildIds.includes(child.id) && <Check size={10} className="text-emerald-600 font-black" />}
+                                                            </div>
+                                                            <span className="truncate">{child.value}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div className="p-2 bg-gray-100/50 dark:bg-gray-800/50 text-[10px] text-center text-gray-400 font-bold tracking-wide">
+                                                    {selectedChildIds.length} items selected
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* PARENT CONTEXT AREA */}
+                            {selectedType !== 'POOL' && (
+                                <div className="space-y-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in slide-in-from-bottom-2">
+                                    <div className="flex items-center justify-between px-1">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
+                                            <Network size={12} />
+                                            Parent Context ({selectedType === 'CATALOG' ? 'POOLS' : selectedType === 'TYPE' ? 'CATALOGS' : selectedType === 'CATEGORY' ? 'TYPES' : 'CATEGORIES'})
+                                        </label>
+                                        <span className={`text-[10px] font-black px-3 py-1 rounded-full ${selectedParentIds.length ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                                            {selectedParentIds.length} Active Parents
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[160px] overflow-y-auto p-4 bg-blue-50/20 dark:bg-blue-900/5 rounded-3xl border border-blue-100/50 dark:border-blue-900/10 custom-scrollbar">
                                         {(selectedType === 'CATALOG' ? allPools : 
-                                          selectedType === 'TYPE' ? allCatalogs : 
-                                          selectedType === 'CATEGORY' ? allTypes : 
-                                          allCategories).map(parent => (
+                                            selectedType === 'TYPE' ? allCatalogs : 
+                                            selectedType === 'CATEGORY' ? allTypes : 
+                                            allCategories).map(parent => (
                                             <button
                                                 key={parent.id}
                                                 onClick={() => toggleParentSelection(parent.id)}
@@ -1015,64 +1109,37 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                             </button>
                                         ))}
                                     </div>
-                                    <p className="text-[10px] text-gray-400 text-center italic font-medium">Link this {selectedType.toLowerCase().replace('_', ' ')} to one or more parents.</p>
+                                    <p className="text-[10px] text-gray-400 text-center italic font-medium">
+                                        Items will be linked to the selected parents.
+                                    </p>
                                 </div>
                             )}
 
-                            {/* --- "Link Existing" Section (Only when Creating New && Parent Context Exists) --- */}
-                            {!editingOption && selectedType !== 'POOL' && (selectedPoolId || selectedCatalogId || selectedTypeId || selectedParentId) && (
-                                <div className="space-y-4 animate-in slide-in-from-top-4 duration-500 pt-4 border-t border-gray-100 dark:border-gray-800">
-                                    <div className="flex items-center justify-between px-1">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Link Existing {selectedType.replace('_', ' ')}s</label>
-                                        <span className="text-[10px] font-black bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 px-3 py-1 rounded-full">{selectedChildIds.length} Linked</span>
-                                    </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[220px] overflow-y-auto p-4 bg-emerald-50/30 dark:bg-emerald-900/10 rounded-3xl border border-emerald-100 dark:border-emerald-900/20 custom-scrollbar">
-                                        {(selectedType === 'CATALOG' ? allCatalogs : 
-                                          selectedType === 'TYPE' ? allTypes : 
-                                          selectedType === 'CATEGORY' ? allCategories : 
-                                          allSubCategories).map(child => (
-                                            <button
-                                                key={child.id}
-                                                onClick={() => toggleChildSelection(child.id)}
-                                                className={`flex items-center gap-3 p-3 rounded-2xl text-[11px] font-bold text-left transition-all border ${
-                                                    selectedChildIds.includes(child.id)
-                                                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
-                                                        : 'bg-white dark:bg-[#1a1c23] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800 hover:border-emerald-500/50'
-                                                }`}
-                                            >
-                                                <div className={`flex-shrink-0 w-4 h-4 rounded-md border-2 flex items-center justify-center transition-colors ${
-                                                    selectedChildIds.includes(child.id) ? 'bg-white border-white' : 'border-gray-300 dark:border-gray-600'
-                                                }`}>
-                                                    {selectedChildIds.includes(child.id) && <Check size={10} className="text-emerald-600 font-black" />}
-                                                </div>
-                                                <span className="truncate">{child.value}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <p className="text-[10px] text-gray-400 text-center italic font-medium">Select existing items to add to this group.</p>
-                                </div>
-                            )}
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="px-10 py-8 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-4 bg-gray-50/50 dark:bg-gray-800/20">
+                        <div className="px-10 py-6 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-4 bg-gray-50/50 dark:bg-gray-800/20 flex-shrink-0">
                             <button
                                 onClick={() => setIsModalOpen(false)}
-                                className="px-8 py-3 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
+                                className="px-8 py-4 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
                             >
                                 Discard
                             </button>
                             <button
                                 onClick={handleSave}
-                                disabled={isSaving || (!value.trim() && !(!editingOption && selectedType !== 'POOL' && (selectedChildIds.length > 0 || value.trim())))} // Enable if value OR (in manage mode and child ids changed)
-                                className="flex items-center gap-3 px-10 py-4 text-xs font-black uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 rounded-2xl transition-all shadow-2xl shadow-blue-500/40 disabled:opacity-50 active:scale-95 group/btn"
+                                disabled={isSaving || (!value.trim() && selectedChildIds.length === 0)}
+                                className={`flex items-center gap-3 px-10 py-4 text-xs font-black uppercase tracking-widest text-white rounded-2xl transition-all shadow-2xl disabled:opacity-50 active:scale-95 group/btn ${
+                                    value ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/40' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/40'
+                                }`}
                             >
                                 {isSaving ? (
                                     <div className="w-4 h-4 border-4 border-white/30 border-t-white rounded-full animate-spin" />
                                 ) : (
                                     <Save size={18} className="group-hover/btn:rotate-12 transition-transform" />
                                 )}
-                                <span>{editingOption ? 'Update Attribute' : 'Authorize & Save'}</span>
+                                <span>
+                                    {editingOption ? 'Update Attribute' : value ? 'Create & Link' : `Link ${selectedChildIds.length} Items`}
+                                </span>
                             </button>
                         </div>
                     </div>
