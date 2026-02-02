@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Item, AttributeOption, Supplier, Site } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
+import { HierarchyManager } from '../utils/hierarchyManager';
 
 interface ItemWizardProps {
     isOpen: boolean;
@@ -249,95 +250,123 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                         )}
 
                         {/* STEP 2: CLASSIFICATION */}
+                        {/* STEP 2: CLASSIFICATION */}
                         {currentStep === 1 && (
                             <div className="space-y-6">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Catalog</label>
-                                    <select 
-                                        value={formData.itemCatalog || ''}
-                                        onChange={(e) => handleInputChange('itemCatalog', e.target.value)}
-                                        className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                    >
-                                        <option value="">Select Catalog...</option>
-                                        {catalogs.map(opt => (
-                                            <option key={opt.id} value={opt.value}>{opt.value}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Category *</label>
-                                        <button 
-                                            type="button" 
-                                            onClick={() => setShowNewCatInput(!showNewCatInput)}
-                                            className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                                        >
-                                            <Plus size={12} /> Add New
-                                        </button>
-                                    </div>
-                                    
-                                    {showNewCatInput ? (
-                                        <div className="flex gap-2">
-                                            <input 
-                                                autoFocus
-                                                type="text" 
-                                                value={newCategory}
-                                                onChange={(e) => setNewCategory(e.target.value)}
-                                                className="flex-1 p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white"
-                                                placeholder="New Category Name"
-                                            />
-                                            <button onClick={handleAddCategory} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Add</button>
-                                        </div>
-                                    ) : (
+                                <div className="grid grid-cols-2 gap-6">
+                                    {/* Level 1: POOL */}
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Item Pool *</label>
                                         <select 
-                                            value={formData.category || ''}
-                                            onChange={(e) => handleInputChange('category', e.target.value)}
-                                            className={`w-full p-3 rounded-lg border ${errors.category ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'} dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none`}
+                                            value={formData.itemPool || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setFormData(prev => ({ 
+                                                    ...prev, 
+                                                    itemPool: val,
+                                                    itemCatalog: '',
+                                                    itemType: '',
+                                                    category: '',
+                                                    subCategory: ''
+                                                }));
+                                            }}
+                                            className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                                         >
-                                            <option value="">Select Category...</option>
-                                            {categories.map(opt => (
-                                                <option key={opt.id} value={opt.value}>{opt.value}</option>
+                                            <option value="">Select Pool...</option>
+                                            {HierarchyManager.getPools().map(p => (
+                                                <option key={p} value={p}>{p}</option>
                                             ))}
                                         </select>
-                                    )}
-                                    {errors.category && <p className="text-xs text-red-500">{errors.category}</p>}
-                                </div>
+                                    </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Sub Category</label>
-                                    <select 
-                                        value={formData.subCategory || ''}
-                                        onChange={(e) => handleInputChange('subCategory', e.target.value)}
-                                        className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                    >
-                                        <option value="">Select Sub Category...</option>
-                                        {subcategories
-                                            .filter(s => {
-                                                if (!formData.category) return true; // Show all if no category selected
-                                                const selectedCat = categories.find(c => c.value === formData.category);
-                                                if (!selectedCat) return true;
-                                                return (s.parentIds?.includes(selectedCat.id)) || (s.parentId === selectedCat.id);
-                                            })
-                                            .map(opt => (
-                                                <option key={opt.id} value={opt.value}>{opt.value}</option>
-                                            ))
-                                        }
-                                    </select>
-                                </div>
+                                    {/* Level 2: CATALOG */}
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Catalog *</label>
+                                        <select 
+                                            value={formData.itemCatalog || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setFormData(prev => ({ 
+                                                    ...prev, 
+                                                    itemCatalog: val,
+                                                    itemType: '',
+                                                    category: '',
+                                                    subCategory: ''
+                                                }));
+                                            }}
+                                            disabled={!formData.itemPool}
+                                            className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                                        >
+                                            <option value="">Select Catalog...</option>
+                                            {HierarchyManager.getCatalogs(formData.itemPool || '').map(c => (
+                                                <option key={c} value={c}>{c}</option>
+                                            ))}
+                                        </select>
+                                    </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Item Pool</label>
-                                    <select 
-                                        value={formData.itemPool || ''}
-                                        onChange={(e) => handleInputChange('itemPool', e.target.value)}
-                                        className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                    >
-                                        <option value="">Select Pool...</option>
-                                        {pools.map(opt => (
-                                            <option key={opt.id} value={opt.value}>{opt.value}</option>
-                                        ))}
-                                    </select>
+                                    {/* Level 3: TYPE */}
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Type *</label>
+                                        <select 
+                                            value={formData.itemType || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setFormData(prev => ({ 
+                                                    ...prev, 
+                                                    itemType: val,
+                                                    category: '',
+                                                    subCategory: ''
+                                                }));
+                                            }}
+                                            disabled={!formData.itemCatalog}
+                                            className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                                        >
+                                            <option value="">Select Type...</option>
+                                            {HierarchyManager.getTypes(formData.itemPool || '', formData.itemCatalog || '').map(t => (
+                                                <option key={t} value={t}>{t}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Level 4: CATEGORY */}
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Category *</label>
+                                        <select 
+                                            value={formData.category || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setFormData(prev => ({ 
+                                                    ...prev, 
+                                                    category: val,
+                                                    subCategory: ''
+                                                }));
+                                            }}
+                                            disabled={!formData.itemType}
+                                            className={`w-full p-3 rounded-lg border ${errors.category ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'} dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50`}
+                                        >
+                                            <option value="">Select Category...</option>
+                                            {HierarchyManager.getCategories(formData.itemPool || '', formData.itemCatalog || '', formData.itemType || '').map(c => (
+                                                <option key={c} value={c}>{c}</option>
+                                            ))}
+                                        </select>
+                                        {errors.category && <p className="text-xs text-red-500">{errors.category}</p>}
+                                    </div>
+
+                                    {/* Level 5: SUB-CATEGORY */}
+                                    <div className="space-y-2 col-span-2">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Sub Category</label>
+                                        <select 
+                                            value={formData.subCategory || ''}
+                                            onChange={(e) => handleInputChange('subCategory', e.target.value)}
+                                            disabled={!formData.category}
+                                            className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                                        >
+                                            <option value="">Select Sub-Category...</option>
+                                            {HierarchyManager.getSubCategories(formData.itemPool || '', formData.itemCatalog || '', formData.itemType || '', formData.category || '').map(s => (
+                                                <option key={s} value={s}>{s}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         )}

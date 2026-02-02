@@ -19,13 +19,14 @@ import { normalizeItemCode } from '../utils/normalization';
 import { useLocation } from 'react-router-dom';
 import AdminAccessHub from './AdminAccessHub';
 import AdminMigration from './AdminMigration';
-import HierarchySeeder from './HierarchySeeder';
+
 import StockMappingConfirmation from './StockMappingConfirmation';
 import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser';
 import { ConfirmDialog } from './ConfirmDialog';
 import * as XLSX from 'xlsx';
 import CatalogManagement from './CatalogManagement'; // Import CatalogManagement
 import { ItemWizard } from './ItemWizard';
+import { HierarchyManager } from '../utils/hierarchyManager';
 import { seedCatalogData } from '../utils/catalogSeeder';
 
 
@@ -466,6 +467,19 @@ const Settings = () => {
   useEffect(() => { setTeamsUrlForm(teamsWebhookUrl); }, [teamsWebhookUrl]);
 
   const [itemFilters, setItemFilters] = useState<Record<string, string>>({});
+  
+  // --- Hierarchy Filters ---
+  const [filterPool, setFilterPool] = useState('');
+  const [filterCatalog, setFilterCatalog] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterSubCategory, setFilterSubCategory] = useState('');
+
+  // Auto-reset down-stream filters
+  useEffect(() => { setFilterCatalog(''); setFilterType(''); setFilterCategory(''); setFilterSubCategory(''); }, [filterPool]);
+  useEffect(() => { setFilterType(''); setFilterCategory(''); setFilterSubCategory(''); }, [filterCatalog]);
+  useEffect(() => { setFilterCategory(''); setFilterSubCategory(''); }, [filterType]);
+  useEffect(() => { setFilterSubCategory(''); }, [filterCategory]);
 
   // --- Derived Data ---
   const filteredSnapshots = stockSnapshots.filter(s => {
@@ -1177,6 +1191,52 @@ if __name__ == "__main__":
                 </div>
             </div>
 
+            {/* Hierarchy Filter Bar */}
+            <div className="bg-white dark:bg-[#1e2029] p-3 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-wrap gap-3 shrink-0 items-center mb-4">
+                <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase mr-2">
+                    <Filter size={14}/> Filters
+                </div>
+                
+                <select className="input-field w-32 py-1.5 text-xs" value={filterPool} onChange={e => setFilterPool(e.target.value)}>
+                    <option value="">All Pools</option>
+                    {HierarchyManager.getPools().map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+
+                <ChevronRight size={14} className="text-gray-300"/>
+
+                <select className="input-field w-32 py-1.5 text-xs" value={filterCatalog} onChange={e => setFilterCatalog(e.target.value)} disabled={!filterPool}>
+                    <option value="">All Catalogs</option>
+                    {HierarchyManager.getCatalogs(filterPool).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+
+                <ChevronRight size={14} className="text-gray-300"/>
+
+                <select className="input-field w-32 py-1.5 text-xs" value={filterType} onChange={e => setFilterType(e.target.value)} disabled={!filterCatalog}>
+                    <option value="">All Types</option>
+                    {HierarchyManager.getTypes(filterPool, filterCatalog).map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                
+                <ChevronRight size={14} className="text-gray-300"/>
+
+                <select className="input-field w-32 py-1.5 text-xs" value={filterCategory} onChange={e => setFilterCategory(e.target.value)} disabled={!filterType}>
+                    <option value="">All Categories</option>
+                    {HierarchyManager.getCategories(filterPool, filterCatalog, filterType).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+
+                <ChevronRight size={14} className="text-gray-300"/>
+
+                <select className="input-field w-32 py-1.5 text-xs" value={filterSubCategory} onChange={e => setFilterSubCategory(e.target.value)} disabled={!filterCategory}>
+                    <option value="">All Sub Cats</option>
+                    {HierarchyManager.getSubCategories(filterPool, filterCatalog, filterType, filterCategory).map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                
+                {(filterPool || filterCatalog || filterType || filterCategory || filterSubCategory) && (
+                    <button onClick={() => setFilterPool('')} className="ml-auto text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1">
+                        <X size={12}/> Clear
+                    </button>
+                )}
+            </div>
+
             {/* Table Area - Scrollable */}
             <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow border border-gray-200 dark:border-gray-800 flex-1 overflow-hidden flex flex-col">
                 <div className="overflow-auto flex-1">
@@ -1252,6 +1312,14 @@ if __name__ == "__main__":
                                             if (itemVal !== filterVal) return false;
                                         }
                                     }
+
+                                    // 3. Hierarchy Filters
+                                    if (filterPool && i.itemPool !== filterPool) return false;
+                                    if (filterCatalog && i.itemCatalog !== filterCatalog) return false;
+                                    if (filterType && i.itemType !== filterType) return false;
+                                    if (filterCategory && i.category !== filterCategory) return false;
+                                    if (filterSubCategory && i.subCategory !== filterSubCategory) return false;
+
                                     return true;
                                 }).map(item => (
                                         <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
@@ -3040,7 +3108,7 @@ if __name__ == "__main__":
       {activeTab === 'MIGRATION' && (
           <div className="animate-fade-in max-w-4xl mx-auto">
               <AdminMigration />
-              <HierarchySeeder />
+
           </div>
       )}
       
