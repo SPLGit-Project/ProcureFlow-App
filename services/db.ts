@@ -833,7 +833,7 @@ export const db = {
              type: o.type,
              value: o.value,
              parentId: o.parent_id,
-             parentIds: o.parent_ids || [],
+             parentIds: (o.parent_ids && o.parent_ids.length > 0) ? o.parent_ids : (o.parent_id ? [o.parent_id] : []),
              activeFlag: o.active_flag,
              createdAt: o.created_at,
              updatedAt: o.updated_at

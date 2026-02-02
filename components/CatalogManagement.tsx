@@ -233,10 +233,10 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         };
 
         const poolNodes = buildLevel(pools, 1, [], o => []); // Pools have no parents (or root)
-        const catalogNodes = buildLevel(catalogs, 2, poolNodes, o => o.parentIds || []);
-        const typeNodes = buildLevel(types, 3, catalogNodes, o => o.parentIds || []);
-        const categoryNodes = buildLevel(categories, 4, typeNodes, o => o.parentIds || []);
-        const subCategoryNodes = buildLevel(subCategories, 5, categoryNodes, o => o.parentIds || []);
+        const catalogNodes = buildLevel(catalogs, 2, poolNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
+        const typeNodes = buildLevel(types, 3, catalogNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
+        const categoryNodes = buildLevel(categories, 4, typeNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
+        const subCategoryNodes = buildLevel(subCategories, 5, categoryNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
 
         // Center Root
         if (poolNodes.length > 0) {
