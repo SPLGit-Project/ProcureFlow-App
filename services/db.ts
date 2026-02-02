@@ -693,6 +693,36 @@ export const db = {
         return data?.display_id || po.id;
     },
     
+
+    updatePODetails: async (id: string, details: { clientName?: string, reasonForRequest?: string, comments?: string }): Promise<void> => {
+        const { error } = await supabase.from('po_requests').update({
+            customer_name: details.clientName,
+            reason_for_request: details.reasonForRequest,
+            comments: details.comments
+        }).eq('id', id);
+        if (error) throw error;
+    },
+
+    updateDeliveryHeader: async (id: string, updates: { docketNumber?: string, date?: string, receivedBy?: string }): Promise<void> => {
+        const payload: any = {};
+        if (updates.docketNumber !== undefined) payload.docket_number = updates.docketNumber;
+        if (updates.date !== undefined) payload.date = updates.date;
+        if (updates.receivedBy !== undefined) payload.received_by = updates.receivedBy;
+
+        const { error } = await supabase.from('deliveries').update(payload).eq('id', id);
+        if (error) throw error;
+    },
+
+    updateApprovalHistory: async (poId: string, approvalId: string, updates: { approverName?: string, date?: string, comments?: string }): Promise<void> => {
+        const payload: any = {};
+        if (updates.approverName !== undefined) payload.approver_name = updates.approverName;
+        if (updates.date !== undefined) payload.date = updates.date;
+        if (updates.comments !== undefined) payload.comments = updates.comments;
+
+        const { error } = await supabase.from('po_approvals').update(payload).eq('id', approvalId).eq('po_request_id', poId);
+        if (error) throw error;
+    },
+
     updateDeliveryLineFinanceInfo: async (lineId: string, updates: Partial<DeliveryLineItem>): Promise<void> => {
         const { error } = await supabase.from('delivery_lines').update({
             invoice_number: updates.invoiceNumber,

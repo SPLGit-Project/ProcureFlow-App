@@ -32,7 +32,10 @@ interface ParsedLine {
     mappedSku?: string;
     // New: Original Status Logic
     isPartial?: boolean;
-
+    // New: Historical Data
+    docketNum?: string;
+    invoiceNum?: string;
+    concurPoNum?: string;
 }
 
 interface ParsedPO {
@@ -44,6 +47,8 @@ interface ParsedPO {
     errors: string[];
     customerName?: string;
     comments?: string;
+    reason?: string;
+    approver?: string;
 }
 
 // Levenshtein implementation
@@ -162,7 +167,9 @@ const AdminMigration = () => {
                             isValid: true,
                             errors: [],
                             customerName: row['Customer Name'],
-                            comments: row['Comments']
+                            comments: row['Comments'],
+                            reason: row['Purchase Order Reason'],
+                            approver: row['Approver']
                         };
                     }
 
@@ -208,7 +215,10 @@ const AdminMigration = () => {
                         isValid,
                         error: isValid ? undefined : `Unknown SKU: ${sku}`,
                         mappedItemId,
-                        mappedSku
+                        mappedSku,
+                        docketNum: row['Delivery Docket'],
+                        invoiceNum: row['Inv #'],
+                        concurPoNum: row['Concur PO']
                     });
                 });
 
@@ -506,13 +516,28 @@ const AdminMigration = () => {
                         site_id: DEFAULT_SITE_ID,
                         total_amount: totalAmount,
                         customer_name: po.customerName || 'Civeo',
-                        reason_for_request: 'Historical Import',
+                        reason_for_request: po.reason || 'Historical Import',
                         comments: po.comments
                     }).select().single();
 
                     if (poErr) throw poErr;
+                    if (poErr) throw poErr;
                     poId = newPO.id;
+
+                    // 1b. Insert Approval
+                    if (po.approver) {
+                         await supabase.from('po_approvals').insert({
+                            po_request_id: poId,
+                            approver_name: po.approver,
+                            action: 'APPROVED',
+                            date: po.date.toISOString(), 
+                            comments: 'Historical Approval'
+                        });
+                    }
                 }
+                
+                // Track Created Delivery Headers: { "docketNum": "delivery_id" }
+                const deliveryIDMap: Record<string, string> = {};
 
                 // 2. Lines
                 for (const line of po.lines) {
@@ -552,7 +577,8 @@ const AdminMigration = () => {
                         quantity_ordered: line.qtyOrdered,
                         quantity_received: line.qtyReceived,
                         unit_price: line.unitPrice,
-                        total_price: line.totalPrice
+                        total_price: line.totalPrice,
+                        concur_po_number: line.concurPoNum
                     }).select().single();
 
                     if (lineErr) throw lineErr;
@@ -566,6 +592,38 @@ const AdminMigration = () => {
                             capitalized_date: line.capDate.toISOString(),
                             comments: line.capComments
                         });
+                    }
+
+                    // 4. Delivery Creation
+                     if (line.qtyReceived > 0) {
+                         const docketKey = line.docketNum || `Unknown`;
+                         
+                         let deliveryId = deliveryIDMap[docketKey];
+                         if (!deliveryId) {
+                             // Create Header
+                             const { data: newDel, error: delErr } = await supabase.from('deliveries').insert({
+                                 po_request_id: poId,
+                                 date: (line.capDate || po.date).toISOString(),
+                                 docket_number: docketKey,
+                                 received_by: 'Migration'
+                             }).select().single();
+                             
+                             if (delErr) {
+                                  console.error("Delivery Header Error", delErr);
+                             } else {
+                                  deliveryId = newDel.id;
+                                  deliveryIDMap[docketKey] = deliveryId;
+                             }
+                         }
+
+                         if (deliveryId) {
+                             await supabase.from('delivery_lines').insert({
+                                 delivery_id: deliveryId,
+                                 po_line_id: newLine.id,
+                                 quantity: line.qtyReceived,
+                                 invoice_number: line.invoiceNum
+                             });
+                         }
                     }
                 }
                 successCount++;

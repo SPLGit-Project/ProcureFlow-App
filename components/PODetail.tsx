@@ -6,6 +6,8 @@ import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Cale
 import { DeliveryHeader } from '../types';
 import DeliveryModal from './DeliveryModal';
 import ConcurExportModal from './ConcurExportModal';
+import { db } from '../services/db';
+import { Save, Edit2 } from 'lucide-react';
 
 const PODetail = () => {
   const { id } = useParams();
@@ -17,6 +19,10 @@ const PODetail = () => {
   const [isConcurModalOpen, setIsConcurModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [concurInput, setConcurInput] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  
+  // Local state for edits
+  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: '', comments: '' });
 
   const po = pos.find(p => p.id === id);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -154,6 +160,54 @@ const PODetail = () => {
       setIsDeliveryModalOpen(false);
   };
 
+  const handleStartEdit = () => {
+       if (!po) return;
+       setHeaderEdits({
+           clientName: po.customerName || '',
+           reason: po.reasonForRequest || '',
+           comments: po.comments || ''
+       });
+       setIsEditing(true);
+  };
+
+  const handleSaveHeader = async () => {
+       if (!po) return;
+       try {
+           await db.updatePODetails(po.id, {
+               clientName: headerEdits.clientName,
+               reasonForRequest: headerEdits.reason,
+               comments: headerEdits.comments
+           });
+           setIsEditing(false);
+           window.location.reload(); 
+       } catch (err: any) {
+           console.error(err);
+           alert('Failed to save changes: ' + err.message);
+       }
+  };
+
+  const handleUpdateDeliveryHeader = async (delId: string, field: string, val: string) => {
+      try {
+          const updates: any = {};
+          if (field === 'docket') updates.docketNumber = val;
+          if (field === 'date') updates.date = val;
+          if (field === 'receivedBy') updates.receivedBy = val;
+          
+          await db.updateDeliveryHeader(delId, updates);
+      } catch (e: any) {
+          console.error(e);
+          alert("Failed to update delivery: " + e.message);
+      }
+  };
+  
+  const handleUpdateInvoice = async (lineId: string, val: string) => {
+      try {
+           await db.updateDeliveryLineFinanceInfo(lineId, { invoiceNumber: val });
+      } catch (e: any) {
+           console.error(e);
+      }
+  };
+
   return (
     <div className="max-w-6xl mx-auto pb-20">
       <button onClick={() => navigate(-1)} className="flex items-center text-gray-500 hover:text-gray-900 dark:hover:text-white mb-6 transition-colors font-medium text-sm">
@@ -176,12 +230,24 @@ const PODetail = () => {
                     {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur Sync' : po.status.replace(/_/g, ' ')}
                   </span>
               </div>
-              <p className="text-gray-500 dark:text-gray-400 text-sm flex items-center gap-1">
-                  <Calendar size={14}/> {new Date(po.requestDate).toLocaleDateString()} by <span className="text-gray-700 dark:text-gray-300 font-medium">{po.requesterName}</span>
-              </p>
-           </div>
-           
-           <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+               <p className="text-gray-500 dark:text-gray-400 text-sm flex items-center gap-1">
+                   <Calendar size={14}/> {new Date(po.requestDate).toLocaleDateString()} by <span className="text-gray-700 dark:text-gray-300 font-medium">{po.requesterName}</span>
+               </p>
+            </div>
+            
+            <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+               {/* Admin Edit Toggle */}
+               {currentUser?.role === 'ADMIN' && (
+                   !isEditing ? (
+                       <button onClick={handleStartEdit} className="p-2.5 text-gray-500 hover:text-gray-900 border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors">
+                           <Edit2 size={18} />
+                       </button>
+                   ) : (
+                       <button onClick={handleSaveHeader} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm">
+                           <Save size={18} />
+                       </button>
+                   )
+               )}
               {canApprove && (
                   <>
                     <button onClick={() => handleApproval(false)} className="flex-1 lg:flex-none justify-center px-4 py-2.5 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-2 font-medium">
@@ -222,35 +288,56 @@ const PODetail = () => {
         </div>
 
         {/* Additional Request Details */}
-        {(po.customerName || po.reasonForRequest || po.comments) && (
+        {(po.customerName || po.reasonForRequest || po.comments || isEditing) && (
             <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl p-4 border border-gray-100 dark:border-gray-800 mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                {po.customerName && (
-                    <div className="flex gap-3 items-start">
-                        <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><User size={16}/></div>
-                        <div>
-                            <p className="text-xs text-gray-500 uppercase font-bold">Customer</p>
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">{po.customerName}</p>
-                        </div>
+                <div className="flex gap-3 items-start">
+                    <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><User size={16}/></div>
+                    <div className="w-full">
+                        <p className="text-xs text-gray-500 uppercase font-bold">Customer</p>
+                        {isEditing ? (
+                            <input 
+                                className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                value={headerEdits.clientName}
+                                onChange={e => setHeaderEdits({...headerEdits, clientName: e.target.value})}
+                            />
+                        ) : (
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{po.customerName || '-'}</p>
+                        )}
                     </div>
-                )}
-                {po.reasonForRequest && (
-                    <div className="flex gap-3 items-start">
-                        <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><Info size={16}/></div>
-                        <div>
-                            <p className="text-xs text-gray-500 uppercase font-bold">Reason</p>
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">{po.reasonForRequest}</p>
-                        </div>
+                </div>
+
+                <div className="flex gap-3 items-start">
+                    <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><Info size={16}/></div>
+                    <div className="w-full">
+                        <p className="text-xs text-gray-500 uppercase font-bold">Reason</p>
+                         {isEditing ? (
+                            <input 
+                                className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                value={headerEdits.reason}
+                                onChange={e => setHeaderEdits({...headerEdits, reason: e.target.value})}
+                            />
+                        ) : (
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{po.reasonForRequest || '-'}</p>
+                        )}
                     </div>
-                )}
-                {po.comments && (
-                    <div className="flex gap-3 items-start md:col-span-1">
-                        <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><FileText size={16}/></div>
-                        <div>
-                            <p className="text-xs text-gray-500 uppercase font-bold">Comments</p>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 italic">"{po.comments}"</p>
-                        </div>
+                </div>
+
+                <div className="flex gap-3 items-start md:col-span-1">
+                    <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><FileText size={16}/></div>
+                    <div className="w-full">
+                        <p className="text-xs text-gray-500 uppercase font-bold">Comments</p>
+                         {isEditing ? (
+                            <textarea 
+                                className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                rows={2}
+                                value={headerEdits.comments}
+                                onChange={e => setHeaderEdits({...headerEdits, comments: e.target.value})}
+                            />
+                        ) : (
+                            <p className="text-sm text-gray-600 dark:text-gray-300 italic">{po.comments ? `"${po.comments}"` : '-'}</p>
+                        )}
                     </div>
-                )}
+                </div>
             </div>
         )}
 
@@ -345,9 +432,35 @@ const PODetail = () => {
                                     <div className="flex items-center gap-3">
                                         <div className="bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 p-2 rounded-lg"><Truck size={18}/></div>
                                         <div>
-                                            <span className="font-bold text-gray-900 dark:text-white block text-sm md:text-base">{del.docketNumber}</span>
-                                            <span className="text-xs text-gray-500">{del.date} • {del.receivedBy}</span>
-                                        </div>
+                                            <span className="font-bold text-gray-900 dark:text-white block text-sm md:text-base">
+                                                {isEditing ? (
+                                                    <input 
+                                                        className="px-1 border rounded dark:bg-gray-800 dark:border-gray-700 text-sm"
+                                                        defaultValue={del.docketNumber}
+                                                        onBlur={(e) => handleUpdateDeliveryHeader(del.id, 'docket', e.target.value)}
+                                                    />
+                                                ) : del.docketNumber}
+                                            </span>
+                                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                                                 {isEditing ? (
+                                                    <>
+                                                        <input 
+                                                            type="date"
+                                                            className="px-1 border rounded dark:bg-gray-800 dark:border-gray-700 w-24"
+                                                            defaultValue={del.date.toString().split('T')[0]}
+                                                             onBlur={(e) => handleUpdateDeliveryHeader(del.id, 'date', e.target.value)}
+                                                        />
+                                                        •
+                                                        <input 
+                                                            className="px-1 border rounded dark:bg-gray-800 dark:border-gray-700 w-24"
+                                                            defaultValue={del.receivedBy}
+                                                            onBlur={(e) => handleUpdateDeliveryHeader(del.id, 'receivedBy', e.target.value)}
+                                                        />
+                                                    </>
+                                                 ) : (
+                                                    `${del.date} • ${del.receivedBy}`
+                                                 )}
+                                            </span>
                                     </div>
                                 </div>
                                 <div className="p-4 bg-white dark:bg-[#1e2029]">
@@ -370,9 +483,18 @@ const PODetail = () => {
                                                         
                                                         {/* Invoice - Read Only */}
                                                         <td className="py-3 pl-4 hidden md:table-cell">
-                                                            <span className="text-gray-700 dark:text-gray-300 font-mono text-xs bg-gray-100 dark:bg-white/5 px-2 py-1 rounded">
-                                                                {dLine.invoiceNumber || '-'}
-                                                            </span>
+                                                            {isEditing ? (
+                                                                <input 
+                                                                    className="w-24 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                                    defaultValue={dLine.invoiceNumber || ''}
+                                                                    onBlur={(e) => handleUpdateInvoice(dLine.id, e.target.value)}
+                                                                    placeholder="Inv #"
+                                                                />
+                                                            ) : (
+                                                                <span className="text-gray-700 dark:text-gray-300 font-mono text-xs bg-gray-100 dark:bg-white/5 px-2 py-1 rounded">
+                                                                    {dLine.invoiceNumber || '-'}
+                                                                </span>
+                                                            )}
                                                         </td>
 
                                                         {/* Capitalisation - Read Only */}
