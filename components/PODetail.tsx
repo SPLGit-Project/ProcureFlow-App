@@ -461,6 +461,7 @@ const PODetail = () => {
                                                     `${del.date} • ${del.receivedBy}`
                                                  )}
                                             </span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="p-4 bg-white dark:bg-[#1e2029]">
