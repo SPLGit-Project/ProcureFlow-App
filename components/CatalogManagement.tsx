@@ -77,6 +77,10 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     };
 
     // Data Filtering
+    // Data Filtering & Memoization for Modal Lists
+    const allPools = useMemo(() => safeOptions.filter(o => o.type === 'POOL').sort((a,b) => a.value.localeCompare(b.value)), [safeOptions]);
+    const allCatalogs = useMemo(() => safeOptions.filter(o => o.type === 'CATALOG').sort((a,b) => a.value.localeCompare(b.value)), [safeOptions]);
+    const allTypes = useMemo(() => safeOptions.filter(o => o.type === 'TYPE').sort((a,b) => a.value.localeCompare(b.value)), [safeOptions]);
     const allCategories = useMemo(() => safeOptions.filter(o => o.type === 'CATEGORY').sort((a,b) => a.value.localeCompare(b.value)), [safeOptions]);
     const allSubCategories = useMemo(() => safeOptions.filter(o => o.type === 'SUB_CATEGORY').sort((a,b) => a.value.localeCompare(b.value)), [safeOptions]);
     
@@ -104,7 +108,17 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             setEditingOption(null);
             setValue('');
             setSelectedType(forcedType || (activeTabId === 'TAXONOMY' ? 'CATEGORY' : activeTabId as AttributeType));
-            setSelectedParentIds(forcedType === 'SUB_CATEGORY' && selectedParentId ? [selectedParentId] : []);
+            
+            // Smart Parent Pre-selection
+            let defaultParents: string[] = [];
+            const targetType = forcedType || (activeTabId === 'TAXONOMY' ? 'CATEGORY' : activeTabId as AttributeType);
+            
+            if (targetType === 'CATALOG' && selectedPoolId) defaultParents = [selectedPoolId];
+            else if (targetType === 'TYPE' && selectedCatalogId) defaultParents = [selectedCatalogId];
+            else if (targetType === 'CATEGORY' && selectedTypeId) defaultParents = [selectedTypeId];
+            else if (targetType === 'SUB_CATEGORY' && selectedParentId) defaultParents = [selectedParentId];
+            
+            setSelectedParentIds(defaultParents);
         }
         setIsModalOpen(true);
     };
@@ -117,7 +131,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                 id: editingOption?.id,
                 type: selectedType,
                 value: value.trim(),
-                parentIds: selectedType === 'SUB_CATEGORY' ? selectedParentIds : [],
+                parentIds: selectedType !== 'POOL' ? selectedParentIds : [],
                 activeFlag: true
             });
             success(`${selectedType} saved successfully`);
@@ -156,6 +170,22 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     }, [selectedParentId, allSubCategories]);
 
     // --- 5-Level Hierarchy Mind Map Logic ---
+    const [expandedNodeIds, setExpandedNodeIds] = useState<string[]>([]);
+
+    // Initialize with pools expanded
+    useEffect(() => {
+        if (expandedNodeIds.length === 0 && safeOptions.length > 0) {
+            setExpandedNodeIds(safeOptions.filter(o => o.type === 'POOL').map(o => o.id));
+        }
+    }, [safeOptions, expandedNodeIds.length]);
+
+    const toggleNodeExpansion = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setExpandedNodeIds(prev => 
+            prev.includes(id) ? prev.filter(n => n !== id) : [...prev, id]
+        );
+    };
+
     const mindMapData = useMemo(() => {
         // 1. Organize Data by Type
         const pools = safeOptions.filter(o => o.type === 'POOL');
@@ -256,11 +286,20 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             return myNodes;
         };
 
-        const poolNodes = buildLevel(pools, 1, [], o => []); // Pools have no parents (or root)
-        const catalogNodes = buildLevel(catalogs, 2, poolNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
-        const typeNodes = buildLevel(types, 3, catalogNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
-        const categoryNodes = buildLevel(categories, 4, typeNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
-        const subCategoryNodes = buildLevel(subCategories, 5, categoryNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
+        const poolNodes = buildLevel(pools, 1, [], o => []);
+        
+        // Filter children based on expanded parents
+        const activeCatalogs = catalogs.filter(c => (c.parentIds || []).some(pid => expandedNodeIds.includes(pid)) || (c.parentId && expandedNodeIds.includes(c.parentId)));
+        const catalogNodes = buildLevel(activeCatalogs, 2, poolNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
+        
+        const activeTypes = types.filter(t => (t.parentIds || []).some(pid => expandedNodeIds.includes(pid)) || (t.parentId && expandedNodeIds.includes(t.parentId)));
+        const typeNodes = buildLevel(activeTypes, 3, catalogNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
+        
+        const activeCategories = categories.filter(c => (c.parentIds || []).some(pid => expandedNodeIds.includes(pid)) || (c.parentId && expandedNodeIds.includes(c.parentId)));
+        const categoryNodes = buildLevel(activeCategories, 4, typeNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
+        
+        const activeSubCategories = subCategories.filter(s => (s.parentIds || []).some(pid => expandedNodeIds.includes(pid)) || (s.parentId && expandedNodeIds.includes(s.parentId)));
+        const subCategoryNodes = buildLevel(activeSubCategories, 5, categoryNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
 
         // Center Root
         if (poolNodes.length > 0) {
@@ -268,7 +307,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         }
 
         return { nodes, links };
-    }, [safeOptions, items]);
+    }, [safeOptions, items, expandedNodeIds]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         setIsDragging(true);
@@ -392,10 +431,16 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                 setSelectedParentId(null);
                                                 scrollToRight();
                                             }}
-                                            className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedPoolId === pool.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                            className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedPoolId === pool.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
                                         >
                                             <span>{pool.value}</span>
-                                            {selectedPoolId === pool.id && <ChevronRight size={14} />}
+                                            <div className="flex items-center gap-2">
+                                                {selectedPoolId === pool.id && <ChevronRight size={14} />}
+                                                <div className={`flex gap-1 ${selectedPoolId === pool.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleOpenModal(pool); }} className={`p-1 ${selectedPoolId === pool.id ? 'hover:text-blue-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(pool.id); }} className={`p-1 ${selectedPoolId === pool.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
+                                                </div>
+                                            </div>
                                         </div>
                                     ))
                                 )}
@@ -440,10 +485,16 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                         setSelectedParentId(null);
                                                         scrollToRight();
                                                     }}
-                                                    className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedCatalogId === cat.id ? 'bg-emerald-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                                    className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedCatalogId === cat.id ? 'bg-emerald-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
                                                 >
                                                     <span>{cat.value}</span>
-                                                    {selectedCatalogId === cat.id && <ChevronRight size={14} />}
+                                                    <div className="flex items-center gap-2">
+                                                        {selectedCatalogId === cat.id && <ChevronRight size={14} />}
+                                                        <div className={`flex gap-1 ${selectedCatalogId === cat.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(cat); }} className={`p-1 ${selectedCatalogId === cat.id ? 'hover:text-emerald-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(cat.id); }} className={`p-1 ${selectedCatalogId === cat.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             ))}
                                             {safeOptions.filter(o => o.type === 'CATALOG' && (o.parentIds?.includes(selectedPoolId) || o.parentId === selectedPoolId)).length === 0 && (
@@ -492,10 +543,16 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                         setSelectedParentId(null);
                                                         scrollToRight();
                                                     }}
-                                                    className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedTypeId === type.id ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                                    className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedTypeId === type.id ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
                                                 >
                                                     <span>{type.value}</span>
-                                                    {selectedTypeId === type.id && <ChevronRight size={14} />}
+                                                    <div className="flex items-center gap-2">
+                                                        {selectedTypeId === type.id && <ChevronRight size={14} />}
+                                                        <div className={`flex gap-1 ${selectedTypeId === type.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(type); }} className={`p-1 ${selectedTypeId === type.id ? 'hover:text-purple-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(type.id); }} className={`p-1 ${selectedTypeId === type.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             ))}
                                             {safeOptions.filter(o => o.type === 'TYPE' && (o.parentIds?.includes(selectedCatalogId) || o.parentId === selectedCatalogId)).length === 0 && (
@@ -543,10 +600,16 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                         setSelectedParentId(cat.id);
                                                         scrollToRight();
                                                     }}
-                                                    className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedParentId === cat.id ? 'bg-amber-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                                    className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedParentId === cat.id ? 'bg-amber-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
                                                 >
                                                     <span>{cat.value}</span>
-                                                    {selectedParentId === cat.id && <ChevronRight size={14} />}
+                                                    <div className="flex items-center gap-2">
+                                                        {selectedParentId === cat.id && <ChevronRight size={14} />}
+                                                        <div className={`flex gap-1 ${selectedParentId === cat.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(cat); }} className={`p-1 ${selectedParentId === cat.id ? 'hover:text-amber-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(cat.id); }} className={`p-1 ${selectedParentId === cat.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             ))}
                                             {safeOptions.filter(o => o.type === 'CATEGORY' && (o.parentIds?.includes(selectedTypeId) || o.parentId === selectedTypeId)).length === 0 && (
@@ -769,10 +832,11 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
 
                                         {/* Expansion Indicator (+) */}
                                         {node.type !== 'SUB_CATEGORY' && (
-                                            <g transform={`translate(${node.width - 20}, ${node.height/2})`}>
-                                                <circle r={7} fill="currentColor" className="text-gray-200 dark:text-gray-800" />
-                                                <line x1={-3} y1={0} x2={3} y2={0} stroke="currentColor" strokeWidth={1.5} className="text-gray-600 dark:text-gray-400" />
-                                                <line x1={0} y1={-3} x2={0} y2={3} stroke="currentColor" strokeWidth={1.5} className="text-gray-600 dark:text-gray-400" />
+                                            <g transform={`translate(${node.width - 20}, ${node.height/2})`} onClick={(e) => toggleNodeExpansion(node.id, e)} className="cursor-pointer hover:scale-125 transition-transform">
+                                                <circle r={8} fill={expandedNodeIds.includes(node.id) ? "#ef4444" : "#22c55e"} className="opacity-20" />
+                                                <circle r={6} fill="none" stroke={expandedNodeIds.includes(node.id) ? "#ef4444" : "#22c55e"} strokeWidth={1.5} />
+                                                <line x1={-3} y1={0} x2={3} y2={0} stroke={expandedNodeIds.includes(node.id) ? "#ef4444" : "#22c55e"} strokeWidth={1.5} />
+                                                {!expandedNodeIds.includes(node.id) && <line x1={0} y1={-3} x2={0} y2={3} stroke="#22c55e" strokeWidth={1.5} />}
                                             </g>
                                         )}
                                     </g>
@@ -815,24 +879,34 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                         <div className="p-10 space-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
                             <div className="grid grid-cols-2 gap-4">
                                 <button 
-                                    onClick={() => setSelectedType('CATEGORY')}
-                                    className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all font-bold text-xs uppercase tracking-widest ${
-                                        selectedType === 'CATEGORY' 
-                                            ? 'bg-blue-600 border-blue-600 text-white shadow-lg' 
-                                            : 'bg-transparent border-gray-200 dark:border-gray-800 text-gray-400'
-                                    }`}
+                                    onClick={() => setSelectedType('POOL')}
+                                    className={`flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest ${selectedType === 'POOL' ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-200 text-gray-400'}`}
                                 >
-                                    <FolderTree size={16} /> Category
+                                    <Layers size={14} /> Pool
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedType('CATALOG')}
+                                    className={`flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest ${selectedType === 'CATALOG' ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-gray-200 text-gray-400'}`}
+                                >
+                                    <BookOpen size={14} /> Catalog
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedType('TYPE')}
+                                    className={`flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest ${selectedType === 'TYPE' ? 'bg-purple-600 border-purple-600 text-white' : 'border-gray-200 text-gray-400'}`}
+                                >
+                                    <Tag size={14} /> Type
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedType('CATEGORY')}
+                                    className={`flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest ${selectedType === 'CATEGORY' ? 'bg-amber-600 border-amber-600 text-white' : 'border-gray-200 text-gray-400'}`}
+                                >
+                                    <FolderTree size={14} /> Category
                                 </button>
                                 <button 
                                     onClick={() => setSelectedType('SUB_CATEGORY')}
-                                    className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all font-bold text-xs uppercase tracking-widest ${
-                                        selectedType === 'SUB_CATEGORY' 
-                                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' 
-                                            : 'bg-transparent border-gray-200 dark:border-gray-800 text-gray-400'
-                                    }`}
+                                    className={`col-span-2 flex items-center justify-center gap-2 p-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest ${selectedType === 'SUB_CATEGORY' ? 'bg-rose-600 border-rose-600 text-white' : 'border-gray-200 text-gray-400'}`}
                                 >
-                                    <Tag size={16} /> Sub-Category
+                                    <Network size={14} /> Sub-Category
                                 </button>
                             </div>
 
@@ -848,33 +922,36 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                 />
                             </div>
 
-                            {selectedType === 'SUB_CATEGORY' && (
+                            {selectedType !== 'POOL' && (
                                 <div className="space-y-4 animate-in slide-in-from-top-4 duration-500">
                                     <div className="flex items-center justify-between px-1">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Parent Associations</label>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Parent Associations ({selectedType === 'CATALOG' ? 'POOLS' : selectedType === 'TYPE' ? 'CATALOGS' : selectedType === 'CATEGORY' ? 'TYPES' : 'CATEGORIES'})</label>
                                         <span className="text-[10px] font-black bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400 px-3 py-1 rounded-full">{selectedParentIds.length} Linked</span>
                                     </div>
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[220px] overflow-y-auto p-4 bg-gray-50/50 dark:bg-black/20 rounded-3xl border border-gray-100 dark:border-gray-800 custom-scrollbar">
-                                        {allCategories.map(cat => (
+                                        {(selectedType === 'CATALOG' ? allPools : 
+                                          selectedType === 'TYPE' ? allCatalogs : 
+                                          selectedType === 'CATEGORY' ? allTypes : 
+                                          allCategories).map(parent => (
                                             <button
-                                                key={cat.id}
-                                                onClick={() => toggleParentSelection(cat.id)}
+                                                key={parent.id}
+                                                onClick={() => toggleParentSelection(parent.id)}
                                                 className={`flex items-center gap-3 p-3 rounded-2xl text-[11px] font-bold text-left transition-all border ${
-                                                    selectedParentIds.includes(cat.id)
+                                                    selectedParentIds.includes(parent.id)
                                                         ? 'bg-blue-600 border-blue-600 text-white shadow-md'
                                                         : 'bg-white dark:bg-[#1a1c23] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800 hover:border-blue-500/50'
                                                 }`}
                                             >
                                                 <div className={`flex-shrink-0 w-4 h-4 rounded-md border-2 flex items-center justify-center transition-colors ${
-                                                    selectedParentIds.includes(cat.id) ? 'bg-white border-white' : 'border-gray-300 dark:border-gray-600'
+                                                    selectedParentIds.includes(parent.id) ? 'bg-white border-white' : 'border-gray-300 dark:border-gray-600'
                                                 }`}>
-                                                    {selectedParentIds.includes(cat.id) && <Check size={10} className="text-blue-600 font-black" />}
+                                                    {selectedParentIds.includes(parent.id) && <Check size={10} className="text-blue-600 font-black" />}
                                                 </div>
-                                                <span className="truncate">{cat.value}</span>
+                                                <span className="truncate">{parent.value}</span>
                                             </button>
                                         ))}
                                     </div>
-                                    <p className="text-[10px] text-gray-400 text-center italic font-medium">Link this sub-category to one or more primary parent categories.</p>
+                                    <p className="text-[10px] text-gray-400 text-center italic font-medium">Link this {selectedType.toLowerCase().replace('_', ' ')} to one or more parents.</p>
                                 </div>
                             )}
                         </div>
@@ -889,7 +966,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                             </button>
                             <button
                                 onClick={handleSave}
-                                disabled={isSaving || !value.trim() || (selectedType === 'SUB_CATEGORY' && selectedParentIds.length === 0)}
+                                disabled={isSaving || !value.trim() || (selectedType !== 'POOL' && selectedParentIds.length === 0)}
                                 className="flex items-center gap-3 px-10 py-4 text-xs font-black uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 rounded-2xl transition-all shadow-2xl shadow-blue-500/40 disabled:opacity-50 active:scale-95 group/btn"
                             >
                                 {isSaving ? (
