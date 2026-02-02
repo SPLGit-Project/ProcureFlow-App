@@ -46,6 +46,11 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     const [selectedParentIds, setSelectedParentIds] = useState<string[]>([]);
     const [isSaving, setIsSaving] = useState(false);
 
+    // Hierarchy State
+    const [selectedPoolId, setSelectedPoolId] = useState<string | null>(null);
+    const [selectedCatalogId, setSelectedCatalogId] = useState<string | null>(null);
+    const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
+
     // Mind Map Zoom/Pan State
     const [scale, setScale] = useState(1);
     const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -329,157 +334,141 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             {/* Main Content Area */}
             <div className="flex-1 min-h-[600px] flex flex-col">
                 {viewMode === 'TAXONOMY' ? (
-                    /* UINFINED TAXONOMY VIEW (Split Perspective) */
-                    <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500">
-                        {/* Parent Categories Pane */}
-                        <div className="lg:col-span-4 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden group">
-                           <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center bg-gradient-to-r from-blue-50/20 to-transparent dark:from-blue-900/10 dark:to-transparent">
-                                <div>
-                                    <h4 className="text-sm font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                                        <FolderTree size={16} />
-                                        Categories
-                                    </h4>
-                                    <p className="text-[10px] text-gray-500 font-bold mt-1">Manage top-level classification</p>
-                                </div>
-                                <button 
-                                    onClick={() => handleOpenModal(undefined, 'CATEGORY')}
-                                    className="p-2 bg-blue-600 text-white rounded-xl hover:scale-110 active:scale-95 transition-all shadow-md"
-                                >
-                                    <Plus size={18} />
-                                </button>
-                           </div>
-                           <div className="p-4 bg-white dark:bg-[#1a1c23]/50">
-                                <div className="relative">
-                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                    <input 
-                                        type="text"
-                                        placeholder="Search categories..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full pl-9 pr-4 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#0f1115] outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
-                                    />
-                                </div>
-                           </div>
-                           <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
-                                {allCategories.filter(c => c.value.toLowerCase().includes(searchQuery.toLowerCase())).map(cat => (
+                    /* 5-LEVEL HIERARCHY TAXONOMY VIEW */
+                    <div className="flex-1 flex gap-4 overflow-x-auto p-4 custom-scrollbar">
+                        {/* 1. POOLS */}
+                        <div className="min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden">
+                            <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
+                                <h4 className="text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                                    <Layers size={14} /> Pools
+                                </h4>
+                                <button onClick={() => handleOpenModal(undefined, 'POOL')} className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg hover:bg-blue-200"><Plus size={14} /></button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                                {safeOptions.filter(o => o.type === 'POOL').sort((a,b) => a.value.localeCompare(b.value)).map(pool => (
                                     <div 
-                                        key={cat.id} 
-                                        onClick={() => setSelectedParentId(cat.id)}
-                                        className={`group/item relative flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all duration-300 border ${
-                                            selectedParentId === cat.id
-                                                ? 'bg-blue-600 border-blue-600 text-white shadow-xl shadow-blue-500/20 -translate-y-0.5'
-                                                : 'bg-white dark:bg-[#252833] border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/10'
-                                        }`}
+                                        key={pool.id}
+                                        onClick={() => { setSelectedPoolId(pool.id); setSelectedCatalogId(null); setSelectedTypeId(null); setSelectedParentId(null); }}
+                                        className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedPoolId === pool.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
                                     >
-                                        <div className="flex items-center gap-3 text-sm">
-                                            <div className={`p-2 rounded-xl border transition-colors ${selectedParentId === cat.id ? 'bg-white/20 border-white/30' : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700'}`}>
-                                                <FolderTree size={16} className={selectedParentId === cat.id ? 'text-white' : 'text-blue-500'} />
-                                            </div>
-                                            <span className="font-bold tracking-tight">{cat.value}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${selectedParentId === cat.id ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
-                                                {allSubCategories.filter(s => s.parentIds?.includes(cat.id) || s.parentId === cat.id).length}
-                                            </span>
-                                            {selectedParentId === cat.id ? (
-                                                <ChevronRight size={18} />
-                                            ) : (
-                                                <div className="opacity-0 group-hover/item:opacity-100 flex items-center gap-1 transition-all">
-                                                    <button onClick={(e) => { e.stopPropagation(); handleOpenModal(cat); }} className="p-1 hover:text-blue-500"><Edit2 size={12}/></button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(cat.id); }} className="p-1 hover:text-red-500"><Trash2 size={12}/></button>
-                                                </div>
-                                            )}
-                                        </div>
+                                        <span>{pool.value}</span>
+                                        {selectedPoolId === pool.id && <ChevronRight size={14} />}
                                     </div>
                                 ))}
-                           </div>
+                            </div>
                         </div>
 
-                        {/* Associated Sub-Categories Pane */}
-                        <div className="lg:col-span-8 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden">
-                           {selectedParentId ? (
-                               <>
-                                <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-500/20">
-                                            <FolderTree size={14} />
-                                            <span className="text-xs font-black uppercase tracking-wider">{allCategories.find(c => c.id === selectedParentId)?.value}</span>
-                                        </div>
-                                        <div className="h-4 w-px bg-gray-300 dark:bg-gray-700 mx-2" />
-                                        <h4 className="text-sm font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
-                                            <Tag size={16} />
-                                            Sub-Categories
-                                        </h4>
-                                    </div>
-                                    <button 
-                                        onClick={() => handleOpenModal(undefined, 'SUB_CATEGORY')}
-                                        className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl text-xs font-black hover:bg-blue-100 transition-all border border-blue-200 dark:border-blue-800"
-                                    >
-                                        <Plus size={16} /> Add Link
-                                    </button>
+                        {/* 2. CATALOGS */}
+                        {selectedPoolId && (
+                            <div className="min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+                                <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
+                                    <h4 className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                                        <BookOpen size={14} /> Catalogs
+                                    </h4>
+                                    <button onClick={() => handleOpenModal(undefined, 'CATALOG')} className="p-1.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-lg hover:bg-emerald-200"><Plus size={14} /></button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-slate-50/30 dark:bg-black/20">
-                                    {associatedSubCategories.length === 0 ? (
-                                        <div className="h-full flex flex-col items-center justify-center text-center p-12 space-y-6">
-                                            <div className="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center border-4 border-dashed border-gray-200 dark:border-gray-700">
-                                                <Tag size={40} className="text-gray-300 dark:text-gray-600" />
-                                            </div>
-                                            <div className="max-w-xs">
-                                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">No associations yet</h3>
-                                                <p className="text-sm text-gray-500 mt-2 font-medium">Link existng sub-categories or create new ones for this category.</p>
-                                            </div>
+                                <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                                    {safeOptions.filter(o => o.type === 'CATALOG' && (o.parentIds?.includes(selectedPoolId) || o.parentId === selectedPoolId)).sort((a,b) => a.value.localeCompare(b.value)).map(cat => (
+                                        <div 
+                                            key={cat.id}
+                                            onClick={() => { setSelectedCatalogId(cat.id); setSelectedTypeId(null); setSelectedParentId(null); }}
+                                            className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedCatalogId === cat.id ? 'bg-emerald-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                        >
+                                            <span>{cat.value}</span>
+                                            {selectedCatalogId === cat.id && <ChevronRight size={14} />}
                                         </div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {associatedSubCategories.map(sub => (
-                                                <div 
-                                                    key={sub.id} 
-                                                    className="group/sub relative p-5 rounded-3xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#252833] hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-500 flex items-center justify-between"
-                                                >
-                                                    <div className="flex items-center gap-4 overflow-hidden">
-                                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-2xl group-hover/sub:scale-110 transition-transform flex-shrink-0">
-                                                            <Tag size={18} className="text-blue-600 dark:text-blue-400" />
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <p className="font-black text-gray-900 dark:text-white tracking-tight truncate">{sub.value}</p>
-                                                            <div className="flex items-center gap-2 mt-1">
-                                                                <span className="text-[9px] font-black uppercase text-gray-400 tracking-tighter">Parents:</span>
-                                                                <div className="flex -space-x-1">
-                                                                    {(sub.parentIds || []).slice(0, 3).map((pid, idx) => {
-                                                                        const p = allCategories.find(c => c.id === pid);
-                                                                        return p ? (
-                                                                            <div key={idx} title={p.value} className="w-4 h-4 rounded-full bg-blue-100 dark:bg-blue-900 border border-white dark:border-gray-800 flex items-center justify-center text-[8px] font-bold text-blue-600">
-                                                                                {p.value.charAt(0)}
-                                                                            </div>
-                                                                        ) : null;
-                                                                    })}
-                                                                    {(sub.parentIds?.length || 0) > 3 && (
-                                                                        <div className="w-4 h-4 rounded-full bg-gray-100 dark:bg-gray-800 border border-white dark:border-gray-800 flex items-center justify-center text-[8px] font-bold text-gray-500">
-                                                                            +{(sub.parentIds?.length || 0) - 3}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex flex-col gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity translate-x-2 group-hover/sub:translate-x-0 ml-4 flex-shrink-0">
-                                                        <button onClick={() => handleOpenModal(sub)} className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors"><Edit2 size={14}/></button>
-                                                        <button onClick={() => handleDelete(sub.id)} className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"><Trash2 size={14}/></button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
+                                    ))}
+                                    {safeOptions.filter(o => o.type === 'CATALOG' && (o.parentIds?.includes(selectedPoolId) || o.parentId === selectedPoolId)).length === 0 && (
+                                        <div className="p-4 text-center text-xs text-gray-400 italic">No catalogs in this pool.</div>
                                     )}
                                 </div>
-                               </>
-                           ) : (
-                               <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-gray-50/20 dark:bg-black/10">
-                                    <Network size={64} className="text-gray-200 dark:text-gray-800 mb-6 animate-pulse" />
-                                    <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2 uppercase tracking-widest">Select a Category</h3>
-                                    <p className="text-gray-500 dark:text-gray-400 max-w-sm font-medium">Choose a category from the left to manage its hierarchical connections and properties.</p>
-                               </div>
-                           )}
-                        </div>
+                            </div>
+                        )}
+
+                        {/* 3. TYPES */}
+                        {selectedCatalogId && (
+                            <div className="min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+                                <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
+                                    <h4 className="text-xs font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center gap-2">
+                                        <Tag size={14} /> Types
+                                    </h4>
+                                    <button onClick={() => handleOpenModal(undefined, 'TYPE')} className="p-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 rounded-lg hover:bg-purple-200"><Plus size={14} /></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                                    {safeOptions.filter(o => o.type === 'TYPE' && (o.parentIds?.includes(selectedCatalogId) || o.parentId === selectedCatalogId)).sort((a,b) => a.value.localeCompare(b.value)).map(type => (
+                                        <div 
+                                            key={type.id}
+                                            onClick={() => { setSelectedTypeId(type.id); setSelectedParentId(null); }}
+                                            className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedTypeId === type.id ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                        >
+                                            <span>{type.value}</span>
+                                            {selectedTypeId === type.id && <ChevronRight size={14} />}
+                                        </div>
+                                    ))}
+                                    {safeOptions.filter(o => o.type === 'TYPE' && (o.parentIds?.includes(selectedCatalogId) || o.parentId === selectedCatalogId)).length === 0 && (
+                                        <div className="p-4 text-center text-xs text-gray-400 italic">No types in this catalog.</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 4. CATEGORIES */}
+                        {selectedTypeId && (
+                            <div className="min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+                                <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
+                                    <h4 className="text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                                        <FolderTree size={14} /> Categories
+                                    </h4>
+                                    <button onClick={() => handleOpenModal(undefined, 'CATEGORY')} className="p-1.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-lg hover:bg-amber-200"><Plus size={14} /></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                                    {safeOptions.filter(o => o.type === 'CATEGORY' && (o.parentIds?.includes(selectedTypeId) || o.parentId === selectedTypeId)).sort((a,b) => a.value.localeCompare(b.value)).map(cat => (
+                                        <div 
+                                            key={cat.id}
+                                            onClick={() => setSelectedParentId(cat.id)}
+                                            className={`p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedParentId === cat.id ? 'bg-amber-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                        >
+                                            <span>{cat.value}</span>
+                                            {selectedParentId === cat.id && <ChevronRight size={14} />}
+                                        </div>
+                                    ))}
+                                    {safeOptions.filter(o => o.type === 'CATEGORY' && (o.parentIds?.includes(selectedTypeId) || o.parentId === selectedTypeId)).length === 0 && (
+                                        <div className="p-4 text-center text-xs text-gray-400 italic">No categories in this type.</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 5. SUB-CATEGORIES */}
+                        {selectedParentId && (
+                            <div className="min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+                                <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
+                                    <h4 className="text-xs font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                                        <Tag size={14} /> Sub-Categories
+                                    </h4>
+                                    <button onClick={() => handleOpenModal(undefined, 'SUB_CATEGORY')} className="p-1.5 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-lg hover:bg-rose-200"><Plus size={14} /></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                                    {safeOptions.filter(o => o.type === 'SUB_CATEGORY' && (o.parentIds?.includes(selectedParentId) || o.parentId === selectedParentId)).sort((a,b) => a.value.localeCompare(b.value)).map(sub => (
+                                        <div 
+                                            key={sub.id}
+                                            className="group relative p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 hover:border-rose-300 transition-all"
+                                        >
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{sub.value}</span>
+                                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => handleOpenModal(sub)} className="p-1 hover:text-blue-500"><Edit2 size={12}/></button>
+                                                    <button onClick={() => handleDelete(sub.id)} className="p-1 hover:text-red-500"><Trash2 size={12}/></button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {safeOptions.filter(o => o.type === 'SUB_CATEGORY' && (o.parentIds?.includes(selectedParentId) || o.parentId === selectedParentId)).length === 0 && (
+                                        <div className="p-4 text-center text-xs text-gray-400 italic">No sub-categories linked.</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ) : viewMode === 'LIST' ? (
                     /* TRADITIONAL LIST VIEW (For non-taxonomy types) */
