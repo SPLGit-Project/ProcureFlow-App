@@ -18,10 +18,8 @@ interface CatalogManagementProps {
 
 // Grouping related attributes for better UX
 const GROUPED_TABS: { id: string, label: string, icon: any, types: AttributeType[] }[] = [
-    { id: 'TAXONOMY', label: 'Taxonomy', icon: Network, types: ['CATEGORY', 'SUB_CATEGORY'] },
-    { id: 'POOL', label: 'Item Pools', icon: Layers, types: ['POOL'] },
-    { id: 'CATALOG', label: 'Catalogs', icon: BookOpen, types: ['CATALOG'] },
-    { id: 'UOM', label: 'Units of Measure', icon: Scale, types: ['UOM'] },
+    { id: 'TAXONOMY', label: 'Taxonomy', icon: Network, types: ['CATEGORY', 'SUB_CATEGORY', 'TYPE', 'CATALOG', 'POOL'] },
+    { id: 'ATTRIBUTES', label: 'Attributes', icon: Tag, types: ['UOM'] },
 ];
 
 type ViewMode = 'LIST' | 'TAXONOMY' | 'MIND_MAP';
@@ -131,73 +129,113 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         return allSubCategories.filter(s => s.parentIds?.includes(selectedParentId) || s.parentId === selectedParentId);
     }, [selectedParentId, allSubCategories]);
 
-    // Mind Map Layout Logic (Horizontal Hierarchy / Decomposition Tree)
+    // --- 5-Level Hierarchy Mind Map Logic ---
     const mindMapData = useMemo(() => {
+        // 1. Organize Data by Type
+        const pools = safeOptions.filter(o => o.type === 'POOL');
+        const catalogs = safeOptions.filter(o => o.type === 'CATALOG');
+        const types = safeOptions.filter(o => o.type === 'TYPE');
+        const categories = safeOptions.filter(o => o.type === 'CATEGORY');
+        const subCategories = safeOptions.filter(o => o.type === 'SUB_CATEGORY');
+        const uoms = safeOptions.filter(o => o.type === 'UOM');
+
         const nodes: any[] = [];
         const links: any[] = [];
-        
-        const cardWidth = 240;
-        const cardHeight = 80;
-        const columnGap = 120;
-        const rowGap = 30;
 
-        // 1. Root Node (leftmost)
-        nodes.push({ 
-            id: 'root', 
-            label: 'Product Catalog', 
-            type: 'ROOT', 
-            x: 0, 
-            y: 0,
-            width: cardWidth,
-            height: cardHeight
-        });
+        // Layout Config
+        const LEVEL_WIDTH = 300;
+        const NODE_HEIGHT = 80;
+        const NODE_GAP = 20;
+        const START_X = 50;
+        const START_Y = 50;
 
-        // 2. Category Nodes (center)
-        const totalCatHeight = allCategories.length * (cardHeight + rowGap);
-        const startY = -(totalCatHeight / 2) + (cardHeight / 2);
+        // Level 0: Global Root
+        const rootNode = {
+            id: 'root',
+            type: 'ROOT',
+            label: 'Product Catalog',
+            x: START_X,
+            y: 0, 
+            itemCount: 0, // items not available in props
+            width: 200, height: 60
+        };
+        nodes.push(rootNode);
 
-        allCategories.forEach((cat, i) => {
-            const cx = cardWidth + columnGap;
-            const cy = startY + (i * (cardHeight + rowGap));
-            
-            nodes.push({ 
-                ...cat, 
-                x: cx, 
-                y: cy, 
-                width: cardWidth, 
-                height: cardHeight 
+        // Helper to layout a level
+        const buildLevel = (
+            options: AttributeOption[], 
+            levelIndex: number, 
+            prevLevelNodes: any[],
+            getParents: (opt: AttributeOption) => string[]
+        ) => {
+            const myNodes: any[] = [];
+            // Sort to cluster by parent
+            const sorted = [...options].sort((a, b) => {
+                const pA = getParents(a)[0] || '';
+                const pB = getParents(b)[0] || '';
+                return pA.localeCompare(pB) || a.value.localeCompare(b.value);
             });
-            links.push({ source: 'root', target: cat.id });
 
-            // 3. Sub-Category Nodes (rightside)
-            const subs = allSubCategories.filter(s => s.parentIds?.includes(cat.id) || s.parentId === cat.id);
-            const subColumnX = cx + cardWidth + columnGap;
-            
-            subs.forEach((sub, si) => {
-                // To avoid overlap, we might need a more complex offset, 
-                // but for now let's stack them relative to parent
-                const sy = cy + ((si - (subs.length - 1) / 2) * (cardHeight / 2 + 10));
-                
-                // Only add node if not already added OR handle multi-parent x/y?
-                // For "Tree" style, we usually duplicate the node or link back.
-                // Multi-parent nodes in a tree usually repeat or have multiple links.
-                // Let's create unique instances for the visual tree to keep it "tree-like"
-                const instanceId = `${cat.id}-${sub.id}`;
-                nodes.push({ 
-                    ...sub, 
-                    id: instanceId,
-                    originalId: sub.id,
-                    x: subColumnX, 
-                    y: sy,
-                    width: cardWidth * 0.8,
-                    height: cardHeight * 0.7
-                });
-                links.push({ source: cat.id, target: instanceId });
+            // If we have parent nodes, we can try to position children near parents
+            // For V1, we stack them but maybe grouping them visually helps?
+            // Let's use a simple stack for now, centered vertically?
+            let currentY = START_Y;
+            if (prevLevelNodes.length > 0) {
+                 // heuristic: start where parents start
+                 currentY = prevLevelNodes[0].y; 
+            }
+
+            // Calculate total height needed
+            // const totalHeight = sorted.length * (NODE_HEIGHT + NODE_GAP);
+            // const startY = (prevLevelNodes.length > 0) ? prevLevelNodes[0].y : START_Y; // naive
+
+            sorted.forEach(opt => {
+                const count = 0; // items not available
+
+                const node = {
+                    id: opt.id,
+                    type: opt.type,
+                    label: opt.value,
+                    original: opt,
+                    x: START_X + (levelIndex * LEVEL_WIDTH),
+                    y: currentY,
+                    itemCount: count,
+                    width: 240, height: 80
+                };
+                myNodes.push(node);
+                currentY += NODE_HEIGHT + NODE_GAP;
+
+                // Links
+                const pIds = getParents(opt);
+                if (pIds.length > 0) {
+                    pIds.forEach(pid => {
+                         const parentExists = nodes.find(n => n.id === pid);
+                         if (parentExists) {
+                             links.push({ source: pid, target: node.id });
+                         }
+                    });
+                } else if (levelIndex === 1) {
+                    // Pool links to Root if no parent (Pool usually has no parent)
+                    links.push({ source: 'root', target: node.id });
+                }
             });
-        });
+            nodes.push(...myNodes);
+            return myNodes;
+        };
+
+        const poolNodes = buildLevel(pools, 1, [], o => []); // Pools have no parents (or root)
+        const catalogNodes = buildLevel(catalogs, 2, poolNodes, o => o.parentIds || []);
+        const typeNodes = buildLevel(types, 3, catalogNodes, o => o.parentIds || []);
+        const categoryNodes = buildLevel(categories, 4, typeNodes, o => o.parentIds || []);
+        const subCategoryNodes = buildLevel(subCategories, 5, categoryNodes, o => o.parentIds || []);
+
+        // Center Root
+        if (poolNodes.length > 0) {
+            rootNode.y = (poolNodes[0].y + poolNodes[poolNodes.length - 1].y) / 2;
+        }
 
         return { nodes, links };
-    }, [allCategories, allSubCategories]);
+    }, [safeOptions]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         setIsDragging(true);
