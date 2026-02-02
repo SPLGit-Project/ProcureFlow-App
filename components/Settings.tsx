@@ -19,6 +19,7 @@ import { normalizeItemCode } from '../utils/normalization';
 import { useLocation } from 'react-router-dom';
 import AdminAccessHub from './AdminAccessHub';
 import AdminMigration from './AdminMigration';
+import HierarchySeeder from './HierarchySeeder';
 import StockMappingConfirmation from './StockMappingConfirmation';
 import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -3038,6 +3039,7 @@ if __name__ == "__main__":
       {activeTab === 'MIGRATION' && (
           <div className="animate-fade-in max-w-4xl mx-auto">
               <AdminMigration />
+              <HierarchySeeder />
           </div>
       )}
       

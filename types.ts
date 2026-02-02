@@ -372,7 +372,7 @@ export interface AppNotification {
     createdAt: string;
 }
 
-export type AttributeType = 'CATEGORY' | 'SUB_CATEGORY' | 'POOL' | 'CATALOG' | 'UOM';
+export type AttributeType = 'CATEGORY' | 'SUB_CATEGORY' | 'POOL' | 'CATALOG' | 'UOM' | 'TYPE';
 
 export interface AttributeOption {
     id: string;
