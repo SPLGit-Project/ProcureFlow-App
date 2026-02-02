@@ -44,6 +44,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     const [value, setValue] = useState('');
     const [selectedType, setSelectedType] = useState<AttributeType>('CATEGORY');
     const [selectedParentIds, setSelectedParentIds] = useState<string[]>([]);
+    const [selectedChildIds, setSelectedChildIds] = useState<string[]>([]); // New: For managing children of a parent
     const [isSaving, setIsSaving] = useState(false);
 
     // Hierarchy State
@@ -110,30 +111,85 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             setSelectedType(forcedType || (activeTabId === 'TAXONOMY' ? 'CATEGORY' : activeTabId as AttributeType));
             
             // Smart Parent Pre-selection
+            
+            // Smart Parent Pre-selection
             let defaultParents: string[] = [];
             const targetType = forcedType || (activeTabId === 'TAXONOMY' ? 'CATEGORY' : activeTabId as AttributeType);
             
-            if (targetType === 'CATALOG' && selectedPoolId) defaultParents = [selectedPoolId];
-            else if (targetType === 'TYPE' && selectedCatalogId) defaultParents = [selectedCatalogId];
-            else if (targetType === 'CATEGORY' && selectedTypeId) defaultParents = [selectedTypeId];
-            else if (targetType === 'SUB_CATEGORY' && selectedParentId) defaultParents = [selectedParentId];
+            let activeParentId: string | null = null;
+            if (targetType === 'CATALOG') activeParentId = selectedPoolId;
+            else if (targetType === 'TYPE') activeParentId = selectedCatalogId;
+            else if (targetType === 'CATEGORY') activeParentId = selectedTypeId;
+            else if (targetType === 'SUB_CATEGORY') activeParentId = selectedParentId;
+
+            if (activeParentId) defaultParents = [activeParentId];
             
             setSelectedParentIds(defaultParents);
+            
+            // Smart Child Pre-selection (For "Link Existing" mode)
+            if (activeParentId) {
+                const linkedChildren = safeOptions
+                    .filter(o => o.type === targetType && (o.parentIds?.includes(activeParentId!) || o.parentId === activeParentId))
+                    .map(o => o.id);
+                setSelectedChildIds(linkedChildren);
+            } else {
+                setSelectedChildIds([]);
+            }
         }
         setIsModalOpen(true);
     };
 
     const handleSave = async () => {
-        if (!value.trim()) return;
         setIsSaving(true);
         try {
-            await upsertOption({
-                id: editingOption?.id,
-                type: selectedType,
-                value: value.trim(),
-                parentIds: selectedType !== 'POOL' ? selectedParentIds : [],
-                activeFlag: true
-            });
+            // 1. Handle Bulk Linking (If we are in "Create" mode and have a parent context)
+            // Determine active parent context based on selectedType
+            let activeContextId: string | null = null;
+            if (selectedType === 'CATALOG') activeContextId = selectedPoolId;
+            else if (selectedType === 'TYPE') activeContextId = selectedCatalogId;
+            else if (selectedType === 'CATEGORY') activeContextId = selectedTypeId;
+            else if (selectedType === 'SUB_CATEGORY') activeContextId = selectedParentId;
+
+            // Only run bulk logic if we are NOT editing a specific option (i.e., we are in "Manage" mode)
+            if (!editingOption && activeContextId) {
+                // Find all items of this type
+                const potentialChildren = safeOptions.filter(o => o.type === selectedType);
+                
+                // Diffing Logic
+                for (const child of potentialChildren) {
+                    const isSelected = selectedChildIds.includes(child.id);
+                    const isCurrentlyLinked = child.parentIds?.includes(activeContextId) || child.parentId === activeContextId;
+                    
+                    if (isSelected && !isCurrentlyLinked) {
+                        // LINK: Add parentId
+                        await upsertOption({
+                            ...child,
+                            parentIds: [...(child.parentIds || []), activeContextId]
+                        });
+                    } else if (!isSelected && isCurrentlyLinked) {
+                        // UNLINK: Remove parentId
+                        // Only remove if it has multiple parents? Or allow strict removal? user said "associate these...". Assuming full control.
+                        const newParents = (child.parentIds || []).filter(pid => pid !== activeContextId);
+                        await upsertOption({
+                            ...child,
+                            parentIds: newParents, 
+                            parentId: newParents.length > 0 ? newParents[0] : undefined // fallback for legacy parentId
+                        });
+                    }
+                }
+            }
+
+            // 2. Handle Create/Update Single Item (If value provided)
+            if (value.trim()) {
+                await upsertOption({
+                    id: editingOption?.id,
+                    type: selectedType,
+                    value: value.trim(),
+                    parentIds: selectedType !== 'POOL' ? selectedParentIds : [],
+                    activeFlag: true
+                });
+            }
+
             success(`${selectedType} saved successfully`);
             setIsModalOpen(false);
         } catch (err: any) {
@@ -159,6 +215,14 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         setSelectedParentIds(prev => 
             prev.includes(id) 
                 ? prev.filter(p => p !== id) 
+                : [...prev, id]
+        );
+    };
+
+    const toggleChildSelection = (id: string) => {
+        setSelectedChildIds(prev => 
+            prev.includes(id) 
+                ? prev.filter(c => c !== id) 
                 : [...prev, id]
         );
     };
@@ -954,6 +1018,40 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                     <p className="text-[10px] text-gray-400 text-center italic font-medium">Link this {selectedType.toLowerCase().replace('_', ' ')} to one or more parents.</p>
                                 </div>
                             )}
+
+                            {/* --- "Link Existing" Section (Only when Creating New && Parent Context Exists) --- */}
+                            {!editingOption && selectedType !== 'POOL' && (selectedPoolId || selectedCatalogId || selectedTypeId || selectedParentId) && (
+                                <div className="space-y-4 animate-in slide-in-from-top-4 duration-500 pt-4 border-t border-gray-100 dark:border-gray-800">
+                                    <div className="flex items-center justify-between px-1">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Link Existing {selectedType.replace('_', ' ')}s</label>
+                                        <span className="text-[10px] font-black bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 px-3 py-1 rounded-full">{selectedChildIds.length} Linked</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[220px] overflow-y-auto p-4 bg-emerald-50/30 dark:bg-emerald-900/10 rounded-3xl border border-emerald-100 dark:border-emerald-900/20 custom-scrollbar">
+                                        {(selectedType === 'CATALOG' ? allCatalogs : 
+                                          selectedType === 'TYPE' ? allTypes : 
+                                          selectedType === 'CATEGORY' ? allCategories : 
+                                          allSubCategories).map(child => (
+                                            <button
+                                                key={child.id}
+                                                onClick={() => toggleChildSelection(child.id)}
+                                                className={`flex items-center gap-3 p-3 rounded-2xl text-[11px] font-bold text-left transition-all border ${
+                                                    selectedChildIds.includes(child.id)
+                                                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
+                                                        : 'bg-white dark:bg-[#1a1c23] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800 hover:border-emerald-500/50'
+                                                }`}
+                                            >
+                                                <div className={`flex-shrink-0 w-4 h-4 rounded-md border-2 flex items-center justify-center transition-colors ${
+                                                    selectedChildIds.includes(child.id) ? 'bg-white border-white' : 'border-gray-300 dark:border-gray-600'
+                                                }`}>
+                                                    {selectedChildIds.includes(child.id) && <Check size={10} className="text-emerald-600 font-black" />}
+                                                </div>
+                                                <span className="truncate">{child.value}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className="text-[10px] text-gray-400 text-center italic font-medium">Select existing items to add to this group.</p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Modal Footer */}
@@ -966,7 +1064,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                             </button>
                             <button
                                 onClick={handleSave}
-                                disabled={isSaving || !value.trim() || (selectedType !== 'POOL' && selectedParentIds.length === 0)}
+                                disabled={isSaving || (!value.trim() && !(!editingOption && selectedType !== 'POOL' && (selectedChildIds.length > 0 || value.trim())))} // Enable if value OR (in manage mode and child ids changed)
                                 className="flex items-center gap-3 px-10 py-4 text-xs font-black uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 rounded-2xl transition-all shadow-2xl shadow-blue-500/40 disabled:opacity-50 active:scale-95 group/btn"
                             >
                                 {isSaving ? (
