@@ -1,11 +1,12 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AttributeOption, AttributeType } from '../types';
 import { 
     Plus, Edit2, Trash2, FolderTree, Tag, Layers, 
     BookOpen, Scale, AlertTriangle, Save, X, 
     Network, List as ListIcon, ChevronRight, Check,
-    Search, Filter, ArrowRightLeft
+    Search, Filter, ArrowRightLeft, Maximize2, Minimize2,
+    Move, MousePointer2
 } from 'lucide-react';
 import { useToast } from './ToastNotification';
 
@@ -15,15 +16,15 @@ interface CatalogManagementProps {
     deleteOption: (id: string) => Promise<void>;
 }
 
-const TABS: { id: AttributeType, label: string, icon: any }[] = [
-    { id: 'CATEGORY', label: 'Categories', icon: FolderTree },
-    { id: 'SUB_CATEGORY', label: 'Sub Categories', icon: Tag },
-    { id: 'POOL', label: 'Item Pools', icon: Layers },
-    { id: 'CATALOG', label: 'Catalogs', icon: BookOpen },
-    { id: 'UOM', label: 'Units of Measure', icon: Scale },
+// Grouping related attributes for better UX
+const GROUPED_TABS: { id: string, label: string, icon: any, types: AttributeType[] }[] = [
+    { id: 'TAXONOMY', label: 'Taxonomy', icon: Network, types: ['CATEGORY', 'SUB_CATEGORY'] },
+    { id: 'POOL', label: 'Item Pools', icon: Layers, types: ['POOL'] },
+    { id: 'CATALOG', label: 'Catalogs', icon: BookOpen, types: ['CATALOG'] },
+    { id: 'UOM', label: 'Units of Measure', icon: Scale, types: ['UOM'] },
 ];
 
-type ViewMode = 'LIST' | 'RELATIONSHIPS';
+type ViewMode = 'LIST' | 'TAXONOMY' | 'MIND_MAP';
 
 const CatalogManagement: React.FC<CatalogManagementProps> = ({ 
     options = [], 
@@ -32,37 +33,54 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
 }) => {
     const safeOptions = Array.isArray(options) ? options : [];
     const { success, error } = useToast();
-    const [activeTab, setActiveTab] = useState<AttributeType>('CATEGORY');
-    const [viewMode, setViewMode] = useState<ViewMode>('LIST');
+    const [activeTabId, setActiveTabId] = useState('TAXONOMY');
+    const [viewMode, setViewMode] = useState<ViewMode>('TAXONOMY');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingOption, setEditingOption] = useState<AttributeOption | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
 
     // Form State
     const [value, setValue] = useState('');
+    const [selectedType, setSelectedType] = useState<AttributeType>('CATEGORY');
     const [selectedParentIds, setSelectedParentIds] = useState<string[]>([]);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Relationship View State
-    const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+    // Mind Map Zoom/Pan State
+    const [scale, setScale] = useState(1);
+    const [offset, setOffset] = useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = useState(false);
+    const dragStart = useRef({ x: 0, y: 0 });
 
     // Data Filtering
-    const categories = useMemo(() => safeOptions.filter(o => o.type === 'CATEGORY'), [safeOptions]);
-    const currentTabOptions = useMemo(() => 
-        safeOptions.filter(o => o.type === activeTab)
-        .filter(o => o.value.toLowerCase().includes(searchQuery.toLowerCase()))
-        .sort((a,b) => a.value.localeCompare(b.value))
-    , [safeOptions, activeTab, searchQuery]);
+    const allCategories = useMemo(() => safeOptions.filter(o => o.type === 'CATEGORY').sort((a,b) => a.value.localeCompare(b.value)), [safeOptions]);
+    const allSubCategories = useMemo(() => safeOptions.filter(o => o.type === 'SUB_CATEGORY').sort((a,b) => a.value.localeCompare(b.value)), [safeOptions]);
+    
+    // Auto-select first category if in Taxonomy view and none selected
+    useEffect(() => {
+        if (viewMode === 'TAXONOMY' && allCategories.length > 0 && !selectedParentId) {
+            setSelectedParentId(allCategories[0].id);
+        }
+    }, [viewMode, allCategories, selectedParentId]);
 
-    const handleOpenModal = (option?: AttributeOption) => {
+    const filteredOptions = useMemo(() => {
+        const types = GROUPED_TABS.find(t => t.id === activeTabId)?.types || [];
+        return safeOptions.filter(o => types.includes(o.type))
+            .filter(o => o.value.toLowerCase().includes(searchQuery.toLowerCase()))
+            .sort((a,b) => a.value.localeCompare(b.value));
+    }, [safeOptions, activeTabId, searchQuery]);
+
+    const handleOpenModal = (option?: AttributeOption, forcedType?: AttributeType) => {
         if (option) {
             setEditingOption(option);
             setValue(option.value);
+            setSelectedType(option.type);
             setSelectedParentIds(option.parentIds || (option.parentId ? [option.parentId] : []));
         } else {
             setEditingOption(null);
             setValue('');
-            setSelectedParentIds([]);
+            setSelectedType(forcedType || (activeTabId === 'TAXONOMY' ? 'CATEGORY' : activeTabId as AttributeType));
+            setSelectedParentIds(forcedType === 'SUB_CATEGORY' && selectedParentId ? [selectedParentId] : []);
         }
         setIsModalOpen(true);
     };
@@ -73,14 +91,12 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         try {
             await upsertOption({
                 id: editingOption?.id,
-                type: activeTab,
+                type: selectedType,
                 value: value.trim(),
-                parentIds: activeTab === 'SUB_CATEGORY' ? selectedParentIds : [],
-                // Keep parentId for backward compatibility if needed, using the first one
-                parentId: (activeTab === 'SUB_CATEGORY' && selectedParentIds.length > 0) ? selectedParentIds[0] : undefined,
+                parentIds: selectedType === 'SUB_CATEGORY' ? selectedParentIds : [],
                 activeFlag: true
             });
-            success(`${activeTab} saved successfully`);
+            success(`${selectedType} saved successfully`);
             setIsModalOpen(false);
         } catch (err: any) {
             error('Failed to save: ' + err.message);
@@ -94,6 +110,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             try {
                 await deleteOption(id);
                 success('Option deleted successfully');
+                if (selectedParentId === id) setSelectedParentId(null);
             } catch (err: any) {
                 error('Failed to delete: ' + err.message);
             }
@@ -108,33 +125,88 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         );
     };
 
-    // Relationship Mode Helpers
-    const filteredSubCategories = useMemo(() => {
-        if (!selectedCategoryId) return [];
-        return safeOptions.filter(o => 
-            o.type === 'SUB_CATEGORY' && 
-            (o.parentIds?.includes(selectedCategoryId) || o.parentId === selectedCategoryId)
-        );
-    }, [selectedCategoryId, safeOptions]);
+    // Sub-Categories for selected parent
+    const associatedSubCategories = useMemo(() => {
+        if (!selectedParentId) return [];
+        return allSubCategories.filter(s => s.parentIds?.includes(selectedParentId) || s.parentId === selectedParentId);
+    }, [selectedParentId, allSubCategories]);
+
+    // Mind Map Layout Logic (Simple Hierarchical Visualization)
+    const mindMapData = useMemo(() => {
+        const nodes: any[] = [];
+        const links: any[] = [];
+        
+        // Root Node
+        nodes.push({ id: 'root', label: 'Product Catalog', type: 'ROOT', x: 0, y: 0 });
+
+        // Category Nodes (Circular Layout)
+        allCategories.forEach((cat, i) => {
+            const angle = (i / allCategories.length) * Math.PI * 2;
+            const radius = 300;
+            const cx = Math.cos(angle) * radius;
+            const cy = Math.sin(angle) * radius;
+            
+            nodes.push({ ...cat, x: cx, y: cy });
+            links.push({ source: 'root', target: cat.id });
+
+            // Sub-Category Nodes (Orbiting Parents)
+            const subs = allSubCategories.filter(s => s.parentIds?.includes(cat.id) || s.parentId === cat.id);
+            subs.forEach((sub, si) => {
+                const sAngle = angle + ((si - subs.length / 2) * 0.1);
+                const sRadius = radius + 150;
+                const sx = Math.cos(sAngle) * sRadius;
+                const sy = Math.sin(sAngle) * sRadius;
+                
+                // Only add node if not already added (shared subs)
+                if (!nodes.find(n => n.id === sub.id)) {
+                    nodes.push({ ...sub, x: sx, y: sy });
+                }
+                links.push({ source: cat.id, target: sub.id });
+            });
+        });
+
+        return { nodes, links };
+    }, [allCategories, allSubCategories]);
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        setIsDragging(true);
+        dragStart.current = { x: e.clientX - offset.x, y: e.clientY - offset.y };
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (!isDragging) return;
+        setOffset({
+            x: e.clientX - dragStart.current.x,
+            y: e.clientY - dragStart.current.y
+        });
+    };
+
+    const handleMouseUp = () => setIsDragging(false);
+    const handleWheel = (e: React.WheelEvent) => {
+        const newScale = Math.min(Math.max(scale - e.deltaY * 0.001, 0.2), 3);
+        setScale(newScale);
+    };
 
     return (
-        <div className="space-y-6">
-            {/* Header / Tabs */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-1">
-                <div className="flex space-x-2 overflow-x-auto pb-1 no-scrollbar">
-                    {TABS.map(tab => {
+        <div className="space-y-6 h-full flex flex-col">
+            {/* Header & Main Nav */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-2">
+                <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar">
+                    {GROUPED_TABS.map(tab => {
                         const Icon = tab.icon;
+                        const isActive = activeTabId === tab.id;
                         return (
                             <button
                                 key={tab.id}
                                 onClick={() => {
-                                    setActiveTab(tab.id);
-                                    if (tab.id !== 'SUB_CATEGORY' && tab.id !== 'CATEGORY') setViewMode('LIST');
+                                    setActiveTabId(tab.id);
+                                    if (tab.id === 'TAXONOMY') setViewMode('TAXONOMY');
+                                    else setViewMode('LIST');
                                 }}
-                                className={`flex items-center space-x-2 px-4 py-2 rounded-t-lg transition-all duration-200 whitespace-nowrap border-b-2 font-medium ${
-                                    activeTab === tab.id
-                                        ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/10'
-                                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                                className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl transition-all duration-300 font-bold text-sm ${
+                                    isActive
+                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 -translate-y-0.5'
+                                        : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800/50'
                                 }`}
                             >
                                 <Icon size={18} />
@@ -144,340 +216,454 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                     })}
                 </div>
 
-                {(activeTab === 'SUB_CATEGORY' || activeTab === 'CATEGORY') && (
-                    <div className="flex items-center bg-gray-100 dark:bg-[#2b2d31] p-1 rounded-lg">
-                        <button 
-                            onClick={() => setViewMode('LIST')}
-                            className={`flex items-center space-x-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                                viewMode === 'LIST' 
-                                    ? 'bg-white dark:bg-[#383a40] text-blue-600 dark:text-blue-400 shadow-sm' 
-                                    : 'text-gray-500 hover:text-gray-700'
-                            }`}
-                        >
-                            <ListIcon size={16} />
-                            <span>List View</span>
-                        </button>
-                        <button 
-                            onClick={() => setViewMode('RELATIONSHIPS')}
-                            className={`flex items-center space-x-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                                viewMode === 'RELATIONSHIPS' 
-                                    ? 'bg-white dark:bg-[#383a40] text-blue-600 dark:text-blue-400 shadow-sm' 
-                                    : 'text-gray-500 hover:text-gray-700'
-                            }`}
-                        >
-                            <Network size={16} />
-                            <span>Relationship View</span>
-                        </button>
-                    </div>
-                )}
+                <div className="flex items-center bg-gray-100 dark:bg-gray-800/50 p-1.5 rounded-2xl border border-gray-200 dark:border-gray-700">
+                    <button 
+                        onClick={() => setViewMode(activeTabId === 'TAXONOMY' ? 'TAXONOMY' : 'LIST')}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            viewMode !== 'MIND_MAP' 
+                                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xl' 
+                                : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-100'
+                        }`}
+                    >
+                        {activeTabId === 'TAXONOMY' ? <Network size={16} /> : <ListIcon size={16} />}
+                        <span>{activeTabId === 'TAXONOMY' ? 'Taxonomy View' : 'List View'}</span>
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('MIND_MAP')}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            viewMode === 'MIND_MAP' 
+                                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xl' 
+                                : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-100'
+                        }`}
+                    >
+                        <Maximize2 size={16} />
+                        <span>Mind Map</span>
+                    </button>
+                </div>
             </div>
 
-            {/* List View */}
-            {viewMode === 'LIST' ? (
-                <div className="bg-white dark:bg-[#1e2029] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50/50 dark:bg-gray-800/30">
-                        <div className="relative w-full md:w-72">
-                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input 
-                                type="text"
-                                placeholder={`Search ${TABS.find(t => t.id === activeTab)?.label}...`}
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1c23] outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                        <button
-                            onClick={() => handleOpenModal()}
-                            className="w-full md:w-auto flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-transform active:scale-95 text-sm font-medium shadow-sm"
-                        >
-                            <Plus size={18} />
-                            <span>Add New</span>
-                        </button>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50/80 dark:bg-gray-800/80 text-gray-500 dark:text-gray-400 uppercase text-xs font-semibold">
-                                <tr>
-                                    <th className="px-6 py-4">Value</th>
-                                    {activeTab === 'SUB_CATEGORY' && <th className="px-6 py-4">Parent Categories</th>}
-                                    <th className="px-6 py-4 text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                                {currentTabOptions.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={3} className="px-6 py-12 text-center text-gray-400 italic">
-                                            No options found matching your criteria.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    currentTabOptions.map(opt => {
-                                        const parentLabels = categories.filter(c => 
-                                            opt.parentIds?.includes(c.id) || opt.parentId === c.id
-                                        ).map(c => c.value);
-
-                                        return (
-                                            <tr key={opt.id} className="group hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-colors">
-                                                <td className="px-6 py-4">
-                                                    <span className="font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                                        {opt.value}
-                                                    </span>
-                                                </td>
-                                                {activeTab === 'SUB_CATEGORY' && (
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex flex-wrap gap-1.5">
-                                                            {parentLabels.length > 0 ? (
-                                                                parentLabels.map((lbl, idx) => (
-                                                                    <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100/50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200/50 dark:border-blue-800/50">
-                                                                        {lbl}
-                                                                    </span>
-                                                                ))
-                                                            ) : (
-                                                                <span className="text-gray-400 text-xs flex items-center gap-1">
-                                                                    <AlertTriangle size={12} className="text-amber-500" />
-                                                                    No Parent Assigned
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                )}
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex justify-end items-center opacity-0 group-hover:opacity-100 transition-opacity space-x-1">
-                                                        <button
-                                                            onClick={() => handleOpenModal(opt)}
-                                                            className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400 transition-colors"
-                                                            title="Edit"
-                                                        >
-                                                            <Edit2 size={16} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDelete(opt.id)}
-                                                            className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg text-red-600 dark:text-red-400 transition-colors"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            ) : (
-                /* Relationship View (Workflow Design) */
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[600px]">
-                    {/* Categories Column */}
-                    <div className="lg:col-span-4 bg-white dark:bg-[#1e2029] rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-sm">
-                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
-                            <h4 className="text-sm font-bold uppercase text-gray-500 flex items-center gap-2">
-                                <FolderTree size={16} className="text-blue-500" />
-                                Parent Categories
-                            </h4>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                            {categories.map(cat => (
-                                <button
-                                    key={cat.id}
-                                    onClick={() => setSelectedCategoryId(cat.id)}
-                                    className={`w-full flex items-center justify-between p-3 rounded-lg transition-all ${
-                                        selectedCategoryId === cat.id
-                                            ? 'bg-blue-600 text-white shadow-md'
-                                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                                    }`}
+            {/* Main Content Area */}
+            <div className="flex-1 min-h-[600px] flex flex-col">
+                {viewMode === 'TAXONOMY' ? (
+                    /* UINFINED TAXONOMY VIEW (Split Perspective) */
+                    <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500">
+                        {/* Parent Categories Pane */}
+                        <div className="lg:col-span-5 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden group">
+                           <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center bg-gradient-to-r from-blue-50/20 to-transparent dark:from-blue-900/10 dark:to-transparent">
+                                <div>
+                                    <h4 className="text-sm font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                                        <FolderTree size={16} />
+                                        Categories
+                                    </h4>
+                                    <p className="text-[10px] text-gray-500 font-bold mt-1">Manage top-level classification</p>
+                                </div>
+                                <button 
+                                    onClick={() => handleOpenModal(undefined, 'CATEGORY')}
+                                    className="p-2 bg-blue-600 text-white rounded-xl hover:scale-110 active:scale-95 transition-all shadow-md"
                                 >
-                                    <span className="font-medium">{cat.value}</span>
-                                    {selectedCategoryId === cat.id ? (
-                                        <ChevronRight size={18} />
-                                    ) : (
-                                        <span className="text-xs opacity-50 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-                                            {safeOptions.filter(o => o.type === 'SUB_CATEGORY' && (o.parentIds?.includes(cat.id) || o.parentId === cat.id)).length}
-                                        </span>
-                                    )}
+                                    <Plus size={18} />
                                 </button>
-                            ))}
+                           </div>
+                           <div className="p-4 bg-white dark:bg-[#1a1c23]/50">
+                                <div className="relative">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input 
+                                        type="text"
+                                        placeholder="Search categories..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#0f1115] outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
+                                    />
+                                </div>
+                           </div>
+                           <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+                                {allCategories.filter(c => c.value.toLowerCase().includes(searchQuery.toLowerCase())).map(cat => (
+                                    <div 
+                                        key={cat.id} 
+                                        onClick={() => setSelectedParentId(cat.id)}
+                                        className={`group/item relative flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all duration-300 border ${
+                                            selectedParentId === cat.id
+                                                ? 'bg-blue-600 border-blue-600 text-white shadow-xl shadow-blue-500/20 -translate-y-0.5'
+                                                : 'bg-white dark:bg-[#252833] border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/10'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl border transition-colors ${selectedParentId === cat.id ? 'bg-white/20 border-white/30' : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700'}`}>
+                                                <FolderTree size={18} className={selectedParentId === cat.id ? 'text-white' : 'text-blue-500'} />
+                                            </div>
+                                            <span className="font-bold tracking-tight">{cat.value}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${selectedParentId === cat.id ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
+                                                {allSubCategories.filter(s => s.parentIds?.includes(cat.id) || s.parentId === cat.id).length}
+                                            </span>
+                                            {selectedParentId === cat.id ? (
+                                                <ChevronRight size={18} />
+                                            ) : (
+                                                <div className="opacity-0 group-hover/item:opacity-100 flex items-center gap-1 transition-all">
+                                                    <button onClick={(e) => { e.stopPropagation(); handleOpenModal(cat); }} className="p-1 hover:text-blue-500"><Edit2 size={14}/></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(cat.id); }} className="p-1 hover:text-red-500"><Trash2 size={14}/></button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                           </div>
                         </div>
-                    </div>
 
-                    {/* Sub-Category Association Flow */}
-                    <div className="lg:col-span-8 bg-white dark:bg-[#1e2029] rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-sm">
-                        {selectedCategoryId ? (
-                            <>
-                                <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
-                                    <div className="flex items-center space-x-3 text-gray-800 dark:text-white">
-                                        <span className="px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-md">
-                                            {categories.find(c => c.id === selectedCategoryId)?.value}
-                                        </span>
-                                        <ArrowRightLeft size={16} className="text-gray-400" />
-                                        <h4 className="text-sm font-bold uppercase text-gray-500">Associated Sub-Categories</h4>
+                        {/* Associated Sub-Categories Pane */}
+                        <div className="lg:col-span-7 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden">
+                           {selectedParentId ? (
+                               <>
+                                <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-500/20">
+                                            <FolderTree size={14} />
+                                            <span className="text-xs font-black uppercase tracking-wider">{allCategories.find(c => c.id === selectedParentId)?.value}</span>
+                                        </div>
+                                        <div className="h-4 w-px bg-gray-300 dark:bg-gray-700 mx-2" />
+                                        <h4 className="text-sm font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
+                                            <Tag size={16} />
+                                            Sub-Categories
+                                        </h4>
                                     </div>
                                     <button 
-                                        onClick={() => handleOpenModal()} 
-                                        className="text-blue-600 text-xs font-bold hover:underline flex items-center gap-1"
+                                        onClick={() => handleOpenModal(undefined, 'SUB_CATEGORY')}
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl text-xs font-black hover:bg-blue-100 transition-all border border-blue-200 dark:border-blue-800"
                                     >
-                                        <Plus size={14} /> Create New linked Sub-Category
+                                        <Plus size={16} /> Add Link
                                     </button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-6 scroll-smooth custom-scrollbar">
-                                    {filteredSubCategories.length === 0 ? (
-                                        <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-2xl">
-                                            <Tag size={48} className="text-gray-300 mb-4" />
-                                            <p className="text-gray-500 dark:text-gray-400 max-w-xs">
-                                                No sub-categories are currently associated with this parent. 
-                                                You can link them via the List View or create a new one.
-                                            </p>
+                                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-slate-50/30 dark:bg-black/20">
+                                    {associatedSubCategories.length === 0 ? (
+                                        <div className="h-full flex flex-col items-center justify-center text-center p-12 space-y-6">
+                                            <div className="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center border-4 border-dashed border-gray-200 dark:border-gray-700">
+                                                <Tag size={40} className="text-gray-300 dark:text-gray-600" />
+                                            </div>
+                                            <div className="max-w-xs">
+                                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">No associations yet</h3>
+                                                <p className="text-sm text-gray-500 mt-2 font-medium">Link existng sub-categories or create new ones for this category.</p>
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {filteredSubCategories.map(sub => (
+                                            {associatedSubCategories.map(sub => (
                                                 <div 
                                                     key={sub.id} 
-                                                    className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#181a21] hover:border-blue-500 transition-all flex items-center justify-between group"
+                                                    className="group/sub relative p-5 rounded-3xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#252833] hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-500 flex items-center justify-between"
                                                 >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                                            <Tag size={16} className="text-blue-600 dark:text-blue-400" />
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-2xl group-hover/sub:scale-110 transition-transform">
+                                                            <Tag size={20} className="text-blue-600 dark:text-blue-400" />
                                                         </div>
                                                         <div>
-                                                            <p className="font-semibold text-gray-900 dark:text-white">{sub.value}</p>
-                                                            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
-                                                                Linked to {sub.parentIds?.length || (sub.parentId ? 1 : 0)} parents
-                                                            </p>
+                                                            <p className="font-black text-gray-900 dark:text-white tracking-tight">{sub.value}</p>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <span className="text-[9px] font-black uppercase text-gray-400 tracking-tighter">Parents:</span>
+                                                                <div className="flex -space-x-1">
+                                                                    {(sub.parentIds || []).slice(0, 3).map((pid, idx) => {
+                                                                        const p = allCategories.find(c => c.id === pid);
+                                                                        return p ? (
+                                                                            <div key={idx} title={p.value} className="w-4 h-4 rounded-full bg-blue-100 dark:bg-blue-900 border border-white dark:border-gray-800 flex items-center justify-center text-[8px] font-bold text-blue-600">
+                                                                                {p.value.charAt(0)}
+                                                                            </div>
+                                                                        ) : null;
+                                                                    })}
+                                                                    {(sub.parentIds?.length || 0) > 3 && (
+                                                                        <div className="w-4 h-4 rounded-full bg-gray-100 dark:bg-gray-800 border border-white dark:border-gray-800 flex items-center justify-center text-[8px] font-bold text-gray-500">
+                                                                            +{(sub.parentIds?.length || 0) - 3}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    <button 
-                                                        onClick={() => handleOpenModal(sub)}
-                                                        className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-all"
-                                                    >
-                                                        <Edit2 size={16}/>
-                                                    </button>
+                                                    <div className="flex flex-col gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity translate-x-2 group-hover/sub:translate-x-0">
+                                                        <button onClick={() => handleOpenModal(sub)} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors"><Edit2 size={16}/></button>
+                                                        <button onClick={() => handleDelete(sub.id)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"><Trash2 size={16}/></button>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
                                     )}
                                 </div>
-                            </>
-                        ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-gray-50/30 dark:bg-black/10">
-                                <ArrowRightLeft size={64} className="text-gray-200 dark:text-gray-800 mb-6" />
-                                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Relationship Explorer</h3>
-                                <p className="text-gray-500 dark:text-gray-400 max-w-sm">
-                                    Select a category from the left to visualize and manage its sub-category connections.
-                                </p>
-                            </div>
-                        )}
+                               </>
+                           ) : (
+                               <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-gray-50/20 dark:bg-black/10">
+                                    <Network size={64} className="text-gray-200 dark:text-gray-800 mb-6 animate-pulse" />
+                                    <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2 uppercase tracking-widest">Select a Category</h3>
+                                    <p className="text-gray-500 dark:text-gray-400 max-w-sm font-medium">Choose a category from the left to manage its hierarchical connections and properties.</p>
+                               </div>
+                           )}
+                        </div>
                     </div>
-                </div>
-            )}
+                ) : viewMode === 'LIST' ? (
+                    /* TRADITIONAL LIST VIEW (For non-taxonomy types) */
+                    <div className="flex-1 bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden flex flex-col">
+                        <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-6 bg-gray-50/50 dark:bg-gray-800/30">
+                            <div className="relative w-full md:w-96">
+                                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input 
+                                    type="text"
+                                    placeholder={`Search ${GROUPED_TABS.find(t => t.id === activeTabId)?.label}...`}
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1c23] outline-none focus:ring-4 focus:ring-blue-500/10 font-bold tracking-tight"
+                                />
+                            </div>
+                            <button
+                                onClick={() => handleOpenModal()}
+                                className="w-full md:w-auto flex items-center justify-center space-x-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl transition-all shadow-lg shadow-blue-500/30 font-black uppercase text-xs tracking-widest active:scale-95"
+                            >
+                                <Plus size={18} />
+                                <span>Add New</span>
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-x-auto custom-scrollbar">
+                            <table className="w-full text-left">
+                                <thead className="sticky top-0 z-10 bg-gray-50/90 dark:bg-gray-800/90 backdrop-blur-md text-gray-500 uppercase text-[10px] font-black tracking-widest">
+                                    <tr>
+                                        <th className="px-8 py-5">Attribute Value</th>
+                                        <th className="px-8 py-5">Type</th>
+                                        <th className="px-8 py-5 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                    {filteredOptions.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={3} className="px-8 py-20 text-center text-gray-400 italic font-medium">No results found for this selection.</td>
+                                        </tr>
+                                    ) : (
+                                        filteredOptions.map(opt => (
+                                            <tr key={opt.id} className="group hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-all">
+                                                <td className="px-8 py-5">
+                                                    <span className="font-bold text-gray-900 dark:text-white text-lg group-hover:text-blue-600 dark:group-hover:text-blue-400 inline-block transition-transform group-hover:translate-x-1">
+                                                        {opt.value}
+                                                    </span>
+                                                </td>
+                                                <td className="px-8 py-5">
+                                                    <span className="px-3 py-1 bg-gray-100 dark:bg-gray-800 rounded-lg text-[10px] font-black uppercase tracking-tighter text-gray-500">{opt.type}</span>
+                                                </td>
+                                                <td className="px-8 py-5 text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        <button onClick={() => handleOpenModal(opt)} className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-xl text-blue-600 transition-all"><Edit2 size={16} /></button>
+                                                        <button onClick={() => handleDelete(opt.id)} className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl text-red-600 transition-all"><Trash2 size={16} /></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ) : (
+                    /* MIND MAP VISUALIZATION (EXPERIMENTAL CANVAS) */
+                    <div className="flex-1 relative bg-[#0f1115] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden cursor-grab active:cursor-grabbing group"
+                         onMouseDown={handleMouseDown}
+                         onMouseMove={handleMouseMove}
+                         onMouseUp={handleMouseUp}
+                         onMouseLeave={handleMouseUp}
+                         onWheel={handleWheel}
+                    >
+                        {/* Map HUD */}
+                        <div className="absolute top-6 left-6 z-10 flex flex-col gap-3 pointer-events-none">
+                            <div className="bg-white/10 backdrop-blur-xl p-4 rounded-2xl border border-white/10 text-white pointer-events-auto shadow-2xl">
+                                <h4 className="text-xs font-black uppercase tracking-widest text-blue-400 mb-2">Catalog Interface</h4>
+                                <div className="flex items-center gap-4 text-[10px]">
+                                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500 shadow-glow shadow-blue-500" /> CATEGORIES</div>
+                                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500 shadow-glow shadow-emerald-500" /> SUB-CATEGORIES</div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 pointer-events-auto">
+                                <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="p-2 bg-white/10 hover:bg-white/20 backdrop-blur-xl rounded-lg text-white transition-all"><Plus size={16}/></button>
+                                <button onClick={() => setScale(s => Math.max(s - 0.1, 0.4))} className="p-2 bg-white/10 hover:bg-white/20 backdrop-blur-xl rounded-lg text-white transition-all"><Minimize2 size={16}/></button>
+                                <button onClick={() => { setScale(1); setOffset({x: 0, y: 0}); }} className="p-2 bg-white/10 hover:bg-white/20 backdrop-blur-xl rounded-lg text-white transition-all"><ArrowRightLeft size={16} className="rotate-90"/></button>
+                            </div>
+                        </div>
 
-            {/* Modal */}
+                        {/* Interactive SVG Canvas */}
+                        <svg className="w-full h-full" viewBox="-500 -500 1000 1000">
+                             <g transform={`translate(${offset.x}, ${offset.y}) scale(${scale})`}>
+                                {/* Links */}
+                                {mindMapData.links.map((link, idx) => {
+                                    const source = mindMapData.nodes.find(n => n.id === link.source);
+                                    const target = mindMapData.nodes.find(n => n.id === link.target);
+                                    if (!source || !target) return null;
+                                    return (
+                                        <line 
+                                            key={`link-${idx}`}
+                                            x1={source.x} y1={source.y}
+                                            x2={target.x} y2={target.y}
+                                            stroke={target.type === 'CATEGORY' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(16, 185, 129, 0.1)'}
+                                            strokeWidth={target.type === 'CATEGORY' ? 2 : 1}
+                                            className="transition-all duration-1000"
+                                        />
+                                    );
+                                })}
+
+                                {/* Nodes */}
+                                {mindMapData.nodes.map(node => (
+                                    <g key={node.id} transform={`translate(${node.x}, ${node.y})`} 
+                                       onClick={(e) => { e.stopPropagation(); node.type !== 'ROOT' && handleOpenModal(node); }}
+                                       className="cursor-pointer group/node"
+                                    >
+                                        <circle 
+                                            r={node.type === 'ROOT' ? 40 : node.type === 'CATEGORY' ? 25 : 15}
+                                            fill={node.type === 'ROOT' ? '#3B82F6' : node.type === 'CATEGORY' ? '#1E293B' : '#065F46'}
+                                            stroke={node.type === 'ROOT' ? '#60A5FA' : node.type === 'CATEGORY' ? '#3B82F6' : '#10B981'}
+                                            strokeWidth={2}
+                                            className="transition-all group-hover/node:scale-125"
+                                        />
+                                        <text 
+                                            y={node.type === 'ROOT' ? 55 : node.type === 'CATEGORY' ? 40 : 25}
+                                            textAnchor="middle"
+                                            fill="white"
+                                            className={`font-black uppercase tracking-tighter transition-all group-hover/node:font-bold ${node.type === 'ROOT' ? 'text-2xl' : node.type === 'CATEGORY' ? 'text-sm' : 'text-[10px]'}`}
+                                            style={{ textShadow: '0 2px 10px rgba(0,0,0,0.5)', pointerEvents: 'none' }}
+                                        >
+                                            {node.label || node.value}
+                                        </text>
+                                    </g>
+                                ))}
+                             </g>
+                        </svg>
+
+                        {/* Map Border & Overlay */}
+                        <div className="absolute bottom-6 right-6 font-mono text-[10px] text-gray-500 uppercase tracking-widest pointer-events-none">
+                            Relational Topology Engine v1.0
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Premium Dynamic Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700 animate-in fade-in zoom-in duration-300">
-                        <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50/80 dark:bg-gray-800/80">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-600 rounded-lg text-white shadow-lg shadow-blue-500/20">
-                                    {editingOption ? <Edit2 size={20} /> : <Plus size={20} />}
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-gray-950/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={() => setIsModalOpen(false)} />
+                    <div className="relative bg-white dark:bg-[#1e2029] rounded-[40px] shadow-[0_35px_80px_-15px_rgba(0,0,0,0.8)] w-full max-w-xl overflow-hidden border border-gray-200 dark:border-gray-800 animate-in slide-in-from-bottom-12 duration-500">
+                        {/* Modal Header */}
+                        <div className="px-10 py-8 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gradient-to-br from-gray-50 to-white dark:from-[#1e2029] dark:to-[#181a21]">
+                            <div className="flex items-center gap-6">
+                                <div className={`p-4 rounded-3xl text-white shadow-2xl ${selectedType === 'CATEGORY' ? 'bg-blue-600 shadow-blue-500/20' : 'bg-emerald-600 shadow-emerald-500/20'}`}>
+                                    {editingOption ? <Edit2 size={24} /> : <Plus size={24} />}
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-gray-900 dark:text-white">
-                                        {editingOption ? `Edit ${TABS.find(t => t.id === activeTab)?.label.slice(0, -1)}` : `New ${TABS.find(t => t.id === activeTab)?.label.slice(0, -1)}`}
+                                    <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tighter">
+                                        {editingOption ? 'Edit Attribute' : 'Create New'}
                                     </h3>
-                                    <p className="text-xs text-gray-500 font-medium tracking-tight">Manage catalog attributes</p>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Classification Engine</p>
                                 </div>
                             </div>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-full hover:bg-gray-200/50 transition-colors">
-                                <X size={20} />
+                            <button onClick={() => setIsModalOpen(false)} className="p-3 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-2xl transition-all">
+                                <X size={24} />
                             </button>
                         </div>
                         
-                        <div className="p-8 space-y-6">
-                            <div>
-                                <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-                                    Name / Value
-                                </label>
+                        {/* Modal Body */}
+                        <div className="p-10 space-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                            <div className="grid grid-cols-2 gap-4">
+                                <button 
+                                    onClick={() => setSelectedType('CATEGORY')}
+                                    className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all font-bold text-xs uppercase tracking-widest ${
+                                        selectedType === 'CATEGORY' 
+                                            ? 'bg-blue-600 border-blue-600 text-white shadow-lg' 
+                                            : 'bg-transparent border-gray-200 dark:border-gray-800 text-gray-400'
+                                    }`}
+                                >
+                                    <FolderTree size={16} /> Category
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedType('SUB_CATEGORY')}
+                                    className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all font-bold text-xs uppercase tracking-widest ${
+                                        selectedType === 'SUB_CATEGORY' 
+                                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' 
+                                            : 'bg-transparent border-gray-200 dark:border-gray-800 text-gray-400'
+                                    }`}
+                                >
+                                    <Tag size={16} /> Sub-Category
+                                </button>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 px-1">Attribute Name</label>
                                 <input
                                     type="text"
                                     value={value}
                                     onChange={e => setValue(e.target.value)}
-                                    placeholder={`Enter ${activeTab.toLowerCase()} name...`}
-                                    className="w-full px-4 py-3 text-lg font-medium border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-[#1a1c23] text-gray-900 dark:text-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all"
+                                    placeholder="e.g. Bedspreads, Medical Supplies..."
+                                    className="w-full px-6 py-5 text-xl font-bold border-2 border-gray-200 dark:border-gray-800 rounded-3xl bg-gray-50 dark:bg-[#1a1c23] text-gray-900 dark:text-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all placeholder:text-gray-300 dark:placeholder:text-gray-700"
                                     autoFocus
                                 />
                             </div>
 
-                            {activeTab === 'SUB_CATEGORY' && (
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                            Parent Category Associations
-                                        </label>
-                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded uppercase">
-                                            {selectedParentIds.length} Selected
-                                        </span>
+                            {selectedType === 'SUB_CATEGORY' && (
+                                <div className="space-y-4 animate-in slide-in-from-top-4 duration-500">
+                                    <div className="flex items-center justify-between px-1">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Parent Associations</label>
+                                        <span className="text-[10px] font-black bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400 px-3 py-1 rounded-full">{selectedParentIds.length} Linked</span>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto p-4 bg-gray-50 dark:bg-black/20 rounded-xl border border-gray-200 dark:border-gray-800 custom-scrollbar">
-                                        {categories.map(cat => (
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[220px] overflow-y-auto p-4 bg-gray-50/50 dark:bg-black/20 rounded-3xl border border-gray-100 dark:border-gray-800 custom-scrollbar">
+                                        {allCategories.map(cat => (
                                             <button
                                                 key={cat.id}
                                                 onClick={() => toggleParentSelection(cat.id)}
-                                                className={`flex items-center space-x-2 p-2.5 rounded-lg text-sm text-left transition-all ${
+                                                className={`flex items-center gap-3 p-3 rounded-2xl text-[11px] font-bold text-left transition-all border ${
                                                     selectedParentIds.includes(cat.id)
-                                                        ? 'bg-blue-600 text-white shadow-md'
-                                                        : 'bg-white dark:bg-[#1a1c23] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                                                        ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                                                        : 'bg-white dark:bg-[#1a1c23] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800 hover:border-blue-500/50'
                                                 }`}
                                             >
-                                                <div className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center ${
-                                                    selectedParentIds.includes(cat.id) ? 'bg-white border-white' : 'border-gray-400'
+                                                <div className={`flex-shrink-0 w-4 h-4 rounded-md border-2 flex items-center justify-center transition-colors ${
+                                                    selectedParentIds.includes(cat.id) ? 'bg-white border-white' : 'border-gray-300 dark:border-gray-600'
                                                 }`}>
-                                                    {selectedParentIds.includes(cat.id) && <Check size={12} className="text-blue-600 font-bold" />}
+                                                    {selectedParentIds.includes(cat.id) && <Check size={10} className="text-blue-600 font-black" />}
                                                 </div>
-                                                <span className="truncate font-medium">{cat.value}</span>
+                                                <span className="truncate">{cat.value}</span>
                                             </button>
                                         ))}
                                     </div>
-                                    <p className="text-[10px] text-gray-400 text-center italic">
-                                        Tip: You can associate this sub-category with multiple parent categories.
-                                    </p>
+                                    <p className="text-[10px] text-gray-400 text-center italic font-medium">Link this sub-category to one or more primary parent categories.</p>
                                 </div>
                             )}
                         </div>
 
-                        <div className="px-8 py-5 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3 bg-gray-50/80 dark:bg-gray-800/80">
+                        {/* Modal Footer */}
+                        <div className="px-10 py-8 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-4 bg-gray-50/50 dark:bg-gray-800/20">
                             <button
                                 onClick={() => setIsModalOpen(false)}
-                                className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                                className="px-8 py-3 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
                             >
-                                Cancel
+                                Discard
                             </button>
                             <button
                                 onClick={handleSave}
-                                disabled={isSaving || !value.trim() || (activeTab === 'SUB_CATEGORY' && selectedParentIds.length === 0)}
-                                className="flex items-center space-x-2 px-8 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-lg shadow-blue-500/30 disabled:opacity-50 active:scale-95"
+                                disabled={isSaving || !value.trim() || (selectedType === 'SUB_CATEGORY' && selectedParentIds.length === 0)}
+                                className="flex items-center gap-3 px-10 py-4 text-xs font-black uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 rounded-2xl transition-all shadow-2xl shadow-blue-500/40 disabled:opacity-50 active:scale-95 group/btn"
                             >
                                 {isSaving ? (
-                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    <div className="w-4 h-4 border-4 border-white/30 border-t-white rounded-full animate-spin" />
                                 ) : (
-                                    <Save size={18} />
+                                    <Save size={18} className="group-hover/btn:rotate-12 transition-transform" />
                                 )}
-                                <span>{editingOption ? 'Update Attribute' : 'Create Attribute'}</span>
+                                <span>{editingOption ? 'Update Attribute' : 'Authorize & Save'}</span>
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
+            {/* Premium Global Styles */}
             <style dangerouslySetInnerHTML={{ __html: `
                 .no-scrollbar::-webkit-scrollbar { display: none; }
                 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
-                .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.2); border-radius: 10px; }
+                .shadow-glow { box-shadow: 0 0 15px currentColor; }
+                @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes slide-in-bottom { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+                .animate-fade-in { animation: fade-in 0.3s ease-out; }
             `}} />
         </div>
     );
