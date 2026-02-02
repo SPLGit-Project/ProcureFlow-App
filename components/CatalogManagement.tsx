@@ -131,37 +131,68 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         return allSubCategories.filter(s => s.parentIds?.includes(selectedParentId) || s.parentId === selectedParentId);
     }, [selectedParentId, allSubCategories]);
 
-    // Mind Map Layout Logic (Simple Hierarchical Visualization)
+    // Mind Map Layout Logic (Horizontal Hierarchy / Decomposition Tree)
     const mindMapData = useMemo(() => {
         const nodes: any[] = [];
         const links: any[] = [];
         
-        // Root Node
-        nodes.push({ id: 'root', label: 'Product Catalog', type: 'ROOT', x: 0, y: 0 });
+        const cardWidth = 240;
+        const cardHeight = 80;
+        const columnGap = 120;
+        const rowGap = 30;
 
-        // Category Nodes (Circular Layout)
+        // 1. Root Node (leftmost)
+        nodes.push({ 
+            id: 'root', 
+            label: 'Product Catalog', 
+            type: 'ROOT', 
+            x: 0, 
+            y: 0,
+            width: cardWidth,
+            height: cardHeight
+        });
+
+        // 2. Category Nodes (center)
+        const totalCatHeight = allCategories.length * (cardHeight + rowGap);
+        const startY = -(totalCatHeight / 2) + (cardHeight / 2);
+
         allCategories.forEach((cat, i) => {
-            const angle = (i / allCategories.length) * Math.PI * 2;
-            const radius = 300;
-            const cx = Math.cos(angle) * radius;
-            const cy = Math.sin(angle) * radius;
+            const cx = cardWidth + columnGap;
+            const cy = startY + (i * (cardHeight + rowGap));
             
-            nodes.push({ ...cat, x: cx, y: cy });
+            nodes.push({ 
+                ...cat, 
+                x: cx, 
+                y: cy, 
+                width: cardWidth, 
+                height: cardHeight 
+            });
             links.push({ source: 'root', target: cat.id });
 
-            // Sub-Category Nodes (Orbiting Parents)
+            // 3. Sub-Category Nodes (rightside)
             const subs = allSubCategories.filter(s => s.parentIds?.includes(cat.id) || s.parentId === cat.id);
+            const subColumnX = cx + cardWidth + columnGap;
+            
             subs.forEach((sub, si) => {
-                const sAngle = angle + ((si - subs.length / 2) * 0.1);
-                const sRadius = radius + 150;
-                const sx = Math.cos(sAngle) * sRadius;
-                const sy = Math.sin(sAngle) * sRadius;
+                // To avoid overlap, we might need a more complex offset, 
+                // but for now let's stack them relative to parent
+                const sy = cy + ((si - (subs.length - 1) / 2) * (cardHeight / 2 + 10));
                 
-                // Only add node if not already added (shared subs)
-                if (!nodes.find(n => n.id === sub.id)) {
-                    nodes.push({ ...sub, x: sx, y: sy });
-                }
-                links.push({ source: cat.id, target: sub.id });
+                // Only add node if not already added OR handle multi-parent x/y?
+                // For "Tree" style, we usually duplicate the node or link back.
+                // Multi-parent nodes in a tree usually repeat or have multiple links.
+                // Let's create unique instances for the visual tree to keep it "tree-like"
+                const instanceId = `${cat.id}-${sub.id}`;
+                nodes.push({ 
+                    ...sub, 
+                    id: instanceId,
+                    originalId: sub.id,
+                    x: subColumnX, 
+                    y: sy,
+                    width: cardWidth * 0.8,
+                    height: cardHeight * 0.7
+                });
+                links.push({ source: cat.id, target: instanceId });
             });
         });
 
@@ -185,6 +216,12 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     const handleWheel = (e: React.WheelEvent) => {
         const newScale = Math.min(Math.max(scale - e.deltaY * 0.001, 0.2), 3);
         setScale(newScale);
+    };
+
+    // Helper for Bézier curve paths
+    const getCurvePath = (sX: number, sY: number, tX: number, tY: number) => {
+        const midX = (sX + tX) / 2;
+        return `M ${sX} ${sY} C ${midX} ${sY}, ${midX} ${tY}, ${tX} ${tY}`;
     };
 
     return (
@@ -226,7 +263,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                         }`}
                     >
                         {activeTabId === 'TAXONOMY' ? <Network size={16} /> : <ListIcon size={16} />}
-                        <span>{activeTabId === 'TAXONOMY' ? 'Taxonomy View' : 'List View'}</span>
+                        <span>{activeTabId === 'TAXONOMY' ? 'Hierarchy Tree' : 'List View'}</span>
                     </button>
                     <button 
                         onClick={() => setViewMode('MIND_MAP')}
@@ -237,7 +274,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                         }`}
                     >
                         <Maximize2 size={16} />
-                        <span>Mind Map</span>
+                        <span>Visual Map</span>
                     </button>
                 </div>
             </div>
@@ -248,7 +285,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                     /* UINFINED TAXONOMY VIEW (Split Perspective) */
                     <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500">
                         {/* Parent Categories Pane */}
-                        <div className="lg:col-span-5 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden group">
+                        <div className="lg:col-span-4 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden group">
                            <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center bg-gradient-to-r from-blue-50/20 to-transparent dark:from-blue-900/10 dark:to-transparent">
                                 <div>
                                     <h4 className="text-sm font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
@@ -287,9 +324,9 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                 : 'bg-white dark:bg-[#252833] border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/10'
                                         }`}
                                     >
-                                        <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-3 text-sm">
                                             <div className={`p-2 rounded-xl border transition-colors ${selectedParentId === cat.id ? 'bg-white/20 border-white/30' : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700'}`}>
-                                                <FolderTree size={18} className={selectedParentId === cat.id ? 'text-white' : 'text-blue-500'} />
+                                                <FolderTree size={16} className={selectedParentId === cat.id ? 'text-white' : 'text-blue-500'} />
                                             </div>
                                             <span className="font-bold tracking-tight">{cat.value}</span>
                                         </div>
@@ -301,8 +338,8 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                 <ChevronRight size={18} />
                                             ) : (
                                                 <div className="opacity-0 group-hover/item:opacity-100 flex items-center gap-1 transition-all">
-                                                    <button onClick={(e) => { e.stopPropagation(); handleOpenModal(cat); }} className="p-1 hover:text-blue-500"><Edit2 size={14}/></button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(cat.id); }} className="p-1 hover:text-red-500"><Trash2 size={14}/></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleOpenModal(cat); }} className="p-1 hover:text-blue-500"><Edit2 size={12}/></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(cat.id); }} className="p-1 hover:text-red-500"><Trash2 size={12}/></button>
                                                 </div>
                                             )}
                                         </div>
@@ -312,7 +349,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                         </div>
 
                         {/* Associated Sub-Categories Pane */}
-                        <div className="lg:col-span-7 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden">
+                        <div className="lg:col-span-8 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden">
                            {selectedParentId ? (
                                <>
                                 <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
@@ -346,18 +383,18 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                             {associatedSubCategories.map(sub => (
                                                 <div 
                                                     key={sub.id} 
                                                     className="group/sub relative p-5 rounded-3xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#252833] hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-500 flex items-center justify-between"
                                                 >
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-2xl group-hover/sub:scale-110 transition-transform">
-                                                            <Tag size={20} className="text-blue-600 dark:text-blue-400" />
+                                                    <div className="flex items-center gap-4 overflow-hidden">
+                                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-2xl group-hover/sub:scale-110 transition-transform flex-shrink-0">
+                                                            <Tag size={18} className="text-blue-600 dark:text-blue-400" />
                                                         </div>
-                                                        <div>
-                                                            <p className="font-black text-gray-900 dark:text-white tracking-tight">{sub.value}</p>
+                                                        <div className="min-w-0">
+                                                            <p className="font-black text-gray-900 dark:text-white tracking-tight truncate">{sub.value}</p>
                                                             <div className="flex items-center gap-2 mt-1">
                                                                 <span className="text-[9px] font-black uppercase text-gray-400 tracking-tighter">Parents:</span>
                                                                 <div className="flex -space-x-1">
@@ -378,9 +415,9 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <div className="flex flex-col gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity translate-x-2 group-hover/sub:translate-x-0">
-                                                        <button onClick={() => handleOpenModal(sub)} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors"><Edit2 size={16}/></button>
-                                                        <button onClick={() => handleDelete(sub.id)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"><Trash2 size={16}/></button>
+                                                    <div className="flex flex-col gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity translate-x-2 group-hover/sub:translate-x-0 ml-4 flex-shrink-0">
+                                                        <button onClick={() => handleOpenModal(sub)} className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors"><Edit2 size={14}/></button>
+                                                        <button onClick={() => handleDelete(sub.id)} className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"><Trash2 size={14}/></button>
                                                     </div>
                                                 </div>
                                             ))}
@@ -458,8 +495,8 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                         </div>
                     </div>
                 ) : (
-                    /* MIND MAP VISUALIZATION (EXPERIMENTAL CANVAS) */
-                    <div className="flex-1 relative bg-[#0f1115] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden cursor-grab active:cursor-grabbing group"
+                    /* DECOMPOSITION TREE VISUALIZATION */
+                    <div className="flex-1 relative bg-gray-50 dark:bg-[#0f1115] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden cursor-grab active:cursor-grabbing group"
                          onMouseDown={handleMouseDown}
                          onMouseMove={handleMouseMove}
                          onMouseUp={handleMouseUp}
@@ -468,70 +505,129 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                     >
                         {/* Map HUD */}
                         <div className="absolute top-6 left-6 z-10 flex flex-col gap-3 pointer-events-none">
-                            <div className="bg-white/10 backdrop-blur-xl p-4 rounded-2xl border border-white/10 text-white pointer-events-auto shadow-2xl">
-                                <h4 className="text-xs font-black uppercase tracking-widest text-blue-400 mb-2">Catalog Interface</h4>
-                                <div className="flex items-center gap-4 text-[10px]">
-                                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500 shadow-glow shadow-blue-500" /> CATEGORIES</div>
-                                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500 shadow-glow shadow-emerald-500" /> SUB-CATEGORIES</div>
+                            <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl p-4 rounded-2xl border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white pointer-events-auto shadow-2xl">
+                                <h4 className="text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-2">Category Decomposition</h4>
+                                <div className="flex items-center gap-4 text-[10px] font-black tracking-tight opacity-70">
+                                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500" /> CATEGORIES</div>
+                                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500" /> SUB-CATEGORIES</div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 pointer-events-auto">
-                                <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="p-2 bg-white/10 hover:bg-white/20 backdrop-blur-xl rounded-lg text-white transition-all"><Plus size={16}/></button>
-                                <button onClick={() => setScale(s => Math.max(s - 0.1, 0.4))} className="p-2 bg-white/10 hover:bg-white/20 backdrop-blur-xl rounded-lg text-white transition-all"><Minimize2 size={16}/></button>
-                                <button onClick={() => { setScale(1); setOffset({x: 0, y: 0}); }} className="p-2 bg-white/10 hover:bg-white/20 backdrop-blur-xl rounded-lg text-white transition-all"><ArrowRightLeft size={16} className="rotate-90"/></button>
+                                <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><Plus size={16}/></button>
+                                <button onClick={() => setScale(s => Math.max(s - 0.1, 0.4))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><Minimize2 size={16}/></button>
+                                <button onClick={() => { setScale(0.8); setOffset({x: 50, y: 150}); }} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><ArrowRightLeft size={16} className="rotate-90"/></button>
                             </div>
                         </div>
 
                         {/* Interactive SVG Canvas */}
-                        <svg className="w-full h-full" viewBox="-500 -500 1000 1000">
+                        <svg className="w-full h-full" viewBox="0 0 1200 800">
                              <g transform={`translate(${offset.x}, ${offset.y}) scale(${scale})`}>
-                                {/* Links */}
+                                {/* Links (Bezier Curves) */}
                                 {mindMapData.links.map((link, idx) => {
                                     const source = mindMapData.nodes.find(n => n.id === link.source);
                                     const target = mindMapData.nodes.find(n => n.id === link.target);
                                     if (!source || !target) return null;
+                                    
+                                    // Calculate center points of right side of source and left side of target
+                                    const startX = source.x + source.width;
+                                    const startY = source.y + source.height / 2;
+                                    const endX = target.x;
+                                    const endY = target.y + target.height / 2;
+
                                     return (
-                                        <line 
-                                            key={`link-${idx}`}
-                                            x1={source.x} y1={source.y}
-                                            x2={target.x} y2={target.y}
-                                            stroke={target.type === 'CATEGORY' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(16, 185, 129, 0.1)'}
-                                            strokeWidth={target.type === 'CATEGORY' ? 2 : 1}
-                                            className="transition-all duration-1000"
-                                        />
+                                        <g key={`link-${idx}`}>
+                                            <path 
+                                                d={getCurvePath(startX, startY, endX, endY)}
+                                                fill="none"
+                                                stroke={target.type === 'CATEGORY' ? 'rgba(59, 130, 246, 0.4)' : 'rgba(16, 185, 129, 0.2)'}
+                                                strokeWidth={2}
+                                                className="transition-all duration-1000"
+                                            />
+                                        </g>
                                     );
                                 })}
 
-                                {/* Nodes */}
+                                {/* Nodes (Card Style) */}
                                 {mindMapData.nodes.map(node => (
                                     <g key={node.id} transform={`translate(${node.x}, ${node.y})`} 
-                                       onClick={(e) => { e.stopPropagation(); node.type !== 'ROOT' && handleOpenModal(node); }}
+                                       onClick={(e) => { e.stopPropagation(); node.type !== 'ROOT' && handleOpenModal(node.originalId ? safeOptions.find(o => o.id === node.originalId) : node); }}
                                        className="cursor-pointer group/node"
                                     >
-                                        <circle 
-                                            r={node.type === 'ROOT' ? 40 : node.type === 'CATEGORY' ? 25 : 15}
-                                            fill={node.type === 'ROOT' ? '#3B82F6' : node.type === 'CATEGORY' ? '#1E293B' : '#065F46'}
-                                            stroke={node.type === 'ROOT' ? '#60A5FA' : node.type === 'CATEGORY' ? '#3B82F6' : '#10B981'}
-                                            strokeWidth={2}
-                                            className="transition-all group-hover/node:scale-125"
+                                        {/* Card Background */}
+                                        <rect 
+                                            width={node.width}
+                                            height={node.height}
+                                            rx={10}
+                                            fill={node.type === 'ROOT' ? '#3B82F6' : '#fff'}
+                                            className={`${node.type !== 'ROOT' ? 'dark:fill-[#1e2029]' : ''} shadow-lg shadow-black/5 transition-all group-hover/node:-translate-y-1 group-hover/node:shadow-blue-500/10`}
+                                            stroke={node.type === 'ROOT' ? 'none' : 'rgba(0,0,0,0.05)'}
                                         />
+                                        
+                                        {/* Value Bar (Decomposition style) */}
+                                        {node.type !== 'ROOT' && (
+                                            <g transform="translate(50, 50)">
+                                                <rect width={node.width - 100} height={8} rx={4} fill="rgba(0,0,0,0.05)" className="dark:fill-white/5" />
+                                                <rect 
+                                                    width={(node.width - 100) * (node.type === 'CATEGORY' ? 0.7 : 0.4)} 
+                                                    height={8} 
+                                                    rx={4} 
+                                                    fill="#F59E0B"
+                                                    className="opacity-90"
+                                                />
+                                            </g>
+                                        )}
+
+                                        {/* Icon Container */}
+                                        <g transform={`translate(15, ${node.height/2 - 12})`}>
+                                            {node.type === 'ROOT' ? (
+                                                <Network size={24} color="white" />
+                                            ) : node.type === 'CATEGORY' ? (
+                                                <FolderTree size={20} className="text-blue-500" />
+                                            ) : (
+                                                <Tag size={16} className="text-emerald-500" />
+                                            )}
+                                        </g>
+
+                                        {/* Labels */}
                                         <text 
-                                            y={node.type === 'ROOT' ? 55 : node.type === 'CATEGORY' ? 40 : 25}
-                                            textAnchor="middle"
-                                            fill="white"
-                                            className={`font-black uppercase tracking-tighter transition-all group-hover/node:font-bold ${node.type === 'ROOT' ? 'text-2xl' : node.type === 'CATEGORY' ? 'text-sm' : 'text-[10px]'}`}
-                                            style={{ textShadow: '0 2px 10px rgba(0,0,0,0.5)', pointerEvents: 'none' }}
+                                            x={50}
+                                            y={node.height / 2 - 5}
+                                            fill={node.type === 'ROOT' ? 'white' : 'currentColor'}
+                                            className={`font-black tracking-tight ${node.type === 'ROOT' ? 'text-lg' : node.type === 'CATEGORY' ? 'text-sm' : 'text-xs'} dark:text-white`}
                                         >
                                             {node.label || node.value}
                                         </text>
+
+                                        {/* Sub-label (Item Count/Value) */}
+                                        {node.type !== 'ROOT' && (
+                                            <text 
+                                                x={50}
+                                                y={node.height / 2 + 35}
+                                                className="text-[9px] font-black tracking-widest text-gray-400 dark:text-gray-500 opacity-60 uppercase"
+                                            >
+                                                {node.type === 'CATEGORY' 
+                                                    ? `${allSubCategories.filter(s => s.parentIds?.includes(node.id) || s.parentId === node.id).length} Nodes`
+                                                    : 'Active Attribute'
+                                                }
+                                            </text>
+                                        )}
+
+                                        {/* Expansion Indicator (+) */}
+                                        {node.type !== 'SUB_CATEGORY' && (
+                                            <g transform={`translate(${node.width - 20}, ${node.height/2})`}>
+                                                <circle r={7} fill="currentColor" className="text-gray-200 dark:text-gray-800" />
+                                                <line x1={-3} y1={0} x2={3} y2={0} stroke="currentColor" strokeWidth={1.5} className="text-gray-600 dark:text-gray-400" />
+                                                <line x1={0} y1={-3} x2={0} y2={3} stroke="currentColor" strokeWidth={1.5} className="text-gray-600 dark:text-gray-400" />
+                                            </g>
+                                        )}
                                     </g>
                                 ))}
                              </g>
                         </svg>
 
-                        {/* Map Border & Overlay */}
-                        <div className="absolute bottom-6 right-6 font-mono text-[10px] text-gray-500 uppercase tracking-widest pointer-events-none">
-                            Relational Topology Engine v1.0
+                        {/* Map HUD - Right side stats */}
+                        <div className="absolute bottom-6 left-6 font-mono text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-widest pointer-events-none p-4 backdrop-blur-md rounded-xl">
+                            Relational Hierarchy Explorer v2.0 // DECOMPOSITION_TREE_ENABLED
                         </div>
                     </div>
                 )}
