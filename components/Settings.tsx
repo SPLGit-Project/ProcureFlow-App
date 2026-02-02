@@ -1410,6 +1410,7 @@ if __name__ == "__main__":
                 
                 <CatalogManagement 
                     options={attributeOptions}
+                    items={items}
                     upsertOption={upsertAttributeOption}
                     deleteOption={deleteAttributeOption}
                 />

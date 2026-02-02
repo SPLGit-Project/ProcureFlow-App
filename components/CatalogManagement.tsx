@@ -12,6 +12,7 @@ import { useToast } from './ToastNotification';
 
 interface CatalogManagementProps {
     options: AttributeOption[];
+    items?: any[]; // Allow passing items for counts
     upsertOption: (option: Partial<AttributeOption>) => Promise<void>;
     deleteOption: (id: string) => Promise<void>;
 }
@@ -26,6 +27,7 @@ type ViewMode = 'LIST' | 'TAXONOMY' | 'MIND_MAP';
 
 const CatalogManagement: React.FC<CatalogManagementProps> = ({ 
     options = [], 
+    items = [],
     upsertOption, 
     deleteOption 
 }) => {
@@ -190,7 +192,14 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             // const startY = (prevLevelNodes.length > 0) ? prevLevelNodes[0].y : START_Y; // naive
 
             sorted.forEach(opt => {
-                const count = 0; // items not available
+                let count = 0;
+                if (items.length > 0) {
+                     if (opt.type === 'SUB_CATEGORY') count = items.filter(i => i.subCategory === opt.value).length;
+                     else if (opt.type === 'CATEGORY') count = items.filter(i => i.category === opt.value).length;
+                     else if (opt.type === 'TYPE') count = items.filter(i => i.itemType === opt.value).length;
+                     else if (opt.type === 'CATALOG') count = items.filter(i => i.itemCatalog === opt.value).length;
+                     else if (opt.type === 'POOL') count = items.filter(i => i.itemPool === opt.value).length; 
+                }
 
                 const node = {
                     id: opt.id,
@@ -235,7 +244,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         }
 
         return { nodes, links };
-    }, [safeOptions]);
+    }, [safeOptions, items]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         setIsDragging(true);
@@ -588,7 +597,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                 {/* Nodes (Card Style) */}
                                 {mindMapData.nodes.map(node => (
                                     <g key={node.id} transform={`translate(${node.x}, ${node.y})`} 
-                                       onClick={(e) => { e.stopPropagation(); node.type !== 'ROOT' && handleOpenModal(node.originalId ? safeOptions.find(o => o.id === node.originalId) : node); }}
+                                       onClick={(e) => { e.stopPropagation(); node.type !== 'ROOT' && handleOpenModal(node.original); }}
                                        className="cursor-pointer group/node"
                                     >
                                         {/* Card Background */}
