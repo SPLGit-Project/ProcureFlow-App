@@ -554,7 +554,7 @@ const AdminMigration = () => {
                                     <select 
                                         value={columnMapping[field.id] || ''} 
                                         onChange={(e) => setColumnMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
-                                        className="text-sm border-gray-300 rounded-md shadow-sm focus:border-[var(--color-brand)] focus:ring-[var(--color-brand)] bg-white dark:bg-black/20 min-w-[150px]"
+                                        className="text-sm border-gray-300 rounded-md shadow-sm focus:border-[var(--color-brand)] focus:ring-[var(--color-brand)] bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 min-w-[150px]"
                                     >
                                         <option value="">-- Select Header --</option>
                                         {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -577,7 +577,7 @@ const AdminMigration = () => {
                                     <select 
                                         value={columnMapping[field.id] || ''} 
                                         onChange={(e) => setColumnMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
-                                        className="text-sm border-gray-300 rounded-md shadow-sm focus:border-[var(--color-brand)] focus:ring-[var(--color-brand)] bg-white dark:bg-black/20 min-w-[150px]"
+                                        className="text-sm border-gray-300 rounded-md shadow-sm focus:border-[var(--color-brand)] focus:ring-[var(--color-brand)] bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 min-w-[150px]"
                                     >
                                         <option value="">-- Ignore --</option>
                                         {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
