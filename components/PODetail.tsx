@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield } from 'lucide-react';
 import { DeliveryHeader } from '../types';
 import DeliveryModal from './DeliveryModal';
 import ConcurExportModal from './ConcurExportModal';
@@ -17,7 +17,9 @@ const PODetail = () => {
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
   const [isConcurModalOpen, setIsConcurModalOpen] = useState(false);
+
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [concurInput, setConcurInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   
@@ -208,6 +210,24 @@ const PODetail = () => {
       }
   };
 
+  const handleForceStatusUpdate = async (newStatus: string) => {
+      if (!po) return;
+      try {
+            await updatePOStatus(po.id, newStatus, {
+                id: `admin-override-${Date.now()}`,
+                action: 'ADMIN_OVERRIDE',
+                approverName: currentUser.name,
+                date: new Date().toISOString().split('T')[0],
+                comments: `Admin forced status to ${newStatus}`
+            });
+            setIsStatusModalOpen(false);
+            // window.location.reload(); // updatePOStatus should trigger re-fetch or context update
+      } catch (e: any) {
+          console.error(e);
+          alert("Failed to update status: " + e.message);
+      }
+  };
+
   return (
     <div className="max-w-6xl mx-auto pb-20">
       <button onClick={() => navigate(-1)} className="flex items-center text-gray-500 hover:text-gray-900 dark:hover:text-white mb-6 transition-colors font-medium text-sm">
@@ -247,6 +267,11 @@ const PODetail = () => {
                            <Save size={18} />
                        </button>
                    )
+               )}
+               {currentUser?.role === 'ADMIN' && (
+                    <button onClick={() => setIsStatusModalOpen(true)} className="p-2.5 text-amber-600 hover:text-amber-700 border border-amber-200 rounded-xl hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Admin: Force Status">
+                        <Shield size={18} />
+                    </button>
                )}
               {canApprove && (
                   <>
@@ -592,6 +617,39 @@ const PODetail = () => {
 
       {isExportModalOpen && (
           <ConcurExportModal po={po} onClose={() => setIsExportModalOpen(false)} />
+      )}
+
+      {isStatusModalOpen && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-sm w-full p-6 border border-gray-200 dark:border-gray-800">
+                <div className="mb-4">
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <Shield size={20} className="text-amber-500"/> Force Status Update
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-1">
+                        Override the current workflow state.
+                    </p>
+                </div>
+                
+                <div className="space-y-2 mb-6">
+                    {['PENDING_APPROVAL', 'APPROVED_PENDING_CONCUR', 'ACTIVE', 'RECEIVED', 'CLOSED', 'REJECTED'].map(s => (
+                        <button 
+                            key={s}
+                            onClick={() => handleForceStatusUpdate(s)}
+                            className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                                ${po.status === s ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-500/30' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'}
+                            `}
+                        >
+                            {s}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="flex justify-end">
+                    <button onClick={() => setIsStatusModalOpen(false)} className="px-4 py-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white font-medium text-sm">Cancel</button>
+                </div>
+            </div>
+        </div>
       )}
     </div>
   );

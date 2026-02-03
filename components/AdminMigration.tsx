@@ -162,7 +162,7 @@ const AdminMigration = () => {
                         poGroups[poNum] = {
                             poNum,
                             date: excelDateToJSDate(row['Order Date']) || new Date(),
-                            status: 'PENDING_DELIVERY', // Default, will refine
+                            status: 'ACTIVE', // Default, will refine
                             lines: [],
                             isValid: true,
                             errors: [],
@@ -237,9 +237,9 @@ const AdminMigration = () => {
                     if (totalReceived >= totalOrdered && totalOrdered > 0) {
                         po.status = 'COMPLETED';
                     } else if (totalReceived > 0) {
-                        po.status = 'PENDING_DELIVERY';
+                        po.status = 'ACTIVE';
                     } else {
-                        po.status = 'PENDING_DELIVERY';
+                        po.status = 'ACTIVE';
                     }
                 });
 

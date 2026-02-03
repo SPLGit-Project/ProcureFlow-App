@@ -287,7 +287,7 @@ export interface ApprovalEvent {
   id: string;
   approverName: string;
   date: string;
-  action: 'APPROVED' | 'REJECTED' | 'SUBMITTED';
+  action: 'APPROVED' | 'REJECTED' | 'SUBMITTED' | 'ADMIN_OVERRIDE';
   comments?: string;
 }
 
