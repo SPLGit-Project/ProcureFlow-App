@@ -28,7 +28,7 @@ const MAPPABLE_FIELDS: MappableField[] = [
     { id: 'date', label: 'Order Date', description: 'Date the order was placed', required: true, aliases: ['date', 'order date', 'request date', 'created'] },
     { id: 'site', label: 'Site Name', description: 'Site location for the PO', aliases: ['site', 'location', 'branch', 'project'] },
     { id: 'sku', label: 'Product Code', description: 'SKU / Item Code', required: true, aliases: ['sku', 'product code', 'item code', 'part no', 'code'] },
-    { id: 'description', label: 'Product Description', description: 'Item description', aliases: ['description', 'product name', 'item name'] },
+
     { id: 'qtyOrdered', label: 'Quantity Ordered', description: 'Total quantity ordered', required: true, aliases: ['qty', 'order qty', 'quantity', 'amount'] },
     { id: 'qtyReceived', label: 'Quantity Received', description: 'Total quantity received so far', aliases: ['inc', 'received', 'qty received', 'delivered'] },
     { id: 'unitPrice', label: 'Unit Price', description: 'Cost per unit', aliases: ['price', 'unit price', 'cost', 'rate'] },
@@ -74,6 +74,7 @@ interface ParsedLine {
     // Row-Level Controls
     includeDelivery: boolean;
     includeCap: boolean;
+    isNewItem?: boolean;
 }
 
 interface ParsedPO {
@@ -283,22 +284,39 @@ const AdminMigration = () => {
             }
 
             const sku = getVal(row, 'sku') ? String(getVal(row, 'sku')).trim() : '';
-            const description = getVal(row, 'description');
             
+            // Auto-detect description header if not explicit
+            // This is only for fallback/new item creation
+            const descHeader = rawHeaders.find(h => h.toLowerCase().includes('desc') || h.toLowerCase().includes('name') || h.toLowerCase().includes('product'));
+            let description = descHeader ? row[descHeader] : '';
+
             let finalItemId: string | undefined;
             let finalMappedSku: string | undefined;
+            let isNewItem = false;
 
             // Resolve Item
             const exactItem = items.find(i => i.sku.toLowerCase() === sku.toLowerCase());
             if (exactItem) {
                 finalItemId = exactItem.id;
+                description = exactItem.name; // ALWAYS use Master Data description for matches
             } else if (resolutions[sku]) {
-                finalItemId = resolutions[sku];
-                const rItem = items.find(i => i.id === finalItemId);
-                if (rItem) finalMappedSku = rItem.sku;
+                const res = resolutions[sku];
+                if (res === 'SKIP') {
+                    return; // Skip this line completely
+                } else if (res === 'CREATE_NEW') {
+                    isNewItem = true;
+                    // Keep description from file
+                } else {
+                    finalItemId = res;
+                    const rItem = items.find(i => i.id === finalItemId);
+                    if (rItem) {
+                        finalMappedSku = rItem.sku;
+                        description = rItem.name; // Override with mapped item name
+                    }
+                }
             }
 
-            const isValid = !!finalItemId;
+            const isValid = !!finalItemId || isNewItem;
 
             const capDate = excelDateToJSDate(getVal(row, 'capDate'));
             const goodsReceiptDate = excelDateToJSDate(getVal(row, 'goodsReceiptDate'));
@@ -324,7 +342,8 @@ const AdminMigration = () => {
                 invoiceNum: getVal(row, 'docketNum'),
                 goodsReceiptDate,
                 includeDelivery: (qtyReceived > 0),
-                includeCap: !!capDate
+                includeCap: !!capDate,
+                isNewItem
             });
         });
 
@@ -365,15 +384,21 @@ const AdminMigration = () => {
         setLogs([]);
         addLog('Starting Import Transaction...');
         
-        // Save New Mappings Memory
+        // Save New Mappings Memory (Explicit mappings only)
         Object.entries(resolutionMap).forEach(([excelSku, itemId]) => {
+            // Don't save special flags to the database
+            if (itemId === 'CREATE_NEW' || itemId === 'SKIP') return;
+
             // @ts-ignore
             if (db.saveMigrationMapping) db.saveMigrationMapping(excelSku, itemId);
         });
 
         const DEFAULT_REQUESTER_ID = 'a6e2810c-2b85-4ee1-81cb-a6fe3cc71378'; // Aaron Bell
         const DEFAULT_SITE_ID = sites[0]?.id || '33333333-3333-4333-8333-333333333333';
+        // Fallback category for new items (Use first available or a known ID)
+        const DEFAULT_CATEGORY_ID = items[0]?.categoryId || '33333333-3333-4333-8333-333333333333'; 
 
+        const createdItemCache: Record<string, string> = {}; // SKU -> UUID
         let successCount = 0;
         let failCount = 0;
 
@@ -425,6 +450,36 @@ const AdminMigration = () => {
 
                  for (const line of po.lines) {
                     let finalItemId = line.mappedItemId;
+                    
+                    // Handle New Item Creation
+                    if (line.isNewItem && !finalItemId) {
+                        const cacheKey = line.sku.toLowerCase().trim();
+                        if (createdItemCache[cacheKey]) {
+                            finalItemId = createdItemCache[cacheKey];
+                        } else {
+                            // Create it
+                            addLog(`Creating new Master Item: ${line.sku}...`);
+                            const { data: newItem, error: createError } = await supabase.from('items').insert({
+                                sku: line.sku,
+                                name: line.description || `Imported Item ${line.sku}`,
+                                category_id: DEFAULT_CATEGORY_ID,
+                                description: line.description || 'Imported via Migration',
+                                uom: 'EACH',
+                                status: 'ACTIVE'
+                            }).select().single();
+
+                            if (createError) {
+                                addLog(`Failed to create item ${line.sku}: ${createError.message}`);
+                            } else if (newItem) {
+                                finalItemId = newItem.id;
+                                createdItemCache[cacheKey] = newItem.id;
+                                // Save this link for future runs too!
+                                // @ts-ignore
+                                if (db.saveMigrationMapping) db.saveMigrationMapping(line.sku, newItem.id);
+                            }
+                        }
+                    }
+
                     if (!finalItemId && allowImportErrors) {
                          // Fallback creation logic omitted for brevity, focusing on mapping
                          continue; 
@@ -435,7 +490,7 @@ const AdminMigration = () => {
                         po_request_id: poId,
                         item_id: finalItemId,
                         sku: line.sku, 
-                        item_name: line.description,
+                        item_name: line.description || '',
                         quantity_ordered: line.qtyOrdered,
                         quantity_received: line.qtyReceived,
                         unit_price: line.unitPrice,
@@ -503,7 +558,6 @@ const AdminMigration = () => {
             if (!activeSku) return [];
             return items.map(i => {
                 const sScore = levenshtein(activeSku.toLowerCase(), i.sku.toLowerCase());
-                // Also fuzzy match description if available
                 return { item: i, score: sScore };
             }).sort((a,b) => a.score - b.score).slice(0, 5); // Top 5
         }, [activeSku, items]);
@@ -513,10 +567,17 @@ const AdminMigration = () => {
              const h = columnMapping['sku'];
              return h && String(r[h]).trim() === activeSku;
         });
-        const descHeader = columnMapping['description'];
-        const contextDesc = descHeader && contextRow ? contextRow[descHeader] : 'No description';
+        
+        // Auto-detect description for Context display only
+        const descHeader = rawHeaders.find(h => 
+            h.toLowerCase().includes('desc') || 
+            h.toLowerCase().includes('name') || 
+            h.toLowerCase().includes('product')
+        );
+        const contextDesc = descHeader && contextRow ? contextRow[descHeader] : 'No description found in file';
 
         const handleMap = (itemId: string) => {
+            // itemId could be a UUID, or 'CREATE_NEW', or 'SKIP'
             setResolutionMap(prev => ({ ...prev, [activeSku]: itemId }));
             const remaining = new Set(unknownSkus);
             remaining.delete(activeSku);
@@ -543,20 +604,38 @@ const AdminMigration = () => {
                      <div className="text-sm text-gray-400">Step 2.5 of 3</div>
                  </div>
 
-                 <div className="grid grid-cols-2 gap-8">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                      {/* Left: Unknown Context */}
-                     <div className="bg-gray-50 dark:bg-black/20 p-6 rounded-xl border border-gray-200 dark:border-gray-800">
-                         <div className="text-xs font-bold uppercase text-gray-500 mb-2">Excel Data</div>
-                         <div className="text-3xl font-bold text-[var(--color-brand)] break-all mb-4">{activeSku}</div>
-                         <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                             <span className="font-bold">Description:</span>
-                             <span>{contextDesc}</span>
-                         </div>
+                     <div className="space-y-6">
+                        <div className="bg-gray-50 dark:bg-black/20 p-6 rounded-xl border border-gray-200 dark:border-gray-800">
+                            <div className="text-xs font-bold uppercase text-gray-500 mb-2">Excel Data</div>
+                            <div className="text-3xl font-bold text-[var(--color-brand)] break-all mb-4">{activeSku}</div>
+                            <div className="flex flex-col gap-1 text-sm text-gray-600 dark:text-gray-300">
+                                <span className="font-bold text-xs uppercase text-gray-400">Description from File</span>
+                                <span className="p-2 bg-white dark:bg-black/40 rounded border border-gray-100 dark:border-gray-700">{contextDesc}</span>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                            <button 
+                                onClick={() => handleMap('CREATE_NEW')}
+                                className="w-full py-4 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <div className="w-6 h-6 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center">+</div>
+                                Create New Master Item
+                            </button>
+                            <button 
+                                onClick={() => handleMap('SKIP')}
+                                className="w-full py-3 rounded-xl border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors text-sm font-medium"
+                            >
+                                Start Ignoring this SKU
+                            </button>
+                        </div>
                      </div>
 
                      {/* Right: Smart Suggestions */}
                      <div className="space-y-4">
-                         <div className="text-xs font-bold uppercase text-gray-500 mb-2">Suggested Master Items</div>
+                         <div className="text-xs font-bold uppercase text-gray-500 mb-2">Did you mean...?</div>
                          {suggestions.map(({item, score}) => (
                              <button 
                                 key={item.id}
@@ -569,7 +648,7 @@ const AdminMigration = () => {
                                          <div className="text-xs text-gray-500">{item.name}</div>
                                      </div>
                                      <div className="text-[10px] font-mono bg-green-100 text-green-800 px-2 py-1 rounded">
-                                         {score === 0 ? 'Exaxt Match' : `${score} diff`}
+                                         {score === 0 ? 'Exact Match' : `${score} diff`}
                                      </div>
                                  </div>
                              </button>
@@ -582,8 +661,7 @@ const AdminMigration = () => {
                                 placeholder="Search all items..."
                                 className="w-full pl-10 pr-4 py-2 bg-white dark:bg-black/20 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                             />
-                             {/* Search results would go here in full implementation */}
+                            />
                          </div>
                      </div>
                  </div>
@@ -653,62 +731,110 @@ const AdminMigration = () => {
 
             {/* Step 2: Mapping */}
             {step === 'MAP' && (
-                <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm animate-fade-in">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-bold">Map Your Columns</h2>
-                        <div className="flex gap-2">
+                <div className="bg-white dark:bg-[#1e2029] p-8 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm animate-fade-in">
+                    <div className="flex justify-between items-center mb-8">
+                        <div>
+                            <h2 className="text-2xl font-bold mb-1">Map Your Columns</h2>
+                            <p className="text-gray-500">Connect your Excel column headers to the correct App fields. Use the sample data to verify.</p>
+                        </div>
+                        <div className="flex gap-3">
                              <button onClick={() => setStep('UPLOAD')} className="px-4 py-2 text-gray-500 hover:text-gray-700 font-bold text-sm">Cancel</button>
-                             <button onClick={runDetailedParse} className="px-6 py-2 bg-[var(--color-brand)] text-white font-bold rounded-lg flex items-center gap-2">
-                                 {isProcessing ? <Loader2 className="animate-spin" /> : 'Next: Analzye Data'} <ArrowRight size={16} />
+                             <button onClick={runDetailedParse} className="px-6 py-2 bg-[var(--color-brand)] text-white font-bold rounded-lg flex items-center gap-2 shadow-lg hover:shadow-xl hover:opacity-90 transition-all">
+                                 {isProcessing ? <Loader2 className="animate-spin" /> : 'Next: Analyze Data'} <ArrowRight size={16} />
                              </button>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-8">
-                        <div className="space-y-4">
-                            <h3 className="text-xs font-bold uppercase text-gray-500 mb-4">Required Fields</h3>
-                            {MAPPABLE_FIELDS.filter(f => f.required).map(field => (
-                                <div key={field.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#15171e] rounded-lg border border-gray-200 dark:border-gray-800">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-2 h-2 rounded-full ${columnMapping[field.id] ? 'bg-green-500' : 'bg-red-500'}`} />
-                                        <div>
-                                            <p className="font-bold text-sm text-gray-900 dark:text-gray-100">{field.label}</p>
-                                            <p className="text-xs text-gray-500">{field.description}</p>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                        {/* Required Fields Group */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-800">
+                                <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded">REQUIRED</span>
+                                <h3 className="text-sm font-bold text-gray-500">Core Data Points</h3>
+                            </div>
+                            
+                            {MAPPABLE_FIELDS.filter(f => f.required).map(field => {
+                                const selectedHeader = columnMapping[field.id];
+                                const sampleValue = selectedHeader && rawRows.length > 0 ? rawRows[0][selectedHeader] : null;
+                                
+                                return (
+                                    <div key={field.id} className="relative group">
+                                        <div className={`p-4 rounded-xl border-2 transition-all duration-200 ${selectedHeader ? 'border-[var(--color-brand)]/20 bg-[var(--color-brand)]/5' : 'border-gray-100 bg-white dark:bg-[#15171e] dark:border-gray-800'}`}>
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-900 dark:text-gray-100 mb-1">{field.label}</label>
+                                                    <p className="text-xs text-gray-400">{field.description}</p>
+                                                </div>
+                                                <div className={`w-2 h-2 rounded-full mt-2 ${selectedHeader ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-400'}`} />
+                                            </div>
+
+                                            <div className="flex items-center gap-3">
+                                                <select 
+                                                    value={selectedHeader || ''} 
+                                                    onChange={(e) => setColumnMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
+                                                    className="flex-1 text-sm border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:border-[var(--color-brand)] focus:ring-[var(--color-brand)] bg-white dark:bg-gray-700 py-2"
+                                                >
+                                                    <option value="">-- Select Header --</option>
+                                                    {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                                </select>
+                                                
+                                                {/* Sample Data Preview */}
+                                                <div className="w-1/3 text-right">
+                                                    <span className="text-[10px] items-center gap-1 text-gray-400 uppercase font-bold mb-0.5 flex justify-end">Sample <Search size={10}/></span>
+                                                    <div className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700">
+                                                        {sampleValue !== null && sampleValue !== undefined ? String(sampleValue) : <span className="text-gray-400 italic">Empty</span>}
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <select 
-                                        value={columnMapping[field.id] || ''} 
-                                        onChange={(e) => setColumnMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
-                                        className="text-sm border-gray-300 rounded-md shadow-sm focus:border-[var(--color-brand)] focus:ring-[var(--color-brand)] bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 min-w-[150px]"
-                                    >
-                                        <option value="">-- Select Header --</option>
-                                        {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                    </select>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                         
-                        <div className="space-y-4">
-                            <h3 className="text-xs font-bold uppercase text-gray-500 mb-4">Optional Enrichment</h3>
-                            {MAPPABLE_FIELDS.filter(f => !f.required).map(field => (
-                                <div key={field.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#1e2029] rounded-lg border border-gray-100 dark:border-gray-800">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-2 h-2 rounded-full ${columnMapping[field.id] ? 'bg-green-500' : 'bg-gray-300'}`} />
-                                        <div>
-                                            <p className="font-bold text-sm text-gray-900 dark:text-gray-100">{field.label}</p>
-                                            <p className="text-xs text-gray-500">{field.description}</p>
+                        {/* Optional Fields Group */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-800">
+                                <span className="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded">OPTIONAL</span>
+                                <h3 className="text-sm font-bold text-gray-500">Enrichment Data</h3>
+                            </div>
+
+                            {MAPPABLE_FIELDS.filter(f => !f.required).map(field => {
+                                const selectedHeader = columnMapping[field.id];
+                                const sampleValue = selectedHeader && rawRows.length > 0 ? rawRows[0][selectedHeader] : null;
+
+                                return (
+                                    <div key={field.id} className="relative group">
+                                        <div className={`p-4 rounded-xl border transition-all duration-200 ${selectedHeader ? 'border-blue-100 bg-blue-50/30' : 'border-gray-100 bg-white dark:bg-[#15171e] dark:border-gray-800'}`}>
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-900 dark:text-gray-100 mb-1">{field.label}</label>
+                                                    <p className="text-xs text-gray-400">{field.description}</p>
+                                                </div>
+                                                <div className={`w-2 h-2 rounded-full mt-2 ${selectedHeader ? 'bg-green-500' : 'bg-gray-200'}`} />
+                                            </div>
+
+                                            <div className="flex items-center gap-3">
+                                                <select 
+                                                    value={selectedHeader || ''} 
+                                                    onChange={(e) => setColumnMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
+                                                    className="flex-1 text-sm border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:border-[var(--color-brand)] focus:ring-[var(--color-brand)] bg-white dark:bg-gray-700 py-2"
+                                                >
+                                                    <option value="">-- Ignore --</option>
+                                                    {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                                </select>
+
+                                                {/* Sample Data Preview */}
+                                                <div className="w-1/3 text-right">
+                                                     <div className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate bg-gray-50 dark:bg-gray-800 px-2 py-1.5 rounded border border-gray-200 dark:border-gray-700 h-8 flex items-center justify-end">
+                                                        {sampleValue !== null && sampleValue !== undefined ? String(sampleValue) : <span className="text-gray-400 italic text-[10px]">--</span>}
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <select 
-                                        value={columnMapping[field.id] || ''} 
-                                        onChange={(e) => setColumnMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
-                                        className="text-sm border-gray-300 rounded-md shadow-sm focus:border-[var(--color-brand)] focus:ring-[var(--color-brand)] bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 min-w-[150px]"
-                                    >
-                                        <option value="">-- Ignore --</option>
-                                        {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                    </select>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
