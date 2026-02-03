@@ -6,7 +6,7 @@ import {
     BookOpen, Scale, AlertTriangle, Save, X, 
     Network, List as ListIcon, ChevronRight, Check,
     Search, Filter, ArrowRightLeft, Maximize2, Minimize2,
-    Move, MousePointer2
+    Move, MousePointer2, ChevronsUp, ChevronsDown
 } from 'lucide-react';
 import { useToast } from './ToastNotification';
 
@@ -281,7 +281,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         };
         nodes.push(rootNode);
 
-        // Helper to layout a level
+        // Helper to layout a level with smarter positioning
         const buildLevel = (
             options: AttributeOption[], 
             levelIndex: number, 
@@ -289,25 +289,30 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             getParents: (opt: AttributeOption) => string[]
         ) => {
             const myNodes: any[] = [];
-            // Sort to cluster by parent
+            // Sort to cluster by parent for better aesthetics
             const sorted = [...options].sort((a, b) => {
                 const pA = getParents(a)[0] || '';
                 const pB = getParents(b)[0] || '';
-                return pA.localeCompare(pB) || a.value.localeCompare(b.value);
+                if (pA && pB && pA !== pB) {
+                    const parentNodeA = prevLevelNodes.find(n => n.id === pA);
+                    const parentNodeB = prevLevelNodes.find(n => n.id === pB);
+                    if (parentNodeA && parentNodeB) return parentNodeA.y - parentNodeB.y;
+                }
+                return a.value.localeCompare(b.value);
             });
 
-            // If we have parent nodes, we can try to position children near parents
-            // For V1, we stack them but maybe grouping them visually helps?
-            // Let's use a simple stack for now, centered vertically?
+            // Smart stacking with slight clustering
             let currentY = START_Y;
-            if (prevLevelNodes.length > 0) {
-                 // heuristic: start where parents start
-                 currentY = prevLevelNodes[0].y; 
+            
+            // Adjust start Y based on first parent to align visually
+            if (sorted.length > 0 && prevLevelNodes.length > 0) {
+                 const firstParents = getParents(sorted[0]);
+                 const parentNode = prevLevelNodes.find(n => firstParents.includes(n.id));
+                 if (parentNode) currentY = Math.max(START_Y, parentNode.y - ((sorted.length * NODE_HEIGHT)/2) + (parentNode.height/2));
             }
 
-            // Calculate total height needed
-            // const totalHeight = sorted.length * (NODE_HEIGHT + NODE_GAP);
-            // const startY = (prevLevelNodes.length > 0) ? prevLevelNodes[0].y : START_Y; // naive
+            // Correction to avoid negative Y
+            currentY = Math.max(START_Y, currentY);
 
             sorted.forEach(opt => {
                 let count = 0;
@@ -319,6 +324,13 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                      else if (opt.type === 'POOL') count = items.filter(i => i.itemPool === opt.value).length; 
                 }
 
+                // Attempt to place near parent average
+                const myParents = getParents(opt);
+                
+                // If we aren't strict stacking, we could try to use parent average Y
+                // But strict stacking prevents overlap. Let's stick to strict flow for now to prevent collisions, 
+                // but we sorted by parent Y above, so they should naturally cluster.
+                
                 const node = {
                     id: opt.id,
                     type: opt.type,
@@ -337,22 +349,24 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                 if (pIds.length > 0) {
                     pIds.forEach(pid => {
                          const parentExists = nodes.find(n => n.id === pid);
-                         if (parentExists) {
+                         // Only draw link if parent node is actually in our visual subset
+                         const isParentVisible = prevLevelNodes.some(n => n.id === pid);
+                         if (isParentVisible) {
                              links.push({ source: pid, target: node.id });
                          }
                     });
                 } else if (levelIndex === 1) {
-                    // Pool links to Root if no parent (Pool usually has no parent)
                     links.push({ source: 'root', target: node.id });
                 }
             });
             nodes.push(...myNodes);
-            return myNodes;
+            return myNodes; // Return these nodes for next level
         };
 
         const poolNodes = buildLevel(pools, 1, [], o => []);
         
         // Filter children based on expanded parents
+        // Key Fix: Filter active nodes based on ALL expanded parents to support multi-parent logic visually
         const activeCatalogs = catalogs.filter(c => (c.parentIds || []).some(pid => expandedNodeIds.includes(pid)) || (c.parentId && expandedNodeIds.includes(c.parentId)));
         const catalogNodes = buildLevel(activeCatalogs, 2, poolNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
         
@@ -365,9 +379,11 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         const activeSubCategories = subCategories.filter(s => (s.parentIds || []).some(pid => expandedNodeIds.includes(pid)) || (s.parentId && expandedNodeIds.includes(s.parentId)));
         const subCategoryNodes = buildLevel(activeSubCategories, 5, categoryNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
 
-        // Center Root
+        // Center Root vertically based on pools
         if (poolNodes.length > 0) {
-            rootNode.y = (poolNodes[0].y + poolNodes[poolNodes.length - 1].y) / 2;
+            const minY = Math.min(...poolNodes.map(n => n.y));
+            const maxY = Math.max(...poolNodes.map(n => n.y));
+            rootNode.y = (minY + maxY) / 2;
         }
 
         return { nodes, links };
@@ -392,10 +408,25 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         setScale(newScale);
     };
 
-    // Helper for Bézier curve paths
+    // Helper for Bézier curve paths with smoother curvature
     const getCurvePath = (sX: number, sY: number, tX: number, tY: number) => {
         const midX = (sX + tX) / 2;
+        // Add a slight vertical curve for better separation?
         return `M ${sX} ${sY} C ${midX} ${sY}, ${midX} ${tY}, ${tX} ${tY}`;
+    };
+
+    // Calculate node Y position based on parents to reduce crossing
+    const calculateSmartY = (
+        nodeParents: string[], 
+        prevLevelNodes: any[], 
+        defaultY: number
+    ) => {
+        const connectedParents = prevLevelNodes.filter(p => nodeParents.includes(p.id));
+        if (connectedParents.length === 0) return defaultY;
+        
+        // Average Y of parents
+        const avgY = connectedParents.reduce((sum, p) => sum + p.y, 0) / connectedParents.length;
+        return avgY;
     };
 
     return (
@@ -489,13 +520,18 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                         <div 
                                             key={pool.id}
                                             onClick={() => { 
+                                                // STRICT RESET LOGIC: Reset all downstream selections
                                                 setSelectedPoolId(pool.id); 
                                                 setSelectedCatalogId(null); 
                                                 setSelectedTypeId(null); 
                                                 setSelectedParentId(null);
+                                                
+                                                // Auto-minimize downstream columns (optional "accordion" feel)
+                                                // setMinimizedColumns({ ...minimizedColumns, 'CATALOG': false, 'TYPE': true, 'CATEGORY': true }); 
+                                                
                                                 scrollToRight();
                                             }}
-                                            className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedPoolId === pool.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                            className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedPoolId === pool.id ? 'bg-blue-600 text-white shadow-lg scale-105 z-10' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
                                         >
                                             <span>{pool.value}</span>
                                             <div className="flex items-center gap-2">
@@ -549,7 +585,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                         setSelectedParentId(null);
                                                         scrollToRight();
                                                     }}
-                                                    className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedCatalogId === cat.id ? 'bg-emerald-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                                    className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedCatalogId === cat.id ? 'bg-emerald-600 text-white shadow-lg scale-105 z-10' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
                                                 >
                                                     <span>{cat.value}</span>
                                                     <div className="flex items-center gap-2">
@@ -607,7 +643,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                         setSelectedParentId(null);
                                                         scrollToRight();
                                                     }}
-                                                    className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedTypeId === type.id ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                                    className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedTypeId === type.id ? 'bg-purple-600 text-white shadow-lg scale-105 z-10' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
                                                 >
                                                     <span>{type.value}</span>
                                                     <div className="flex items-center gap-2">
@@ -664,7 +700,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                         setSelectedParentId(cat.id);
                                                         scrollToRight();
                                                     }}
-                                                    className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedParentId === cat.id ? 'bg-amber-600 text-white shadow-lg' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                                    className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedParentId === cat.id ? 'bg-amber-600 text-white shadow-lg scale-105 z-10' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
                                                 >
                                                     <span>{cat.value}</span>
                                                     <div className="flex items-center gap-2">
@@ -795,6 +831,9 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 pointer-events-auto">
+                                <button title="Expand All" onClick={() => setExpandedNodeIds(options.map(o => o.id))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-emerald-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-emerald-600 dark:text-emerald-400 transition-all shadow-md"><ChevronsDown size={16}/></button>
+                                <button title="Collapse All" onClick={() => setExpandedNodeIds([])} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-rose-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-rose-600 dark:text-rose-400 transition-all shadow-md"><ChevronsUp size={16}/></button>
+                                <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-1"></div>
                                 <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><Plus size={16}/></button>
                                 <button onClick={() => setScale(s => Math.max(s - 0.1, 0.4))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><Minimize2 size={16}/></button>
                                 <button onClick={() => { setScale(0.8); setOffset({x: 50, y: 150}); }} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><ArrowRightLeft size={16} className="rotate-90"/></button>
