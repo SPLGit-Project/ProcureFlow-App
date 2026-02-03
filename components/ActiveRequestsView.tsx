@@ -9,7 +9,7 @@ const ActiveRequestsView = () => {
     const { pos, isLoading, linkConcurPO, currentUser } = useApp();
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterMode, setFilterMode] = useState<'PENDING' | 'ACTIVE' | 'ALL'>('PENDING'); // Improved filter state
+    const [filterMode, setFilterMode] = useState<'PENDING' | 'ACTIVE' | 'ALL'>('ALL'); // Improved filter state
     
     // Modal State
     const [isConcurModalOpen, setIsConcurModalOpen] = useState(false);
