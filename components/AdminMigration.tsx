@@ -591,26 +591,45 @@ const AdminMigration = () => {
     // --- HELPER COMPONENT: RESOLVER ---
     const Resolver = () => {
         const [activeSku, setActiveSku] = useState<string>(Array.from(unknownSkus)[0]);
+        const [inputValue, setInputValue] = useState(''); // Immediate input
+        const [debouncedTerm, setDebouncedTerm] = useState(''); // Search term
+        const [isSearching, setIsSearching] = useState(false);
+
+        // Debounce Logic
+        useEffect(() => {
+            const timer = setTimeout(() => {
+                setDebouncedTerm(inputValue);
+                setIsSearching(false);
+            }, 300); // 300ms debounce
+
+            if (inputValue !== debouncedTerm) {
+                setIsSearching(true);
+            }
+
+            return () => clearTimeout(timer);
+        }, [inputValue, debouncedTerm]);
         
         // Find suggestions
         const suggestions = useMemo(() => {
             if (!activeSku) return [];
 
             // 1. Search Mode (Text Search)
-            if (searchTerm.length >= 2) {
-                const term = searchTerm.toLowerCase();
+            if (debouncedTerm.length >= 2) {
+                const term = debouncedTerm.toLowerCase();
                 return items
                     .filter(i => (i.sku && i.sku.toLowerCase().includes(term)) || (i.name && i.name.toLowerCase().includes(term)))
                     .slice(0, 10)
                     .map(i => ({ item: i, score: 0 })); // No score needed for specific search
             }
 
-            // 2. Fuzzy Suggestion Mode (Default)
+            // 2. Fuzzy Suggestion Mode (Default, only if no search term)
+            if (debouncedTerm.length > 0) return []; // Don't show fuzzy if searching but no results yet
+
             return items.map(i => {
                 const sScore = levenshtein(activeSku.toLowerCase(), i.sku.toLowerCase());
                 return { item: i, score: sScore };
             }).sort((a,b) => a.score - b.score).slice(0, 5); // Top 5
-        }, [activeSku, items, searchTerm]);
+        }, [activeSku, items, debouncedTerm]);
 
         // Find sample row for context
         const contextRow = rawRows.find(r => {
@@ -618,35 +637,28 @@ const AdminMigration = () => {
              return h && String(r[h]).trim() === activeSku;
         });
         
-        // Auto-detect description for Context display only
+        // ... (Context Desc Logic remains same) ...
         const mappedDescHeader = columnMapping['description'];
         const contextDesc = useMemo(() => {
             if (!contextRow) return 'No context found';
+            if (mappedDescHeader && contextRow[mappedDescHeader]) return contextRow[mappedDescHeader];
             
-            // 1. Explicit Mapping
-            if (mappedDescHeader && contextRow[mappedDescHeader]) {
-                return contextRow[mappedDescHeader];
-            }
-
-            // 2. Fallback Heuristic
             const descHeader = rawHeaders.find(h => {
                 const lower = h.toLowerCase();
-                // Match descriptions/names but AVOID "category"
-                return (lower.includes('desc') || lower.includes('name') || lower.includes('product')) 
-                        && !lower.includes('cat'); 
+                return (lower.includes('desc') || lower.includes('name') || lower.includes('product')) && !lower.includes('cat'); 
             });
             return descHeader ? contextRow[descHeader] : 'No description found in file';
         }, [contextRow, mappedDescHeader, rawHeaders]);
 
         const handleMap = (itemId: string) => {
-            // itemId could be a UUID, or 'CREATE_NEW', or 'SKIP'
             setResolutionMap(prev => ({ ...prev, [activeSku]: itemId }));
             const remaining = new Set(unknownSkus);
             remaining.delete(activeSku);
-            setSearchTerm(''); // Clear search on action
+            setInputValue(''); // Clear search
+            setDebouncedTerm('');
             
             if (remaining.size === 0) {
-                finishResolution(); // All done
+                finishResolution();
             } else {
                 setUnknownSkus(remaining);
                 setActiveSku(Array.from(remaining)[0]);
@@ -680,16 +692,18 @@ const AdminMigration = () => {
                             </div>
                         </div>
 
-                        {/* Search Input - Moved here per request */}
+                        {/* Search Input - Debounced */}
                         <div className="relative">
-                             <Search className="absolute top-3 left-3 text-gray-400" size={16} />
+                             <div className="absolute top-3 left-3 text-gray-400">
+                                {isSearching ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
+                             </div>
                              <input 
                                 type="text"
                                 placeholder="Search Master Item List..."
                                 autoFocus
-                                value={searchTerm}
+                                value={inputValue}
                                 className="w-full pl-10 pr-4 py-3 bg-white dark:bg-black/20 border border-gray-300 dark:border-gray-600 rounded-xl text-sm shadow-sm focus:ring-2 focus:ring-[var(--color-brand)]"
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onChange={(e) => setInputValue(e.target.value)}
                             />
                         </div>
 
@@ -713,8 +727,8 @@ const AdminMigration = () => {
                      {/* Right: Smart Suggestions Results */}
                      <div className="space-y-4">
                          <div className="flex justify-between items-center">
-                            <div className="text-xs font-bold uppercase text-gray-500">{searchTerm ? 'Search Results' : 'Suggested Matches'}</div>
-                            {searchTerm && <button onClick={() => setSearchTerm('')} className="text-xs text-[var(--color-brand)]">Clear</button>}
+                            <div className="text-xs font-bold uppercase text-gray-500">{debouncedTerm ? 'Search Results' : 'Suggested Matches'}</div>
+                            {debouncedTerm && <button onClick={() => { setInputValue(''); setDebouncedTerm(''); }} className="text-xs text-[var(--color-brand)]">Clear</button>}
                          </div>
                          
                          <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
@@ -724,22 +738,38 @@ const AdminMigration = () => {
                                     onClick={() => handleMap(item.id)}
                                     className="w-full text-left p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)] hover:bg-[var(--color-brand)]/5 transition-all group bg-white dark:bg-black/20"
                                 >
-                                    <div className="flex justify-between items-start">
+                                    <div className="flex justify-between items-start mb-2">
                                         <div className="overflow-hidden">
-                                            <div className="font-bold text-gray-900 dark:text-gray-100 group-hover:text-[var(--color-brand)] truncate">{item.sku}</div>
+                                            <div className="font-bold text-gray-900 dark:text-gray-100 group-hover:text-[var(--color-brand)] truncate text-lg">{item.sku}</div>
                                             <div className="text-xs text-gray-500 truncate">{item.name}</div>
                                         </div>
-                                        {!searchTerm && (
+                                        {!debouncedTerm && (
                                             <div className="text-[10px] font-mono bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded">
                                                 {score === 0 ? 'Exact' : `${score} diff`}
                                             </div>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Enhanced Details Grid */}
+                                    <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-500 mt-2 border-t border-gray-100 dark:border-gray-800 pt-2">
+                                        {item.category && (
+                                            <div><span className="font-semibold text-gray-400">Cat:</span> {item.category}</div>
+                                        )}
+                                        {item.uom && (
+                                            <div><span className="font-semibold text-gray-400">UOM:</span> {item.uom}</div>
+                                        )}
+                                        {item.stockType && (
+                                            <div><span className="font-semibold text-gray-400">Type:</span> {item.stockType}</div>
+                                        )}
+                                        {item.unitPrice > 0 && (
+                                            <div><span className="font-semibold text-gray-400">Cost:</span> ${item.unitPrice.toFixed(2)}</div>
                                         )}
                                     </div>
                                 </button>
                             ))}
                             {suggestions.length === 0 && (
                                 <div className="text-center py-8 text-gray-400 text-sm border border-dashed border-gray-200 rounded-xl">
-                                    No matches found. try searching or create new.
+                                    {isSearching ? 'Searching...' : 'No matches found. Try searching or create new.'}
                                 </div>
                             )}
                         </div>
