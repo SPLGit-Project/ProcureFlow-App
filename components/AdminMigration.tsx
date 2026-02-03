@@ -36,6 +36,7 @@ interface ParsedLine {
     docketNum?: string;
     invoiceNum?: string;
     concurPoNum?: string;
+    goodsReceiptDate?: Date; // [ADDED]
 }
 
 interface ParsedPO {
@@ -49,6 +50,9 @@ interface ParsedPO {
     comments?: string;
     reason?: string;
     approver?: string;
+    siteName?: string; // [ADDED]
+    approvalComments?: string; // [ADDED]
+    approvalStatus?: string; // [ADDED]
 }
 
 // Levenshtein implementation
@@ -133,8 +137,6 @@ const AdminMigration = () => {
 
                 addLog(`Found ${rows.length} rows.`);
 
-                addLog(`Found ${rows.length} rows.`);
-
                 // Fetch Global Migration Mappings
                 let knownMappings: Record<string, string> = {};
                 addLog('Fetching existing migration mappings...');
@@ -155,10 +157,6 @@ const AdminMigration = () => {
                     if (!poNum) return;
 
                     if (!poGroups[poNum]) {
-                        // Smart Status Logic
-                        // We will calculate this after lines are added, or defaulted here.
-                        // Actually, we need to sum lines to know real status?
-                        // Let's set default here and update later.
                         poGroups[poNum] = {
                             poNum,
                             date: excelDateToJSDate(row['Order Date']) || new Date(),
@@ -169,7 +167,10 @@ const AdminMigration = () => {
                             customerName: row['Customer Name'],
                             comments: row['Comments'],
                             reason: row['Purchase Order Reason'],
-                            approver: row['Approver']
+                            approver: row['Approver'],
+                            siteName: row['Site'],
+                            approvalComments: row['Approval Comments'],
+                            approvalStatus: row['Approval Status']
                         };
                     }
 
@@ -200,6 +201,7 @@ const AdminMigration = () => {
 
                     // Cap Data
                     let capDate = excelDateToJSDate(row['Capitalized Month']);
+                    let goodsReceiptDate = excelDateToJSDate(row['Goods Receipt Date']);
 
                     poGroups[poNum].lines.push({
                         _rowIdx: idx + 2,
@@ -218,7 +220,8 @@ const AdminMigration = () => {
                         mappedSku,
                         docketNum: row['Inv #'] || row['Delivery Docket'], // Prioritize Inv # for Docket as header
                         invoiceNum: row['Inv #'],
-                        concurPoNum: row['Concur PO']
+                        concurPoNum: row['Concur PO'],
+                        goodsReceiptDate
                     });
                 });
 
@@ -238,6 +241,12 @@ const AdminMigration = () => {
 
                     // Base status
                     let newStatus = hasConcur ? 'ACTIVE' : 'APPROVED_PENDING_CONCUR';
+                    
+                    if (po.approvalStatus === 'Approved') {
+                         // If explicitly mapped as approved, respect that, but still consider concur/receiving logic
+                         // Actually, 'APPROVED' usually means ready for ordering.
+                         // But if we have receipt, it implies it's further along.
+                    }
 
                     if (totalReceived >= totalOrdered && totalOrdered > 0) {
                          newStatus = 'CLOSED'; // Was COMPLETED, fixed to CLOSED for type safety
@@ -513,12 +522,23 @@ const AdminMigration = () => {
                 if (!poId) {
                     const totalAmount = po.lines.reduce((sum, l) => sum + (l.totalPrice || 0), 0);
                     
+                    // Validate Site
+                    let siteId = DEFAULT_SITE_ID;
+                    if (po.siteName) {
+                         const foundSite = sites.find(s => s.name?.toLowerCase().trim() === po.siteName?.toLowerCase().trim());
+                         if (foundSite) {
+                             siteId = foundSite.id;
+                         } else {
+                             addLog(`Warning: Site '${po.siteName}' not found, using default for PO ${po.poNum}`);
+                         }
+                    }
+
                     const { data: newPO, error: poErr } = await supabase.from('po_requests').insert({
                         display_id: po.poNum,
                         status: po.status,
                         request_date: po.date.toISOString(),
                         requester_id: DEFAULT_REQUESTER_ID,
-                        site_id: DEFAULT_SITE_ID,
+                        site_id: siteId,
                         total_amount: totalAmount,
                         customer_name: po.customerName || 'Civeo',
                         reason_for_request: po.reason || 'Historical Import',
@@ -535,8 +555,8 @@ const AdminMigration = () => {
                             po_request_id: poId,
                             approver_name: po.approver,
                             action: 'APPROVED',
-                            date: po.date.toISOString(), 
-                            comments: 'Historical Approval'
+                            date: po.date.toISOString(), // Ideally approval date, but Order Date is close enough
+                            comments: po.approvalComments || 'Historical Approval'
                         });
                     }
                 }
@@ -608,7 +628,7 @@ const AdminMigration = () => {
                              // Create Header
                              const { data: newDel, error: delErr } = await supabase.from('deliveries').insert({
                                  po_request_id: poId,
-                                 date: (line.capDate || po.date).toISOString(),
+                                 date: (line.goodsReceiptDate || line.capDate || po.date).toISOString(), // Use specific receipt date if available
                                  docket_number: docketKey,
                                  received_by: 'Migration'
                              }).select().single();
