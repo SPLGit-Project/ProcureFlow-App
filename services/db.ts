@@ -1253,37 +1253,6 @@ export const db = {
         return { confirmed, proposed };
     },
 
-    // --- Migration Mappings ---
-    getMigrationMappings: async (): Promise<Record<string, string>> => {
-        const { data, error } = await supabase
-            .from('migration_mappings')
-            .select('input_sku, target_item_id');
-        
-        if (error) {
-            console.error('Error fetching migration mappings:', error);
-            // Fallback: If table missing, return empty
-            return {};
-        }
-
-        const map: Record<string, string> = {};
-        data?.forEach((row: any) => {
-             map[row.input_sku] = row.target_item_id;
-        });
-        return map;
-    },
-
-    saveMigrationMapping: async (inputSku: string, targetItemId: string): Promise<void> => {
-        const cleanSku = inputSku.toLowerCase().trim();
-        const { error } = await supabase
-            .from('migration_mappings')
-            .upsert({
-                input_sku: cleanSku,
-                target_item_id: targetItemId
-            }, { onConflict: 'input_sku' });
-
-        if (error) throw error;
-    },
-
 
     getMappingQueue: async (supplierId?: string): Promise<SupplierProductMap[]> => {
         let query = supabase.from('supplier_product_map')
