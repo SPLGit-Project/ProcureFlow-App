@@ -86,11 +86,12 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     const allSubCategories = useMemo(() => safeOptions.filter(o => o.type === 'SUB_CATEGORY').sort((a,b) => a.value.localeCompare(b.value)), [safeOptions]);
     
     // Auto-select first category if in Taxonomy view and none selected
-    useEffect(() => {
-        if (viewMode === 'TAXONOMY' && allCategories.length > 0 && !selectedParentId) {
-            setSelectedParentId(allCategories[0].id);
-        }
-    }, [viewMode, allCategories, selectedParentId]);
+    // REMOVED: Legacy auto-selection logic (incompatible with 5-level hierarchy)
+    // useEffect(() => {
+    //    if (viewMode === 'TAXONOMY' && allCategories.length > 0 && !selectedParentId) {
+    //        setSelectedParentId(allCategories[0].id);
+    //    }
+    // }, [viewMode, allCategories, selectedParentId]);
 
     const filteredOptions = useMemo(() => {
         const types = GROUPED_TABS.find(t => t.id === activeTabId)?.types || [];
