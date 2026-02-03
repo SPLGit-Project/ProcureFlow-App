@@ -28,8 +28,11 @@ const MAPPABLE_FIELDS: MappableField[] = [
     { id: 'date', label: 'Order Date', description: 'Date the order was placed', required: true, aliases: ['date', 'order date', 'request date', 'created'] },
     { id: 'site', label: 'Site Name', description: 'Site location for the PO', aliases: ['site', 'location', 'branch', 'project'] },
     { id: 'sku', label: 'Product Code', description: 'SKU / Item Code', required: true, aliases: ['sku', 'product code', 'item code', 'part no', 'code'] },
+    { id: 'description', label: 'Item Name / Description', description: 'Product name from supplier file (for reference)', required: false, aliases: ['desc', 'description', 'product name', 'item name'] },
 
     { id: 'qtyOrdered', label: 'Quantity Ordered', description: 'Total quantity ordered', required: true, aliases: ['qty', 'order qty', 'quantity', 'amount'] },
+    // ... (This replaces the block to insert the field) ...
+
     { id: 'qtyReceived', label: 'Quantity Received', description: 'Total quantity received so far', aliases: ['inc', 'received', 'qty received', 'delivered'] },
     { id: 'unitPrice', label: 'Unit Price', description: 'Cost per unit', aliases: ['price', 'unit price', 'cost', 'rate'] },
     { id: 'totalPrice', label: 'Total Price', description: 'Total line value', aliases: ['total', 'total price', 'value', 'amount $'] },
@@ -616,12 +619,24 @@ const AdminMigration = () => {
         });
         
         // Auto-detect description for Context display only
-        const descHeader = rawHeaders.find(h => 
-            h.toLowerCase().includes('desc') || 
-            h.toLowerCase().includes('name') || 
-            h.toLowerCase().includes('product')
-        );
-        const contextDesc = descHeader && contextRow ? contextRow[descHeader] : 'No description found in file';
+        const mappedDescHeader = columnMapping['description'];
+        const contextDesc = useMemo(() => {
+            if (!contextRow) return 'No context found';
+            
+            // 1. Explicit Mapping
+            if (mappedDescHeader && contextRow[mappedDescHeader]) {
+                return contextRow[mappedDescHeader];
+            }
+
+            // 2. Fallback Heuristic
+            const descHeader = rawHeaders.find(h => {
+                const lower = h.toLowerCase();
+                // Match descriptions/names but AVOID "category"
+                return (lower.includes('desc') || lower.includes('name') || lower.includes('product')) 
+                        && !lower.includes('cat'); 
+            });
+            return descHeader ? contextRow[descHeader] : 'No description found in file';
+        }, [contextRow, mappedDescHeader, rawHeaders]);
 
         const handleMap = (itemId: string) => {
             // itemId could be a UUID, or 'CREATE_NEW', or 'SKIP'
