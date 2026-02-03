@@ -1329,11 +1329,19 @@ export const db = {
             console.error('Error fetching migration mappings:', error);
             return {};
         }
-        // Return simple lookup: { "excel_code_123": "item_uuid_abc" }
+        
+        const SKIP_ITEM_ID = '00000000-0000-0000-0000-000000000000';
+
+        // Return lookup: { "excel_code_123": "item_uuid" OR "SKIP" }
         const lookup: Record<string, string> = {};
         data?.forEach((row: any) => {
-            if (row.excel_variant && row.item_id) {
-                lookup[row.excel_variant.toLowerCase().trim()] = row.item_id;
+            if (row.excel_variant) {
+                const key = row.excel_variant.toLowerCase().trim();
+                if (row.item_id === SKIP_ITEM_ID) {
+                    lookup[key] = 'SKIP';
+                } else if (row.item_id) {
+                    lookup[key] = row.item_id;
+                }
             }
         });
         return lookup;
@@ -1343,11 +1351,32 @@ export const db = {
         const cleanVariant = excelVariant.trim();
         if (!cleanVariant || !itemId) return;
 
+        const SKIP_ITEM_ID = '00000000-0000-0000-0000-000000000000';
+        let finalId = itemId;
+
+        if (itemId === 'SKIP') {
+            finalId = SKIP_ITEM_ID;
+            // Ensure Skip Placeholder Item Exists
+            await supabase.from('items').upsert({
+                id: SKIP_ITEM_ID,
+                sku: 'SYSTEM-SKIP',
+                name: 'Skipped Item',
+                description: 'Placeholder for ignored migration items',
+                active_flag: false,
+                category_id: null // Ensure your items table allows null here, or provide valid one. Usually fine.
+            }, { onConflict: 'id', ignoreDuplicates: true });
+        }
+
         const { error } = await supabase.from('migration_mappings').upsert({
             excel_variant: cleanVariant,
-            item_id: itemId
+            item_id: finalId
         }, { onConflict: 'excel_variant' });
         
         if (error) console.error('Error saving migration mapping:', error);
+    },
+
+    deleteMigrationMapping: async (excelVariant: string): Promise<void> => {
+        const { error } = await supabase.from('migration_mappings').delete().eq('excel_variant', excelVariant.trim());
+        if (error) throw error;
     }
 };

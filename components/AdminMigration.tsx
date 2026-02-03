@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
 import { db } from '../services/db';
-import { Upload, FileSpreadsheet, CheckCircle, AlertTriangle, Loader2, Edit2, Search, X, Calendar, Wand2, ArrowRight, ArrowLeft, Settings, Database, Truck, Link as LinkIcon, Save } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle, AlertTriangle, Loader2, Edit2, Search, X, Calendar, Wand2, ArrowRight, ArrowLeft, Settings, Database, Truck, Link as LinkIcon, Save, Trash2, History } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 // --- Types ---
@@ -137,6 +137,40 @@ const AdminMigration = () => {
     const [unknownSkus, setUnknownSkus] = useState<Set<string>>(new Set());
     const [resolutionMap, setResolutionMap] = useState<Record<string, string>>({}); // ExcelSku -> ItemId
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // Management State
+    const [showManager, setShowManager] = useState(false);
+    const [savedMappings, setSavedMappings] = useState<Record<string, string>>({});
+    const [managerLoading, setManagerLoading] = useState(false);
+
+    const openManager = async () => {
+        setShowManager(true);
+        setManagerLoading(true);
+        try {
+            // @ts-ignore
+            if (db.getMigrationMappings) {
+                // @ts-ignore
+                const m = await db.getMigrationMappings();
+                setSavedMappings(m);
+            }
+        } catch (e) { console.error(e); }
+        setManagerLoading(false);
+    };
+
+    const handleDeleteMapping = async (excelVariant: string) => {
+        try {
+            // @ts-ignore
+            if (db.deleteMigrationMapping) await db.deleteMigrationMapping(excelVariant);
+            setSavedMappings(prev => {
+                const next = { ...prev };
+                delete next[excelVariant];
+                return next;
+            });
+        } catch (e) {
+            console.error(e);
+            alert('Failed to delete mapping');
+        }
+    };
 
     const addLog = (msg: string) => setLogs(prev => [`${new Date().toLocaleTimeString()} - ${msg}`, ...prev]);
 
@@ -385,10 +419,12 @@ const AdminMigration = () => {
         addLog('Starting Import Transaction...');
         
         // Save New Mappings Memory (Explicit mappings only)
+        // Save New Mappings Memory (Explicit mappings only)
         Object.entries(resolutionMap).forEach(([excelSku, itemId]) => {
-            // Don't save special flags to the database
-            if (itemId === 'CREATE_NEW' || itemId === 'SKIP') return;
+            // Don't save 'CREATE_NEW' flag (handled via dynamic creation below)
+            if (itemId === 'CREATE_NEW') return;
 
+            // 'SKIP' is saved as a special UUID in db.saveMigrationMapping
             // @ts-ignore
             if (db.saveMigrationMapping) db.saveMigrationMapping(excelSku, itemId);
         });
@@ -556,11 +592,22 @@ const AdminMigration = () => {
         // Find suggestions
         const suggestions = useMemo(() => {
             if (!activeSku) return [];
+
+            // 1. Search Mode (Text Search)
+            if (searchTerm.length >= 2) {
+                const term = searchTerm.toLowerCase();
+                return items
+                    .filter(i => (i.sku && i.sku.toLowerCase().includes(term)) || (i.name && i.name.toLowerCase().includes(term)))
+                    .slice(0, 10)
+                    .map(i => ({ item: i, score: 0 })); // No score needed for specific search
+            }
+
+            // 2. Fuzzy Suggestion Mode (Default)
             return items.map(i => {
                 const sScore = levenshtein(activeSku.toLowerCase(), i.sku.toLowerCase());
                 return { item: i, score: sScore };
             }).sort((a,b) => a.score - b.score).slice(0, 5); // Top 5
-        }, [activeSku, items]);
+        }, [activeSku, items, searchTerm]);
 
         // Find sample row for context
         const contextRow = rawRows.find(r => {
@@ -581,6 +628,8 @@ const AdminMigration = () => {
             setResolutionMap(prev => ({ ...prev, [activeSku]: itemId }));
             const remaining = new Set(unknownSkus);
             remaining.delete(activeSku);
+            setSearchTerm(''); // Clear search on action
+            
             if (remaining.size === 0) {
                 finishResolution(); // All done
             } else {
@@ -592,7 +641,7 @@ const AdminMigration = () => {
         const remainingCount = unknownSkus.size;
 
         return (
-             <div className="bg-white dark:bg-[#1e2029] p-8 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl max-w-4xl mx-auto animate-fade-in">
+             <div className="bg-white dark:bg-[#1e2029] p-8 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl max-w-4xl mx-auto animate-fade-in text-gray-900 dark:text-gray-100">
                  <div className="flex justify-between items-center mb-6">
                      <div>
                          <h2 className="text-2xl font-bold flex items-center gap-3">
@@ -605,64 +654,80 @@ const AdminMigration = () => {
                  </div>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                     {/* Left: Unknown Context */}
+                     {/* Left: Unknown Context & Search */}
                      <div className="space-y-6">
                         <div className="bg-gray-50 dark:bg-black/20 p-6 rounded-xl border border-gray-200 dark:border-gray-800">
                             <div className="text-xs font-bold uppercase text-gray-500 mb-2">Excel Data</div>
                             <div className="text-3xl font-bold text-[var(--color-brand)] break-all mb-4">{activeSku}</div>
                             <div className="flex flex-col gap-1 text-sm text-gray-600 dark:text-gray-300">
                                 <span className="font-bold text-xs uppercase text-gray-400">Description from File</span>
-                                <span className="p-2 bg-white dark:bg-black/40 rounded border border-gray-100 dark:border-gray-700">{contextDesc}</span>
+                                <span className="p-2 bg-white dark:bg-black/40 rounded border border-gray-100 dark:border-gray-700 block truncate" title={String(contextDesc)}>{contextDesc}</span>
                             </div>
                         </div>
 
-                        <div className="flex flex-col gap-3">
+                        {/* Search Input - Moved here per request */}
+                        <div className="relative">
+                             <Search className="absolute top-3 left-3 text-gray-400" size={16} />
+                             <input 
+                                type="text"
+                                placeholder="Search Master Item List..."
+                                autoFocus
+                                value={searchTerm}
+                                className="w-full pl-10 pr-4 py-3 bg-white dark:bg-black/20 border border-gray-300 dark:border-gray-600 rounded-xl text-sm shadow-sm focus:ring-2 focus:ring-[var(--color-brand)]"
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="flex flex-col gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
                             <button 
                                 onClick={() => handleMap('CREATE_NEW')}
-                                className="w-full py-4 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+                                className="w-full py-4 rounded-xl border-2 border-dashed border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-bold hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors flex items-center justify-center gap-2"
                             >
-                                <div className="w-6 h-6 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center">+</div>
+                                <div className="w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-100 flex items-center justify-center">+</div>
                                 Create New Master Item
                             </button>
                             <button 
                                 onClick={() => handleMap('SKIP')}
-                                className="w-full py-3 rounded-xl border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors text-sm font-medium"
+                                className="w-full py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm font-medium"
                             >
-                                Start Ignoring this SKU
+                                Ignore / Skip this SKU
                             </button>
                         </div>
                      </div>
 
-                     {/* Right: Smart Suggestions */}
+                     {/* Right: Smart Suggestions Results */}
                      <div className="space-y-4">
-                         <div className="text-xs font-bold uppercase text-gray-500 mb-2">Did you mean...?</div>
-                         {suggestions.map(({item, score}) => (
-                             <button 
-                                key={item.id}
-                                onClick={() => handleMap(item.id)}
-                                className="w-full text-left p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)] hover:bg-[var(--color-brand)]/5 transition-all group"
-                             >
-                                 <div className="flex justify-between items-start">
-                                     <div>
-                                         <div className="font-bold text-gray-900 dark:text-gray-100 group-hover:text-[var(--color-brand)]">{item.sku}</div>
-                                         <div className="text-xs text-gray-500">{item.name}</div>
-                                     </div>
-                                     <div className="text-[10px] font-mono bg-green-100 text-green-800 px-2 py-1 rounded">
-                                         {score === 0 ? 'Exact Match' : `${score} diff`}
-                                     </div>
-                                 </div>
-                             </button>
-                         ))}
-                         
-                         <div className="relative mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                             <Search className="absolute top-7 left-3 text-gray-400" size={16} />
-                             <input 
-                                type="text"
-                                placeholder="Search all items..."
-                                className="w-full pl-10 pr-4 py-2 bg-white dark:bg-black/20 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
+                         <div className="flex justify-between items-center">
+                            <div className="text-xs font-bold uppercase text-gray-500">{searchTerm ? 'Search Results' : 'Suggested Matches'}</div>
+                            {searchTerm && <button onClick={() => setSearchTerm('')} className="text-xs text-[var(--color-brand)]">Clear</button>}
                          </div>
+                         
+                         <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                            {suggestions.map(({item, score}) => (
+                                <button 
+                                    key={item.id}
+                                    onClick={() => handleMap(item.id)}
+                                    className="w-full text-left p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)] hover:bg-[var(--color-brand)]/5 transition-all group bg-white dark:bg-black/20"
+                                >
+                                    <div className="flex justify-between items-start">
+                                        <div className="overflow-hidden">
+                                            <div className="font-bold text-gray-900 dark:text-gray-100 group-hover:text-[var(--color-brand)] truncate">{item.sku}</div>
+                                            <div className="text-xs text-gray-500 truncate">{item.name}</div>
+                                        </div>
+                                        {!searchTerm && (
+                                            <div className="text-[10px] font-mono bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded">
+                                                {score === 0 ? 'Exact' : `${score} diff`}
+                                            </div>
+                                        )}
+                                    </div>
+                                </button>
+                            ))}
+                            {suggestions.length === 0 && (
+                                <div className="text-center py-8 text-gray-400 text-sm border border-dashed border-gray-200 rounded-xl">
+                                    No matches found. try searching or create new.
+                                </div>
+                            )}
+                        </div>
                      </div>
                  </div>
                  
@@ -690,6 +755,19 @@ const AdminMigration = () => {
     
     return (
         <div className="space-y-6 max-w-7xl mx-auto">
+            {/* Header & Controls */}
+            <div className="flex justify-between items-center px-4">
+                 <h1 className="text-2xl font-bold bg-gradient-to-r from-[var(--color-brand)] to-blue-600 bg-clip-text text-transparent">
+                     Data Migration Wizard
+                 </h1>
+                 <button 
+                    onClick={openManager}
+                    className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-[var(--color-brand)] transition-colors px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                 >
+                     <History size={16} /> Manage Saved Memory
+                 </button>
+            </div>
+
             {/* Stepper */}
             {step !== 'RESOLVE' && (
                 <div className="flex items-center justify-between mb-8 px-4">
@@ -955,6 +1033,77 @@ const AdminMigration = () => {
             {logs.length > 0 && (
                 <div className="bg-black/80 text-green-400 font-mono text-xs p-4 rounded-xl max-h-40 overflow-auto">
                     {logs.map((l, i) => <div key={i}>{l}</div>)}
+                </div>
+            )}
+            {/* Manager Modal */}
+            {showManager && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-[#1e2029] w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[80vh]">
+                        <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-800">
+                            <h2 className="text-xl font-bold">Migration Memory</h2>
+                            <button onClick={() => setShowManager(false)} className="text-gray-400 hover:text-gray-600"><X /></button>
+                        </div>
+                        
+                        <div className="p-0 overflow-hidden flex-1 flex flex-col">
+                            {managerLoading ? (
+                                <div className="flex items-center justify-center h-40">
+                                    <Loader2 className="animate-spin text-[var(--color-brand)]" />
+                                </div>
+                            ) : Object.keys(savedMappings).length === 0 ? (
+                                <div className="text-center p-10 text-gray-400">
+                                    No saved mappings found. Mappings are created as you import files.
+                                </div>
+                            ) : (
+                                <div className="overflow-y-auto flex-1 custom-scrollbar">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-gray-50 dark:bg-black/20 text-gray-500 font-bold sticky top-0">
+                                            <tr>
+                                                <th className="p-4">Excel Variant</th>
+                                                <th className="p-4">Mapped To</th>
+                                                <th className="p-4 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {Object.entries(savedMappings).map(([variant, itemId]) => {
+                                                const isSkip = itemId === 'SKIP';
+                                                // Find item details
+                                                let itemLabel = isSkip ? 'Ignored' : itemId;
+                                                if (!isSkip) {
+                                                    const i = items.find(x => x.id === itemId);
+                                                    if (i) itemLabel = `${i.sku} - ${i.name}`;
+                                                }
+
+                                                return (
+                                                    <tr key={variant} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/5">
+                                                        <td className="p-4 font-mono font-bold text-[var(--color-brand)]">{variant}</td>
+                                                        <td className="p-4">
+                                                            {isSkip ? (
+                                                                <span className="bg-gray-100 text-gray-500 px-2 py-1 rounded text-xs font-bold">SKIPPED</span>
+                                                            ) : (
+                                                                <span className="text-gray-700 dark:text-gray-300">{itemLabel}</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-4 text-right">
+                                                            <button 
+                                                                onClick={() => handleDeleteMapping(variant)}
+                                                                className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                                                title="Forget this mapping"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-4 bg-gray-50 dark:bg-black/20 border-t border-gray-100 dark:border-gray-800 text-right text-xs text-gray-400">
+                            Deletion is immediate and permanent.
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
