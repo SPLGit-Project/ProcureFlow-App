@@ -29,7 +29,7 @@ const Settings = lazy(() => import('./components/Settings'));
 const HelpGuide = lazy(() => import('./components/HelpGuide'));
 const ReportingView = lazy(() => import('./components/ReportingView'));
 const HistoryView = lazy(() => import('./components/HistoryView'));
-const ConcurEntryView = lazy(() => import('./components/ConcurEntryView'));
+const ActiveRequestsView = lazy(() => import('./components/ActiveRequestsView'));
 
 const LoadingSpinner = () => (
     <div className="h-full w-full flex items-center justify-center p-20">
@@ -73,7 +73,7 @@ function App() {
             
             <Route path="requests" element={<Suspense fallback={<LoadingSpinner />}><POList filter="ALL" /></Suspense>} />
             <Route path="approvals" element={<Suspense fallback={<LoadingSpinner />}><POList filter="PENDING" /></Suspense>} />
-            <Route path="concur-entry" element={<Suspense fallback={<LoadingSpinner />}><ConcurEntryView /></Suspense>} />
+            <Route path="active-requests" element={<Suspense fallback={<LoadingSpinner />}><ActiveRequestsView /></Suspense>} />
             <Route path="requests/:id" element={<Suspense fallback={<LoadingSpinner />}><PODetail /></Suspense>} />
             <Route path="create" element={<Suspense fallback={<LoadingSpinner />}><POCreate /></Suspense>} />
             <Route path="finance" element={<Suspense fallback={<LoadingSpinner />}><FinanceView /></Suspense>} />

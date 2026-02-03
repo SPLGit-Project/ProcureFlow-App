@@ -23,7 +23,8 @@ import {
   ChevronDown,
   ChevronUp,
   UserCog,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Activity
 } from 'lucide-react';
 import { PermissionId } from '../types';
 import PwaInstaller from './PwaInstaller';
@@ -42,12 +43,12 @@ const Layout = () => {
   const navItems: { to: string; label: string; icon: any; permission?: PermissionId }[] = [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'view_dashboard' },
     { to: '/create', label: 'Create Request', icon: PlusCircle, permission: 'create_request' },
-    { to: '/requests', label: 'Log Requests', icon: FileText, permission: 'view_dashboard' }, // Basic access
+    { to: '/requests', label: 'Requests', icon: FileText, permission: 'view_dashboard' }, // Basic access
     { to: '/approvals', label: 'Approvals', icon: CheckCircle, permission: 'approve_requests' },
-    { to: '/concur-entry', label: 'Concur Entry', icon: LinkIcon, permission: 'link_concur' },
+    { to: '/active-requests', label: 'Active Requests', icon: Activity, permission: 'link_concur' },
     { to: '/finance', label: 'Finance Review', icon: DollarSign, permission: 'view_finance' },
     { to: '/reports', label: 'Reports', icon: BarChart3, permission: 'view_finance' },
-    { to: '/history', label: 'History', icon: Clock, permission: 'view_finance' },
+    { to: '/history', label: 'Completed', icon: Clock, permission: 'view_finance' },
     { to: '/settings', label: 'Admin Panel', icon: Settings, permission: 'manage_settings' },
     { to: '/help', label: 'Help & Support', icon: HelpCircle },
   ];

@@ -2,14 +2,14 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
-import { Search, Link as LinkIcon, CheckCircle } from 'lucide-react';
+import { Search, Link as LinkIcon, CheckCircle, Activity, Filter, List } from 'lucide-react';
 import { PORequest } from '../types';
 
-const ConcurEntryView = () => {
+const ActiveRequestsView = () => {
     const { pos, isLoading, linkConcurPO, currentUser } = useApp();
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
-    const [showActive, setShowActive] = useState(false);
+    const [filterMode, setFilterMode] = useState<'PENDING' | 'ACTIVE' | 'ALL'>('PENDING'); // Improved filter state
     
     // Modal State
     const [isConcurModalOpen, setIsConcurModalOpen] = useState(false);
@@ -17,12 +17,13 @@ const ConcurEntryView = () => {
 
     const filteredPOs = useMemo(() => {
         return pos.filter(po => {
-            // Status Filter
+            // Status Filter Logic
             const isPendingConcur = po.status === 'APPROVED_PENDING_CONCUR';
             const isActive = po.status === 'ACTIVE';
             
-            if (!showActive && !isPendingConcur) return false;
-            if (showActive && !isPendingConcur && !isActive) return false;
+            if (filterMode === 'PENDING' && !isPendingConcur) return false;
+            if (filterMode === 'ACTIVE' && !isActive) return false;
+            if (filterMode === 'ALL' && !isPendingConcur && !isActive) return false;
 
             // Search Filter
             if (searchTerm) {
@@ -37,7 +38,7 @@ const ConcurEntryView = () => {
 
             return true;
         }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
-    }, [pos, searchTerm, showActive]);
+    }, [pos, searchTerm, filterMode]);
 
     const handleOpenConcurModal = (po: PORequest) => {
         setSelectedPO(po);
@@ -60,22 +61,31 @@ const ConcurEntryView = () => {
         <div className="max-w-7xl mx-auto p-6 pb-24 animate-fade-in">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Concur Entry</h1>
-                    <p className="text-gray-500 dark:text-gray-400">Manage POs waiting for SAP Concur entry and synchronization.</p>
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
+                        <Activity className="text-[var(--color-brand)]" />
+                        Active Requests
+                    </h1>
+                    <p className="text-gray-500 dark:text-gray-400">Monitor active Purchase Orders and manage SAP Concur links.</p>
                 </div>
                 
-                <div className="flex items-center gap-3 bg-white dark:bg-[#1e2029] p-1.5 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                <div className="flex items-center gap-1 bg-white dark:bg-[#1e2029] p-1 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
                     <button 
-                        onClick={() => setShowActive(false)}
-                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${!showActive ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                        onClick={() => setFilterMode('PENDING')}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${filterMode === 'PENDING' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                     >
-                        Pending Entry
+                        <LinkIcon size={14} /> Pending Entry
                     </button>
                     <button 
-                         onClick={() => setShowActive(true)}
-                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${showActive ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                         onClick={() => setFilterMode('ACTIVE')}
+                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${filterMode === 'ACTIVE' ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                     >
-                        Include Active
+                        <CheckCircle size={14} /> Active Linked
+                    </button>
+                    <button 
+                         onClick={() => setFilterMode('ALL')}
+                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${filterMode === 'ALL' ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                    >
+                        <List size={14} /> View All
                     </button>
                 </div>
             </div>
@@ -229,4 +239,4 @@ const ConcurEntryView = () => {
     );
 };
 
-export default ConcurEntryView;
+export default ActiveRequestsView;
