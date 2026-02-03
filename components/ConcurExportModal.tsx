@@ -87,23 +87,23 @@ const ConcurExportModal: React.FC<ConcurExportModalProps> = ({ po, onClose }) =>
                     </div>
 
                     <div className="print:mb-8 mb-6">
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-black mb-1">Purchase Request Details</h1>
-                        <p className="text-gray-500 dark:text-gray-600 font-mono">{po.displayId || po.id}</p>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Purchase Request Details</h1>
+                        <p className="text-gray-500 dark:text-gray-400 font-mono">{po.displayId || po.id}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-6 mb-8">
                         <div>
                             <p className="text-xs uppercase text-gray-400 font-bold tracking-wider mb-1">Supplier</p>
-                            <p className="font-bold text-gray-900 dark:text-black text-lg">{po.supplierName}</p>
+                            <p className="font-bold text-gray-900 dark:text-white text-lg">{po.supplierName}</p>
                         </div>
                         <div className="text-right">
                              <p className="text-xs uppercase text-gray-400 font-bold tracking-wider mb-1">Total Amount</p>
-                             <p className="font-bold text-gray-900 dark:text-black text-lg">${po.totalAmount.toLocaleString()}</p>
+                             <p className="font-bold text-gray-900 dark:text-white text-lg">${po.totalAmount.toLocaleString()}</p>
                         </div>
                     </div>
 
                     <table className="w-full text-sm text-left">
-                        <thead className="border-b-2 border-gray-200 dark:border-gray-300 text-gray-500 uppercase text-xs font-bold">
+                        <thead className="border-b-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 uppercase text-xs font-bold">
                             <tr>
                                 <th className="py-3">Description</th>
                                 <th className="py-3">SKU</th>
@@ -112,22 +112,22 @@ const ConcurExportModal: React.FC<ConcurExportModalProps> = ({ po, onClose }) =>
                                 <th className="py-3 text-right">Total</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-gray-200">
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                              {po.lines.map(line => (
                                  <tr key={line.id}>
-                                     <td className="py-3 font-medium text-gray-900 dark:text-black">{line.itemName}</td>
-                                     <td className="py-3 text-gray-500 font-mono">{line.sku}</td>
-                                     <td className="py-3 text-center text-gray-900 dark:text-black">{line.quantityOrdered}</td>
-                                     <td className="py-3 text-right text-gray-900 dark:text-black">${line.unitPrice.toFixed(2)}</td>
-                                     <td className="py-3 text-right font-bold text-gray-900 dark:text-black">${line.totalPrice.toFixed(2)}</td>
+                                     <td className="py-3 font-medium text-gray-900 dark:text-gray-100">{line.itemName}</td>
+                                     <td className="py-3 text-gray-500 dark:text-gray-400 font-mono">{line.sku}</td>
+                                     <td className="py-3 text-center text-gray-900 dark:text-gray-100">{line.quantityOrdered}</td>
+                                     <td className="py-3 text-right text-gray-900 dark:text-gray-100">${line.unitPrice.toFixed(2)}</td>
+                                     <td className="py-3 text-right font-bold text-gray-900 dark:text-white">${line.totalPrice.toFixed(2)}</td>
                                  </tr>
                              ))}
                         </tbody>
-                        <tfoot className="border-t-2 border-gray-200">
+                        <tfoot className="border-t-2 border-gray-200 dark:border-gray-700">
                             <tr>
                                 <td colSpan={3}></td>
-                                <td className="py-4 text-right font-bold text-gray-500 dark:text-black uppercase text-xs">Total (Ex GST)</td>
-                                <td className="py-4 text-right font-bold text-gray-900 dark:text-black text-lg">${po.totalAmount.toLocaleString()}</td>
+                                <td className="py-4 text-right font-bold text-gray-500 dark:text-gray-400 uppercase text-xs">Total (Ex GST)</td>
+                                <td className="py-4 text-right font-bold text-gray-900 dark:text-white text-lg">${po.totalAmount.toLocaleString()}</td>
                             </tr>
                         </tfoot>
                     </table>
