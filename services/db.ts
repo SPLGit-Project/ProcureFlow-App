@@ -1352,5 +1352,33 @@ export const db = {
     linkConcurPO: async (poLineId: string, concurPoNumber: string): Promise<void> => {
         const { error } = await supabase.from('po_lines').update({ concur_po_number: concurPoNumber }).eq('id', poLineId);
         if (error) throw error;
+    },
+
+    getMigrationMappings: async (): Promise<Record<string, string>> => {
+        const { data, error } = await supabase.from('migration_mappings').select('excel_variant, item_id');
+        if (error) {
+            console.error('Error fetching migration mappings:', error);
+            return {};
+        }
+        // Return simple lookup: { "excel_code_123": "item_uuid_abc" }
+        const lookup: Record<string, string> = {};
+        data?.forEach((row: any) => {
+            if (row.excel_variant && row.item_id) {
+                lookup[row.excel_variant.toLowerCase().trim()] = row.item_id;
+            }
+        });
+        return lookup;
+    },
+
+    saveMigrationMapping: async (excelVariant: string, itemId: string): Promise<void> => {
+        const cleanVariant = excelVariant.trim();
+        if (!cleanVariant || !itemId) return;
+
+        const { error } = await supabase.from('migration_mappings').upsert({
+            excel_variant: cleanVariant,
+            item_id: itemId
+        }, { onConflict: 'excel_variant' });
+        
+        if (error) console.error('Error saving migration mapping:', error);
     }
 };
