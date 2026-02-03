@@ -278,6 +278,7 @@ export interface POLineItem {
   quantityReceived: number;
   unitPrice: number;
   totalPrice: number;
+  upq?: number; // Units Per Quantity (Pack Size)
   // Concur Linkage
   concurPoNumber?: string; // The external PO number from Concur
   isForceClosed?: boolean; // If true, line is considered complete even if qty < ordered

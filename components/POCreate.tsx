@@ -55,6 +55,7 @@ const POCreate = () => {
   const [selectedDetailItem, setSelectedDetailItem] = useState<any | null>(null);
   const [modalQuantity, setModalQuantity] = useState(1);
   const [modalPrice, setModalPrice] = useState('');
+  const [modalUpq, setModalUpq] = useState(1); // Default UPQ
 
   const selectedSite = sites.find(s => s.id === selectedSiteId);
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
@@ -180,6 +181,7 @@ const POCreate = () => {
           setModalQuantity(1); // Keep 1? Or pre-fill with extra? User said "select quantity". Usually means "add X".
       }
       setModalPrice(item.price ? item.price.toString() : '0');
+      setModalUpq(item.upq || 1);
   };
 
   const handleModalAdd = () => {
@@ -187,6 +189,7 @@ const POCreate = () => {
       
       const qty = modalQuantity;
       const price = parseFloat(modalPrice);
+      const upq = modalUpq;
       
       if (qty <= 0) return;
 
@@ -209,7 +212,8 @@ const POCreate = () => {
               quantityOrdered: qty,
               quantityReceived: 0,
               unitPrice: price,
-              totalPrice: price * qty
+              totalPrice: price * qty,
+              upq: upq
           }];
       });
 
@@ -608,7 +612,7 @@ const POCreate = () => {
                         )}
 
                         <div className="flex gap-4 items-end pt-4 border-t border-gray-100 dark:border-gray-800">
-                             <div className="flex-1">
+                             <div className="w-1/3">
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Unit Price ($)</label>
                                 <div className="relative">
                                     <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
@@ -622,6 +626,22 @@ const POCreate = () => {
                                     />
                                 </div>
                              </div>
+
+                             
+                             <div className="w-1/4">
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">UPQ</label>
+                                <div className="relative">
+                                    <input 
+                                        type="number"
+                                        min="1"
+                                        className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-bold shadow-sm focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] outline-none"
+                                        value={modalUpq}
+                                        onChange={e => setModalUpq(Math.max(1, parseInt(e.target.value) || 1))}
+                                    />
+                                    <span className="absolute right-8 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">x</span>
+                                </div>
+                             </div>
+
                              <div className="w-1/3">
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Quantity</label>
                                 <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#15171e] shadow-sm">
