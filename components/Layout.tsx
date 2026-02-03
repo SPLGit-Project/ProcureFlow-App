@@ -26,7 +26,8 @@ import {
   Link as LinkIcon,
   Activity
 } from 'lucide-react';
-import { PermissionId } from '../types';
+import { PermissionId, MenuItemConfig } from '../types';
+import { DEFAULT_NAV_ITEMS, NavItemConfig } from '../constants/navigation';
 import PwaInstaller from './PwaInstaller';
 import UpdateToast from './UpdateToast';
 import VersionBadge from './VersionBadge';
@@ -40,22 +41,33 @@ const Layout = () => {
   // Admin Role Switcher (Mock for testing permissions)
   const isActualAdmin = currentUser?.role === 'ADMIN'; // Real check would be against the DB record
 
-  const navItems: { to: string; label: string; icon: any; permission?: PermissionId }[] = [
-    { to: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'view_dashboard' },
-    { to: '/create', label: 'Create Request', icon: PlusCircle, permission: 'create_request' },
-    { to: '/requests', label: 'Requests', icon: FileText, permission: 'view_dashboard' }, // Basic access
-    { to: '/approvals', label: 'Approvals', icon: CheckCircle, permission: 'approve_requests' },
-    { to: '/active-requests', label: 'Active Requests', icon: Activity, permission: 'link_concur' },
-    { to: '/finance', label: 'Finance Review', icon: DollarSign, permission: 'view_finance' },
-    { to: '/reports', label: 'Reports', icon: BarChart3, permission: 'view_finance' },
-    { to: '/history', label: 'Completed', icon: Clock, permission: 'view_finance' },
-    { to: '/settings', label: 'Admin Panel', icon: Settings, permission: 'manage_settings' },
-    { to: '/help', label: 'Help & Support', icon: HelpCircle },
-  ];
+  // Icon Mapping
+  const iconMap: Record<string, any> = {
+      LayoutDashboard, PlusCircle, FileText, CheckCircle, Activity, 
+      DollarSign, BarChart3, Clock, Settings, HelpCircle
+  };
 
-  const filteredNav = navItems.filter(item => 
-    !item.permission || hasPermission(item.permission)
-  );
+  const navItems = React.useMemo(() => {
+    // 1. Get Config or Default
+    const config = branding.menuConfig || [];
+    
+    // 2. Map items
+    return DEFAULT_NAV_ITEMS.map(item => {
+        const conf = config.find(c => c.id === item.id);
+        return {
+            ...item,
+            // Use config order if present, else default index (though we generally expect config to be complete if present)
+            order: conf ? conf.order : DEFAULT_NAV_ITEMS.indexOf(item),
+            isVisible: conf ? conf.isVisible : true,
+            label: conf?.customLabel || item.label,
+            icon: iconMap[item.iconName] || HelpCircle
+        };
+    })
+    .filter(item => item.isVisible) // 3. Filter Hidden
+    .sort((a, b) => a.order - b.order) // 4. Sort
+    .filter(item => !item.permission || hasPermission(item.permission)); // 5. Filter Permissions
+  }, [branding.menuConfig, hasPermission]);
+
 
   const sidebarBaseClass = `fixed inset-y-0 left-0 z-50 w-72 transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto flex flex-col border-r border-gray-200 dark:border-gray-800 backdrop-blur-xl`;
   
@@ -107,17 +119,20 @@ const Layout = () => {
         {/* Navigation */}
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto py-4 scrollbar-hide">
           <p className={`px-4 text-xs font-bold uppercase tracking-wider mb-3 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/50' : 'text-gray-400'}`}>Menu</p>
-          {filteredNav.map((item) => (
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
             <NavLink
-              key={item.to}
-              to={item.to}
+              key={item.path}
+              to={item.path}
               onClick={() => setIsMobileMenuOpen(false)}
               className={({ isActive }) => getNavLinkClass(isActive)}
             >
-              <item.icon size={18} className="shrink-0" />
+              <Icon size={18} className="shrink-0" />
               <span>{item.label}</span>
             </NavLink>
-          ))}
+            );
+          })}
           
           <div className="mt-8">
              <p className={`px-4 text-xs font-bold uppercase tracking-wider mb-3 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/50' : 'text-gray-400'}`}>System</p>

@@ -66,8 +66,18 @@ export interface AppBranding {
   primaryColor: string; // Hex code
   secondaryColor: string; // Hex code
   fontFamily: 'sans' | 'serif' | 'mono';
-  sidebarTheme?: 'dark' | 'light' | 'brand' | 'system';
+  sidebarTheme?: 'light' | 'dark' | 'system';
+  
+  // Menu Configuration
+  menuConfig?: MenuItemConfig[];
   emailTemplate?: EmailTemplate;
+}
+
+export interface MenuItemConfig {
+    id: string; // Matches NavItemConfig.id
+    order: number;
+    isVisible: boolean;
+    customLabel?: string;
 }
 
 export interface AuthConfig {

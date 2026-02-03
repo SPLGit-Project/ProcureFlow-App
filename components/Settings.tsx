@@ -25,6 +25,7 @@ import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/filePar
 import { ConfirmDialog } from './ConfirmDialog';
 import * as XLSX from 'xlsx';
 import CatalogManagement from './CatalogManagement'; // Import CatalogManagement
+import MenuEditor from './MenuEditor';
 import { ItemWizard } from './ItemWizard';
 import { HierarchyManager } from '../utils/hierarchyManager';
 import { seedCatalogData } from '../utils/catalogSeeder';
@@ -57,7 +58,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Admin Access' }
 ];
 
-type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL';
+type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL';
 
 const Settings = () => {
   const {
@@ -520,6 +521,7 @@ const Settings = () => {
         { id: 'SECURITY', label: 'Security Roles', icon: Shield },
         { id: 'NOTIFICATIONS', label: 'Notifications', icon: Bell },
         { id: 'BRANDING', label: 'Branding', icon: Palette },
+        { id: 'MENU', label: 'Menu Config', icon: ListFilter },
         { id: 'MIGRATION', label: 'Data Migration', icon: Upload },
         { id: 'EMAIL', label: 'Email Templates', icon: Mail }
   ];
@@ -1021,7 +1023,7 @@ if __name__ == "__main__":
                 <User size={16} />
                 My Profile
             </button>
-             {allTabs.filter(tab => currentUser?.role === 'ADMIN' || !['SECURITY', 'WORKFLOW', 'BRANDING', 'NOTIFICATIONS', 'MIGRATION', 'EMAIL'].includes(tab.id as any)).map(tab => (
+             {allTabs.filter(tab => currentUser?.role === 'ADMIN' || !['SECURITY', 'WORKFLOW', 'BRANDING', 'MENU', 'NOTIFICATIONS', 'MIGRATION', 'EMAIL'].includes(tab.id as any)).map(tab => (
                  <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
@@ -2438,6 +2440,13 @@ if __name__ == "__main__":
                 </div>
           </div>
       )}
+      
+      {activeTab === 'MENU' && (
+          <div className="animate-fade-in max-w-4xl">
+              <MenuEditor />
+          </div>
+      )}
+
       {activeTab === 'USERS' && (
           <div className="animate-fade-in space-y-6">
               {/* User Dashboard Header */}
@@ -3718,7 +3727,7 @@ if __name__ == "__main__":
                                                                 <p className="text-sm font-bold text-gray-600 dark:text-gray-300">No matches found</p>
                                                                 <p className="text-xs text-gray-400 mt-1 max-w-[200px] mx-auto">We couldn't find anyone matching "{directorySearch}" in your organization.</p>
                                                             </div>
-                                                            <button 
+                                                            <button
                                                                 onClick={() => setInviteTab('MANUAL')}
                                                                 className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"
                                                             >
