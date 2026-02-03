@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building } from 'lucide-react';
 import { DeliveryHeader, POStatus } from '../types';
 import DeliveryModal from './DeliveryModal';
 import ConcurExportModal from './ConcurExportModal';
 import { db } from '../services/db';
 import { supabase } from '../lib/supabaseClient';
-import { Save, Edit2 } from 'lucide-react';
+
 
 const PODetail = () => {
   const { id } = useParams();
@@ -360,7 +360,7 @@ const PODetail = () => {
 
         {/* Additional Request Details */}
         {(po.customerName || po.reasonForRequest || po.comments || isEditing) && (
-            <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl p-4 border border-gray-100 dark:border-gray-800 mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl p-4 border border-gray-100 dark:border-gray-800 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="flex gap-3 items-start">
                     <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><User size={16}/></div>
                     <div className="w-full">
@@ -374,6 +374,24 @@ const PODetail = () => {
                         ) : (
                             <p className="text-sm font-medium text-gray-900 dark:text-white">{po.customerName || '-'}</p>
                         )}
+                    </div>
+                </div>
+
+                <div className="flex gap-3 items-start">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg"><Building size={16}/></div>
+                    <div className="w-full">
+                        <p className="text-xs text-gray-500 uppercase font-bold">Supplier</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{po.supplierName}</p>
+                    </div>
+                </div>
+
+                <div className="flex gap-3 items-start">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg"><LinkIcon size={16}/></div>
+                    <div className="w-full">
+                        <p className="text-xs text-gray-500 uppercase font-bold">Concur PO #</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                             {Array.from(new Set(po.lines.map(l => l.concurPoNumber).filter(Boolean))).join(', ') || '-'}
+                        </p>
                     </div>
                 </div>
 

@@ -22,7 +22,8 @@ import {
   Shield,
   ChevronDown,
   ChevronUp,
-  UserCog
+  UserCog,
+  Link as LinkIcon
 } from 'lucide-react';
 import { PermissionId } from '../types';
 import PwaInstaller from './PwaInstaller';
@@ -43,6 +44,7 @@ const Layout = () => {
     { to: '/create', label: 'Create Request', icon: PlusCircle, permission: 'create_request' },
     { to: '/requests', label: 'Log Requests', icon: FileText, permission: 'view_dashboard' }, // Basic access
     { to: '/approvals', label: 'Approvals', icon: CheckCircle, permission: 'approve_requests' },
+    { to: '/concur-entry', label: 'Concur Entry', icon: LinkIcon, permission: 'link_concur' },
     { to: '/finance', label: 'Finance Review', icon: DollarSign, permission: 'view_finance' },
     { to: '/reports', label: 'Reports', icon: BarChart3, permission: 'view_finance' },
     { to: '/history', label: 'History', icon: Clock, permission: 'view_finance' },
