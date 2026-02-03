@@ -216,7 +216,7 @@ const AdminMigration = () => {
                         error: isValid ? undefined : `Unknown SKU: ${sku}`,
                         mappedItemId,
                         mappedSku,
-                        docketNum: row['Delivery Docket'],
+                        docketNum: row['Inv #'] || row['Delivery Docket'], // Prioritize Inv # for Docket as header
                         invoiceNum: row['Inv #'],
                         concurPoNum: row['Concur PO']
                     });
@@ -231,16 +231,21 @@ const AdminMigration = () => {
                     }
 
                     // Refine Status based on Quantities
+                    // Refine Status based on Concur & Quantities
                     const totalOrdered = po.lines.reduce((s, l) => s + (l.qtyOrdered || 0), 0);
                     const totalReceived = po.lines.reduce((s, l) => s + (l.qtyReceived || 0), 0);
-                    
+                    const hasConcur = po.lines.some(l => !!l.concurPoNum); // Check if any line has Concur #
+
+                    // Base status
+                    let newStatus = hasConcur ? 'ACTIVE' : 'APPROVED_PENDING_CONCUR';
+
                     if (totalReceived >= totalOrdered && totalOrdered > 0) {
-                        po.status = 'COMPLETED';
+                         newStatus = 'CLOSED'; // Was COMPLETED, fixed to CLOSED for type safety
                     } else if (totalReceived > 0) {
-                        po.status = 'ACTIVE';
-                    } else {
-                        po.status = 'ACTIVE';
+                        newStatus = 'PARTIALLY_RECEIVED'; // Explicitly set partial
                     }
+                    
+                    po.status = newStatus;
                 });
 
                 setPreviewData(Object.values(poGroups));

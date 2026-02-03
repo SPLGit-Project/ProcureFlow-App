@@ -1,12 +1,12 @@
-
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield } from 'lucide-react';
-import { DeliveryHeader } from '../types';
+import { DeliveryHeader, POStatus } from '../types';
 import DeliveryModal from './DeliveryModal';
 import ConcurExportModal from './ConcurExportModal';
 import { db } from '../services/db';
+import { supabase } from '../lib/supabaseClient';
 import { Save, Edit2 } from 'lucide-react';
 
 const PODetail = () => {
@@ -210,18 +210,64 @@ const PODetail = () => {
       }
   };
 
+  /* Side Effect: If forcing to RECEIVED/CLOSED and no deliveries exist, create dummy delivery so it appears in Finance Review */
+  const ensureDeliveryRecord = async (targetStatus: string) => {
+      // Only strictly relevant for statuses that imply goods receipt
+      if (!['RECEIVED', 'CLOSED', 'PARTIALLY_RECEIVED'].includes(targetStatus)) return;
+      if (!po || po.deliveries.length > 0) return;
+
+      try {
+          // 1. Create Header
+          const docket = `ADMIN-FORCE-${new Date().toISOString().split('T')[0]}`;
+          const { data: delHeader, error: delErr } = await supabase
+              .from('deliveries')
+              .insert({
+                  po_request_id: po.id,
+                  docket_number: docket,
+                  date: new Date().toISOString(),
+                  received_by: currentUser?.name || 'Admin',
+              })
+              .select()
+              .single();
+
+          if (delErr) throw delErr;
+
+          // 2. Create Lines (Full Receipt)
+          if (delHeader && po.lines.length > 0) {
+              const linesToInsert = po.lines.map(l => ({
+                  delivery_id: delHeader.id,
+                  po_line_id: l.id,
+                  quantity: l.quantityOrdered, // Assume full receipt
+                  is_capitalised: false
+              }));
+
+              const { error: linesErr } = await supabase
+                  .from('delivery_lines')
+                  .insert(linesToInsert);
+              
+              if (linesErr) throw linesErr;
+          }
+      } catch (e) {
+          console.error("Failed to auto-create delivery record", e);
+          // Don't block the status update, just log
+      }
+  };
+
   const handleForceStatusUpdate = async (newStatus: string) => {
       if (!po) return;
       try {
-            await updatePOStatus(po.id, newStatus, {
+            // Run side-effects first
+            await ensureDeliveryRecord(newStatus);
+
+            await updatePOStatus(po.id, newStatus as POStatus, {
                 id: `admin-override-${Date.now()}`,
                 action: 'ADMIN_OVERRIDE',
-                approverName: currentUser.name,
+                approverName: currentUser?.name || 'Admin',
                 date: new Date().toISOString().split('T')[0],
                 comments: `Admin forced status to ${newStatus}`
             });
             setIsStatusModalOpen(false);
-            // window.location.reload(); // updatePOStatus should trigger re-fetch or context update
+            // updatePOStatus triggers context reload, but slight delay might be needed or just let UI react
       } catch (e: any) {
           console.error(e);
           alert("Failed to update status: " + e.message);
