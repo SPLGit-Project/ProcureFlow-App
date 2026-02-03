@@ -923,28 +923,27 @@ const AdminMigration = () => {
 
             {/* Step 3: Preview */}
             {(step === 'PREVIEW' || step === 'IMPORTING' || step === 'DONE') && (
-                <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col h-[600px]">
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-[#15171e]">
-                         <div className="flex items-center gap-4">
-                             <button onClick={() => setStep('MAP')} className="text-gray-500 hover:text-gray-900"><ArrowLeft /></button>
+                <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col h-[600px] animate-fade-in">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50 dark:bg-[#15171e]">
+                         <div className="flex items-center gap-4 w-full md:w-auto">
+                             <button onClick={() => setStep('MAP')} className="text-gray-500 hover:text-gray-900 transition-colors p-2 hover:bg-gray-200 rounded-lg"><ArrowLeft size={20} /></button>
                              <div>
-                                 <h2 className="text-lg font-bold">Import Preview</h2>
-                                 <p className="text-xs text-gray-500">
-                                     Found <span className="font-bold">{previewData.length} POs</span>.
-                                     Valid: <span className="text-green-600 font-bold">{previewData.filter(p => p.isValid).length}</span>.
+                                 <h2 className="text-lg font-bold flex items-center gap-2">Import Preview <span className="text-xs font-normal text-gray-500 px-2 py-1 bg-white border rounded-full hidden sm:inline-flex">{previewData.length} Orders</span></h2>
+                                 <p className="text-xs text-gray-500 hidden sm:block">
+                                     Valid: <span className="text-green-600 font-bold">{previewData.filter(p => p.isValid).length}</span> &bull; 
                                      Issues: <span className="text-red-600 font-bold">{previewData.filter(p => !p.isValid).length}</span>
                                  </p>
                              </div>
                          </div>
-                         <div className="flex items-center gap-3">
-                                <label className="flex items-center gap-2 text-xs font-bold text-gray-600 bg-white border border-gray-200 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-50">
-                                    <input type="checkbox" checked={allowImportErrors} onChange={e => setAllowImportErrors(e.target.checked)} />
-                                    Force Import Unknown SKUs
+                         <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+                                <label className="flex items-center gap-2 text-xs font-bold text-gray-600 bg-white dark:bg-black/20 border border-gray-200 dark:border-gray-700 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-50 w-full justify-center sm:w-auto">
+                                    <input type="checkbox" checked={allowImportErrors} onChange={e => setAllowImportErrors(e.target.checked)} className="rounded text-[var(--color-brand)] focus:ring-[var(--color-brand)]" />
+                                    Force Import Unknowns
                                 </label>
                                 <button 
                                     onClick={handleCommit}
                                     disabled={step === 'IMPORTING' || step === 'DONE'}
-                                    className="px-6 py-2 bg-[var(--color-brand)] text-white font-bold rounded-lg flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
+                                    className="px-6 py-2 bg-[var(--color-brand)] text-white font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 w-full sm:w-auto shadow-lg shadow-blue-500/20"
                                 >
                                     {step === 'IMPORTING' ? <Loader2 className="animate-spin" /> : <Save size={16} />}
                                     {step === 'DONE' ? 'Import Complete' : 'Commit Import'}
@@ -952,79 +951,94 @@ const AdminMigration = () => {
                          </div>
                     </div>
 
-                    <div className="flex-1 overflow-auto p-4">
-                        <table className="w-full text-sm text-left border-collapse">
-                            <thead className="text-xs text-gray-500 uppercase bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
-                                <tr>
-                                    <th className="px-4 py-3 rounded-tl-lg">Status</th>
-                                    <th className="px-4 py-3">PO Details</th>
-                                    <th className="px-4 py-3">Site / Approver</th>
-                                    <th className="px-4 py-3">Lines</th>
-                                    <th className="px-4 py-3">Data Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {previewData.map((po, poIdx) => (
-                                    <tr key={poIdx} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                                        <td className="px-4 py-4 align-top w-12 text-center">
-                                            {po.isValid ? <CheckCircle size={18} className="text-green-500 mx-auto"/> : <AlertTriangle size={18} className="text-red-500 mx-auto"/>}
-                                        </td>
-                                        <td className="px-4 py-4 align-top">
+                    <div className="flex-1 overflow-auto p-4 space-y-4 bg-gray-50/50 dark:bg-black/10">
+                        {previewData.map((po, poIdx) => (
+                            <div key={poIdx} className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm overflow-hidden transition-all hover:shadow-md">
+                                {/* PO Header */}
+                                <div className="p-4 bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800 flex flex-wrap gap-4 justify-between items-center">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${po.isValid ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                            {po.isValid ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
+                                        </div>
+                                        <div>
                                             <div className="font-bold text-gray-900 dark:text-gray-100">{po.poNum}</div>
-                                            <div className="text-xs text-gray-500 flex items-center gap-1"><Calendar size={10}/> {po.date.toLocaleDateString()}</div>
-                                        </td>
-                                        <td className="px-4 py-4 align-top">
-                                             <div className="font-medium">{po.siteName || <span className="text-amber-500 italic">Default</span>}</div>
-                                             <div className="text-xs text-gray-500">{po.approver}</div>
-                                        </td>
-                                        <td className="px-4 py-4 align-top max-w-md">
-                                            <div className="space-y-2">
-                                                {po.lines.map((line, lIdx) => (
-                                                    <div key={lIdx} className={`p-2 rounded border ${line.isValid ? 'border-gray-200 bg-white' : 'border-red-200 bg-red-50'}`}>
-                                                        <div className="flex justify-between">
-                                                            <span className={`font-mono text-xs font-bold ${!line.isValid ? 'text-red-700' : ''}`}>
-                                                                {line.sku} {line.mappedSku && <span className="text-green-600">→ {line.mappedSku}</span>}
-                                                            </span>
-                                                            <span className="text-xs">{line.qtyReceived}/{line.qtyOrdered}</span>
-                                                        </div>
-                                                        <div className="text-[10px] text-gray-500 truncate">{line.description}</div>
-                                                    </div>
-                                                ))}
+                                            <div className="text-xs text-gray-500 flex items-center gap-2">
+                                                <span className="flex items-center gap-1"><Calendar size={10}/> {po.date.toLocaleDateString()}</span>
+                                                <span className="hidden sm:inline">&bull;</span>
+                                                <span className="truncate max-w-[150px]">{po.siteName || 'Default Site'}</span>
                                             </div>
-                                        </td>
-                                        <td className="px-4 py-4 align-top">
-                                            {/* Row Level Controls */}
-                                            {po.lines.map((line, lIdx) => (
-                                                <div key={lIdx} className="mb-2 h-[58px] flex flax-col justify-center">
-                                                    <div className="flex flex-col gap-1 items-start">
-                                                        {line.goodsReceiptDate ? (
-                                                            <button 
-                                                                onClick={() => toggleDelivery(poIdx, lIdx)}
-                                                                title={`Received on ${line.goodsReceiptDate.toLocaleDateString()}`} 
-                                                                className={`text-[10px] flex items-center gap-2 px-3 py-1.5 rounded-md font-medium border transition-colors w-full ${line.includeDelivery ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' : 'bg-gray-100 border-gray-200 text-gray-400 opacity-60'}`}
-                                                            >
-                                                                <Truck size={12} /> 
-                                                                {line.includeDelivery ? 'Create Delivery' : 'Skip Delivery'}
-                                                            </button>
-                                                        ) : <div className="h-6"></div>}
-                                                        
-                                                        {line.capDate ? (
-                                                            <button 
-                                                                onClick={() => toggleCap(poIdx, lIdx)}
-                                                                className={`text-[10px] flex items-center gap-2 px-3 py-1.5 rounded-md font-medium border transition-colors w-full ${line.includeCap ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' : 'bg-gray-100 border-gray-200 text-gray-400 opacity-60'}`}
-                                                            >
-                                                                <Database size={12} /> 
-                                                                {line.includeCap ? 'Capitalize Asset' : 'Skip Cap'}
-                                                            </button>
-                                                        ) : <div className="h-6"></div>}
-                                                    </div>
+                                        </div>
+                                    </div>
+                                    {po.approver && (
+                                        <div className="text-xs text-gray-400 bg-white dark:bg-black/20 px-2 py-1 rounded border border-gray-100 dark:border-gray-700">
+                                            Appr: {po.approver}
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {/* Lines List */}
+                                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                    {po.lines.map((line, lIdx) => (
+                                        <div key={lIdx} className="p-3 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
+                                            {/* Item Details */}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded ${!line.isValid ? 'bg-red-100 text-red-700' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                                                        {line.sku}
+                                                    </span>
+                                                    {line.mappedSku && <ArrowRight size={10} className="text-gray-400" />}
+                                                    {line.mappedSku && <span className="font-mono text-xs font-bold text-green-600">{line.mappedSku}</span>}
                                                 </div>
-                                            ))}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                                <div className="text-sm text-gray-700 dark:text-gray-300 truncate" title={line.description}>
+                                                    {line.description || <span className="italic text-gray-400">No Description</span>}
+                                                </div>
+                                            </div>
+
+                                            {/* Qty & Actions */}
+                                            <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto mt-2 sm:mt-0">
+                                                <div className="text-xs text-gray-500 font-mono text-right min-w-[60px]">
+                                                    <span className={line.qtyReceived > 0 ? "font-bold text-gray-900 dark:text-gray-100" : ""}>{line.qtyReceived}</span>
+                                                    <span className="text-gray-300 mx-1">/</span>
+                                                    <span>{line.qtyOrdered}</span>
+                                                </div>
+
+                                                <div className="flex gap-1 bg-gray-50 dark:bg-black/20 p-1 rounded-lg border border-gray-100 dark:border-gray-800">
+                                                    {/* Delivery Toggle */}
+                                                    {line.goodsReceiptDate ? (
+                                                        <button 
+                                                            onClick={() => toggleDelivery(poIdx, lIdx)}
+                                                            title={`Delivery on ${line.goodsReceiptDate.toLocaleDateString()}`}
+                                                            className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
+                                                                line.includeDelivery 
+                                                                ? 'bg-blue-500 text-white shadow-sm' 
+                                                                : 'text-gray-300 hover:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                                            }`}
+                                                        >
+                                                            <Truck size={14} />
+                                                        </button>
+                                                    ) : <div className="w-8 h-8 flex items-center justify-center opacity-10"><Truck size={14} /></div>}
+
+                                                    {/* Cap Toggle */}
+                                                    {line.capDate ? (
+                                                        <button 
+                                                            onClick={() => toggleCap(poIdx, lIdx)}
+                                                            title={`Capitalize: ${line.capDate.toLocaleDateString()}`}
+                                                            className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
+                                                                line.includeCap 
+                                                                ? 'bg-[var(--color-brand)] text-white shadow-sm' 
+                                                                : 'text-gray-300 hover:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                                            }`}
+                                                        >
+                                                            <Database size={14} />
+                                                        </button>
+                                                    ) : <div className="w-8 h-8 flex items-center justify-center opacity-10"><Database size={14} /></div>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
