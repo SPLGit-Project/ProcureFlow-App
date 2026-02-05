@@ -7,7 +7,9 @@ import ContextHelp from './ContextHelp';
 const FinanceView = () => {
   const { pos, updateFinanceInfo } = useApp();
   const [filterSupplier, setFilterSupplier] = useState('');
+  const [viewStatus, setViewStatus] = useState<'OUTSTANDING' | 'CAPITALISED'>('OUTSTANDING');
   const [expandedPOs, setExpandedPOs] = useState<Record<string, boolean>>({});
+
 
   const togglePO = (poId: string) => {
     setExpandedPOs(prev => ({ ...prev, [poId]: !prev[poId] }));
@@ -21,18 +23,27 @@ const FinanceView = () => {
   ).map(po => {
       // Get all deliveries for this PO
       const deliveries = po.deliveries.map(del => {
-          // Map lines within delivery
-          const lines = del.lines.map(dLine => {
+          // Map lines within delivery and filter by viewStatus
+          const lines = del.lines
+            .filter(dLine => {
+                const matchesSearch = po.supplierName.toLowerCase().includes(filterSupplier.toLowerCase()) || 
+                                     po.lines.find(l => l.id === dLine.poLineId)?.itemName.toLowerCase().includes(filterSupplier.toLowerCase());
+                
+                const matchesStatus = viewStatus === 'OUTSTANDING' ? !dLine.isCapitalised : dLine.isCapitalised;
+                
+                return matchesSearch && matchesStatus;
+            })
+            .map(dLine => {
               const poLine = po.lines.find(l => l.id === dLine.poLineId);
               return {
-                  lineId: dLine.id, // Unique ID for the delivery line event
+                  lineId: dLine.id, 
                   poLineId: dLine.poLineId,
                   item: poLine?.itemName || 'Unknown',
                   sku: poLine?.sku || '',
                   qty: dLine.quantity,
                   unitPrice: poLine?.unitPrice || 0,
                   totalValue: (poLine?.unitPrice || 0) * dLine.quantity,
-                  data: dLine // The editable fields
+                  data: dLine 
               };
           });
           
@@ -46,6 +57,7 @@ const FinanceView = () => {
           };
       });
 
+
       return {
           poId: po.id,
           displayId: po.displayId || po.id.substring(0, 8).toUpperCase(),
@@ -58,12 +70,16 @@ const FinanceView = () => {
   }).filter(po => po.deliveries.length > 0); // Only show POs with deliveries
 
   const handleToggleCap = (poId: string, deliveryId: string, lineId: string, currentVal: boolean) => {
-      const today = new Date().toISOString().split('T')[0];
+      // For month input, we use YYYY-MM
+      const now = new Date();
+      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      
       updateFinanceInfo(poId, deliveryId, lineId, { 
           isCapitalised: !currentVal, 
-          capitalisedDate: !currentVal ? today : undefined 
+          capitalisedDate: !currentVal ? monthStr : undefined 
       });
   };
+
 
   const handleDateChange = (poId: string, deliveryId: string, lineId: string, newDate: string) => {
       updateFinanceInfo(poId, deliveryId, lineId, { capitalisedDate: newDate });
@@ -100,6 +116,22 @@ const FinanceView = () => {
                     onChange={e => setFilterSupplier(e.target.value)}
                  />
              </div>
+
+             <div className="flex items-center bg-gray-100 dark:bg-white/5 p-1 rounded-xl border border-gray-200 dark:border-gray-700">
+                <button 
+                  onClick={() => setViewStatus('OUTSTANDING')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewStatus === 'OUTSTANDING' ? 'bg-white dark:bg-[#2b2d3b] text-[var(--color-brand)] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Outstanding
+                </button>
+                <button 
+                  onClick={() => setViewStatus('CAPITALISED')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewStatus === 'CAPITALISED' ? 'bg-white dark:bg-[#2b2d3b] text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Capitalised
+                </button>
+             </div>
+
              <div className="w-full md:w-auto ml-auto text-sm text-gray-500 flex items-center justify-end gap-2 bg-gray-50 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
                  <Filter size={14}/> {groupedData.length} POs found
              </div>
@@ -204,7 +236,7 @@ const FinanceView = () => {
                                                                     <div className={`flex items-center gap-1 border rounded px-2 py-1 transition-all ${line.data.isCapitalised ? 'border-green-200 bg-green-50 dark:bg-green-900/10 dark:border-green-800' : 'border-gray-200'}`}>
                                                                         <Calendar size={12} className="text-green-600 dark:text-green-400"/>
                                                                         <input 
-                                                                            type="date" 
+                                                                            type="month" 
                                                                             className="text-xs border-none bg-transparent focus:ring-0 cursor-pointer text-gray-700 dark:text-gray-300 w-full p-0 font-medium"
                                                                             value={line.data.capitalisedDate || ''}
                                                                             onChange={(e) => handleDateChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
@@ -266,7 +298,7 @@ const FinanceView = () => {
                                                                     <div className="flex items-center gap-2 bg-white dark:bg-[#1e2029] border border-green-200 dark:border-green-800 rounded-lg px-3 py-2">
                                                                         <Calendar size={14} className="text-green-600 dark:text-green-400"/>
                                                                         <input 
-                                                                            type="date" 
+                                                                            type="month" 
                                                                             className="text-xs border-none bg-transparent focus:ring-0 cursor-pointer text-gray-700 dark:text-gray-300 w-full p-0 font-medium"
                                                                             value={line.data.capitalisedDate || ''}
                                                                             onChange={(e) => handleDateChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
