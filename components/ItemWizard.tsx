@@ -208,7 +208,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                         {errors.sku && <p className="text-xs text-red-500">{errors.sku}</p>}
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Internal Code (Alt)</label>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Supplier Code</label>
                                         <input 
                                             type="text"
                                             value={formData.sapItemCodeNorm || ''}
