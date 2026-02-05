@@ -7,7 +7,6 @@ import ContextHelp from './ContextHelp';
 const FinanceView = () => {
   const { pos, updateFinanceInfo } = useApp();
   const [filterSupplier, setFilterSupplier] = useState('');
-  const [viewStatus, setViewStatus] = useState<'OUTSTANDING' | 'CAPITALISED'>('OUTSTANDING');
   const [expandedPOs, setExpandedPOs] = useState<Record<string, boolean>>({});
 
 
@@ -29,9 +28,7 @@ const FinanceView = () => {
                 const matchesSearch = po.supplierName.toLowerCase().includes(filterSupplier.toLowerCase()) || 
                                      po.lines.find(l => l.id === dLine.poLineId)?.itemName.toLowerCase().includes(filterSupplier.toLowerCase());
                 
-                const matchesStatus = viewStatus === 'OUTSTANDING' ? !dLine.isCapitalised : dLine.isCapitalised;
-                
-                return matchesSearch && matchesStatus;
+                return matchesSearch;
             })
             .map(dLine => {
               const poLine = po.lines.find(l => l.id === dLine.poLineId);
@@ -143,20 +140,7 @@ const FinanceView = () => {
                  />
              </div>
 
-             <div className="flex items-center bg-gray-100 dark:bg-white/5 p-1 rounded-xl border border-gray-200 dark:border-gray-700">
-                <button 
-                  onClick={() => setViewStatus('OUTSTANDING')}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewStatus === 'OUTSTANDING' ? 'bg-white dark:bg-[#2b2d3b] text-[var(--color-brand)] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  Outstanding
-                </button>
-                <button 
-                  onClick={() => setViewStatus('CAPITALISED')}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewStatus === 'CAPITALISED' ? 'bg-white dark:bg-[#2b2d3b] text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  Capitalised
-                </button>
-             </div>
+
 
              <div className="w-full md:w-auto ml-auto text-sm text-gray-500 flex items-center justify-end gap-2 bg-gray-50 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
                  <Filter size={14}/> {groupedData.length} POs found
