@@ -332,8 +332,6 @@ export const db = {
         if (error) throw error;
     },
 
-
-
     getMappings: async (): Promise<SupplierProductMap[]> => {
         const { data, error } = await supabase.from('supplier_product_map').select('*');
         if (error) throw error;
@@ -348,6 +346,8 @@ export const db = {
              mappingStatus: m.mapping_status,
              mappingMethod: m.mapping_method,
              confidenceScore: m.confidence_score,
+             mappingJustification: m.mapping_justification,
+             manualOverride: m.manual_override,
              updatedAt: m.updated_at
         }));
     },
@@ -364,6 +364,8 @@ export const db = {
              mapping_status: mapping.mappingStatus,
              mapping_method: mapping.mappingMethod,
              confidence_score: mapping.confidenceScore,
+             mapping_justification: mapping.mappingJustification || {},
+             manual_override: mapping.manualOverride || false,
              updated_at: new Date().toISOString()
         });
         if (error) throw error;
@@ -499,7 +501,7 @@ export const db = {
             supplierId: p.supplier_id,
             supplierName: p.supplier?.name || 'Unknown',
             status: p.status,
-            totalAmount: p.total_amount,
+            totalAmount: p.totalAmount,
             approvalHistory: (p.approvals || []).map((a: any) => ({
                 id: a.id,
                 action: a.action,
@@ -516,7 +518,7 @@ export const db = {
                 quantityReceived: l.quantity_received,
                 unitPrice: l.unit_price,
                 totalPrice: l.total_price,
-                concurPoNumber: l.concur_po_number
+                concur_po_number: l.concur_po_number
             })),
             deliveries: (p.deliveries || []).map((d: any) => ({
                 id: d.id,
@@ -526,9 +528,9 @@ export const db = {
                     id: dl.id,
                     poLineId: dl.po_line_id,
                     quantity: dl.quantity,
-                    invoiceNumber: dl.invoice_number,
-                    isCapitalised: dl.is_capitalised,
-                    capitalisedDate: dl.capitalised_date
+                    invoice_number: dl.invoice_number,
+                    is_capitalised: dl.is_capitalised,
+                    capitalised_date: dl.capitalised_date
                 }))
             })),
             reasonForRequest: p.reason_for_request,
@@ -637,16 +639,11 @@ export const db = {
 
     createPO: async (po: PORequest): Promise<string> => {
         // 1. Insert Header
-        // Need site_id from name. For now assume po.site is ID or handle carefully.
-        // If po.site is "Sydney Warehouse"... we need ID. 
-        // But AppContext usually passes ID if selected from dropdown. 
-        // Let's rely on it being an ID or UUID.
-        
         const { data, error } = await supabase.from('po_requests').insert({
              id: po.id,
              request_date: po.requestDate,
              requester_id: po.requesterId,
-             site_id: po.siteId, // Use ID reference (was po.site name)
+             site_id: po.siteId,
              supplier_id: po.supplierId,
              status: po.status,
              total_amount: po.totalAmount,
@@ -749,7 +746,6 @@ export const db = {
 
     importStockSnapshot: async (supplierId: string, date: string, snapshots: SupplierStockSnapshot[]): Promise<void> => {
          const rows = snapshots.map(s => {
-              // Calculate normalization on the fly to ensure consistency
               const norm = normalizeItemCode(s.customerStockCode || s.supplierSku); 
               
               return {
@@ -761,7 +757,6 @@ export const db = {
                 stock_on_hand: s.stockOnHand,
                 snapshot_date: s.snapshotDate,
                 source_report_name: s.sourceReportName,
-                // customer_stock_code: s.customerStockCode, // Removed as column doesn't exist in DB, using raw/norm instead
                 range_name: s.range,
                 stock_type: s.stockType,
                 carton_qty: s.cartonQty,
@@ -773,17 +768,11 @@ export const db = {
                 sell_price: s.sellPrice,
                 total_stock_qty: s.totalStockQty,
                 
-                // Normalization
                 customer_stock_code_raw: s.customerStockCode || s.supplierSku,
                 customer_stock_code_norm: norm.normalized,
                 customer_stock_code_alt_norm: norm.alternate
             };
          });
-
-         // SAFE OVERWRITE LOGIC:
-         // 1. Delete existing snapshots for this Supplier AND Date
-         // This ensures that if the user runs the import 3 times, we don't get 3 sets of data.
-         // We only delete for the specific Import Date provided.
          
          const { error: delError } = await supabase
             .from('stock_snapshots')
@@ -796,7 +785,6 @@ export const db = {
              throw delError;
          }
 
-         // 2. Insert new rows
          const { error } = await supabase.from('stock_snapshots').insert(rows);
          if (error) throw error;
     },
@@ -816,10 +804,8 @@ export const db = {
     getItemFieldRegistry: async (): Promise<any[]> => {
         const { data, error } = await supabase.from('item_field_registry').select('*').order('order_index');
         if (error) throw error;
-        return data; // Return raw rows for now
+        return data; 
     },
-
-    // --- Catalog Management ---
 
     getAttributeOptions: async (type?: string): Promise<AttributeOption[]> => {
         let query = supabase.from('attribute_options').select('*').eq('active_flag', true);
@@ -842,7 +828,7 @@ export const db = {
 
     upsertAttributeOption: async (option: Partial<AttributeOption>): Promise<void> => {
         const { error } = await supabase.from('attribute_options').upsert({
-             id: option.id, // Optional, if new
+             id: option.id,
              type: option.type,
              value: option.value,
              parent_id: option.parentId,
@@ -854,19 +840,14 @@ export const db = {
     },
 
     deleteAttributeOption: async (id: string): Promise<void> => {
-        // Soft delete
         const { error } = await supabase.from('attribute_options').update({ active_flag: false }).eq('id', id);
         if (error) throw error;
     },
-
-    // --- Auto-Mapping & Registry ---
 
     upsertMasterItemsBulk: async (
         inputs: Partial<Item>[], 
         deactivateMissing: boolean = false
     ): Promise<{ created: number, updated: number, deactivated: number }> => {
-        
-        // 1. Get Config & Existing Items
         const [configRes, itemsRes] = await Promise.all([
             db.getItemImportConfig(),
             supabase.from('items').select('*')
@@ -874,19 +855,14 @@ export const db = {
         
         if (itemsRes.error) throw itemsRes.error;
         const existingItems = itemsRes.data || [];
-        const existingMap = new Map(existingItems.map((i: any) => [i.sap_item_code_norm, i])); // Match on NORM
+        const existingMap = new Map(existingItems.map((i: any) => [i.sap_item_code_norm, i]));
         
-        const overwriteRules = configRes.overwrite_fields || {};
         const timestamp = new Date().toISOString();
         const upsertPayload: any[] = [];
         const processedNorms = new Set<string>();
-        
-        // Registry Inference
         const fieldKeys = new Set<string>();
         
-        // 2. Process Input
         for (const input of inputs) {
-            // Collect keys for registry
             Object.keys(input).forEach(k => fieldKeys.add(k));
 
             if (!input.sku) continue; 
@@ -897,7 +873,7 @@ export const db = {
             const existing = existingMap.get(norm.normalized);
             
             const commonFields = {
-                sku: input.sku, // Keep key stable
+                sku: input.sku,
                 name: input.name,
                 description: input.description,
                 unit_price: input.unitPrice,
@@ -907,8 +883,6 @@ export const db = {
                 range_name: input.rangeName,
                 stock_type: input.stockType,
                 upq: input.upq,
-                
-                // Extended Fields
                 item_weight: input.itemWeight,
                 item_pool: input.itemPool,
                 item_catalog: input.itemCatalog,
@@ -921,23 +895,18 @@ export const db = {
                 measurements: input.measurements,
                 cog_flag: input.cogFlag,
                 cog_customer: input.cogCustomer,
-
-                // Normalization
                 sap_item_code_raw: input.sku,
                 sap_item_code_norm: norm.normalized,
-                
                 updated_at: timestamp,
                 active_flag: true
             };
 
             if (existing) {
-                // UPDATE
                 upsertPayload.push({
                     id: existing.id,
                     ...commonFields
                 });
             } else {
-                // INSERT
                 upsertPayload.push({
                     ...commonFields,
                     created_at: timestamp
@@ -945,20 +914,15 @@ export const db = {
             }
         }
         
-        // 3. Update Field Registry
-        // We do this optimistically to ensure UI can show these fields
         const registryPayload = Array.from(fieldKeys).map(k => ({
             field_key: k,
-            label: k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()), // Simple label gen
-            data_type: typeof inputs[0][k as keyof Item], // rudimentary type inference
+            label: k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()),
+            data_type: typeof inputs[0][k as keyof Item],
             is_visible: true,
             is_filterable: true
         }));
-        // Use UPSERT specific for registry?
-        // Using insert with ignore duplicates or upsert on key
         await supabase.from('item_field_registry').upsert(registryPayload, { onConflict: 'field_key' });
         
-        // 4. Execute Upsert
         if (upsertPayload.length > 0) {
             const batchSize = 1000;
             for (let i = 0; i < upsertPayload.length; i += batchSize) {
@@ -981,7 +945,7 @@ export const db = {
         }
         
         return {
-            created: upsertPayload.length - existingItems.length, // Approx (assumes all new are created)
+            created: upsertPayload.length - existingItems.length,
             updated: existingItems.length,
             deactivated
         };
@@ -1003,19 +967,13 @@ export const db = {
             supplier_id: item.supplierId || null,
             is_rfid: item.isRfid,
             is_cog: item.isCog,
-            
-            // Normalize
             sap_item_code_raw: item.sku,
             sap_item_code_norm: norm.normalized,
-            
-            // Categorization
             range_name: item.rangeName,
             stock_type: item.stockType,
             active_flag: item.activeFlag !== undefined ? item.activeFlag : true,
             created_at: item.createdAt || new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            
-            // Extended Attributes
             item_weight: item.itemWeight,
             item_pool: item.itemPool,
             item_catalog: item.itemCatalog,
@@ -1028,7 +986,6 @@ export const db = {
             measurements: item.measurements,
             cog_flag: item.cogFlag,
             cog_customer: item.cogCustomer,
-            
             specs: item.specs
         });
         if (error) throw error;
@@ -1049,15 +1006,12 @@ export const db = {
             supplier_id: item.supplierId || null,
             is_rfid: item.isRfid,
             is_cog: item.isCog,
-            
             sap_item_code_raw: item.sku,
             sap_item_code_norm: norm.normalized,
-            
             range_name: item.rangeName,
             stock_type: item.stockType,
             active_flag: item.activeFlag,
             updated_at: new Date().toISOString(),
-            
             item_weight: item.itemWeight,
             item_pool: item.itemPool,
             item_catalog: item.itemCatalog,
@@ -1070,7 +1024,6 @@ export const db = {
             measurements: item.measurements,
             cog_flag: item.cogFlag,
             cog_customer: item.cogCustomer,
-            
             specs: item.specs
         }).eq('id', item.id);
         if (error) throw error;
@@ -1086,57 +1039,95 @@ export const db = {
         if (error) throw error;
     },
 
-    runAutoMapping: async (supplierId: string): Promise<{ confirmed: number, proposed: number }> => {
-        // 1. Fetch Unmapped Snapshots (latest) & Active Items
-        const { data: snapshots } = await supabase.from('stock_snapshots')
-            .select('*')
-            .eq('supplier_id', supplierId)
-            .order('snapshot_date', { ascending: false }); // Todo: limit to distinct SKUs?
+    calculateMappingScore: (
+        snap: any, 
+        item: any, 
+        globalConsensus: Record<string, string[]>
+    ): { score: number, justification: any } => {
+        let score = 0;
+        const justification: any = { components: [] };
 
-        const { data: items } = await supabase.from('items').select('*').eq('active_flag', true);
+        const normSnap = snap.customer_stock_code_norm;
+        const normItem = item.sap_item_code_norm;
         
-        // [SMART MAPPING] Fetch existing mappings to avoid overwriting decisions
-        const { data: existingMappings } = await supabase.from('supplier_product_map')
-            .select('supplier_sku, mapping_status')
-            .eq('supplier_id', supplierId);
+        if (normSnap && normSnap === normItem && normSnap !== '') {
+            score += 1.0;
+            justification.components.push({ type: 'ID_MATCH_NORM', score: 1.0, detail: 'Exact normalized code match' });
+        } else if (snap.customer_stock_code && item.sku && snap.customer_stock_code.toLowerCase().trim() === item.sku.toLowerCase().trim()) {
+            score += 1.0;
+            justification.components.push({ type: 'ID_MATCH_SKU', score: 1.0, detail: 'Exact SKU match' });
+        } else if (snap.customer_stock_code_alt_norm && snap.customer_stock_code_alt_norm === item.sap_item_code_norm) {
+             score += 0.9;
+             justification.components.push({ type: 'ID_MATCH_ALT', score: 0.9, detail: 'Alternate normalized match' });
+        }
 
-        if (!snapshots || !items) return { confirmed: 0, proposed: 0 };
+        const tokenize = (str: string) => (str || '').toLowerCase().split(/[\s\-_,./]+/).map(t => t.replace(/s$/, '').trim()).filter(t => t.length > 2);
+        const snapTokens = tokenize(snap.product_name);
+        const itemTokens = tokenize(item.name);
+        
+        if (snapTokens.length > 0 && itemTokens.length > 0) {
+            const intersection = snapTokens.filter(t => itemTokens.includes(t));
+            const union = new Set([...snapTokens, ...itemTokens]);
+            const jaccard = intersection.length / union.size;
+            
+            if (jaccard > 0) {
+                const jScore = parseFloat((jaccard * 0.5).toFixed(2));
+                score += jScore;
+                justification.components.push({ type: 'TEXT_SIMILARITY', score: jScore, detail: `Jaccard similarity: ${(jaccard * 100).toFixed(1)}%` });
+            }
+        }
 
-        // Create a set of SKUs that are already handled (Confirmed or Rejected or Manually Mapped)
-        // We only want to auto-map things that are either new OR previously just 'PROPOSED' (and thus not yet actioned)
-        // Actually, if it's 'PROPOSED' we might want to re-run to see if we find a better match? 
-        // For now, let's say if it is CONFIRMED, REJECTED or MANUAL, we skip.
-        // If it is PROPOSED, we can overwrite it with a potentially better match (or same match).
-        const handledSkus = new Set(
-            (existingMappings || [])
-                .filter((m: any) => m.mapping_status === 'CONFIRMED' || m.mapping_status === 'REJECTED')
+        if (snap.category && item.category && snap.category.toLowerCase() === item.category.toLowerCase()) {
+            score += 0.2;
+            justification.components.push({ type: 'ATTR_CATEGORY', score: 0.2, detail: 'Matching Category' });
+        }
+        
+        if (snap.sell_price && item.unit_price && item.unit_price > 0) {
+            const diff = Math.abs(snap.sell_price - item.unit_price) / item.unit_price;
+            if (diff < 0.1) {
+                score += 0.1;
+                justification.components.push({ type: 'FINANCE_PROXIMITY', score: 0.1, detail: `Price within 10% deviation` });
+            }
+        }
+
+        const consensusMatches = globalConsensus[snap.supplier_sku] || [];
+        if (consensusMatches.includes(item.id)) {
+            score += 0.5;
+            justification.components.push({ type: 'GLOBAL_CONSENSUS', score: 0.5, detail: 'Confirmed by other suppliers' });
+        }
+
+        return { score: parseFloat(score.toFixed(2)), justification };
+    },
+
+    runAutoMapping: async (supplierId: string): Promise<{ confirmed: number, proposed: number }> => {
+        const [snapshotsRes, itemsRes, existingMappingsRes, globalMappingsRes] = await Promise.all([
+            supabase.from('stock_snapshots').select('*').eq('supplier_id', supplierId).order('snapshot_date', { ascending: false }),
+            supabase.from('items').select('*').eq('active_flag', true),
+            supabase.from('supplier_product_map').select('supplier_sku, mapping_status, manual_override').eq('supplier_id', supplierId),
+            supabase.from('supplier_product_map').select('supplier_sku, product_id').eq('mapping_status', 'CONFIRMED').neq('supplier_id', supplierId)
+        ]);
+
+        if (!snapshotsRes.data || !itemsRes.data) return { confirmed: 0, proposed: 0 };
+        
+        const snapshots = snapshotsRes.data;
+        const items = itemsRes.data;
+
+        const globalConsensus: Record<string, string[]> = {};
+        globalMappingsRes.data?.forEach((m: any) => {
+            if (!globalConsensus[m.supplier_sku]) globalConsensus[m.supplier_sku] = [];
+            globalConsensus[m.supplier_sku].push(m.product_id);
+        });
+
+        const manualOverrides = new Set(
+            (existingMappingsRes.data || [])
+                .filter((m: any) => m.manual_override || m.mapping_status === 'REJECTED')
                 .map((m: any) => m.supplier_sku)
         );
-        
-        // Group snapshots by normalized code to identify distinct products
-        const uniqueProducts = new Map<string, any>(); // key -> snapshot
-        snapshots.forEach((s: any) => {
-             // Skip if we already have a firm decision on this SKU
-             if (handledSkus.has(s.supplier_sku)) return;
 
-             if (!uniqueProducts.has(s.customer_stock_code_norm)) {
-                 uniqueProducts.set(s.customer_stock_code_norm, s);
-             }
-        });
-        
-        const itemMap = new Map();
-        const itemAltMap = new Map();
-        
-        items.forEach((i: any) => {
-            if (i.sku) {
-                // Calc norm on the fly to ensure consistency with latest logic
-                const norm = normalizeItemCode(i.sku);
-                
-                // Map by normalized
-                if (norm.normalized) itemMap.set(norm.normalized, i);
-                
-                // Map by alternate
-                if (norm.alternate) itemAltMap.set(norm.alternate, i);
+        const uniqueSkus = new Map<string, any>();
+        snapshots.forEach((s: any) => {
+            if (!manualOverrides.has(s.supplier_sku) && !uniqueSkus.has(s.supplier_sku)) {
+                uniqueSkus.set(s.supplier_sku, s);
             }
         });
         
@@ -1144,105 +1135,35 @@ export const db = {
         let confirmed = 0;
         let proposed = 0;
 
-        for (const snap of Array.from(uniqueProducts.values())) {
-             // A. Exact Match (Normalized Code)
-             const norm = snap.customer_stock_code_norm;
-             let match = itemMap.get(norm);
-             let method = 'AUTO_NORM';
-             
-             // A2. Priority Match: Supplier Cust Code == Master SKU
-             if (!match && snap.customer_stock_code) {
-                 const skuMatch = items.find((i: any) => i.sku && i.sku.toLowerCase().trim() === snap.customer_stock_code.toLowerCase().trim());
-                 if (skuMatch) {
-                     // RFID Guard: Don't match RFID snap to non-RFID item
-                     const snapIsRfid = (snap.product_name + snap.supplier_sku).toLowerCase().includes('rfid');
-                     const itemIsRfid = (skuMatch.name + skuMatch.sku).toLowerCase().includes('rfid');
-                     
-                     if (snapIsRfid === itemIsRfid) {
-                        match = skuMatch;
-                        method = 'AUTO_SKU_EXACT';
-                     }
-                 }
-             }
+        for (const snap of Array.from(uniqueSkus.values())) {
+            let bestMatch: any = null;
+            let bestScore = 0;
+            let bestJustification: any = null;
 
-             // B. Alt Match (R-Strip)
-             if (!match && snap.customer_stock_code_alt_norm) {
-                 match = itemAltMap.get(snap.customer_stock_code_alt_norm);
-                 method = 'AUTO_ALT';
-             }
-             
-             if (match) {
+            for (const item of items) {
+                const { score, justification } = db.calculateMappingScore(snap, item, globalConsensus);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMatch = item;
+                    bestJustification = justification;
+                }
+            }
+
+            if (bestMatch && bestScore > 0.4) {
+                 const status = bestScore >= 1.2 ? 'CONFIRMED' : 'PROPOSED';
                  updates.push({
                      supplier_id: supplierId,
-                     product_id: match.id,
+                     product_id: bestMatch.id,
                      supplier_sku: snap.supplier_sku,
                      supplier_customer_stock_code: snap.customer_stock_code,
-                     mapping_status: 'CONFIRMED',
-                     mapping_method: method,
-                     confidence_score: 1.0
+                     mapping_status: status,
+                     mapping_method: 'AUTO_V2',
+                     confidence_score: Math.min(bestScore, 1.0),
+                     mapping_justification: bestJustification,
+                     updated_at: new Date().toISOString()
                  });
-                 confirmed++;
-             } else {
-                 // C. Enhanced Fuzzy Match
-                 let bestMatch: any = null;
-                 let bestScore = 0;
-                 
-                 const snapName = (snap.product_name || '').toLowerCase();
-                 // Tokenizer: Strip 's' at end for simple plural handling
-                 const tokenize = (str: string) => str.split(/[\s\-_]+/).map(t => t.replace(/s$/, '')).filter(t => t.length > 2);
-                 const snapTokens = tokenize(snapName);
-                 const snapIsRfid = snapName.includes('rfid') || snap.supplier_sku.toLowerCase().includes('rfid');
-                 
-                 if (snapTokens.length > 0) {
-                     for (const item of items) {
-                         const itemName = (item.name || '').toLowerCase();
-                         const itemIsRfid = itemName.includes('rfid') || item.sku.toLowerCase().includes('rfid');
-                         
-                         // RFID Mismatch Guard
-                         if (snapIsRfid !== itemIsRfid) continue;
-
-                         // 1. Direct substring
-                         if (itemName === snapName) {
-                             bestScore = 1.0;
-                             bestMatch = item;
-                             break;
-                         }
-                         
-                         // 2. Token Jaccard with Boosts
-                         const itemTokens = tokenize(itemName);
-                         const intersection = snapTokens.filter((t: string) => itemTokens.includes(t));
-                         
-                         if (intersection.length > 0) {
-                             const union = new Set([...snapTokens, ...itemTokens]);
-                             let score = intersection.length / union.size;
-                             
-                             // Boost for RFID match
-                             if (snapIsRfid && itemIsRfid) score += 0.3;
-                             
-                             // Boost for Customer Code partial match
-                             if (snap.customer_stock_code && item.sku.includes(snap.customer_stock_code)) score += 0.2;
-
-                             if (score > bestScore) {
-                                 bestScore = score;
-                                 bestMatch = item;
-                             }
-                         }
-                     }
-                 }
-
-                 if (bestMatch && bestScore > 0.4) { // Threshold for "PROPOSED"
-                     updates.push({
-                         supplier_id: supplierId,
-                         product_id: bestMatch.id,
-                         supplier_sku: snap.supplier_sku,
-                         supplier_customer_stock_code: snap.customer_stock_code,
-                         mapping_status: 'PROPOSED',
-                         mapping_method: 'AUTO_FUZZY',
-                         confidence_score: bestScore
-                     });
-                     proposed++;
-                 }
-             }
+                 if (status === 'CONFIRMED') confirmed++; else proposed++;
+            }
         }
         
         if (updates.length > 0) {
@@ -1261,7 +1182,7 @@ export const db = {
                 item:items(sku, name),
                 supplier:suppliers(name)
             `)
-            .in('mapping_status', ['PROPOSED', 'REJECTED']); // Review queue
+            .in('mapping_status', ['PROPOSED', 'REJECTED']); 
             
         if (supplierId) {
             query = query.eq('supplier_id', supplierId);
@@ -1274,19 +1195,20 @@ export const db = {
             id: m.id,
             supplierId: m.supplier_id,
             supplierName: m.supplier?.name,
-            productId: m.item_id,
+            productId: m.product_id,
             productName: m.item?.name,
             internalSku: m.item?.sku,
             supplierSku: m.supplier_sku,
             mappingStatus: m.mapping_status,
             mappingMethod: m.mapping_method,
             confidenceScore: m.confidence_score,
+            mappingJustification: m.mapping_justification,
+            manualOverride: m.manual_override,
             updatedAt: m.updated_at
         })) as unknown as SupplierProductMap[];
     },
 
     createDelivery: async (delivery: DeliveryHeader, poId: string): Promise<void> => {
-        // 1. Insert Header
         const { error: headerError } = await supabase.from('deliveries').insert({
             id: delivery.id,
             po_request_id: poId,
@@ -1297,7 +1219,6 @@ export const db = {
         
         if (headerError) throw headerError;
 
-        // 2. Insert Lines
         if (delivery.lines.length > 0) {
             const linesToInsert = delivery.lines.map(l => ({
                 id: l.id,
@@ -1331,8 +1252,6 @@ export const db = {
         }
         
         const SKIP_ITEM_ID = '00000000-0000-0000-0000-000000000000';
-
-        // Return lookup: { "excel_code_123": "item_uuid" OR "SKIP" }
         const lookup: Record<string, string> = {};
         data?.forEach((row: any) => {
             if (row.excel_variant) {
@@ -1356,14 +1275,13 @@ export const db = {
 
         if (itemId === 'SKIP') {
             finalId = SKIP_ITEM_ID;
-            // Ensure Skip Placeholder Item Exists
             await supabase.from('items').upsert({
                 id: SKIP_ITEM_ID,
                 sku: 'SYSTEM-SKIP',
                 name: 'Skipped Item',
                 description: 'Placeholder for ignored migration items',
                 active_flag: false,
-                category_id: null // Ensure your items table allows null here, or provide valid one. Usually fine.
+                category: null
             }, { onConflict: 'id', ignoreDuplicates: true });
         }
 
@@ -1409,6 +1327,8 @@ export const db = {
             mappingMethod: m.mapping_method,
             confidenceScore: m.confidence_score,
             packConversionFactor: m.pack_conversion_factor,
+            mappingJustification: m.mapping_justification,
+            manualOverride: m.manual_override,
             updatedAt: m.updated_at
         }));
     },
@@ -1419,7 +1339,6 @@ export const db = {
     },
 
     syncItemsFromSnapshots: async (supplierId: string): Promise<{ updated: number }> => {
-        // 1. Fetch Latest Confirmed Mappings for this supplier
         const { data: mappings, error: mErr } = await supabase
             .from('supplier_product_map')
             .select('product_id, supplier_sku')
@@ -1429,8 +1348,6 @@ export const db = {
         if (mErr) throw mErr;
         if (!mappings || mappings.length === 0) return { updated: 0 };
 
-        // 2. Fetch Latest Snapshots for this supplier
-        // To get the absolute LATEST per SKU, we order by date desc
         const { data: snapshots, error: sErr } = await supabase
             .from('stock_snapshots')
             .select('supplier_sku, sell_price, total_stock_qty, snapshot_date')
@@ -1440,7 +1357,6 @@ export const db = {
         if (sErr) throw sErr;
         if (!snapshots || snapshots.length === 0) return { updated: 0 };
 
-        // Reduce snapshots to a map of latest per supplier_sku
         const latestSnaps = snapshots.reduce((acc: any, curr: any) => {
             if (!acc[curr.supplier_sku]) {
                 acc[curr.supplier_sku] = curr;
@@ -1448,18 +1364,14 @@ export const db = {
             return acc;
         }, {});
 
-        // 3. Prepare updates for items
         let updatedCount = 0;
         for (const m of mappings) {
             const snap = latestSnaps[m.supplier_sku];
             if (snap && snap.sell_price !== undefined) {
-                // Update item price
                 const { error: uErr } = await supabase
                     .from('items')
                     .update({ 
                         unit_price: snap.sell_price,
-                        // We could also sync stock levels if we wanted, 
-                        // but stock usually lives in Snapshots/Availability table
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', m.product_id);

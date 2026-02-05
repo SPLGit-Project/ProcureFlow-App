@@ -229,6 +229,10 @@ export interface SupplierProductMap {
   confidenceScore: number;
   updatedAt: string;
   
+  // v2 Fields
+  mappingJustification?: any; // JSONB
+  manualOverride?: boolean;
+  
   // Joins (optional for UI)
   supplierName?: string;
   productName?: string;

@@ -1810,7 +1810,7 @@ if __name__ == "__main__":
                           </div>
                       </div>
                   </div>
-                  <div className="flex gap-3 items-center mt-2 md:mt-0">
+                   <div className="flex gap-3 items-center mt-2 md:mt-0">
                        <button onClick={() => refreshAvailability().then(() => alert('Availability Recalculated'))} className="text-gray-500 hover:text-[var(--color-brand)] text-xs font-bold flex items-center gap-1 transition-colors">
                            <RefreshCw size={14}/> Update Mapping
                        </button>
@@ -1825,6 +1825,21 @@ if __name__ == "__main__":
                        }} className="bg-[var(--color-brand)] text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:opacity-90 flex items-center gap-2 transition-all">
                            <Wand2 size={14}/> Run Auto-Match
                        </button>
+                       {mappingSubTab === 'PROPOSED' && mappings.filter(m => m.mappingStatus === 'PROPOSED' && m.confidenceScore >= 0.9).length > 0 && (
+                            <button 
+                                onClick={async () => {
+                                    const highConf = mappings.filter(m => m.mappingStatus === 'PROPOSED' && m.confidenceScore >= 0.9);
+                                    if (!window.confirm(`Confirm all ${highConf.length} high-confidence (>=90%) mappings?`)) return;
+                                    for (const m of highConf) {
+                                        await updateMapping({ ...m, mappingStatus: 'CONFIRMED' });
+                                    }
+                                    alert(`Successfully confirmed ${highConf.length} mappings.`);
+                                }}
+                                className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:bg-green-700 flex items-center gap-2 transition-all"
+                            >
+                                <CheckCircle size={14}/> Confirm High Confidence
+                            </button>
+                       )}
                   </div>
               </div>
 
@@ -1949,7 +1964,12 @@ if __name__ == "__main__":
                                       <tr key={map.id} className="table-row">
                                           <td className="px-6 py-4">
                                               <span className={`badge ${map.mappingStatus === 'PROPOSED' ? 'bg-yellow-100 text-yellow-800' : map.mappingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{map.mappingStatus}</span>
-                                              <div className="text-[10px] uppercase font-bold text-gray-400 mt-1">{map.mappingMethod}</div>
+                                              <div className="flex items-center gap-1.5 mt-1">
+                                                  <div className="text-[10px] uppercase font-bold text-gray-400">{map.mappingMethod}</div>
+                                                  {map.manualOverride && (
+                                                      <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded font-bold uppercase" title="Manually decided by user">Manual</span>
+                                                  )}
+                                              </div>
                                           </td>
                                           <td className="px-6 py-4">
                                               {internalItem ? (
@@ -2032,10 +2052,33 @@ if __name__ == "__main__":
                                              })()}
                                           </td>
                                           <td className="px-6 py-4 text-center">
-                                              <div className="flex flex-col items-center">
-                                                <span className={`font-bold ${map.confidenceScore > 0.9 ? 'text-green-500' : map.confidenceScore > 0.7 ? 'text-yellow-500' : 'text-red-500'}`}>
+                                              <div className="flex flex-col items-center group/conf relative">
+                                                  <div className="w-16 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mb-1">
+                                                      <div 
+                                                          className={`h-full transition-all duration-500 ${map.confidenceScore >= 0.9 ? 'bg-green-500' : map.confidenceScore >= 0.7 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                                          style={{ width: `${Math.min(1, map.confidenceScore) * 100}%` }}
+                                                      />
+                                                  </div>
+                                                <span className={`font-mono text-[11px] font-bold ${map.confidenceScore >= 0.9 ? 'text-green-500' : map.confidenceScore >= 0.7 ? 'text-yellow-600' : 'text-red-500'}`}>
                                                     {(map.confidenceScore * 100).toFixed(0)}%
                                                 </span>
+                                                
+                                                {map.mappingJustification?.components && (
+                                                    <div className="absolute bottom-full mb-2 hidden group-hover/conf:block z-[100] w-64 p-3 bg-gray-900 text-white rounded-xl shadow-2xl border border-gray-700 animate-fade-in text-left">
+                                                        <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 border-b border-gray-700 pb-1">Match Reason</h5>
+                                                        <div className="space-y-2">
+                                                            {(map.mappingJustification.components || []).map((c: any, i: number) => (
+                                                                <div key={i} className="flex justify-between items-start gap-2">
+                                                                    <div>
+                                                                        <div className="text-[11px] font-bold leading-none">{String(c.type || 'Match').replace(/_/g, ' ')}</div>
+                                                                        <div className="text-[9px] text-gray-400 mt-0.5">{c.detail}</div>
+                                                                    </div>
+                                                                    <div className="text-[10px] font-mono font-bold text-green-400">+{Number(c.score || 0).toFixed(1)}</div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
                                               </div>
                                           </td>
                                           <td className="px-6 py-4 text-center">
