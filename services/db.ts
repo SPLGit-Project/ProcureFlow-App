@@ -1251,10 +1251,12 @@ export const db = {
     },
 
     updatePOLine: async (id: string, updates: Partial<POLineItem>): Promise<void> => {
-        const { error } = await supabase.from('po_lines').update({
-            quantity_ordered: updates.quantityOrdered,
-            total_price: updates.totalPrice
-        }).eq('id', id);
+        const payload: any = {};
+        if (updates.quantityOrdered !== undefined) payload.quantity_ordered = updates.quantityOrdered;
+        if (updates.unitPrice !== undefined) payload.unit_price = updates.unitPrice;
+        if (updates.totalPrice !== undefined) payload.total_price = updates.totalPrice;
+
+        const { error } = await supabase.from('po_lines').update(payload).eq('id', id);
         if (error) throw error;
     },
 

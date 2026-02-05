@@ -248,6 +248,21 @@ const PODetail = () => {
       }
   };
 
+  const handleUpdateLinePrice = async (lineId: string, newPriceStr: string, quantity: number) => {
+      const newPrice = parseFloat(newPriceStr);
+      if (isNaN(newPrice) || newPrice < 0) return;
+
+      try {
+          await db.updatePOLine(lineId, { 
+              unitPrice: newPrice,
+              totalPrice: newPrice * quantity
+          });
+      } catch (e: any) {
+          console.error(e);
+          alert("Failed to update unit price: " + e.message);
+      }
+  };
+
   /* Side Effect: If forcing to RECEIVED/CLOSED and no deliveries exist, create dummy delivery so it appears in Finance Review */
   const ensureDeliveryRecord = async (targetStatus: string) => {
       // Only strictly relevant for statuses that imply goods receipt
@@ -557,7 +572,22 @@ const PODetail = () => {
                                           )}
                                       </div>
                                   </td>
-                                  <td className="px-6 py-4 text-right">${line.unitPrice.toFixed(2)}</td>
+                                  <td className="px-6 py-4 text-right">
+                                      {isEditing && (po.status === 'PENDING_APPROVAL' || po.status === 'APPROVED_PENDING_CONCUR') ? (
+                                          <div className="flex items-center justify-end gap-1">
+                                              <span className="text-gray-400">$</span>
+                                              <input 
+                                                  type="number" 
+                                                  className="w-24 px-2 py-1 text-right border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                  defaultValue={line.unitPrice}
+                                                  step="0.01"
+                                                  onBlur={(e) => handleUpdateLinePrice(line.id, e.target.value, line.quantityOrdered)}
+                                              />
+                                          </div>
+                                      ) : (
+                                          `$${line.unitPrice.toFixed(2)}`
+                                      )}
+                                  </td>
                                   <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-white">${line.totalPrice.toLocaleString()}</td>
                               </tr>
                           ))}
