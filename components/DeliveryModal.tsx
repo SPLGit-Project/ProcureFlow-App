@@ -17,12 +17,8 @@ const DeliveryModal: React.FC<Props> = ({ po, currentUser, onClose, onSubmit }) 
     const [receipts, setReceipts] = useState<Record<string, number>>({});
     const [closedLines, setClosedLines] = useState<Set<string>>(new Set());
     
-    // Only show lines that aren't fully received yet (calculated from PO state)
-    // Actually, we should show all lines to allow corrections or extra receipts, 
-    // but typically we only receive what's outstanding. 
-    // Let's filter visually but allow access if needed? 
-    // Existing logic filtered them. Let's keep showing only active lines for clarity.
-    const activeLines = po.lines.filter(l => l.quantityReceived < l.quantityOrdered);
+    // Show all lines to allow corrections or extra receipts
+    const activeLines = po.lines;
 
     // Calculate Variance Triggers
     const variances: Record<string, 'OVER' | 'SHORT' | null> = {};

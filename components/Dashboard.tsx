@@ -29,7 +29,8 @@ const Dashboard = () => {
   // --- Pipeline Metrics (Filtered) ---
   const pendingApprovals = filteredPos.filter(p => p.status === 'PENDING_APPROVAL');
   const pendingConcur = filteredPos.filter(p => p.status === 'APPROVED_PENDING_CONCUR');
-  const activeOrders = filteredPos.filter(p => p.status === 'ACTIVE' || p.status === 'PARTIALLY_RECEIVED');
+  const activeOrders = filteredPos.filter(p => p.status === 'ACTIVE' || p.status === 'PARTIALLY_RECEIVED' || p.status === 'RECEIVED');
+
   
   // --- Actionable Insights ---
   const myPendingApprovals = currentUser.role === 'APPROVER' || currentUser.role === 'ADMIN'

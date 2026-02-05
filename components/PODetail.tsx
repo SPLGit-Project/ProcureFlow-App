@@ -7,6 +7,8 @@ import DeliveryModal from './DeliveryModal';
 import ConcurExportModal from './ConcurExportModal';
 import { db } from '../services/db';
 import { supabase } from '../lib/supabaseClient';
+import { v4 as uuidv4 } from 'uuid';
+
 
 
 const PODetail = () => {
@@ -116,7 +118,9 @@ const PODetail = () => {
 
   const canApprove = hasPermission('approve_requests') && po.status === 'PENDING_APPROVAL';
   const canLinkConcur = (hasPermission('link_concur') || po.requesterId === currentUser?.id) && po.status === 'APPROVED_PENDING_CONCUR';
-  const canReceive = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED');
+  const canReceive = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING');
+  const canClose = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED');
+
 
   const getStepStatus = (step: number) => {
       let currentStep = 1;
@@ -124,7 +128,9 @@ const PODetail = () => {
       if (po.status === 'APPROVED_PENDING_CONCUR') currentStep = 2;
       if (po.status === 'ACTIVE') currentStep = 3;
       if (po.status === 'PARTIALLY_RECEIVED') currentStep = 4;
-      if (po.status === 'RECEIVED' || po.status === 'CLOSED') currentStep = 5;
+      if (po.status === 'RECEIVED') currentStep = 5;
+      if (po.status === 'CLOSED') currentStep = 6;
+
       if (po.status === 'REJECTED') return step === 2 ? 'error' : step < 2 ? 'complete' : 'pending';
       if (po.status === 'VARIANCE_PENDING') return step === 4 ? 'warning' : step < 4 ? 'complete' : 'pending';
 
@@ -135,17 +141,21 @@ const PODetail = () => {
 
   const steps = [
       { num: 1, label: 'Requested' },
+
       { num: 2, label: 'Approved' },
       { num: 3, label: 'In Concur' },
       { num: 4, label: 'Delivered' },
-      { num: 5, label: 'Complete' },
+      { num: 5, label: 'Full' },
+      { num: 6, label: 'Complete' },
   ];
+
 
   const handleApproval = (approved: boolean) => {
       updatePOStatus(po.id, approved ? 'APPROVED_PENDING_CONCUR' : 'REJECTED', {
           id: `ev-${Date.now()}`,
           action: approved ? 'APPROVED' : 'REJECTED',
-          approverName: currentUser.name,
+          approverName: currentUser?.name || 'Unknown',
+
           date: new Date().toISOString().split('T')[0],
           comments: approved ? 'Approved via web portal' : 'Rejected via web portal'
       });
@@ -161,6 +171,19 @@ const PODetail = () => {
       addDelivery(po.id, delivery, closedLineIds);
       setIsDeliveryModalOpen(false);
   };
+
+  const handleCompletePO = async () => {
+      if (!window.confirm('Are you sure you want to mark this order as complete? This will finalize all lines and move it to history.')) return;
+      
+      await updatePOStatus(po.id, 'CLOSED', {
+          id: uuidv4(),
+          action: 'ADMIN_OVERRIDE', // Or add 'COMPLETED' action? Types say 'ADMIN_OVERRIDE' is available
+          approverName: currentUser?.name || 'User',
+          date: new Date().toISOString().split('T')[0],
+          comments: 'Order marked as complete by user'
+      });
+  };
+
 
   const handleStartEdit = () => {
        if (!po) return;
@@ -340,10 +363,20 @@ const PODetail = () => {
                    </button>
               )}
               {canReceive && (
-                  <button onClick={() => setIsDeliveryModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-500 flex items-center gap-2 shadow-lg shadow-blue-600/20 font-medium">
-                      <Truck size={18} /> Record Delivery
+                  <button onClick={() => setIsDeliveryModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 rounded-xl flex items-center gap-2 font-medium shadow-lg transition-all ${
+                      po.status === 'RECEIVED' 
+                        ? 'bg-gray-600 text-white hover:bg-gray-700 shadow-gray-600/20' 
+                        : 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-600/20'
+                  }`}>
+                      <Truck size={18} /> {po.status === 'RECEIVED' ? 'Record Extra Delivery' : 'Record Delivery'}
                   </button>
               )}
+              {canClose && (
+                  <button onClick={handleCompletePO} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium">
+                      <CheckCircle size={18} /> Complete Order
+                  </button>
+              )}
+
               {po.status === 'VARIANCE_PENDING' && hasPermission('approve_requests') && (
                    <button onClick={() => updatePOStatus(po.id, 'RECEIVED', {
                        id: `ev-${Date.now()}`,
