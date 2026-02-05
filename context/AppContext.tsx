@@ -1735,6 +1735,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         } catch (e) {
             console.error("AppContext: Failed to add item", e);
             alert("Failed to add item. Check console for details.");
+            throw e;
         }
   };
   const updateItem = async (item: Item) => {
@@ -1742,8 +1743,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             await db.updateItem(item);
             setItems(prev => prev.map(i => i.id === item.id ? item : i));
         } catch (e) {
-             console.error(e);
-             alert("Failed to update item");
+             console.error("AppContext: Failed to update item", e);
+             alert("Failed to update item. Check console for details.");
+             throw e;
         }
   };
   const deleteItem = async (itemId: string) => {

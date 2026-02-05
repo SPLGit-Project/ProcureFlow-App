@@ -90,6 +90,9 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
             if (!formData.description) newErrors.description = 'Description is required';
             if (!formData.name) newErrors.name = 'Item Name is required';
         } else if (stepIndex === 1) { // Classification
+            if (!formData.itemPool) newErrors.itemPool = 'Pool is required';
+            if (!formData.itemCatalog) newErrors.itemCatalog = 'Catalog is required';
+            if (!formData.itemType) newErrors.itemType = 'Type is required';
             if (!formData.category) newErrors.category = 'Category is required';
         } else if (stepIndex === 2) { // Inventory
             if (!formData.uom) newErrors.uom = 'UOM is required';
@@ -118,12 +121,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
         
         setIsSubmitting(true);
         try {
-            // Normalize before save
-            const finalData = {
-                ...formData,
-                sku: normalizeItemCode(formData.sku || ''),
-            };
-            await onSave(finalData);
+            await onSave(formData);
             onClose();
         } catch (error) {
             console.error(error);
