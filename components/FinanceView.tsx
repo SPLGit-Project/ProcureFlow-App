@@ -69,10 +69,11 @@ const FinanceView = () => {
       };
   }).filter(po => po.deliveries.length > 0); // Only show POs with deliveries
 
+
   const handleToggleCap = (poId: string, deliveryId: string, lineId: string, currentVal: boolean) => {
-      // For month input, we use YYYY-MM
+      // For month input, we use YYYY-MM but save as YYYY-MM-DD
       const now = new Date();
-      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
       
       updateFinanceInfo(poId, deliveryId, lineId, { 
           isCapitalised: !currentVal, 
@@ -80,10 +81,35 @@ const FinanceView = () => {
       });
   };
 
-
   const handleDateChange = (poId: string, deliveryId: string, lineId: string, newDate: string) => {
-      updateFinanceInfo(poId, deliveryId, lineId, { capitalisedDate: newDate });
+      // newDate from month input is YYYY-MM
+      // We accept it, but if it doesn't have day, append -01
+      let dateToSave = newDate;
+      if (dateToSave.length === 7) dateToSave += '-01';
+      
+      updateFinanceInfo(poId, deliveryId, lineId, { capitalisedDate: dateToSave });
   };
+
+  const handleBulkCapitalise = (poId: string) => {
+      const po = groupedData.find(p => p.poId === poId);
+      if(!po) return;
+
+      const now = new Date();
+      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+      // Iterate all deliveries and lines
+      po.deliveries.forEach(del => {
+          del.lines.forEach(line => {
+             if (!line.data.isCapitalised) {
+                 updateFinanceInfo(poId, del.deliveryId, line.lineId, {
+                     isCapitalised: true,
+                     capitalisedDate: monthStr
+                 });
+             }
+          });
+      });
+  };
+
 
   const handleInvoiceChange = (poId: string, deliveryId: string, lineId: string, val: string) => {
       updateFinanceInfo(poId, deliveryId, lineId, { invoiceNumber: val });
@@ -167,6 +193,27 @@ const FinanceView = () => {
                                 <div className="font-bold text-gray-900 dark:text-white text-lg">${po.totalAmount.toLocaleString()}</div>
                                 <div className="text-xs text-gray-500">Total PO Value</div>
                             </div>
+                            <div className="ml-4 pl-4 border-l border-gray-200 dark:border-gray-700">
+                                {!fullyCapitalised && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleBulkCapitalise(po.poId);
+                                        }}
+                                        className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                                    >
+                                        <CheckCircle2 size={14}/>
+                                        Mark as Capitalised
+                                    </button>
+                                )}
+                                {fullyCapitalised && (
+                                    <div className="text-green-600 text-xs font-bold flex items-center gap-1">
+                                        <CheckCircle2 size={14}/>
+                                        All Capitalised
+                                    </div>
+                                )}
+                            </div>
+
                         </div>
 
                         {/* Expandable Content (Deliveries) */}
@@ -238,7 +285,7 @@ const FinanceView = () => {
                                                                         <input 
                                                                             type="month" 
                                                                             className="text-xs border-none bg-transparent focus:ring-0 cursor-pointer text-gray-700 dark:text-gray-300 w-full p-0 font-medium"
-                                                                            value={line.data.capitalisedDate || ''}
+                                                                            value={line.data.capitalisedDate ? line.data.capitalisedDate.substring(0, 7) : ''}
                                                                             onChange={(e) => handleDateChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
                                                                         />
                                                                     </div>
@@ -300,7 +347,7 @@ const FinanceView = () => {
                                                                         <input 
                                                                             type="month" 
                                                                             className="text-xs border-none bg-transparent focus:ring-0 cursor-pointer text-gray-700 dark:text-gray-300 w-full p-0 font-medium"
-                                                                            value={line.data.capitalisedDate || ''}
+                                                                            value={line.data.capitalisedDate ? line.data.capitalisedDate.substring(0, 7) : ''}
                                                                             onChange={(e) => handleDateChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
                                                                         />
                                                                     </div>
