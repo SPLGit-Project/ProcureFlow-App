@@ -1421,84 +1421,80 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const addDelivery = async (poId: string, delivery: DeliveryHeader, closedLineIds: string[] = []) => {
-    // Optimistic Update
-    setPos(prev => prev.map(p => {
-      if (p.id !== poId) return p;
+    const p = pos.find(req => req.id === poId);
+    if (!p) return;
+
+    let varianceTriggered = false;
+
+    const updatedLines = p.lines.map(line => {
+      const deliveryLine = delivery.lines.find(dl => dl.poLineId === line.id);
+      const newQtyReceived = line.quantityReceived + (deliveryLine?.quantity || 0);
       
-      let varianceTriggered = false;
-
-      const updatedLines = p.lines.map(line => {
-        const deliveryLine = delivery.lines.find(dl => dl.poLineId === line.id);
-        const newQtyReceived = line.quantityReceived + (deliveryLine?.quantity || 0);
-        
-        // Check Over-Delivery Variance
-        if (newQtyReceived > line.quantityOrdered) {
-            varianceTriggered = true;
-        }
-
-        // Check Short-Close Variance
-        let isForceClosed = line.isForceClosed;
-        if (closedLineIds.includes(line.id)) {
-            if (newQtyReceived < line.quantityOrdered) {
-                varianceTriggered = true;
-            }
-            isForceClosed = true;
-        }
-
-        return deliveryLine || closedLineIds.includes(line.id)
-            ? { ...line, quantityReceived: newQtyReceived, isForceClosed } 
-            : line;
-      });
-
-      // Determine Status
-      let newStatus: POStatus = 'PARTIALLY_RECEIVED';
-      
-      if (varianceTriggered) {
-          newStatus = 'VARIANCE_PENDING';
-      } else {
-          // Standard Calculation
-          const allReceived = updatedLines.every(l => l.quantityReceived >= l.quantityOrdered || l.isForceClosed);
-          newStatus = allReceived ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
+      // Check Over-Delivery Variance
+      if (newQtyReceived > line.quantityOrdered) {
+          varianceTriggered = true;
       }
 
-      return { 
-          ...p, 
-          lines: updatedLines, 
-          deliveries: [...p.deliveries, delivery], 
-          status: newStatus 
-      };
-    }));
+      // Check Short-Close Variance
+      let isForceClosed = line.isForceClosed;
+      if (closedLineIds.includes(line.id)) {
+          if (newQtyReceived < line.quantityOrdered) {
+              varianceTriggered = true;
+          }
+          isForceClosed = true;
+      }
+
+      return deliveryLine || closedLineIds.includes(line.id)
+          ? { ...line, quantityReceived: newQtyReceived, isForceClosed } 
+          : line;
+    });
+
+    // Determine Status
+    let newStatus: POStatus = 'PARTIALLY_RECEIVED';
+    
+    if (varianceTriggered) {
+        newStatus = 'VARIANCE_PENDING';
+    } else {
+        // Standard Calculation
+        const allReceived = updatedLines.every(l => l.quantityReceived >= l.quantityOrdered || l.isForceClosed);
+        newStatus = allReceived ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
+    }
+
+    // Optimistic Update
+    setPos(prev => prev.map(req => 
+        req.id === poId 
+            ? { ...req, lines: updatedLines, deliveries: [...req.deliveries, delivery], status: newStatus } 
+            : req
+    ));
 
     // Persist
     try {
         await db.createDelivery(delivery, poId);
 
+        // 1. Update PO Status
+        await db.updatePOStatus(poId, newStatus);
+        
+        // 2. Update PO Lines
+        const linesToUpdate = updatedLines
+            .filter(l => delivery.lines.some(dl => dl.poLineId === l.id) || closedLineIds.includes(l.id))
+            .map(l => ({
+                id: l.id,
+                po_request_id: poId, // Required for upsert context usually
+                quantity_received: l.quantityReceived,
+                is_force_closed: l.isForceClosed
+            }));
+        
+        if (linesToUpdate.length > 0) {
+            await db.updatePOLines(linesToUpdate);
+        }
+
         // NOTIFICATION TRIGGER
         sendNotification('DELIVERY_RECEIVED', { poId: poId, deliveryId: delivery.id, receivedBy: delivery.receivedBy });
 
-        // Also need to persist Status Update if it changed!
-        // For now complex status logic runs on fetch in some systems, but here we store status.
-        // We should calculate status and save it.
-        // Re-calculate status logic for DB save (duplicated from above for safety, or just trust optimistic val?)
-        // Let's rely on simple update for now to unblock report.
-        // Note: We also need to update po_lines quantity_received if we want full persistence.
-        // db.createDelivery inserts delivery lines, but doesn't auto-update po_lines table quantities in many SQL schemas unless trigger exists.
-        // Assuming Supabase might not have triggers set up by me.
-        // I won't update po_lines quantities yet as the report reads from deliveries table?
-        // Wait, report reads from `po.deliveries`.
-        // So just saving delivery is enough for REPORT.
-        // But for "Remaining" calculation to persist, we need to update po_lines?
-        // Let's assume for this task (Fix Report), creating delivery is enough.
-        
-        // Persist Status
-        // We need the calculated status. Hard to get from inside setPos.
-        // Let's just save 'PARTIALLY_RECEIVED' or whatever logic implies, or trigger reload.
-        // Better: trigger reloadData() after await to ensure consistency?
-        // But reloadData might be slow.
-        // Let's leave status persistence for now or add a simple call if we know it.
     } catch (e) {
         console.error("Failed to add delivery", e);
         reloadData();
+        throw e;
     }
   };
 

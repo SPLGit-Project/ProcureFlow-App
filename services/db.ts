@@ -1244,6 +1244,11 @@ export const db = {
         if (error) throw error;
     },
 
+    updatePOLines: async (lines: any[]): Promise<void> => {
+        const { error } = await supabase.from('po_lines').upsert(lines);
+        if (error) throw error;
+    },
+
     getMigrationMappings: async (): Promise<Record<string, string>> => {
         const { data, error } = await supabase.from('migration_mappings').select('excel_variant, item_id');
         if (error) {

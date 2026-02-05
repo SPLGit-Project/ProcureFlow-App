@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { DeliveryHeader, DeliveryLineItem, PORequest, User } from '../types';
 import { X, AlertTriangle, Info, CheckSquare, Square } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 interface Props {
     po: PORequest;
@@ -64,7 +65,7 @@ const DeliveryModal: React.FC<Props> = ({ po, currentUser, onClose, onSubmit }) 
         const deliveryLines: DeliveryLineItem[] = Object.entries(receipts)
             .filter(([_, qty]) => (qty as number) > 0)
             .map(([lineId, qty]) => ({
-                id: `dl-${Date.now()}-${lineId}`,
+                id: uuidv4(),
                 poLineId: lineId,
                 quantity: qty as number,
                 isCapitalised: false, 
@@ -78,7 +79,7 @@ const DeliveryModal: React.FC<Props> = ({ po, currentUser, onClose, onSubmit }) 
         if (deliveryLines.length === 0 && closedLines.size === 0) return;
 
         const header: DeliveryHeader = {
-            id: `del-${Date.now()}`,
+            id: uuidv4(),
             date,
             docketNumber,
             receivedBy: currentUser.name,
