@@ -6,6 +6,8 @@ import { supabase } from '../lib/supabaseClient';
 import { db } from '../services/db';
 import { Upload, FileSpreadsheet, CheckCircle, AlertTriangle, Loader2, Edit2, Search, X, Calendar, Wand2, ArrowRight, ArrowLeft, Settings, Database, Truck, Link as LinkIcon, Save, Trash2, History } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { ItemWizard } from './ItemWizard';
+import { Item } from '../types';
 
 // --- Types ---
 
@@ -119,7 +121,7 @@ const levenshtein = (a: string, b: string): number => {
 };
 
 const AdminMigration = () => {
-    const { items, sites } = useApp();
+    const { items, sites, addItem, suppliers, attributeOptions, upsertAttributeOption } = useApp();
     const [step, setStep] = useState<MigrationStep>('UPLOAD');
     
     // Upload State
@@ -141,10 +143,85 @@ const AdminMigration = () => {
     const [resolutionMap, setResolutionMap] = useState<Record<string, string>>({}); // ExcelSku -> ItemId
     const [searchTerm, setSearchTerm] = useState('');
     
+    // Resolution UI State (Lifted from Resolver)
+    const [activeSku, setActiveSku] = useState<string>('');
+    const [inputValue, setInputValue] = useState(''); // Immediate input
+    const [debouncedTerm, setDebouncedTerm] = useState(''); // Search term
+    const [isSearching, setIsSearching] = useState(false);
+
     // Management State
     const [showManager, setShowManager] = useState(false);
     const [savedMappings, setSavedMappings] = useState<Record<string, string>>({});
     const [managerLoading, setManagerLoading] = useState(false);
+
+    // Item Wizard State
+    const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [wizardInitialData, setWizardInitialData] = useState<Partial<Item>>({});
+
+    // Debounce Search Logic
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedTerm(inputValue);
+            setIsSearching(false);
+        }, 300); // 300ms debounce
+
+        if (inputValue !== debouncedTerm) {
+            setIsSearching(true);
+        }
+
+        return () => clearTimeout(timer);
+    }, [inputValue, debouncedTerm]);
+
+    // Handle Map Logic (Lifted)
+    const handleMap = (itemId: string) => {
+        setResolutionMap(prev => ({ ...prev, [activeSku]: itemId }));
+        const remaining = new Set(unknownSkus);
+        remaining.delete(activeSku);
+        
+        // Reset Search
+        setInputValue('');
+        setDebouncedTerm('');
+        
+        if (remaining.size === 0) {
+            finishResolution();
+        } else {
+            setUnknownSkus(remaining);
+            setActiveSku(Array.from(remaining)[0]);
+        }
+    };
+
+    // --- Item Wizard Logic ---
+    const handleOpenWizard = (sku: string, desc: string) => {
+        // Pre-fill data from context
+        setWizardInitialData({
+            sku,
+            name: desc && desc !== 'No description found in file' ? desc : '',
+            activeFlag: true
+        });
+        setIsWizardOpen(true);
+    };
+
+    const handleWizardSave = async (itemData: Partial<Item>) => {
+        try {
+            // Create the new item
+            const newItem: Item = {
+                ...itemData,
+                id: uuidv4(),
+                activeFlag: true
+            } as Item; // Force type as we expect wizard to provide required fields
+            
+            await addItem(newItem);
+            
+            // Immediately resolve the current unknown item with this new ID
+            handleMap(newItem.id);
+            
+            setIsWizardOpen(false);
+            setWizardInitialData({});
+        } catch (e) {
+            console.error(e);
+            alert('Failed to save new item');
+        }
+    };
 
     const openManager = async () => {
         setShowManager(true);
@@ -281,6 +358,7 @@ const AdminMigration = () => {
         if (unknowns.size > 0) {
             setUnknownSkus(unknowns);
             setResolutionMap(workingResolutionMap);
+            setActiveSku(Array.from(unknowns)[0]); // Set initial active SKU!
             setIsProcessing(false);
             setStep('RESOLVE'); // Go to resolution step
             return; 
@@ -590,25 +668,6 @@ const AdminMigration = () => {
 
     // --- HELPER COMPONENT: RESOLVER ---
     const Resolver = () => {
-        const [activeSku, setActiveSku] = useState<string>(Array.from(unknownSkus)[0]);
-        const [inputValue, setInputValue] = useState(''); // Immediate input
-        const [debouncedTerm, setDebouncedTerm] = useState(''); // Search term
-        const [isSearching, setIsSearching] = useState(false);
-
-        // Debounce Logic
-        useEffect(() => {
-            const timer = setTimeout(() => {
-                setDebouncedTerm(inputValue);
-                setIsSearching(false);
-            }, 300); // 300ms debounce
-
-            if (inputValue !== debouncedTerm) {
-                setIsSearching(true);
-            }
-
-            return () => clearTimeout(timer);
-        }, [inputValue, debouncedTerm]);
-        
         // Find suggestions
         const suggestions = useMemo(() => {
             if (!activeSku) return [];
@@ -649,21 +708,6 @@ const AdminMigration = () => {
             });
             return descHeader ? contextRow[descHeader] : 'No description found in file';
         }, [contextRow, mappedDescHeader, rawHeaders]);
-
-        const handleMap = (itemId: string) => {
-            setResolutionMap(prev => ({ ...prev, [activeSku]: itemId }));
-            const remaining = new Set(unknownSkus);
-            remaining.delete(activeSku);
-            setInputValue(''); // Clear search
-            setDebouncedTerm('');
-            
-            if (remaining.size === 0) {
-                finishResolution();
-            } else {
-                setUnknownSkus(remaining);
-                setActiveSku(Array.from(remaining)[0]);
-            }
-        };
 
         const remainingCount = unknownSkus.size;
 
@@ -709,7 +753,7 @@ const AdminMigration = () => {
 
                         <div className="flex flex-col gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
                             <button 
-                                onClick={() => handleMap('CREATE_NEW')}
+                                onClick={() => handleOpenWizard(activeSku, String(contextDesc))}
                                 className="w-full py-4 rounded-xl border-2 border-dashed border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-bold hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors flex items-center justify-center gap-2"
                             >
                                 <div className="w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-100 flex items-center justify-center">+</div>
@@ -1096,75 +1140,64 @@ const AdminMigration = () => {
             )}
             {/* Manager Modal */}
             {showManager && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e2029] w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[80vh]">
-                        <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-800">
-                            <h2 className="text-xl font-bold">Migration Memory</h2>
-                            <button onClick={() => setShowManager(false)} className="text-gray-400 hover:text-gray-600"><X /></button>
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-[#1e2029] w-full max-w-2xl rounded-2xl shadow-2xl max-h-[80vh] flex flex-col">
+                        <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
+                            <h3 className="text-xl font-bold">Migration Memory Manager</h3>
+                            <button onClick={() => setShowManager(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><X size={20}/></button>
                         </div>
-                        
-                        <div className="p-0 overflow-hidden flex-1 flex flex-col">
+                        <div className="flex-1 overflow-y-auto p-6">
                             {managerLoading ? (
-                                <div className="flex items-center justify-center h-40">
-                                    <Loader2 className="animate-spin text-[var(--color-brand)]" />
-                                </div>
+                                <div className="flex justify-center py-12"><Loader2 className="animate-spin text-blue-500" size={32} /></div>
                             ) : Object.keys(savedMappings).length === 0 ? (
-                                <div className="text-center p-10 text-gray-400">
-                                    No saved mappings found. Mappings are created as you import files.
-                                </div>
+                                <div className="text-center py-12 text-gray-400">No saved mappings found.</div>
                             ) : (
-                                <div className="overflow-y-auto flex-1 custom-scrollbar">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-gray-50 dark:bg-black/20 text-gray-500 font-bold sticky top-0">
-                                            <tr>
-                                                <th className="p-4">Excel Variant</th>
-                                                <th className="p-4">Mapped To</th>
-                                                <th className="p-4 text-right">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {Object.entries(savedMappings).map(([variant, itemId]) => {
-                                                const isSkip = itemId === 'SKIP';
-                                                // Find item details
-                                                let itemLabel = isSkip ? 'Ignored' : itemId;
-                                                if (!isSkip) {
-                                                    const i = items.find(x => x.id === itemId);
-                                                    if (i) itemLabel = `${i.sku} - ${i.name}`;
-                                                }
-
-                                                return (
-                                                    <tr key={variant} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/5">
-                                                        <td className="p-4 font-mono font-bold text-[var(--color-brand)]">{variant}</td>
-                                                        <td className="p-4">
-                                                            {isSkip ? (
-                                                                <span className="bg-gray-100 text-gray-500 px-2 py-1 rounded text-xs font-bold">SKIPPED</span>
-                                                            ) : (
-                                                                <span className="text-gray-700 dark:text-gray-300">{itemLabel}</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="p-4 text-right">
-                                                            <button 
-                                                                onClick={() => handleDeleteMapping(variant)}
-                                                                className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
-                                                                title="Forget this mapping"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <table className="w-full text-left text-sm">
+                                    <thead className="text-gray-500 border-b border-gray-200 dark:border-gray-800">
+                                        <tr>
+                                            <th className="pb-3">Excel Variant</th>
+                                            <th className="pb-3">Mapped To Item</th>
+                                            <th className="pb-3 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                        {Object.entries(savedMappings).map(([variant, itemId]) => {
+                                            const item = items.find(i => i.id === itemId);
+                                            return (
+                                                <tr key={variant}>
+                                                    <td className="py-3 font-medium">{variant}</td>
+                                                    <td className="py-3 text-gray-500">
+                                                        {item ? (
+                                                            <div className="flex flex-col">
+                                                                <span className="font-bold text-gray-900 dark:text-gray-100">{item.sku}</span>
+                                                                <span className="text-xs">{item.name}</span>
+                                                            </div>
+                                                        ) : <span className="text-red-500">Unknown Item ({itemId})</span>}
+                                                    </td>
+                                                    <td className="py-3 text-right">
+                                                        <button onClick={() => handleDeleteMapping(variant)} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={16}/></button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             )}
-                        </div>
-                        <div className="p-4 bg-gray-50 dark:bg-black/20 border-t border-gray-100 dark:border-gray-800 text-right text-xs text-gray-400">
-                            Deletion is immediate and permanent.
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* Quick Item Wizard Modal */}
+            <ItemWizard 
+                isOpen={isWizardOpen}
+                existingItem={Object.keys(wizardInitialData).length > 0 ? wizardInitialData as Item : null}
+                onSave={handleWizardSave}
+                onClose={() => setIsWizardOpen(false)}
+                suppliers={suppliers}
+                attributeOptions={attributeOptions}
+                upsertAttributeOption={upsertAttributeOption}
+            />
         </div>
     );
 };
