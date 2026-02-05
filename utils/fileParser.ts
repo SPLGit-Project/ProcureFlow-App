@@ -304,6 +304,26 @@ function findHeaderRow(data: any[][]): { index: number; headers: string[] } {
 }
 
 /**
+ * Cleans a string value and converts it to a number, handling currency symbols, 
+ * commas, and other formatting.
+ */
+function cleanNumericValue(value: any, isFloat: boolean = false): number | null {
+    if (value === undefined || value === null || value === '') return null;
+    if (typeof value === 'number') return value;
+    
+    // Convert to string and clean
+    const str = String(value).trim();
+    if (!str) return null;
+
+    // Remove currency symbols, commas, and percentage signs
+    // Keep digits, decimal point, and leading minus sign
+    const cleaned = str.replace(/[^\d.-]/g, '');
+    
+    const parsed = isFloat ? parseFloat(cleaned) : parseInt(cleaned, 10);
+    return isNaN(parsed) ? null : parsed;
+}
+
+/**
  * Calculate overall mapping confidence
  */
 function calculateConfidence(mapping: ColumnMapping): MappingConfidence {
@@ -364,16 +384,16 @@ export function parseDataRows(
                 case 'backOrderedQty':
                 case 'cartonQty':
                 case 'totalStockQty':
-                    const numValue = typeof value === 'number' ? value : parseInt(String(value).replace(/,/g, ''), 10);
-                    if (!isNaN(numValue)) {
+                    const numValue = cleanNumericValue(value, false);
+                    if (numValue !== null) {
                         snapshot[fieldName] = numValue;
                     }
                     break;
 
                 case 'sellPrice':
                 case 'sohValueAtSell':
-                     const floatValue = typeof value === 'number' ? value : parseFloat(String(value).replace(/[$,]/g, ''));
-                     if (!isNaN(floatValue)) {
+                     const floatValue = cleanNumericValue(value, true);
+                     if (floatValue !== null) {
                          snapshot[fieldName] = floatValue;
                      }
                      break;

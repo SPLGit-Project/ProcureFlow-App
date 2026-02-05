@@ -721,6 +721,8 @@ const Settings = () => {
             backOrderedQty: partial.backOrderedQty || 0,
             availableQty: partial.availableQty || 0,
             totalStockQty: partial.stockOnHand || 0,
+            sellPrice: partial.sellPrice,
+            sohValueAtSell: partial.sohValueAtSell,
             snapshotDate: importDate,
             sourceReportName: `Enhanced Import`,
             incomingStock: partial.incomingStock || []
