@@ -45,7 +45,8 @@ const MAPPABLE_FIELDS: MappableField[] = [
     { id: 'capDate', label: 'Capitalized Month', description: 'Month/Date asset was capitalized', aliases: ['cap date', 'capitalized', 'cap month'] },
     { id: 'capComments', label: 'Capitalized Comments', description: 'Comments regarding capitalization', aliases: ['cap comment'] },
     { id: 'assetTag', label: 'Asset Tag', description: 'Historical Asset Tag', aliases: ['asset tag', 'tag', 'asset id'] },
-    { id: 'docketNum', label: 'Docket / Invoice #', description: 'Delivery Docket or Invoice Number', aliases: ['docket', 'invoice', 'inv #', 'ref'] },
+    { id: 'docketNum', label: 'Delivery Docket #', description: 'Delivery Docket Number', aliases: ['docket', 'del docket', 'do #', 'delivery note'] },
+    { id: 'invoiceNum', label: 'Invoice #', description: 'Invoice Number (for Finance)', aliases: ['invoice', 'inv #', 'inv no', 'ref'] },
     { id: 'customerName', label: 'Customer Name', description: 'End customer', aliases: ['customer', 'client'] },
     { id: 'comments', label: 'PO Comments', description: 'General comments', aliases: ['comment', 'notes'] },
 ];
@@ -454,7 +455,7 @@ const AdminMigration = () => {
                 mappedItemId: finalItemId,
                 mappedSku: finalMappedSku,
                 docketNum: getVal(row, 'docketNum'),
-                invoiceNum: getVal(row, 'docketNum'),
+                invoiceNum: getVal(row, 'invoiceNum'),
                 goodsReceiptDate,
                 includeDelivery: (qtyReceived > 0),
                 includeCap: !!capDate,
@@ -645,13 +646,14 @@ const AdminMigration = () => {
                             }
                         }
 
-                        if (deliveryId) {
-                            await supabase.from('delivery_lines').insert({
-                                delivery_id: deliveryId,
-                                po_line_id: newLine.id,
-                                quantity: line.qtyReceived
-                            });
-                        }
+                    if (deliveryId) {
+                        await supabase.from('delivery_lines').insert({
+                            delivery_id: deliveryId,
+                            po_line_id: newLine.id,
+                            quantity: line.qtyReceived,
+                            invoice_number: line.invoiceNum // Save Invoice Number
+                        });
+                    }
                     }
                  }
                  successCount++;
