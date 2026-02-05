@@ -311,7 +311,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getItems(), [], 'items'),
                 safeFetch(db.getCatalog(), [], 'catalog'),
                 safeFetch(db.getStockSnapshots(), [], 'snapshots'),
-                safeFetch(db.getPOs(), [], 'pos'),
+                safeFetch(db.getPOs(activeSiteId || undefined), [], 'pos'),
                 safeFetch(db.getWorkflowSteps(), [], 'workflowSteps'),
                 safeFetch(db.getNotificationRules(), [], 'notifications'),
                 safeFetch(db.getMappings(), [], 'mappings'),
@@ -343,7 +343,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         } finally {
             if (!silent) setIsLoadingData(false);
         }
-    }, []);
+    }, [activeSiteId]);
+
+    // Trigger reload when active site changes
+    useEffect(() => {
+        if (isAuthenticated) {
+            reloadData();
+        }
+    }, [activeSiteId, isAuthenticated, reloadData]);
 
     // ... (rest of code)
     

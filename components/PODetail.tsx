@@ -14,7 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, suppliers, updatePOStatus, currentUser, hasPermission, addDelivery, linkConcurPO } = useApp();
+  const { pos, suppliers, updatePOStatus, currentUser, hasPermission, addDelivery, linkConcurPO, reloadData } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -242,6 +242,7 @@ const PODetail = () => {
               quantityOrdered: newQty,
               totalPrice: newQty * unitPrice
           });
+          reloadData(true);
       } catch (e: any) {
           console.error(e);
           alert("Failed to update line quantity: " + e.message);
@@ -257,6 +258,7 @@ const PODetail = () => {
               unitPrice: newPrice,
               totalPrice: newPrice * quantity
           });
+          reloadData(true);
       } catch (e: any) {
           console.error(e);
           alert("Failed to update unit price: " + e.message);

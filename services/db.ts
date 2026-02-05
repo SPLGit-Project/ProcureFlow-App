@@ -475,8 +475,8 @@ export const db = {
         }));
     },
 
-    getPOs: async (): Promise<PORequest[]> => {
-        const { data, error } = await supabase
+    getPOs: async (siteId?: string): Promise<PORequest[]> => {
+        let query = supabase
             .from('po_requests')
             .select(`
                 *,
@@ -489,7 +489,11 @@ export const db = {
             `)
             .order('created_at', { ascending: false });
 
-        if (error) throw error;
+        if (siteId) {
+            query = query.eq('site_id', siteId);
+        }
+
+        const { data, error } = await query;
 
         return data.map((p: any) => ({
             id: p.id,

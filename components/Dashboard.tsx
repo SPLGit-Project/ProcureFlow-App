@@ -11,18 +11,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
-  const { pos, currentUser, hasPermission, isLoadingData } = useApp();
+  const { pos, currentUser, hasPermission, isLoadingData, activeSiteId, siteName } = useApp();
   const navigate = useNavigate();
 
-  // --- Filter State ---
-  const allSites = React.useMemo(() => Array.from(new Set(pos.map(p => p.site).filter(Boolean))) as string[], [pos]);
-  const [selectedSite, setSelectedSite] = React.useState<string>('All');
-
-  // --- Filtered Data ---
-  const filteredPos = React.useMemo(() => {
-     if (selectedSite === 'All') return pos;
-     return pos.filter(p => p.site === selectedSite);
-  }, [pos, selectedSite]);
+  // Use global filtered data directly
+  const filteredPos = pos;
 
 
 
@@ -42,7 +35,7 @@ const Dashboard = () => {
   const actionConcur = globalPendingConcur.length > 0 ? globalPendingConcur : myPendingConcurSync;
 
   const myPendingDeliveries = activeOrders.filter(p => {
-        if (currentUser.role === 'ADMIN' && selectedSite !== 'All') return true; 
+        if (currentUser.role === 'ADMIN' && activeSiteId) return true; // Show all for site if Admin
         if (p.requesterId !== currentUser.id) return false;
         const remaining = p.lines.reduce((acc, line) => acc + (line.quantityOrdered - (line.quantityReceived || 0)), 0);
         return remaining > 0;
@@ -174,19 +167,6 @@ const Dashboard = () => {
          </div>
          
          <div className="flex gap-3 w-full md:w-auto">
-             <select 
-                value={selectedSite} 
-                onChange={(e) => setSelectedSite(e.target.value)}
-                className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-white py-3 px-4 rounded-xl shadow-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none font-medium appearance-none pr-8 cursor-pointer"
-                style={{ backgroundImage: 'none' }} 
-             >
-                 <option value="All">All Sites</option>
-                 {/* Show sites available to the user (or all for Admin) */}
-                 {(currentUser.role === 'ADMIN' ? useApp().sites : useApp().sites.filter(s => currentUser.siteIds.includes(s.id)))
-                    .map(site => (
-                     <option key={site.id} value={site.name}>{site.name}</option>
-                 ))}
-             </select>
              <button onClick={() => navigate('/create')} className="whitespace-nowrap bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-semibold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">
                  <FileText size={18} /> New Request
              </button>
@@ -195,7 +175,7 @@ const Dashboard = () => {
 
       {/* Pipeline Flow Visual */}
       <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 overflow-hidden">
-          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Request Pipeline {selectedSite !== 'All' ? `(${selectedSite})` : ''}</h3>
+          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Request Pipeline {activeSiteId ? `(${siteName(activeSiteId)})` : '(Global)'}</h3>
           <div className="flex flex-col md:flex-row gap-2 relative">
              {[
                  { label: 'Requested', count: pendingApprovals.length, color: 'text-amber-500 bg-amber-50' },
