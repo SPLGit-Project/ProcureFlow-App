@@ -87,7 +87,11 @@ const Settings = () => {
                 await updateItem({ ...editingItem, ...itemData });
                 success('Item updated successfully');
             } else {
-                await addItem(itemData);
+                // Ensure new items have a UUID
+                await addItem({ 
+                    ...itemData, 
+                    id: uuidv4() 
+                } as Item);
                 success('Item created successfully');
             }
             setIsItemFormOpen(false);

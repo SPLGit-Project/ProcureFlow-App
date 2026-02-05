@@ -541,8 +541,8 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                             </div>
                         )}
 
-                        {/* STEP 5: REVIEW */}
-                        {currentStep === 4 && (
+                        {/* STEP 6: REVIEW */}
+                        {currentStep === 5 && (
                             <div className="space-y-6">
                                 <div className="bg-gray-50 dark:bg-[#1a1c23] p-6 rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
                                     <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-4">

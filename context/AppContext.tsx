@@ -1733,8 +1733,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             await db.addItem(item);
             setItems(prev => [...prev, item]);
         } catch (e) {
-            console.error(e);
-            alert("Failed to add item");
+            console.error("AppContext: Failed to add item", e);
+            alert("Failed to add item. Check console for details.");
         }
   };
   const updateItem = async (item: Item) => {
