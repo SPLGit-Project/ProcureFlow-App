@@ -688,7 +688,7 @@ const AdminMigration = () => {
                             <div className="text-3xl font-bold text-[var(--color-brand)] break-all mb-4">{activeSku}</div>
                             <div className="flex flex-col gap-1 text-sm text-gray-600 dark:text-gray-300">
                                 <span className="font-bold text-xs uppercase text-gray-400">Description from File</span>
-                                <span className="p-2 bg-white dark:bg-black/40 rounded border border-gray-100 dark:border-gray-700 block truncate" title={String(contextDesc)}>{contextDesc}</span>
+                                <span className="p-2 bg-white dark:bg-black/40 rounded border border-gray-100 dark:border-gray-700 block whitespace-pre-wrap break-words" title={String(contextDesc)}>{contextDesc}</span>
                             </div>
                         </div>
 
