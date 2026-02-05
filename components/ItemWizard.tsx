@@ -273,7 +273,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                             className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                                         >
                                             <option value="">Select Pool...</option>
-                                            {HierarchyManager.getPools().map(p => (
+                                            {HierarchyManager.getPools(attributeOptions).map(p => (
                                                 <option key={p} value={p}>{p}</option>
                                             ))}
                                         </select>
@@ -298,7 +298,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                             className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
                                         >
                                             <option value="">Select Catalog...</option>
-                                            {HierarchyManager.getCatalogs(formData.itemPool || '').map(c => (
+                                            {HierarchyManager.getCatalogs(formData.itemPool || '', attributeOptions).map(c => (
                                                 <option key={c} value={c}>{c}</option>
                                             ))}
                                         </select>
@@ -322,7 +322,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                             className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
                                         >
                                             <option value="">Select Type...</option>
-                                            {HierarchyManager.getTypes(formData.itemPool || '', formData.itemCatalog || '').map(t => (
+                                            {HierarchyManager.getTypes(formData.itemPool || '', formData.itemCatalog || '', attributeOptions).map(t => (
                                                 <option key={t} value={t}>{t}</option>
                                             ))}
                                         </select>
@@ -345,7 +345,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                             className={`w-full p-3 rounded-lg border ${errors.category ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'} dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50`}
                                         >
                                             <option value="">Select Category...</option>
-                                            {HierarchyManager.getCategories(formData.itemPool || '', formData.itemCatalog || '', formData.itemType || '').map(c => (
+                                            {HierarchyManager.getCategories(formData.itemPool || '', formData.itemCatalog || '', formData.itemType || '', attributeOptions).map(c => (
                                                 <option key={c} value={c}>{c}</option>
                                             ))}
                                         </select>
@@ -362,7 +362,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                             className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
                                         >
                                             <option value="">Select Sub-Category...</option>
-                                            {HierarchyManager.getSubCategories(formData.itemPool || '', formData.itemCatalog || '', formData.itemType || '', formData.category || '').map(s => (
+                                            {HierarchyManager.getSubCategories(formData.itemPool || '', formData.itemCatalog || '', formData.itemType || '', formData.category || '', attributeOptions).map(s => (
                                                 <option key={s} value={s}>{s}</option>
                                             ))}
                                         </select>

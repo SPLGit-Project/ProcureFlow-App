@@ -9,7 +9,7 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap
 } from 'lucide-react';
 import { useToast, ToastContainer } from './ToastNotification';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers';
@@ -72,7 +72,7 @@ const Settings = () => {
     catalog, updateCatalogItem, stockSnapshots, pos,
     // Actions
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
-    mappings, generateMappings, updateMapping,
+    mappings, generateMappings, updateMapping, deleteMapping, getMappingMemory, syncItemsFromSnapshots,
     // New Admin Caps
     getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, impersonateUser, archiveUser, searchDirectory,
     archiveItem,
@@ -328,9 +328,11 @@ const Settings = () => {
   const [editSku, setEditSku] = useState('');
 
   // --- Mapping Workbench State ---
-  const [mappingSubTab, setMappingSubTab] = useState<'PROPOSED' | 'CONFIRMED' | 'REJECTED'>('PROPOSED');
+  const [mappingSubTab, setMappingSubTab] = useState<'PROPOSED' | 'CONFIRMED' | 'REJECTED' | 'MEMORY'>('PROPOSED');
   const [isManualMapOpen, setIsManualMapOpen] = useState(false);
   const [mappingSource, setMappingSource] = useState<SupplierStockSnapshot | null>(null);
+  const [mappingMemory, setMappingMemory] = useState<any[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // --- Security State ---
   const [activeRole, setActiveRole] = useState<RoleDefinition | null>(null);
@@ -1201,35 +1203,35 @@ if __name__ == "__main__":
                 
                 <select className="input-field w-32 py-1.5 text-xs" value={filterPool} onChange={e => setFilterPool(e.target.value)}>
                     <option value="">All Pools</option>
-                    {HierarchyManager.getPools().map(p => <option key={p} value={p}>{p}</option>)}
+                    {HierarchyManager.getPools(attributeOptions).map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
 
                 <ChevronRight size={14} className="text-gray-300"/>
 
                 <select className="input-field w-32 py-1.5 text-xs" value={filterCatalog} onChange={e => setFilterCatalog(e.target.value)} disabled={!filterPool}>
                     <option value="">All Catalogs</option>
-                    {HierarchyManager.getCatalogs(filterPool).map(c => <option key={c} value={c}>{c}</option>)}
+                    {HierarchyManager.getCatalogs(filterPool, attributeOptions).map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
 
                 <ChevronRight size={14} className="text-gray-300"/>
 
                 <select className="input-field w-32 py-1.5 text-xs" value={filterType} onChange={e => setFilterType(e.target.value)} disabled={!filterCatalog}>
                     <option value="">All Types</option>
-                    {HierarchyManager.getTypes(filterPool, filterCatalog).map(t => <option key={t} value={t}>{t}</option>)}
+                    {HierarchyManager.getTypes(filterPool, filterCatalog, attributeOptions).map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
                 
                 <ChevronRight size={14} className="text-gray-300"/>
 
                 <select className="input-field w-32 py-1.5 text-xs" value={filterCategory} onChange={e => setFilterCategory(e.target.value)} disabled={!filterType}>
                     <option value="">All Categories</option>
-                    {HierarchyManager.getCategories(filterPool, filterCatalog, filterType).map(c => <option key={c} value={c}>{c}</option>)}
+                    {HierarchyManager.getCategories(filterPool, filterCatalog, filterType, attributeOptions).map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
 
                 <ChevronRight size={14} className="text-gray-300"/>
 
                 <select className="input-field w-32 py-1.5 text-xs" value={filterSubCategory} onChange={e => setFilterSubCategory(e.target.value)} disabled={!filterCategory}>
                     <option value="">All Sub Cats</option>
-                    {HierarchyManager.getSubCategories(filterPool, filterCatalog, filterType, filterCategory).map(s => <option key={s} value={s}>{s}</option>)}
+                    {HierarchyManager.getSubCategories(filterPool, filterCatalog, filterType, filterCategory, attributeOptions).map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
                 
                 {(filterPool || filterCatalog || filterType || filterCategory || filterSubCategory) && (
@@ -1831,141 +1833,227 @@ if __name__ == "__main__":
                   <button onClick={() => setMappingSubTab('REJECTED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'REJECTED' ? 'border-red-500 text-red-500' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
                       Rejected ({mappings.filter(m => m.mappingStatus === 'REJECTED').length})
                   </button>
+                  <button 
+                    onClick={() => {
+                        setMappingSubTab('MEMORY');
+                        getMappingMemory().then(setMappingMemory);
+                    }} 
+                    className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'MEMORY' ? 'border-purple-500 text-purple-500' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                  >
+                      Mapping Memory (All Suppliers)
+                  </button>
               </div>
 
-              {/* Mapping Table */}
               <div className="overflow-x-auto bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
-                  <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400 min-w-[900px]">
-                      <thead className="table-header"><tr>
-                          <th className="px-6 py-4">Status</th>
-                          <th className="px-6 py-4">Internal Master Item</th>
-                          <th className="px-6 py-4">Supplier Product</th>
-                          <th className="px-6 py-4">Details</th>
-                          <th className="px-6 py-4 text-right">Price (Sell)</th>
-                          <th className="px-6 py-4 text-right">Stock (SOH)</th>
-                          <th className="px-6 py-4 text-center">Confidence</th>
-                          <th className="px-6 py-4 text-center">Action</th>
-                      </tr></thead>
-                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                          {mappings.filter(m => m.mappingStatus === mappingSubTab).map(map => {
-                              const internalItem = items.find(i => i.id === map.productId);
-                              const supplier = suppliers.find(s => s.id === map.supplierId);
-                              const supNorm = map.supplierCustomerStockCode ? normalizeItemCode(map.supplierCustomerStockCode) : null;
+                  {mappingSubTab === 'MEMORY' ? (
+                      <div className="p-0">
+                          <div className="p-4 bg-purple-50 dark:bg-purple-900/10 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center">
+                              <div>
+                                  <h4 className="font-bold text-purple-900 dark:text-purple-100 flex items-center gap-2 text-sm"><Database size={16}/> Persistent Mapping Memory</h4>
+                                  <p className="text-[11px] text-purple-700 dark:text-purple-300">This memory allows the system to automatically map future uploads based on these historical confirmed decisions.</p>
+                              </div>
+                              <button 
+                                onClick={async () => {
+                                    if (!window.confirm('This will update Master Item prices to match the latest confirmed supplier sell prices. Continue?')) return;
+                                    setIsSyncing(true);
+                                    try {
+                                        await syncItemsFromSnapshots();
+                                        alert('Item Prices Synchronized Successfully');
+                                    } catch (e: any) {
+                                        alert('Sync failed: ' + e.message);
+                                    } finally {
+                                        setIsSyncing(false);
+                                    }
+                                }}
+                                disabled={isSyncing}
+                                className="bg-purple-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
+                              >
+                                  {isSyncing ? <RefreshCw size={14} className="animate-spin"/> : <Zap size={14}/>}
+                                  Sync Item Prices
+                              </button>
+                          </div>
+                          <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400 min-w-[900px]">
+                              <thead className="table-header"><tr>
+                                  <th className="px-6 py-4">Supplier</th>
+                                  <th className="px-6 py-4">Supplier SKU</th>
+                                  <th className="px-6 py-4">Conf. Item</th>
+                                  <th className="px-6 py-4">Method</th>
+                                  <th className="px-6 py-4">Created</th>
+                                  <th className="px-6 py-4 text-center">Action</th>
+                              </tr></thead>
+                              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                                  {mappingMemory.map(mem => (
+                                      <tr key={mem.id} className="table-row">
+                                          <td className="px-6 py-4 flex items-center gap-3">
+                                              <div className="font-bold text-gray-900 dark:text-white uppercase tracking-tight">{mem.supplier_name}</div>
+                                          </td>
+                                          <td className="px-6 py-4">
+                                              <div className="font-mono text-xs">{mem.supplier_sku}</div>
+                                              <div className="text-[10px] text-gray-400">Cust Ref: {mem.supplier_customer_stock_code || '-'}</div>
+                                          </td>
+                                          <td className="px-6 py-4">
+                                              <div className="font-bold text-gray-900 dark:text-white">{mem.item_name}</div>
+                                              <div className="text-xs font-mono">{mem.item_sku}</div>
+                                          </td>
+                                          <td className="px-6 py-4">
+                                              <span className="badge-gray">{mem.mapping_method}</span>
+                                          </td>
+                                          <td className="px-6 py-4 text-xs font-mono">
+                                              {new Date(mem.created_at).toLocaleDateString()}
+                                          </td>
+                                          <td className="px-6 py-4 text-center">
+                                              <button 
+                                                onClick={async () => {
+                                                    if (!window.confirm('Forget this mapping decision? Future uploads will need re-mapping.')) return;
+                                                    await deleteMapping(mem.id);
+                                                    setMappingMemory(prev => prev.filter(p => p.id !== mem.id));
+                                                }}
+                                                className="icon-btn-red"
+                                              >
+                                                  <Trash2 size={16}/>
+                                              </button>
+                                          </td>
+                                      </tr>
+                                  ))}
+                                  {mappingMemory.length === 0 && (
+                                      <tr><td colSpan={6} className="text-center p-8 text-gray-400">No confirmed mappings in persistent memory yet.</td></tr>
+                                  )}
+                              </tbody>
+                          </table>
+                      </div>
+                  ) : (
+                      <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400 min-w-[900px]">
+                          <thead className="table-header"><tr>
+                              <th className="px-6 py-4">Status</th>
+                              <th className="px-6 py-4">Internal Master Item</th>
+                              <th className="px-6 py-4">Supplier Product</th>
+                              <th className="px-6 py-4">Details</th>
+                              <th className="px-6 py-4 text-right">Price (Sell)</th>
+                              <th className="px-6 py-4 text-right">Stock (SOH)</th>
+                              <th className="px-6 py-4 text-center">Confidence</th>
+                              <th className="px-6 py-4 text-center">Action</th>
+                          </tr></thead>
+                          <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                              {mappings.filter(m => m.mappingStatus === mappingSubTab).map(map => {
+                                  const internalItem = items.find(i => i.id === map.productId);
+                                  const supplier = suppliers.find(s => s.id === map.supplierId);
+                                  const supNorm = map.supplierCustomerStockCode ? normalizeItemCode(map.supplierCustomerStockCode) : null;
 
-                              return (
-                                  <tr key={map.id} className="table-row">
-                                      <td className="px-6 py-4">
-                                          <span className={`badge ${map.mappingStatus === 'PROPOSED' ? 'bg-yellow-100 text-yellow-800' : map.mappingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{map.mappingStatus}</span>
-                                          <div className="text-[10px] uppercase font-bold text-gray-400 mt-1">{map.mappingMethod}</div>
-                                      </td>
-                                      <td className="px-6 py-4">
-                                          {internalItem ? (
-                                              <div title={`Raw: ${internalItem.sku}\nNorm: ${internalItem.sapItemCodeNorm || normalizeItemCode(internalItem.sku).normalized}`}>
-                                                  <div className="font-bold text-gray-900 dark:text-white">{internalItem.name}</div>
-                                                  <div className="text-xs font-mono">{internalItem.sku}</div>
-                                                  <div className="text-[10px] text-gray-400 font-mono mt-0.5">Norm: {internalItem.sapItemCodeNorm || normalizeItemCode(internalItem.sku).normalized}</div>
-                                              </div>
-                                          ) : <span className="text-red-500">Item Missing ({map.productId})</span>}
-                                      </td>
-                                      <td className="px-6 py-4">
-                                          <div className="font-medium text-gray-900 dark:text-white">{map.supplierSku}</div>
-                                          <div className="text-xs text-[var(--color-brand)]">{supplier?.name}</div>
-                                          {map.supplierCustomerStockCode && (
-                                              <div className="mt-1">
-                                                  <div className="text-[10px] bg-gray-100 dark:bg-white/10 px-1 rounded inline-block">Ref: {map.supplierCustomerStockCode}</div>
-                                              </div>
-                                          )}
-                                          {(function() {
-                                              // Find matching snapshot for extra details
-                                              const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
-                                              if (snapshot?.productName) {
-                                                  return <div className="text-xs text-gray-500 mt-1 italic line-clamp-2" title={snapshot.productName}>{snapshot.productName}</div>
-                                              }
-                                              return null;
-                                          })()}
-                                      </td>
-                                      <td className="px-6 py-4">
-                                          {(function() {
-                                              const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
-                                              if (!snapshot) return <span className="text-gray-300 text-xs">-</span>;
-                                              
-                                              return (
-                                                  <div className="space-y-1">
-                                                      {(snapshot.customerStockCode || map.supplierCustomerStockCode) ? (
-                                                          <div className="text-xs">
-                                                              <span className="text-gray-400 font-bold text-[10px] uppercase">Cust:</span> <span className="font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1 rounded">{snapshot.customerStockCode || map.supplierCustomerStockCode}</span>
-                                                          </div>
-                                                      ) : null}
-                                                      {snapshot.cartonQty ? (
-                                                          <div className="text-xs">
-                                                              <span className="text-gray-400 font-bold text-[10px] uppercase">UPQ:</span> <span className="font-medium">{snapshot.cartonQty}</span>
-                                                          </div>
-                                                      ) : null}
-                                                      {snapshot.category ? (
-                                                           <div className="text-xs">
-                                                              <span className="text-gray-400 font-bold text-[10px] uppercase">Cat:</span> <span className="badge-gray">{snapshot.category}</span>
-                                                           </div>
-                                                      ) : null}
-                                                      {snapshot.stockType ? (
-                                                          <div className="text-xs">
-                                                              <span className="text-gray-400 font-bold text-[10px] uppercase">Type:</span> <span className="font-medium">{snapshot.stockType}</span>
-                                                          </div>
-                                                      ): null}
+                                  return (
+                                      <tr key={map.id} className="table-row">
+                                          <td className="px-6 py-4">
+                                              <span className={`badge ${map.mappingStatus === 'PROPOSED' ? 'bg-yellow-100 text-yellow-800' : map.mappingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{map.mappingStatus}</span>
+                                              <div className="text-[10px] uppercase font-bold text-gray-400 mt-1">{map.mappingMethod}</div>
+                                          </td>
+                                          <td className="px-6 py-4">
+                                              {internalItem ? (
+                                                  <div title={`Raw: ${internalItem.sku}\nNorm: ${internalItem.sapItemCodeNorm || normalizeItemCode(internalItem.sku).normalized}`}>
+                                                      <div className="font-bold text-gray-900 dark:text-white">{internalItem.name}</div>
+                                                      <div className="text-xs font-mono">{internalItem.sku}</div>
+                                                      <div className="text-[10px] text-gray-400 font-mono mt-0.5">Norm: {internalItem.sapItemCodeNorm || normalizeItemCode(internalItem.sku).normalized}</div>
                                                   </div>
-                                              )
-                                          })()}
-                                      </td>
-                                      <td className="px-6 py-4 text-right">
-                                           {(function() {
-                                              const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
-                                              if (!snapshot || !snapshot.sellPrice) return <span className="text-gray-300 text-xs">-</span>;
-                                              return (
-                                                  <div className="font-mono text-xs font-bold text-gray-700 dark:text-gray-300">
-                                                      ${Number(snapshot.sellPrice).toFixed(2)}
+                                              ) : <span className="text-red-500">Item Missing ({map.productId})</span>}
+                                          </td>
+                                          <td className="px-6 py-4">
+                                              <div className="font-medium text-gray-900 dark:text-white">{map.supplierSku}</div>
+                                              <div className="text-xs text-[var(--color-brand)]">{supplier?.name}</div>
+                                              {map.supplierCustomerStockCode && (
+                                                  <div className="mt-1">
+                                                      <div className="text-[10px] bg-gray-100 dark:bg-white/10 px-1 rounded inline-block">Ref: {map.supplierCustomerStockCode}</div>
                                                   </div>
-                                              );
-                                          })()}
-                                      </td>
-                                      <td className="px-6 py-4 text-right">
-                                         {(() => {
-                                             const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
-                                             if (!snapshot) return <span className="text-gray-300">-</span>;
-                                             return (
-                                                 <div className="flex flex-col items-end">
-                                                     <span className="font-bold text-gray-900 dark:text-white">{snapshot.stockOnHand}</span>
-                                                     <span className="text-[10px] text-gray-500">Avail: {snapshot.availableQty}</span>
-                                                 </div>
-                                             );
-                                         })()}
-                                      </td>
-                                      <td className="px-6 py-4 text-center">
-                                          <div className="flex flex-col items-center">
-                                            <span className={`font-bold ${map.confidenceScore > 0.9 ? 'text-green-500' : map.confidenceScore > 0.7 ? 'text-yellow-500' : 'text-red-500'}`}>
-                                                {(map.confidenceScore * 100).toFixed(0)}%
-                                            </span>
-                                          </div>
-                                      </td>
-                                      <td className="px-6 py-4 text-center">
-                                          <div className="flex justify-center gap-2">
-                                              {map.mappingStatus === 'PROPOSED' && (
-                                                  <>
-                                                      <button onClick={() => updateMapping({ ...map, mappingStatus: 'CONFIRMED' }).then(() => alert('Confirmed'))} className="icon-btn-green" title="Confirm"><CheckCircle2 size={18}/></button>
-                                                      <button onClick={() => updateMapping({ ...map, mappingStatus: 'REJECTED' })} className="icon-btn-red" title="Reject"><XCircle size={18}/></button>
-                                                  </>
                                               )}
-                                              {map.mappingStatus === 'CONFIRMED' && (
-                                                   <button onClick={() => updateMapping({ ...map, mappingStatus: 'PROPOSED' })} className="text-xs text-gray-400 hover:text-[var(--color-brand)] underline">Un-confirm</button>
-                                              )}
-                                          </div>
-                                      </td>
-                                  </tr>
-                              );
-                          })}
-                          {mappings.filter(m => m.mappingStatus === mappingSubTab).length === 0 && (
-                              <tr><td colSpan={8} className="text-center p-8 text-gray-400">No mappings found in this tab.</td></tr>
-                          )}
-                      </tbody>
-                  </table>
+                                              {(function() {
+                                                  // Find matching snapshot for extra details
+                                                  const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                                  if (snapshot?.productName) {
+                                                      return <div className="text-xs text-gray-500 mt-1 italic line-clamp-2" title={snapshot.productName}>{snapshot.productName}</div>
+                                                  }
+                                                  return null;
+                                              })()}
+                                          </td>
+                                          <td className="px-6 py-4">
+                                              {(function() {
+                                                  const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                                  if (!snapshot) return <span className="text-gray-300 text-xs">-</span>;
+                                                  
+                                                  return (
+                                                      <div className="space-y-1">
+                                                          {(snapshot.customerStockCode || map.supplierCustomerStockCode) ? (
+                                                              <div className="text-xs">
+                                                                  <span className="text-gray-400 font-bold text-[10px] uppercase">Cust:</span> <span className="font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1 rounded">{snapshot.customerStockCode || map.supplierCustomerStockCode}</span>
+                                                              </div>
+                                                          ) : null}
+                                                          {snapshot.cartonQty ? (
+                                                              <div className="text-xs">
+                                                                  <span className="text-gray-400 font-bold text-[10px] uppercase">UPQ:</span> <span className="font-medium">{snapshot.cartonQty}</span>
+                                                              </div>
+                                                          ) : null}
+                                                          {snapshot.category ? (
+                                                               <div className="text-xs">
+                                                                  <span className="text-gray-400 font-bold text-[10px] uppercase">Cat:</span> <span className="badge-gray">{snapshot.category}</span>
+                                                               </div>
+                                                          ) : null}
+                                                          {snapshot.stockType ? (
+                                                              <div className="text-xs">
+                                                                  <span className="text-gray-400 font-bold text-[10px] uppercase">Type:</span> <span className="font-medium">{snapshot.stockType}</span>
+                                                              </div>
+                                                          ): null}
+                                                      </div>
+                                                  )
+                                              })()}
+                                          </td>
+                                          <td className="px-6 py-4 text-right">
+                                               {(function() {
+                                                  const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                                  if (!snapshot || !snapshot.sellPrice) return <span className="text-gray-300 text-xs">-</span>;
+                                                  return (
+                                                      <div className="font-mono text-xs font-bold text-gray-700 dark:text-gray-300">
+                                                          ${Number(snapshot.sellPrice).toFixed(2)}
+                                                      </div>
+                                                  );
+                                              })()}
+                                          </td>
+                                          <td className="px-6 py-4 text-right">
+                                             {(() => {
+                                                 const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                                 if (!snapshot) return <span className="text-gray-300">-</span>;
+                                                 return (
+                                                     <div className="flex flex-col items-end">
+                                                         <span className="font-bold text-gray-900 dark:text-white">{snapshot.stockOnHand}</span>
+                                                         <span className="text-[10px] text-gray-500">Avail: {snapshot.availableQty}</span>
+                                                     </div>
+                                                 );
+                                             })()}
+                                          </td>
+                                          <td className="px-6 py-4 text-center">
+                                              <div className="flex flex-col items-center">
+                                                <span className={`font-bold ${map.confidenceScore > 0.9 ? 'text-green-500' : map.confidenceScore > 0.7 ? 'text-yellow-500' : 'text-red-500'}`}>
+                                                    {(map.confidenceScore * 100).toFixed(0)}%
+                                                </span>
+                                              </div>
+                                          </td>
+                                          <td className="px-6 py-4 text-center">
+                                              <div className="flex justify-center gap-2">
+                                                  {map.mappingStatus === 'PROPOSED' && (
+                                                      <>
+                                                          <button onClick={() => updateMapping({ ...map, mappingStatus: 'CONFIRMED' }).then(() => alert('Confirmed'))} className="icon-btn-green" title="Confirm"><CheckCircle2 size={18}/></button>
+                                                          <button onClick={() => updateMapping({ ...map, mappingStatus: 'REJECTED' })} className="icon-btn-red" title="Reject"><XCircle size={18}/></button>
+                                                      </>
+                                                  )}
+                                                  {map.mappingStatus === 'CONFIRMED' && (
+                                                       <button onClick={() => updateMapping({ ...map, mappingStatus: 'PROPOSED' })} className="text-xs text-gray-400 hover:text-[var(--color-brand)] underline">Un-confirm</button>
+                                                  )}
+                                              </div>
+                                          </td>
+                                      </tr>
+                                  );
+                              })}
+                              {mappings.filter(m => m.mappingStatus === mappingSubTab).length === 0 && (
+                                  <tr><td colSpan={8} className="text-center p-8 text-gray-400">No mappings found in this tab.</td></tr>
+                              )}
+                          </tbody>
+                      </table>
+                  )}
               </div>
           </div>
       )}

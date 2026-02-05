@@ -1378,5 +1378,96 @@ export const db = {
     deleteMigrationMapping: async (excelVariant: string): Promise<void> => {
         const { error } = await supabase.from('migration_mappings').delete().eq('excel_variant', excelVariant.trim());
         if (error) throw error;
+    },
+
+    getMappingMemory: async (supplierId?: string): Promise<any[]> => {
+        let query = supabase.from('supplier_product_map')
+            .select(`
+                *,
+                item:items(sku, name),
+                supplier:suppliers(name)
+            `)
+            .eq('mapping_status', 'CONFIRMED');
+            
+        if (supplierId) {
+            query = query.eq('supplier_id', supplierId);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        return data.map((m: any) => ({
+            id: m.id,
+            supplierId: m.supplier_id,
+            supplierName: m.supplier?.name,
+            productId: m.product_id,
+            productName: m.item?.name,
+            internalSku: m.item?.sku,
+            supplierSku: m.supplier_sku,
+            supplierCustomerStockCode: m.supplier_customer_stock_code,
+            mappingStatus: m.mapping_status,
+            mappingMethod: m.mapping_method,
+            confidenceScore: m.confidence_score,
+            packConversionFactor: m.pack_conversion_factor,
+            updatedAt: m.updated_at
+        }));
+    },
+
+    deleteMapping: async (id: string): Promise<void> => {
+        const { error } = await supabase.from('supplier_product_map').delete().eq('id', id);
+        if (error) throw error;
+    },
+
+    syncItemsFromSnapshots: async (supplierId: string): Promise<{ updated: number }> => {
+        // 1. Fetch Latest Confirmed Mappings for this supplier
+        const { data: mappings, error: mErr } = await supabase
+            .from('supplier_product_map')
+            .select('product_id, supplier_sku')
+            .eq('supplier_id', supplierId)
+            .eq('mapping_status', 'CONFIRMED');
+            
+        if (mErr) throw mErr;
+        if (!mappings || mappings.length === 0) return { updated: 0 };
+
+        // 2. Fetch Latest Snapshots for this supplier
+        // To get the absolute LATEST per SKU, we order by date desc
+        const { data: snapshots, error: sErr } = await supabase
+            .from('stock_snapshots')
+            .select('supplier_sku, sell_price, total_stock_qty, snapshot_date')
+            .eq('supplier_id', supplierId)
+            .order('snapshot_date', { ascending: false });
+            
+        if (sErr) throw sErr;
+        if (!snapshots || snapshots.length === 0) return { updated: 0 };
+
+        // Reduce snapshots to a map of latest per supplier_sku
+        const latestSnaps = snapshots.reduce((acc: any, curr: any) => {
+            if (!acc[curr.supplier_sku]) {
+                acc[curr.supplier_sku] = curr;
+            }
+            return acc;
+        }, {});
+
+        // 3. Prepare updates for items
+        let updatedCount = 0;
+        for (const m of mappings) {
+            const snap = latestSnaps[m.supplier_sku];
+            if (snap && snap.sell_price !== undefined) {
+                // Update item price
+                const { error: uErr } = await supabase
+                    .from('items')
+                    .update({ 
+                        unit_price: snap.sell_price,
+                        // We could also sync stock levels if we wanted, 
+                        // but stock usually lives in Snapshots/Availability table
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', m.product_id);
+                
+                if (!uErr) updatedCount++;
+            }
+        }
+
+        return { updated: updatedCount };
     }
 };

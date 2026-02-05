@@ -115,6 +115,9 @@ interface AppContextType {
 
   runAutoMapping: (supplierId: string) => Promise<{ confirmed: number, proposed: number }>;
   getMappingQueue: (supplierId?: string) => Promise<SupplierProductMap[]>;
+  getMappingMemory: (supplierId?: string) => Promise<SupplierProductMap[]>;
+  deleteMapping: (id: string) => Promise<void>;
+  syncItemsFromSnapshots: (supplierId: string) => Promise<{ updated: number }>;
   searchDirectory: (query: string) => Promise<any[]>;
 
   // Misc
@@ -1534,13 +1537,20 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const importStockSnapshot = async (supplierId: string, date: string, snapshots: SupplierStockSnapshot[]): Promise<void> => {
       try {
           await db.importStockSnapshot(supplierId, date, snapshots);
-          // Reload all snapshots to ensure state consistency after bulk delete/insert
-          const refreshedData = await db.getStockSnapshots();
-          setStockSnapshots(refreshedData);
-          await refreshAvailability(refreshedData);
+          // 1. Sync items automatically (user request: intelligent integration)
+          await db.syncItemsFromSnapshots(supplierId);
+          // 2. Reload all snapshots and items to ensure state consistency
+          const [refreshedSnapshots, refreshedItems] = await Promise.all([
+              db.getStockSnapshots(),
+              db.getItems()
+          ]);
+          setStockSnapshots(refreshedSnapshots);
+          setItems(refreshedItems);
+          // 3. Update availability
+          await refreshAvailability(refreshedSnapshots);
       } catch (error) {
           console.error('Failed to import stock:', error);
-          throw error; // Re-throw so UI can handle alert
+          throw error;
       }
   };
   
@@ -1673,9 +1683,29 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const runAutoMapping = async (supplierId: string) => {
       const result = await db.runAutoMapping(supplierId);
-      // Refresh state if needed
+      // Immediately sync after auto-mapping for seamless updates
+      await db.syncItemsFromSnapshots(supplierId);
+      const freshItems = await db.getItems();
+      setItems(freshItems);
       await refreshAvailability();
       return result;
+  };
+
+  const getMappingMemory = async (supplierId?: string) => {
+      return await db.getMappingMemory(supplierId);
+  };
+
+  const deleteMapping = async (id: string) => {
+      await db.deleteMapping(id);
+      setMappings(prev => prev.filter(m => m.id !== id));
+      await refreshAvailability();
+  };
+
+  const syncItemsFromSnapshots = async (supplierId: string) => {
+      const res = await db.syncItemsFromSnapshots(supplierId);
+      const freshItems = await db.getItems();
+      setItems(freshItems);
+      return res;
   };
 
   
@@ -1879,6 +1909,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     getItemFieldRegistry,
     runAutoMapping,
     getMappingQueue,
+    getMappingMemory,
+    deleteMapping,
+    syncItemsFromSnapshots,
     sendWelcomeEmail,
     resendWelcomeEmail,
 
