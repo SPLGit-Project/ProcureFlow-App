@@ -1250,6 +1250,14 @@ export const db = {
         if (error) throw error;
     },
 
+    updatePOLine: async (id: string, updates: Partial<POLineItem>): Promise<void> => {
+        const { error } = await supabase.from('po_lines').update({
+            quantity_ordered: updates.quantityOrdered,
+            total_price: updates.totalPrice
+        }).eq('id', id);
+        if (error) throw error;
+    },
+
     getMigrationMappings: async (): Promise<Record<string, string>> => {
         const { data, error } = await supabase.from('migration_mappings').select('excel_variant, item_id');
         if (error) {

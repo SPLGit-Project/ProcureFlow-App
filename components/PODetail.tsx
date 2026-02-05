@@ -233,6 +233,21 @@ const PODetail = () => {
       }
   };
 
+  const handleUpdateLineQty = async (lineId: string, newQtyList: string, unitPrice: number) => {
+      const newQty = parseInt(newQtyList);
+      if (isNaN(newQty) || newQty < 0) return;
+
+      try {
+          await db.updatePOLine(lineId, { 
+              quantityOrdered: newQty,
+              totalPrice: newQty * unitPrice
+          });
+      } catch (e: any) {
+          console.error(e);
+          alert("Failed to update line quantity: " + e.message);
+      }
+  };
+
   /* Side Effect: If forcing to RECEIVED/CLOSED and no deliveries exist, create dummy delivery so it appears in Finance Review */
   const ensureDeliveryRecord = async (targetStatus: string) => {
       // Only strictly relevant for statuses that imply goods receipt
@@ -518,7 +533,18 @@ const PODetail = () => {
                                       <div className="font-bold text-gray-900 dark:text-white">{line.itemName}</div>
                                       <div className="text-xs text-gray-500 font-mono mt-0.5">{line.sku}</div>
                                   </td>
-                                  <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">{line.quantityOrdered}</td>
+                                  <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">
+                                      {isEditing && (po.status === 'PENDING_APPROVAL' || po.status === 'APPROVED_PENDING_CONCUR') ? (
+                                          <input 
+                                              type="number" 
+                                              className="w-20 px-2 py-1 text-center border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                              defaultValue={line.quantityOrdered}
+                                              onBlur={(e) => handleUpdateLineQty(line.id, e.target.value, line.unitPrice)}
+                                          />
+                                      ) : (
+                                          line.quantityOrdered
+                                      )}
+                                  </td>
                                   <td className="px-6 py-4 text-center">
                                       <div className="flex flex-col items-center justify-center">
                                           <span className={line.quantityReceived >= line.quantityOrdered ? 'text-green-600 dark:text-green-500 font-bold' : 'text-gray-500'}>
