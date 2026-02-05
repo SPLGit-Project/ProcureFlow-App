@@ -501,7 +501,7 @@ export const db = {
             supplierId: p.supplier_id,
             supplierName: p.supplier?.name || 'Unknown',
             status: p.status,
-            totalAmount: p.totalAmount,
+            totalAmount: p.total_amount || 0,
             approvalHistory: (p.approvals || []).map((a: any) => ({
                 id: a.id,
                 action: a.action,
@@ -514,23 +514,24 @@ export const db = {
                 itemId: l.item_id,
                 itemName: l.item_name,
                 sku: l.sku,
-                quantityOrdered: l.quantity_ordered,
-                quantityReceived: l.quantity_received,
-                unitPrice: l.unit_price,
-                totalPrice: l.total_price,
-                concur_po_number: l.concur_po_number
+                quantityOrdered: l.quantity_ordered || 0,
+                quantityReceived: l.quantity_received || 0,
+                unitPrice: l.unit_price || 0,
+                totalPrice: l.total_price || 0,
+                concurPoNumber: l.concur_po_number
             })),
             deliveries: (p.deliveries || []).map((d: any) => ({
                 id: d.id,
                 date: d.date,
                 docketNumber: d.docket_number,
+                receivedBy: d.received_by,
                 lines: (d.lines || []).map((dl: any) => ({
                     id: dl.id,
                     poLineId: dl.po_line_id,
                     quantity: dl.quantity,
-                    invoice_number: dl.invoice_number,
-                    is_capitalised: dl.is_capitalised,
-                    capitalised_date: dl.capitalised_date
+                    invoiceNumber: dl.invoice_number,
+                    isCapitalised: dl.is_capitalised,
+                    capitalisedDate: dl.capitalised_date
                 }))
             })),
             reasonForRequest: p.reason_for_request,
