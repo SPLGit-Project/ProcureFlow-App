@@ -13,6 +13,15 @@ const FinanceView = () => {
   const togglePO = (poId: string) => {
     setExpandedPOs(prev => ({ ...prev, [poId]: !prev[poId] }));
   };
+
+  const handleExpandAll = () => {
+    const allExpanded = groupedData.reduce((acc, po) => ({ ...acc, [po.poId]: true }), {});
+    setExpandedPOs(allExpanded);
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedPOs({});
+  };
   
   // Group lines by PO -> Delivery
   const groupedData = pos.filter(po => 
@@ -140,6 +149,20 @@ const FinanceView = () => {
                  />
              </div>
 
+             <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleExpandAll}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
+                >
+                  Expand All
+                </button>
+                <button 
+                  onClick={handleCollapseAll}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
+                >
+                  Collapse All
+                </button>
+             </div>
 
 
              <div className="w-full md:w-auto ml-auto text-sm text-gray-500 flex items-center justify-end gap-2 bg-gray-50 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -149,7 +172,7 @@ const FinanceView = () => {
         
         <div className="divide-y divide-gray-200 dark:divide-gray-800">
             {groupedData.map(po => {
-                const isExpanded = expandedPOs[po.poId] !== false; // Default expanded? or default collapsed. Let's default expand for visibility
+                const isExpanded = expandedPOs[po.poId] === true; // Default collapsed
                 const fullyCapitalised = po.deliveries.every(d => d.lines.every(l => l.data.isCapitalised));
 
                 return (
