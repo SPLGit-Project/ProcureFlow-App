@@ -31,9 +31,10 @@ import { DEFAULT_NAV_ITEMS, NavItemConfig } from '../constants/navigation';
 import PwaInstaller from './PwaInstaller';
 import UpdateToast from './UpdateToast';
 import VersionBadge from './VersionBadge';
+import { MultiSiteSelector } from './MultiSiteSelector';
 
 const Layout = () => {
-  const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteId, setActiveSiteId, sites, siteName, originalUser, stopImpersonation } = useApp();
+  const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteIds, setActiveSiteIds, sites, siteName, originalUser, stopImpersonation } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isProfileExpanded, setIsProfileExpanded] = React.useState(false);
   const navigate = useNavigate();
@@ -198,20 +199,12 @@ const Layout = () => {
                         <p className={`text-[9px] uppercase font-bold px-1 flex items-center gap-1 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/40' : 'text-gray-400'}`}>
                             <MapPin size={10}/> Site Context
                         </p>
-                        <select 
-                          className={`w-full rounded-lg text-xs p-2.5 outline-none appearance-none cursor-pointer font-bold transition-all ${
-                              ['brand', 'dark'].includes(branding.sidebarTheme || '') 
-                              ? 'bg-black/30 text-white border border-white/10 hover:bg-black/40' 
-                              : 'bg-gray-50 text-gray-700 border border-gray-200 hover:border-gray-300 hover:bg-white shadow-sm'
-                          }`}
-                          value={activeSiteId || ''}
-                          onChange={(e) => setActiveSiteId(e.target.value === '' ? null : e.target.value)}
-                       >
-                         <option value="" className="text-gray-900 bg-white">All Sites (Global)</option>
-                         {sites.map(s => (
-                             <option key={s.id} value={s.id} className="text-gray-900 bg-white">{s.name}</option>
-                         ))}
-                       </select>
+                        <MultiSiteSelector 
+                            sites={sites}
+                            selectedSiteIds={activeSiteIds}
+                            onChange={setActiveSiteIds}
+                            variant={['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'brand' : 'light'}
+                        />
                     </div>
                )}
 

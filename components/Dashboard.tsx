@@ -11,7 +11,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
-  const { pos, currentUser, hasPermission, isLoadingData, activeSiteId, siteName } = useApp();
+  const { pos, currentUser, hasPermission, isLoadingData, activeSiteIds, siteName } = useApp();
   const navigate = useNavigate();
 
   // Use global filtered data directly
@@ -35,7 +35,7 @@ const Dashboard = () => {
   const actionConcur = globalPendingConcur.length > 0 ? globalPendingConcur : myPendingConcurSync;
 
   const myPendingDeliveries = activeOrders.filter(p => {
-        if (currentUser.role === 'ADMIN' && activeSiteId) return true; // Show all for site if Admin
+        if (currentUser.role === 'ADMIN' && activeSiteIds.length > 0) return true; // Show all for selected sites if Admin
         if (p.requesterId !== currentUser.id) return false;
         const remaining = p.lines.reduce((acc, line) => acc + (line.quantityOrdered - (line.quantityReceived || 0)), 0);
         return remaining > 0;
@@ -175,7 +175,11 @@ const Dashboard = () => {
 
       {/* Pipeline Flow Visual */}
       <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 overflow-hidden">
-          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Request Pipeline {activeSiteId ? `(${siteName(activeSiteId)})` : '(Global)'}</h3>
+          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">
+              Request Pipeline {activeSiteIds.length > 0 
+                  ? (activeSiteIds.length === 1 ? `(${siteName(activeSiteIds[0])})` : `(${activeSiteIds.length} Sites)`) 
+                  : '(None Selected)'}
+          </h3>
           <div className="flex flex-col md:flex-row gap-2 relative">
              {[
                  { label: 'Requested', count: pendingApprovals.length, color: 'text-amber-500 bg-amber-50' },

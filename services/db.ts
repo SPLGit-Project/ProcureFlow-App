@@ -475,7 +475,7 @@ export const db = {
         }));
     },
 
-    getPOs: async (siteId?: string): Promise<PORequest[]> => {
+    getPOs: async (siteIds?: string[]): Promise<PORequest[]> => {
         let query = supabase
             .from('po_requests')
             .select(`
@@ -489,8 +489,10 @@ export const db = {
             `)
             .order('created_at', { ascending: false });
 
-        if (siteId) {
-            query = query.eq('site_id', siteId);
+        if (siteIds && siteIds.length > 0) {
+            query = query.in('site_id', siteIds);
+        } else if (siteIds && siteIds.length === 0) {
+            return [];
         }
 
         const { data, error } = await query;

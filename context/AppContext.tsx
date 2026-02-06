@@ -8,12 +8,19 @@ import { supabase } from '../lib/supabaseClient';
 const REQUIRED_ADMIN_ROLE = 'ADMIN';
 
 // Helper to get raw site filter from localStorage or user defaults
-const getInitialSiteId = (): string | null => {
+const getInitialSiteIds = (): string[] => {
     try {
-        const stored = localStorage.getItem('activeSiteId');
-        return stored === 'null' ? null : stored;
+        const stored = localStorage.getItem('activeSiteIds');
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            return Array.isArray(parsed) ? parsed : [];
+        }
+        // Fallback for migration: check old key
+        const oldSingle = localStorage.getItem('activeSiteId');
+        if (oldSingle && oldSingle !== 'null') return [oldSingle];
+        return [];
     } catch {
-        return null;
+        return [];
     }
 };
 
@@ -21,8 +28,8 @@ interface AppContextType {
   currentUser: User | null;
   originalUser: User | null; // For impersonation
   isAuthenticated: boolean;
-  activeSiteId: string | null; // Multi-site context
-  setActiveSiteId: (id: string | null) => void;
+  activeSiteIds: string[]; // Multi-site context
+  setActiveSiteIds: (ids: string[]) => void;
   siteName: (siteId?: string) => string;
   login: () => Promise<void>;
   logout: () => Promise<void>;
@@ -164,7 +171,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeSiteId, _setActiveSiteId] = useState<string | null>(getInitialSiteId());
+  
+  // Updated Multi-Site State
+  const [activeSiteIds, _setActiveSiteIds] = useState<string[]>(getInitialSiteIds());
   
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isPendingApproval, setIsPendingApproval] = useState(false);
@@ -241,14 +250,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [notificationRules, setNotificationRules] = useState<NotificationRule[]>([]);
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
 
-    // --- Active Site Logic ---
-    const setActiveSiteId = (id: string | null) => {
-        _setActiveSiteId(id);
-        if (id === null) {
-            localStorage.setItem('activeSiteId', 'null');
-        } else {
-            localStorage.setItem('activeSiteId', id);
-        }
+    // --- Active Site Logic (Multi) ---
+    const setActiveSiteIds = (ids: string[]) => {
+        _setActiveSiteIds(ids);
+        localStorage.setItem('activeSiteIds', JSON.stringify(ids));
+        // Also cleanup old key
+        localStorage.removeItem('activeSiteId');
     };
 
     // --- Helper for Site Name ---
@@ -260,9 +267,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
     // --- Data Filtering based on Active Site ---
     const filteredPos = React.useMemo(() => {
-        if (!activeSiteId) return pos; // Show all
-        return pos.filter(p => p.siteId === activeSiteId);
-    }, [pos, activeSiteId]);
+        if (!activeSiteIds.length) return []; // STRICT: No sites selected = No data
+        return pos.filter(p => activeSiteIds.includes(p.siteId));
+    }, [pos, activeSiteIds]);
 
   // Data Loading
   const lastFetchTime = React.useRef<number>(0);
@@ -312,7 +319,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getItems(), [], 'items'),
                 safeFetch(db.getCatalog(), [], 'catalog'),
                 safeFetch(db.getStockSnapshots(), [], 'snapshots'),
-                safeFetch(db.getPOs(activeSiteId || undefined), [], 'pos'),
+                safeFetch(db.getPOs(activeSiteIds), [], 'pos'), // Filter by multiple sites
                 safeFetch(db.getWorkflowSteps(), [], 'workflowSteps'),
                 safeFetch(db.getNotificationRules(), [], 'notifications'),
                 safeFetch(db.getMappings(), [], 'mappings'),
@@ -344,14 +351,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         } finally {
             if (!silent) setIsLoadingData(false);
         }
-    }, [activeSiteId]);
+    }, [activeSiteIds]);
 
     // Trigger reload when active site changes
     useEffect(() => {
         if (isAuthenticated) {
             reloadData();
         }
-    }, [activeSiteId, isAuthenticated, reloadData]);
+    }, [activeSiteIds, isAuthenticated, reloadData]);
 
     // ... (rest of code)
     
@@ -746,12 +753,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 // Initialize Active Site Context
                 if (userData.role !== 'ADMIN') {
                      if (userData.siteIds && userData.siteIds.length > 0) {
-                         // Check if currently stored site is valid
-                         if (!activeSiteId || !userData.siteIds.includes(activeSiteId)) {
-                             if(mounted) setActiveSiteId(userData.siteIds[0]);
+                         // Ensure currently selected sites are valid for this user
+                         const validIds = activeSiteIds.filter(id => userData.siteIds.includes(id));
+                         
+                         if (validIds.length === 0) {
+                             // Default to their first available site if selection is invalid
+                             if(mounted) setActiveSiteIds([userData.siteIds[0]]);
+                         } else if (validIds.length !== activeSiteIds.length) {
+                             // Update to only valid ones
+                             if(mounted) setActiveSiteIds(validIds);
                          }
                      } else {
-                         if(mounted) setActiveSiteId(null); 
+                         // No access to any sites
+                         if(mounted) setActiveSiteIds([]); 
                      }
                 }
 
@@ -1880,7 +1894,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         setCurrentUser(targetUser);
         // Force reload active site if needed
         if (targetUser.role !== 'ADMIN' && targetUser.siteIds.length > 0) {
-            setActiveSiteId(targetUser.siteIds[0]);
+            setActiveSiteIds([targetUser.siteIds[0]]);
         }
   };
 
@@ -1889,12 +1903,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         console.log("Impersonation: Returning to admin view");
         setCurrentUser(originalUser);
         setOriginalUser(null);
-        setActiveSiteId(null); // Reset to show all sites (or default)
+        setActiveSiteIds([]); // Reset to default state
   };
 
   // --- Context Value Memoization ---
   const contextValue = React.useMemo(() => ({
-    currentUser, originalUser, isAuthenticated, activeSiteId, setActiveSiteId, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
+    currentUser, originalUser, isAuthenticated, activeSiteIds, setActiveSiteIds, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
     users, updateUserRole, updateUserAccess, addUser, archiveUser, reloadData, impersonateUser, stopImpersonation,
     roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
     teamsWebhookUrl, updateTeamsWebhook,
@@ -1967,7 +1981,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     },
     sendNotification
   }), [
-    currentUser, originalUser, isAuthenticated, activeSiteId, isLoadingAuth, isPendingApproval, isLoadingData,
+    currentUser, originalUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
