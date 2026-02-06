@@ -503,6 +503,7 @@ export const db = {
             requestDate: p.request_date,
             requesterId: p.requester_id,
             requesterName: p.requester?.name || 'Unknown',
+            siteId: p.site_id,
             site: p.site?.name || 'Unknown Site', 
             supplierId: p.supplier_id,
             supplierName: p.supplier?.name || 'Unknown',
