@@ -1278,18 +1278,22 @@ if __name__ == "__main__":
 
             {/* Table Area - Scrollable */}
             <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow border border-gray-200 dark:border-gray-800 flex-1 overflow-hidden flex flex-col">
-                <div className="overflow-auto flex-1">
+                <div className="overflow-auto flex-1 max-h-[calc(100vh-220px)] scrollbar-thin">
                     <table className="w-full text-left border-collapse relative">
-                        <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1e2029] shadow-sm">
+                        <thead className="sticky top-0 z-30 bg-gray-50 dark:bg-[#1e2029] shadow-sm">
                             <tr className="border-b border-gray-200 dark:border-gray-700">
                                 {fieldRegistry.length > 0 ? (
-                                    (fieldRegistry || []).filter(f => f && f.is_visible && f.field_key !== 'range_name' && f.field_key !== 'stock_type').map(f => {
+                                    (fieldRegistry || []).filter(f => f && f.is_visible && f.field_key !== 'range_name' && f.field_key !== 'stock_type').map((f, idx) => {
                                         // Check if this field should have a filter
                                         const isFilterable = ['category', 'subCategory', 'itemPool', 'itemCatalog', 'itemType'].includes(f.field_key) || f.field_key?.includes('Category');
                                         const uniqueOptions = isFilterable ? Array.from((uniqueValues || {})[f.field_key] || []).sort() : [];
+                                        
+                                        const stickyClass = idx === 0 
+                                            ? "sticky left-0 z-20 bg-gray-50 dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]" 
+                                            : "";
 
                                         return (
-                                            <th key={f.field_key} className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">
+                                            <th key={f.field_key} className={`px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase ${stickyClass}`}>
                                                 <div className="flex flex-col gap-1">
                                                     <span>{f.label}</span>
                                                     {isFilterable && (
@@ -1311,7 +1315,7 @@ if __name__ == "__main__":
                                 ) : (
                                     // Fallback Static Header
                                     <>
-                                    <th className="px-6 py-4">Item</th>
+                                    <th className="px-6 py-4 sticky left-0 z-20 bg-gray-50 dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 min-w-[200px] shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]">Item</th>
                                     <th className="px-6 py-4">
                                         <div className="flex flex-col gap-1">
                                             <span>Category</span>
@@ -1364,13 +1368,16 @@ if __name__ == "__main__":
                                         <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
                                     {(fieldRegistry || []).length > 0 ? (
                                         <>
-                                        {(fieldRegistry || []).filter(f => f && f.is_visible).map(f => {
+                                        {(fieldRegistry || []).filter(f => f && f.is_visible).map((f, idx) => {
                                              const val = item[f.field_key as keyof Item];
+                                             const stickyClass = idx === 0 
+                                                ? "sticky left-0 z-10 bg-white dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]" 
+                                                : "";
                                              
                                              // 1. Boolean Toggle
                                              if (f.data_type === 'boolean') {
                                                  return (
-                                                     <td key={f.field_key} className="px-4 py-3 text-sm whitespace-nowrap">
+                                                     <td key={f.field_key} className={`px-4 py-3 text-sm whitespace-nowrap ${stickyClass}`}>
                                                          <button 
                                                             onClick={() => handleCellUpdate(item.id, f.field_key, !val)}
                                                             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${val ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}`}
@@ -1386,7 +1393,7 @@ if __name__ == "__main__":
 
                                              // 3. Read Mode Display
                                              return (
-                                                <td key={f.field_key} className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                                <td key={f.field_key} className={`px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap ${stickyClass}`}>
                                                     {f.data_type === 'number' && (f.field_key.includes('price') || f.field_key.includes('Price')) 
                                                         ? `$${Number(val || 0).toFixed(2)}`
                                                         : String(val === undefined || val === null ? '' : val)
@@ -1422,7 +1429,7 @@ if __name__ == "__main__":
                                 ) : (
                                     // Fallback Static Cells
                                             <>
-                                                <td className="px-6 py-4">
+                                                <td className="px-6 py-4 sticky left-0 z-10 bg-white dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 min-w-[200px] shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]">
                                                     <div className="flex items-center">
                                                         <div className="h-8 w-8 rounded bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 mr-3 hidden md:flex">
                                                             <Box size={16} />
@@ -1447,7 +1454,7 @@ if __name__ == "__main__":
                                                         {item.cogFlag && <span className="bg-orange-100 text-orange-700 px-1 rounded">COG</span>}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-right">
+                                                <td className="px-6 py-4 text-right sticky right-0 z-10 bg-white dark:bg-[#1e2029] shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">
                                                     <div className="flex justify-end gap-2">
                                                         <button onClick={() => { 
                                                             setEditingItem(item); 
