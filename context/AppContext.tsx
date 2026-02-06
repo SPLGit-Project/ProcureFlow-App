@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { User, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification, AttributeOption } from '../types';
+import { User, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification, AttributeOption, SystemAuditLog } from '../types';
 import { db } from '../services/db';
 import { supabase } from '../lib/supabaseClient';
 
@@ -118,6 +118,7 @@ interface AppContextType {
   getMappingMemory: (supplierId?: string) => Promise<SupplierProductMap[]>;
   deleteMapping: (id: string) => Promise<void>;
   syncItemsFromSnapshots: (supplierId: string) => Promise<{ updated: number }>;
+  getAuditLogs: () => Promise<SystemAuditLog[]>;
   searchDirectory: (query: string) => Promise<any[]>;
 
   // Misc
@@ -1670,7 +1671,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const importMasterProducts = async (newItems: Partial<Item>[], archiveMissing: boolean = false) => {
-      const result = await db.upsertMasterItemsBulk(newItems, archiveMissing);
+      const result = await db.upsertMasterItemsBulk(newItems, archiveMissing, currentUser?.id);
       const fresh = await db.getItems();
       setItems(fresh);
       return result;
@@ -1710,6 +1711,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setItems(freshItems);
       return res;
   };
+
+  const getAuditLogs = async () => {
+    return await db.getAuditLogs();
+  };
+
 
   
   const generateMappings = async () => {
@@ -1917,6 +1923,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     getMappingMemory,
     deleteMapping,
     syncItemsFromSnapshots,
+    getAuditLogs,
     sendWelcomeEmail,
     resendWelcomeEmail,
 

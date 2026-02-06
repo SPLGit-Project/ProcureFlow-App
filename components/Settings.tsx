@@ -14,7 +14,7 @@ import {
 import { useToast, ToastContainer } from './ToastNotification';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers';
 import { supabase } from '../lib/supabaseClient';
-import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient } from '../types';
+import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 import { useLocation } from 'react-router-dom';
 import AdminAccessHub from './AdminAccessHub';
@@ -23,6 +23,7 @@ import AdminMigration from './AdminMigration';
 import StockMappingConfirmation from './StockMappingConfirmation';
 import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser';
 import { ConfirmDialog } from './ConfirmDialog';
+import { AuditLogViewer } from './AuditLogViewer';
 import * as XLSX from 'xlsx';
 import CatalogManagement from './CatalogManagement'; // Import CatalogManagement
 import MenuEditor from './MenuEditor';
@@ -58,7 +59,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Admin Access' }
 ];
 
-type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL';
+type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT';
 
 const Settings = () => {
   const {
@@ -75,7 +76,7 @@ const Settings = () => {
     mappings, generateMappings, updateMapping, deleteMapping, getMappingMemory, syncItemsFromSnapshots,
     // New Admin Caps
     getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, impersonateUser, archiveUser, searchDirectory,
-    archiveItem,
+    archiveItem, getAuditLogs,
     // Catalog Management
     attributeOptions, upsertAttributeOption, deleteAttributeOption
   } = useApp();
@@ -179,22 +180,35 @@ const Settings = () => {
    const itemImportInputRef = useRef<HTMLInputElement>(null);
 
    const handleExportItems = () => {
-       const data = items.map(i => ({
-           SKU: i.sku,
-           Name: i.name,
-           Description: i.description,
-           Category: i.category,
-           'Sub Category': i.subCategory,
-           'Unit Price': i.unitPrice,
-           UOM: i.uom,
-           'UPQ': i.upq,
-           'Catalog': i.itemCatalog,
-           'Type': i.itemType,
-           'Pool': i.itemPool,
-           'Stock Level': i.stockLevel,
-           'Supplier ID': i.supplierId,
-           'Status': i.activeFlag !== false ? 'Active' : 'Archived'
-       }));
+               const data = items.map(i => ({
+            SKU: i.sku,
+            Name: i.name,
+            Description: i.description,
+            Category: i.category,
+            'Sub Category': i.subCategory,
+            'Unit Price': i.unitPrice,
+            UOM: i.uom,
+            'UPQ': i.upq,
+            'Catalog': i.itemCatalog,
+            'Type': i.itemType,
+            'Pool': i.itemPool,
+            'Stock Level': i.stockLevel,
+            'Supplier ID': i.supplierId,
+            'Range': i.rangeName,
+            'Stock Type': i.stockType,
+            'Weight': i.itemWeight,
+            'Color': i.itemColour,
+            'Pattern': i.itemPattern,
+            'Material': i.itemMaterial,
+            'Size': i.itemSize,
+            'Measurements': i.measurements,
+            'RFID': i.rfidFlag ? 'Yes' : 'No',
+            'COG': i.cogFlag ? 'Yes' : 'No',
+            'COG Customer': i.cogCustomer,
+            'Min Level': i.minLevel,
+            'Max Level': i.maxLevel,
+            'Status': i.activeFlag !== false ? 'Active' : 'Archived'
+        }));
        
        const ws = XLSX.utils.json_to_sheet(data);
        const wb = XLSX.utils.book_new();
@@ -216,23 +230,37 @@ const Settings = () => {
                const ws = wb.Sheets[wsname];
                const data = XLSX.utils.sheet_to_json(ws) as any[];
 
-               // Basic mapping
-               const mappedItems: Partial<Item>[] = data.map(row => ({
-                   sku: row['SKU'] || row['sku'],
-                   name: row['Name'] || row['name'],
-                   description: row['Description'] || row['description'],
-                   category: row['Category'] || row['category'],
-                   subCategory: row['Sub Category'] || row['sub_category'],
-                   unitPrice: parseFloat(row['Unit Price'] || row['unit_price'] || '0'),
-                   uom: row['UOM'] || row['uom'],
-                   upq: parseInt(row['UPQ'] || row['upq'] || '1'),
-                   itemCatalog: row['Catalog'] || row['item_catalog'],
-                   itemType: row['Type'] || row['item_type'],
-                   itemPool: row['Pool'] || row['item_pool'],
-                   stockLevel: parseInt(row['Stock Level'] || row['stock_level'] || '0'),
-                   supplierId: row['Supplier ID'] || row['supplier_id'],
-                   // Note: We don't map active_flag from import typically, we assume import = active unless specified logic
-               })).filter(i => i.sku); // Ensure SKU exists
+                               // Comprehensive mapping
+                const mappedItems: Partial<Item>[] = data.map(row => ({
+                    sku: row['SKU'] || row['sku'],
+                    name: row['Name'] || row['name'],
+                    description: row['Description'] || row['description'],
+                    category: row['Category'] || row['category'],
+                    subCategory: row['Sub Category'] || row['sub_category'],
+                    unitPrice: parseFloat(row['Unit Price'] || row['unit_price'] || '0'),
+                    uom: row['UOM'] || row['uom'],
+                    upq: parseInt(row['UPQ'] || row['upq'] || '1'),
+                    itemCatalog: row['Catalog'] || row['item_catalog'],
+                    itemType: row['Type'] || row['item_type'],
+                    itemPool: row['Pool'] || row['item_pool'],
+                    stockLevel: parseInt(row['Stock Level'] || row['stock_level'] || '0'),
+                    supplierId: row['Supplier ID'] || row['supplier_id'],
+                    
+                    // Extended Attributes
+                    rangeName: row['Range'] || row['range_name'],
+                    stockType: row['Stock Type'] || row['stock_type'],
+                    itemWeight: parseFloat(row['Weight'] || row['item_weight'] || '0'),
+                    itemColour: row['Color'] || row['item_colour'] || row['color'],
+                    itemPattern: row['Pattern'] || row['item_pattern'],
+                    itemMaterial: row['Material'] || row['item_material'],
+                    itemSize: row['Size'] || row['item_size'],
+                    measurements: row['Measurements'] || row['measurements'],
+                    rfidFlag: (row['RFID'] || row['rfid_flag']) === 'Yes' || (row['RFID'] || row['rfid_flag']) === true,
+                    cogFlag: (row['COG'] || row['cog_flag']) === 'Yes' || (row['COG'] || row['cog_flag']) === true,
+                    cogCustomer: row['COG Customer'] || row['cog_customer'],
+                    minLevel: parseInt(row['Min Level'] || row['min_level'] || '0'),
+                    maxLevel: parseInt(row['Max Level'] || row['max_level'] || '0'),
+                })).filter(i => i.sku); // Ensure SKU exists
 
                if (mappedItems.length === 0) {
                    alert("No valid items found in file. Ensure 'SKU' column exists.");
@@ -529,7 +557,8 @@ const Settings = () => {
         { id: 'BRANDING', label: 'Branding', icon: Palette },
         { id: 'MENU', label: 'Menu Config', icon: ListFilter },
         { id: 'MIGRATION', label: 'Data Migration', icon: Upload },
-        { id: 'EMAIL', label: 'Email Templates', icon: Mail }
+        { id: 'EMAIL', label: 'Email Templates', icon: Mail },
+        { id: 'AUDIT', label: 'System Audit', icon: History }
   ];
 
   // --- Helper Functions ---
@@ -2581,6 +2610,12 @@ if __name__ == "__main__":
       {activeTab === 'MENU' && (
           <div className="animate-fade-in max-w-4xl">
               <MenuEditor />
+          </div>
+      )}
+
+      {activeTab === 'AUDIT' && (
+          <div className="animate-fade-in max-w-5xl">
+              <AuditLogViewer />
           </div>
       )}
 

@@ -1,0 +1,55 @@
+REPORTING: (dashboards)
+
+Titled & List views
+
+SPEND 
+vs. Depletion
+vs. New
+
+Compare all to Budget
+
+Items- Top Per site
+
+Melbourne (each Site)
+- Budget
+- MTD
+- YTD
+
+Select COG/Brand Standard spend
+ - By Order Date
+ - Spend Tracking
+ - Revenue & Spend
+
+Total Spend (all filter options)
+- Rundown
+- Item
+- QTY
+- $
+
+Supplier:
+- Spend
+- Item breakdown
+
+
+Budget vs. Revenue vs. Actual
+
+
+Default - Supplier select (price based)
+(Add a unit price suggestions option based on supplier select (by item unit price)
+
+
+A.I
+- Track all metrics, suggest better options based on historical spend
+
+
+
+Improvement V2:
+
+Available Inventory - A.I learning on available inventory suggestions
+
+Interstate stock transfer - including stock available (set 30% of value)
+
+- Receipted vs. Released
+- introduce method to inject back into the inventory
+
+

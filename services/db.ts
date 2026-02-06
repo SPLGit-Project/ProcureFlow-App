@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption } from '../types';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 
 export const db = {
@@ -851,7 +851,8 @@ export const db = {
 
     upsertMasterItemsBulk: async (
         inputs: Partial<Item>[], 
-        deactivateMissing: boolean = false
+        deactivateMissing: boolean = false,
+        userId?: string
     ): Promise<{ created: number, updated: number, deactivated: number }> => {
         const [configRes, itemsRes] = await Promise.all([
             db.getItemImportConfig(),
@@ -949,11 +950,25 @@ export const db = {
              }
         }
         
-        return {
+        const result = {
             created: upsertPayload.length - existingItems.length,
             updated: existingItems.length,
             deactivated
         };
+
+        if (userId) {
+            await db.createAuditLog({
+                actionType: 'ITEM_IMPORT',
+                performedBy: userId,
+                summary: result,
+                details: {
+                    inputCount: inputs.length,
+                    deactivateMissingMode: deactivateMissing
+                }
+            });
+        }
+        
+        return result;
     },
 
     addItem: async (item: Item): Promise<void> => {
@@ -1401,5 +1416,38 @@ export const db = {
         }
 
         return { updated: updatedCount };
+    },
+
+    createAuditLog: async (log: Omit<SystemAuditLog, 'id' | 'createdAt'>): Promise<void> => {
+        const { error } = await supabase.from('system_audit_logs').insert({
+            action_type: log.actionType,
+            performed_by: log.performedBy,
+            summary: log.summary,
+            details: log.details
+        });
+        if (error) throw error;
+    },
+
+    getAuditLogs: async (): Promise<SystemAuditLog[]> => {
+        const { data, error } = await supabase
+            .from('system_audit_logs')
+            .select(`
+                *,
+                performer:users(name)
+            `)
+            .order('created_at', { ascending: false })
+            .limit(50);
+            
+        if (error) throw error;
+        
+        return data.map((l: any) => ({
+            id: l.id,
+            actionType: l.action_type,
+            performedBy: l.performed_by,
+            performedByName: l.performer?.name || 'Unknown',
+            summary: l.summary,
+            details: l.details,
+            createdAt: l.created_at
+        }));
     }
 };

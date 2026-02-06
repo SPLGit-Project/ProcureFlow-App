@@ -389,6 +389,7 @@ export interface AppNotification {
 
 export type AttributeType = 'CATEGORY' | 'SUB_CATEGORY' | 'POOL' | 'CATALOG' | 'UOM' | 'TYPE';
 
+
 export interface AttributeOption {
     id: string;
     type: AttributeType;
@@ -399,4 +400,15 @@ export interface AttributeOption {
     createdAt?: string;
     updatedAt?: string;
 }
+
+export interface SystemAuditLog {
+    id: string;
+    actionType: string; // e.g., 'ITEM_IMPORT', 'ITEM_EXPORT'
+    performedBy: string; // User ID
+    performedByName?: string; // Joined User Name
+    summary: any; // JSONB
+    details: any; // JSONB
+    createdAt: string;
+}
+
 
