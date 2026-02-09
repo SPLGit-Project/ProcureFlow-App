@@ -174,6 +174,7 @@ const Settings = () => {
 
    // --- Item Management Improvements ---
    const [showArchived, setShowArchived] = useState(false);
+   const [isImportingItems, setIsImportingItems] = useState(false);
    const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean, title: string, message: string, onConfirm: () => void }>({ 
        isOpen: false, title: '', message: '', onConfirm: () => {} 
    });
@@ -217,80 +218,92 @@ const Settings = () => {
        success('Item list exported successfully');
    };
 
-   const handleImportItems = async (e: React.ChangeEvent<HTMLInputElement>) => {
-       const file = e.target.files?.[0];
-       if (!file) return;
+    const handleImportItems = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
 
-       try {
-           const reader = new FileReader();
-           reader.onload = async (evt) => {
-               const bstr = evt.target?.result;
-               const wb = XLSX.read(bstr, { type: 'binary' });
-               const wsname = wb.SheetNames[0];
-               const ws = wb.Sheets[wsname];
-               const data = XLSX.utils.sheet_to_json(ws) as any[];
+        setIsImportingItems(true);
+        try {
+            const data: any[] = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const bstr = evt.target?.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const wsname = wb.SheetNames[0];
+                        const ws = wb.Sheets[wsname];
+                        resolve(XLSX.utils.sheet_to_json(ws));
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                reader.onerror = (err) => reject(err);
+                reader.readAsBinaryString(file);
+            });
 
-                               // Comprehensive mapping
-                const mappedItems: Partial<Item>[] = data.map(row => ({
-                    sku: row['SKU'] || row['sku'],
-                    name: row['Name'] || row['name'],
-                    description: row['Description'] || row['description'],
-                    category: row['Category'] || row['category'],
-                    subCategory: row['Sub Category'] || row['sub_category'],
-                    unitPrice: parseFloat(row['Unit Price'] || row['unit_price'] || '0'),
-                    uom: row['UOM'] || row['uom'],
-                    upq: parseInt(row['UPQ'] || row['upq'] || '1'),
-                    itemCatalog: row['Catalog'] || row['item_catalog'],
-                    itemType: row['Type'] || row['item_type'],
-                    itemPool: row['Pool'] || row['item_pool'],
-                    stockLevel: parseInt(row['Stock Level'] || row['stock_level'] || '0'),
-                    supplierId: row['Supplier ID'] || row['supplier_id'],
-                    
-                    // Extended Attributes
-                    rangeName: row['Range'] || row['range_name'],
-                    stockType: row['Stock Type'] || row['stock_type'],
-                    itemWeight: parseFloat(row['Weight'] || row['item_weight'] || '0'),
-                    itemColour: row['Color'] || row['item_colour'] || row['color'],
-                    itemPattern: row['Pattern'] || row['item_pattern'],
-                    itemMaterial: row['Material'] || row['item_material'],
-                    itemSize: row['Size'] || row['item_size'],
-                    measurements: row['Measurements'] || row['measurements'],
-                    rfidFlag: (row['RFID'] || row['rfid_flag']) === 'Yes' || (row['RFID'] || row['rfid_flag']) === true,
-                    cogFlag: (row['COG'] || row['cog_flag']) === 'Yes' || (row['COG'] || row['cog_flag']) === true,
-                    cogCustomer: row['COG Customer'] || row['cog_customer'],
-                    minLevel: parseInt(row['Min Level'] || row['min_level'] || '0'),
-                    maxLevel: parseInt(row['Max Level'] || row['max_level'] || '0'),
-                })).filter(i => i.sku); // Ensure SKU exists
-
-               if (mappedItems.length === 0) {
-                   alert("No valid items found in file. Ensure 'SKU' column exists.");
-                   return;
-               }
-
-               const shouldArchiveMissing = window.confirm(
-                   `Found ${mappedItems.length} items to import.\n\nDo you want to ARCHIVE items that are NOT in this list?\n\nClick OK to Archive missing items (Replica Mode).\nClick Cancel to Update/Add only (Merge Mode).`
-               );
-
-                const result = await upsertProductMaster(mappedItems, shouldArchiveMissing);
+            // Comprehensive mapping
+            const mappedItems: Partial<Item>[] = data.map(row => ({
+                sku: row['SKU'] || row['sku'],
+                name: row['Name'] || row['name'],
+                description: row['Description'] || row['description'],
+                category: row['Category'] || row['category'],
+                subCategory: row['Sub Category'] || row['sub_category'],
+                unitPrice: parseFloat(row['Unit Price'] || row['unit_price'] || '0'),
+                uom: row['UOM'] || row['uom'],
+                upq: parseInt(row['UPQ'] || row['upq'] || '1'),
+                itemCatalog: row['Catalog'] || row['item_catalog'],
+                itemType: row['Type'] || row['item_type'],
+                itemPool: row['Pool'] || row['item_pool'],
+                stockLevel: parseInt(row['Stock Level'] || row['stock_level'] || '0'),
+                supplierId: row['Supplier ID'] || row['supplier_id'],
                 
-                // Show actual results from database operation
-                success(
-                    `Import complete: ${result.created || 0} created, ${result.updated || 0} updated, ${result.skipped || 0} skipped.`
-                );
+                // Extended Attributes
+                rangeName: row['Range'] || row['range_name'],
+                stockType: row['Stock Type'] || row['stock_type'],
+                itemWeight: parseFloat(row['Weight'] || row['item_weight'] || '0'),
+                itemColour: row['Color'] || row['item_colour'] || row['color'],
+                itemPattern: row['Pattern'] || row['item_pattern'],
+                itemMaterial: row['Material'] || row['item_material'],
+                itemSize: row['Size'] || row['item_size'],
+                measurements: row['Measurements'] || row['measurements'],
+                rfidFlag: (row['RFID'] || row['rfid_flag'])?.toString().toLowerCase() === 'yes' || (row['RFID'] || row['rfid_flag']) === true,
+                cogFlag: (row['COG'] || row['cog_flag'])?.toString().toLowerCase() === 'yes' || (row['COG'] || row['cog_flag']) === true,
+                cogCustomer: row['COG Customer'] || row['cog_customer'],
+                minLevel: parseInt(row['Min Level'] || row['min_level'] || '0'),
+                maxLevel: parseInt(row['Max Level'] || row['max_level'] || '0'),
+            })).filter(i => i.sku); // Ensure SKU exists
 
-                if (shouldArchiveMissing && result.deactivated) {
-                    warning(`${result.deactivated} items have been archived.`);
-                }
-                
-                if (itemImportInputRef.current) itemImportInputRef.current.value = '';
-           };
-           reader.readAsBinaryString(file);
-       } catch (error: any) {
-           console.error(error);
-           alert('Failed to process import file: ' + error.message);
-           if (itemImportInputRef.current) itemImportInputRef.current.value = '';
-       }
-   };
+            if (mappedItems.length === 0) {
+                alert("No valid items found in file. Ensure 'SKU' column exists.");
+                return;
+            }
+
+            const shouldArchiveMissing = window.confirm(
+                `Found ${mappedItems.length} items to import.\n\nDo you want to ARCHIVE items that are NOT in this list?\n\nClick OK to Archive missing items (Replica Mode).\nClick Cancel to Update/Add only (Merge Mode).`
+            );
+
+            const result = await upsertProductMaster(mappedItems, shouldArchiveMissing);
+            
+            // Success Notification
+            success(
+                `Import complete: ${result.created || 0} created, ${result.updated || 0} updated, ${result.skipped || 0} skipped.`
+            );
+
+            if (shouldArchiveMissing && result.deactivated) {
+                warning(`${result.deactivated} items have been archived.`);
+            }
+            
+            // Explicitly reload data to refresh UI
+            await reloadData(true);
+            
+        } catch (error: any) {
+            console.error("Import failed:", error);
+            alert('Failed to process import file: ' + (error.message || 'Unknown error'));
+        } finally {
+            setIsImportingItems(false);
+            if (itemImportInputRef.current) itemImportInputRef.current.value = '';
+        }
+    };
 
    const requestDelete = (item: Item) => {
        setConfirmDialog({
@@ -1209,11 +1222,28 @@ if __name__ == "__main__":
                            <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded text-gray-500 focus:ring-gray-400"/>
                            Show Archived
                         </label>
-                        <button onClick={handleExportItems} className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700" title="Export to Excel">
-                            <Download size={16}/>
+                        <button 
+                            onClick={async () => {
+                                setIsImportingItems(true);
+                                try {
+                                    await reloadData(true);
+                                    success('Item list refreshed');
+                                } finally {
+                                    setIsImportingItems(false);
+                                }
+                            }} 
+                            className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 
+                            title="Refresh List"
+                        >
+                            <RefreshCw size={16} className={isImportingItems ? 'animate-spin' : ''}/>
                         </button>
-                        <button onClick={() => itemImportInputRef.current?.click()} className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700" title="Import from Excel">
-                            <Upload size={16}/>
+                        <button 
+                            onClick={() => itemImportInputRef.current?.click()} 
+                            disabled={isImportingItems}
+                            className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 
+                            title="Import from Excel"
+                        >
+                            {isImportingItems ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16}/>}
                         </button>
                         <input type="file" ref={itemImportInputRef} onChange={handleImportItems} className="hidden" accept=".xlsx,.xls,.csv" />
                         <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1"></div>
@@ -1284,7 +1314,20 @@ if __name__ == "__main__":
             </div>
 
             {/* Table Area - Scrollable */}
-            <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow border border-gray-200 dark:border-gray-800 flex-1 overflow-hidden flex flex-col">
+            <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow border border-gray-200 dark:border-gray-800 flex-1 overflow-hidden flex flex-col relative">
+                
+                {/* Loading Overlay */}
+                {isImportingItems && (
+                    <div className="absolute inset-0 bg-white/60 dark:bg-[#1e2029]/60 backdrop-blur-[2px] z-50 flex flex-col items-center justify-center animate-fade-in">
+                        <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 flex flex-col items-center gap-4">
+                            <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+                            <div className="text-center">
+                                <p className="font-bold text-gray-900 dark:text-white">Processing Master Items</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Updating database and refreshing UI, please wait...</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 <div className="overflow-auto flex-1 max-h-[calc(100vh-220px)] scrollbar-thin">
                     <table className="w-full text-left border-collapse relative">
                         <thead className="sticky top-0 z-30 bg-gray-50 dark:bg-[#1e2029] shadow-sm">
