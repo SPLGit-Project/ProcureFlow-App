@@ -195,7 +195,10 @@ BEGIN
         CREATE POLICY "Allow all public access" ON roles FOR ALL USING (true) WITH CHECK (true);
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can view their own profile' AND tablename = 'users') THEN
-        CREATE POLICY "Users can view their own profile" ON users FOR SELECT USING (auth.uid() = id);
+        CREATE POLICY "Users can view their own profile" ON users FOR SELECT USING (
+            (auth.uid() = id) OR 
+            (email = (auth.jwt() ->> 'email'))
+        );
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Admins can view and edit all users' AND tablename = 'users') THEN
         CREATE POLICY "Admins can view and edit all users" ON users FOR ALL USING (

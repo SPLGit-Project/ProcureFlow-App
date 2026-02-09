@@ -856,7 +856,7 @@ export const db = {
         inputs: Partial<Item>[], 
         deactivateMissing: boolean = false,
         userId?: string
-    ): Promise<{ created: number, updated: number, deactivated: number }> => {
+    ): Promise<{ created: number, updated: number, deactivated: number, skipped: number }> => {
         const [configRes, itemsRes] = await Promise.all([
             db.getItemImportConfig(),
             supabase.from('items').select('*')
@@ -868,15 +868,22 @@ export const db = {
         
         const timestamp = new Date().toISOString();
         const upsertPayload: any[] = [];
+        let skipped = 0;
         const processedNorms = new Set<string>();
         const fieldKeys = new Set<string>();
         
         for (const input of inputs) {
             Object.keys(input).forEach(k => fieldKeys.add(k));
 
-            if (!input.sku) continue; 
+            if (!input.sku) {
+                skipped++;
+                continue; 
+            }
             const norm = normalizeItemCode(input.sku);
-            if (!norm.normalized) continue;
+            if (!norm.normalized) {
+                skipped++;
+                continue;
+            }
             
             processedNorms.add(norm.normalized);
             const existing = existingMap.get(norm.normalized);
@@ -956,7 +963,8 @@ export const db = {
         const result = {
             created: upsertPayload.length - existingItems.length,
             updated: existingItems.length,
-            deactivated
+            deactivated,
+            skipped
         };
 
         if (userId) {

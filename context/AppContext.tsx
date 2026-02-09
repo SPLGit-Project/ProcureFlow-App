@@ -26,7 +26,6 @@ const getInitialSiteIds = (): string[] => {
 
 interface AppContextType {
   currentUser: User | null;
-  originalUser: User | null; // For impersonation
   isAuthenticated: boolean;
   activeSiteIds: string[]; // Multi-site context
   setActiveSiteIds: (ids: string[]) => void;
@@ -43,8 +42,6 @@ interface AppContextType {
   updateUserAccess: (userId: string, role: UserRole, siteIds: string[]) => Promise<void>;
   addUser: (user: User, shouldSendInvite?: boolean) => Promise<void>;
   archiveUser: (userId: string) => Promise<void>;
-  impersonateUser: (user: User) => void;
-  stopImpersonation: () => void;
   permissions: Permission[];
   hasPermission: (permissionId: PermissionId) => boolean;
   createRole: (role: RoleDefinition) => void;
@@ -152,24 +149,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [users, setUsers] = useState<User[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-        // If we were impersonating (original user exists), restore the IMPERSONATED user as current
-        if (sessionStorage.getItem('procureflow_original_user')) {
-            const stored = sessionStorage.getItem('procureflow_impersonated_user');
-            return stored ? JSON.parse(stored) : null;
-        }
-        return null;
-    } catch { return null; }
-  });
-  const [originalUser, setOriginalUser] = useState<User | null>(() => {
-    try {
-        const stored = sessionStorage.getItem('procureflow_original_user');
-        return stored ? JSON.parse(stored) : null;
-    } catch (e) {
-        return null;
-    }
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   // Updated Multi-Site State
@@ -181,23 +161,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
   
-  // --- Persist Impersonation State ---
-  const originalUserRef = useRef<User | null>(originalUser);
 
-  // --- Persist Impersonation State ---
-  useEffect(() => {
-    originalUserRef.current = originalUser;
-    
-    if (originalUser) {
-        sessionStorage.setItem('procureflow_original_user', JSON.stringify(originalUser));
-        if (currentUser) {
-            sessionStorage.setItem('procureflow_impersonated_user', JSON.stringify(currentUser));
-        }
-    } else {
-        sessionStorage.removeItem('procureflow_original_user');
-        sessionStorage.removeItem('procureflow_impersonated_user');
-    }
-  }, [originalUser, currentUser]);
   
   // Auth Config is now managed in the backend (env vars/Azure)
 
@@ -571,13 +535,27 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
 
             // 3. Fetch user from our DB
+            // We prioritize email lookup to handle pre-invited users who have a placeholder UUID 
+            // that doesn't yet match their Azure AD auth.uid().
+            console.log("Auth: Querying database for user record...");
             let { data: rawData, error } = await supabase
                 .from('users')
                 .select('*')
-                .eq('id', session.user.id)
-                .single();
+                .ilike('email', email) // Use case-insensitive email lookup
+                .maybeSingle(); // maybeSingle returns null if not found instead of raising PGRST116
 
-            if (error && error.code !== 'PGRST116') {
+            if (!rawData && !error) {
+                // If not found by email, attempt lookup by ID (standard returning users)
+                const idResult = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', session.user.id)
+                    .maybeSingle();
+                rawData = idResult.data;
+                error = idResult.error;
+            }
+
+            if (error) {
                 console.error("Auth: Error fetching user from DB:", error);
                 throw error;
             }
@@ -740,13 +718,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             if (mounted) {
                 console.log("Auth: Successfully authenticated user:", userData.email, "Status:", userData.status);
                 
-                // If impersonating, verify backend auth but DO NOT switch currentUser context
-                if (originalUserRef.current) {
-                     console.log("Auth: Impersonation active. Background auth verified. Refreshing original user data.");
-                     setOriginalUser(userData);
-                } else {
-                     setCurrentUser(userData);
-                }
+                setCurrentUser(userData);
                 setIsAuthenticated(true);
                 setIsPendingApproval(userData.status !== 'APPROVED');
                 
@@ -1886,30 +1858,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
     };
 
-  // --- Impersonation ---
-  const impersonateUser = (targetUser: User) => {
-        if (!currentUser) return;
-        console.log(`Impersonation: Switching view to ${targetUser.name} (${targetUser.role})`);
-        setOriginalUser(currentUser);
-        setCurrentUser(targetUser);
-        // Force reload active site if needed
-        if (targetUser.role !== 'ADMIN' && targetUser.siteIds.length > 0) {
-            setActiveSiteIds([targetUser.siteIds[0]]);
-        }
-  };
 
-  const stopImpersonation = () => {
-        if (!originalUser) return;
-        console.log("Impersonation: Returning to admin view");
-        setCurrentUser(originalUser);
-        setOriginalUser(null);
-        setActiveSiteIds([]); // Reset to default state
-  };
 
   // --- Context Value Memoization ---
   const contextValue = React.useMemo(() => ({
-    currentUser, originalUser, isAuthenticated, activeSiteIds, setActiveSiteIds, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
-    users, updateUserRole, updateUserAccess, addUser, archiveUser, reloadData, impersonateUser, stopImpersonation,
+    currentUser, isAuthenticated, activeSiteIds, setActiveSiteIds, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
+    users, updateUserRole, updateUserAccess, addUser, archiveUser, reloadData,
     roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
     teamsWebhookUrl, updateTeamsWebhook,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
@@ -1981,7 +1935,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     },
     sendNotification
   }), [
-    currentUser, originalUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
+    currentUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,

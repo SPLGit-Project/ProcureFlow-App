@@ -32,31 +32,31 @@ import { HierarchyManager } from '../utils/hierarchyManager';
 import { seedCatalogData } from '../utils/catalogSeeder';
 
 
-const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, category: 'Page Access' | 'Functional Access' | 'Admin Access' }[] = [
-    // Page Access
-    { id: 'view_dashboard', label: 'Dashboard', description: 'Access dashboard overview', category: 'Page Access' },
-    { id: 'view_items', label: 'Items Tab', description: 'View master item list', category: 'Page Access' },
-    { id: 'view_stock', label: 'Stock Tab', description: 'View stock levels', category: 'Page Access' },
-    { id: 'view_mapping', label: 'Mapping Tab', description: 'View product mappings', category: 'Page Access' },
-    { id: 'view_suppliers', label: 'Suppliers Tab', description: 'View supplier list', category: 'Page Access' },
-    { id: 'view_sites', label: 'Sites Tab', description: 'View site list', category: 'Page Access' },
-    { id: 'view_workflow', label: 'Workflow Tab', description: 'View approval workflows', category: 'Page Access' },
-    { id: 'view_security', label: 'Security Tab', description: 'View users and roles', category: 'Page Access' },
-    { id: 'view_notifications', label: 'Notifications Tab', description: 'View notification settings', category: 'Page Access' },
-    { id: 'view_branding', label: 'Branding Tab', description: 'View branding settings', category: 'Page Access' },
+const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, category: 'Module Access' | 'Operational Capabilities' | 'Administrative Capabilities' }[] = [
+    // Module Access (formerly Page Access)
+    { id: 'view_dashboard', label: 'Dashboard', description: 'Access dashboard overview', category: 'Module Access' },
+    { id: 'view_items', label: 'Items Tab', description: 'View master item list', category: 'Module Access' },
+    { id: 'view_stock', label: 'Stock Tab', description: 'View stock levels', category: 'Module Access' },
+    { id: 'view_mapping', label: 'Mapping Tab', description: 'View product mappings', category: 'Module Access' },
+    { id: 'view_suppliers', label: 'Suppliers Tab', description: 'View supplier list', category: 'Module Access' },
+    { id: 'view_sites', label: 'Sites Tab', description: 'View site list', category: 'Module Access' },
+    { id: 'view_workflow', label: 'Workflow Tab', description: 'View approval workflows', category: 'Module Access' },
+    { id: 'view_security', label: 'Security Tab', description: 'View users and roles', category: 'Module Access' },
+    { id: 'view_notifications', label: 'Notifications Tab', description: 'View notification settings', category: 'Module Access' },
+    { id: 'view_branding', label: 'Branding Tab', description: 'View branding settings', category: 'Module Access' },
 
-    // Functional Access
-    { id: 'create_request', label: 'Create POs', description: 'Create new purchase orders', category: 'Functional Access' },
-    { id: 'view_all_requests', label: 'View All POs', description: 'View POs from all sites/users', category: 'Functional Access' },
-    { id: 'approve_requests', label: 'Approve POs', description: 'Approve purchase orders', category: 'Functional Access' },
-    { id: 'link_concur', label: 'Link Concur', description: 'Link POs to Concur', category: 'Functional Access' },
-    { id: 'receive_goods', label: 'Receive Goods', description: 'Mark items as received', category: 'Functional Access' },
+    // Operational Capabilities (formerly Functional Access)
+    { id: 'create_request', label: 'Create POs', description: 'Create new purchase orders', category: 'Operational Capabilities' },
+    { id: 'view_all_requests', label: 'View All POs', description: 'View POs from all sites/users', category: 'Operational Capabilities' },
+    { id: 'approve_requests', label: 'Approve POs', description: 'Approve purchase orders', category: 'Operational Capabilities' },
+    { id: 'link_concur', label: 'Link Concur', description: 'Link POs to Concur', category: 'Operational Capabilities' },
+    { id: 'receive_goods', label: 'Receive Goods', description: 'Mark items as received', category: 'Operational Capabilities' },
     
-    // Admin Access
-    { id: 'manage_finance', label: 'Finance Management', description: 'Edit finance codes', category: 'Admin Access' },
-    { id: 'manage_settings', label: 'System Settings', description: 'Manage system config', category: 'Admin Access' },
-    { id: 'manage_items', label: 'Manage Items', description: 'Create/Edit/Delete Items', category: 'Admin Access' },
-    { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Admin Access' }
+    // Administrative Capabilities (formerly Admin Access)
+    { id: 'manage_finance', label: 'Finance Management', description: 'Edit finance codes', category: 'Administrative Capabilities' },
+    { id: 'manage_settings', label: 'System Settings', description: 'Manage system config', category: 'Administrative Capabilities' },
+    { id: 'manage_items', label: 'Manage Items', description: 'Create/Edit/Delete Items', category: 'Administrative Capabilities' },
+    { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Administrative Capabilities' }
 ];
 
 type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT';
@@ -75,7 +75,7 @@ const Settings = () => {
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping, deleteMapping, getMappingMemory, syncItemsFromSnapshots,
     // New Admin Caps
-    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, impersonateUser, archiveUser, searchDirectory,
+    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, archiveUser, searchDirectory,
     archiveItem, getAuditLogs,
     // Catalog Management
     attributeOptions, upsertAttributeOption, deleteAttributeOption
@@ -271,11 +271,18 @@ const Settings = () => {
                    `Found ${mappedItems.length} items to import.\n\nDo you want to ARCHIVE items that are NOT in this list?\n\nClick OK to Archive missing items (Replica Mode).\nClick Cancel to Update/Add only (Merge Mode).`
                );
 
-               await upsertProductMaster(mappedItems, shouldArchiveMissing);
-               success(`Successfully processed ${mappedItems.length} items.`);
-               if (shouldArchiveMissing) warning("Missing items have been archived.");
-               
-               if (itemImportInputRef.current) itemImportInputRef.current.value = '';
+                const result = await upsertProductMaster(mappedItems, shouldArchiveMissing);
+                
+                // Show actual results from database operation
+                success(
+                    `Import complete: ${result.created || 0} created, ${result.updated || 0} updated, ${result.skipped || 0} skipped.`
+                );
+
+                if (shouldArchiveMissing && result.deactivated) {
+                    warning(`${result.deactivated} items have been archived.`);
+                }
+                
+                if (itemImportInputRef.current) itemImportInputRef.current.value = '';
            };
            reader.readAsBinaryString(file);
        } catch (error: any) {
@@ -2827,13 +2834,7 @@ if __name__ == "__main__":
                                                                 )}
                                                             </button>
                                                         )}
-                                                        <button 
-                                                            onClick={() => impersonateUser(user.id)}
-                                                            className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
-                                                            title="View As"
-                                                        >
-                                                            <Eye size={16}/>
-                                                        </button>
+
                                                       </div>
                                                   )}
                                                   <button 
@@ -2962,41 +2963,62 @@ if __name__ == "__main__":
                                               </div>
                                               <div className="p-6">
                                                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                                      {['Page Access', 'Functional Access', 'Admin Access'].map((category) => {
-                                                          const categoryPerms = AVAILABLE_PERMISSIONS.filter(p => p.category === category);
-                                                          return (
-                                                              <div key={category} className="space-y-3">
-                                                                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">{category}</div>
-                                                                  <div className="bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl divide-y divide-gray-50 dark:divide-gray-800/50">
-                                                                      {categoryPerms.map(perm => {
-                                                                          const isEnabled = activeRole.permissions.includes(perm.id);
-                                                                          return (
-                                                                              <div key={perm.id} className="p-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                                                                                  <div className="flex-1">
-                                                                                      <div className="font-bold text-xs text-gray-900 dark:text-white leading-tight">{perm.label}</div>
-                                                                                      <div className="text-[10px] text-gray-400 mt-0.5">{perm.description}</div>
-                                                                                  </div>
-                                                                                  <button 
-                                                                                      disabled={activeRole.id === 'ADMIN' && perm.id === 'manage_settings'} 
-                                                                                      onClick={() => {
-                                                                                          const newPerms = isEnabled 
-                                                                                              ? activeRole.permissions.filter(p => p !== perm.id)
-                                                                                              : [...activeRole.permissions, perm.id];
-                                                                                          const updatedRole = { ...activeRole, permissions: newPerms };
-                                                                                          updateRole(updatedRole);
-                                                                                          setActiveRole(updatedRole);
-                                                                                      }}
-                                                                                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 ${isEnabled ? 'bg-[var(--color-brand)]' : 'bg-gray-200 dark:bg-gray-700'}`}
-                                                                                  >
-                                                                                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isEnabled ? 'translate-x-[1.25rem]' : 'translate-x-[0.25rem]'}`} />
-                                                                                  </button>
-                                                                              </div>
-                                                                          );
-                                                                      })}
-                                                                  </div>
-                                                              </div>
-                                                          );
-                                                      })}
+                                                       {['Module Access', 'Operational Capabilities', 'Administrative Capabilities'].map((category) => {
+                                                           const categoryPerms = AVAILABLE_PERMISSIONS.filter(p => p.category === category);
+                                                           const allCategoryIds = categoryPerms.map(p => p.id);
+                                                           const isAllSelected = allCategoryIds.every(id => activeRole.permissions.includes(id));
+                                                           
+                                                           return (
+                                                               <div key={category} className="space-y-3">
+                                                                   <div className="flex items-center justify-between pl-1">
+                                                                       <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{category}</div>
+                                                                       <button 
+                                                                           onClick={() => {
+                                                                               let newPerms: PermissionId[];
+                                                                               if (isAllSelected) {
+                                                                                   newPerms = activeRole.permissions.filter(p => !allCategoryIds.includes(p));
+                                                                               } else {
+                                                                                   newPerms = Array.from(new Set([...activeRole.permissions, ...allCategoryIds]));
+                                                                               }
+                                                                               const updatedRole = { ...activeRole, permissions: newPerms };
+                                                                               updateRole(updatedRole);
+                                                                               setActiveRole(updatedRole);
+                                                                           }}
+                                                                           className="text-[9px] font-bold text-[var(--color-brand)] hover:underline uppercase tracking-tighter"
+                                                                       >
+                                                                           {isAllSelected ? 'Deselect All' : 'Select All'}
+                                                                       </button>
+                                                                   </div>
+                                                                   <div className="bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl divide-y divide-gray-50 dark:divide-gray-800/50">
+                                                                       {categoryPerms.map(perm => {
+                                                                           const isEnabled = activeRole.permissions.includes(perm.id);
+                                                                           return (
+                                                                               <div key={perm.id} className="p-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                                                                   <div className="flex-1">
+                                                                                       <div className="font-bold text-xs text-gray-900 dark:text-white leading-tight">{perm.label}</div>
+                                                                                       <div className="text-[10px] text-gray-400 mt-0.5">{perm.description}</div>
+                                                                                   </div>
+                                                                                   <button 
+                                                                                       disabled={activeRole.id === 'ADMIN' && perm.id === 'manage_settings'} 
+                                                                                       onClick={() => {
+                                                                                           const newPerms = isEnabled 
+                                                                                               ? activeRole.permissions.filter(p => p !== perm.id)
+                                                                                               : [...activeRole.permissions, perm.id];
+                                                                                           const updatedRole = { ...activeRole, permissions: newPerms };
+                                                                                           updateRole(updatedRole);
+                                                                                           setActiveRole(updatedRole);
+                                                                                       }}
+                                                                                       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 ${isEnabled ? 'bg-[var(--color-brand)]' : 'bg-gray-200 dark:bg-gray-700'}`}
+                                                                                   >
+                                                                                       <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isEnabled ? 'translate-x-[1.25rem]' : 'translate-x-[0.25rem]'}`} />
+                                                                                   </button>
+                                                                               </div>
+                                                                           );
+                                                                       })}
+                                                                   </div>
+                                                               </div>
+                                                           );
+                                                       })}
                                                   </div>
                                               </div>
                                           </div>
