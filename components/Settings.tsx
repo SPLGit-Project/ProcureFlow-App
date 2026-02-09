@@ -1238,6 +1238,14 @@ if __name__ == "__main__":
                             <RefreshCw size={16} className={isImportingItems ? 'animate-spin' : ''}/>
                         </button>
                         <button 
+                            onClick={handleExportItems}
+                            disabled={isImportingItems}
+                            className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 
+                            title="Export Master List"
+                        >
+                            <Download size={16}/>
+                        </button>
+                        <button 
                             onClick={() => itemImportInputRef.current?.click()} 
                             disabled={isImportingItems}
                             className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 

@@ -924,6 +924,7 @@ export const db = {
                 });
             } else {
                 upsertPayload.push({
+                    id: crypto.randomUUID(),
                     ...commonFields,
                     created_at: timestamp
                 });
