@@ -2016,7 +2016,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             return [];
         }
     },
-    sendNotification
+    sendNotification,
+    deletePO
   }), [
     currentUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
