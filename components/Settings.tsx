@@ -35,18 +35,19 @@ import { seedCatalogData } from '../utils/catalogSeeder';
 const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, category: 'Module Access' | 'Operational Capabilities' | 'Administrative Capabilities' }[] = [
     // Module Access (formerly Page Access)
     { id: 'view_dashboard', label: 'Dashboard', description: 'Access dashboard overview', category: 'Module Access' },
-    { id: 'view_items', label: 'Items Tab', description: 'View master item list', category: 'Module Access' },
-    { id: 'view_stock', label: 'Stock Tab', description: 'View stock levels', category: 'Module Access' },
-    { id: 'view_mapping', label: 'Mapping Tab', description: 'View product mappings', category: 'Module Access' },
-    { id: 'view_suppliers', label: 'Suppliers Tab', description: 'View supplier list', category: 'Module Access' },
-    { id: 'view_sites', label: 'Sites Tab', description: 'View site list', category: 'Module Access' },
-    { id: 'view_workflow', label: 'Workflow Tab', description: 'View approval workflows', category: 'Module Access' },
-    { id: 'view_security', label: 'Security Tab', description: 'View users and roles', category: 'Module Access' },
-    { id: 'view_notifications', label: 'Notifications Tab', description: 'View notification settings', category: 'Module Access' },
-    { id: 'view_branding', label: 'Branding Tab', description: 'View branding settings', category: 'Module Access' },
+    { id: 'view_items', label: 'Items', description: 'View master item list', category: 'Module Access' },
+    { id: 'view_stock', label: 'Stock', description: 'View stock levels', category: 'Module Access' },
+    { id: 'view_mapping', label: 'Product Mapping', description: 'View product mappings', category: 'Module Access' },
+    { id: 'view_suppliers', label: 'Suppliers', description: 'View supplier list', category: 'Module Access' },
+    { id: 'view_sites', label: 'Sites', description: 'View site list', category: 'Module Access' },
+    { id: 'view_workflow', label: 'Workflow Designer', description: 'View approval workflows', category: 'Module Access' },
+    { id: 'view_security', label: 'Security & Roles', description: 'View users and roles', category: 'Module Access' },
+    { id: 'view_notifications', label: 'Notifications', description: 'View notification settings', category: 'Module Access' },
+    { id: 'view_branding', label: 'Branding', description: 'View branding settings', category: 'Module Access' },
+    { id: 'view_finance', label: 'Finance Review', description: 'Access finance review and cost coding', category: 'Module Access' },
 
     // Operational Capabilities (formerly Functional Access)
-    { id: 'create_request', label: 'Create POs', description: 'Create new purchase orders', category: 'Operational Capabilities' },
+    { id: 'create_request', label: 'Create Request', description: 'Create new purchase orders', category: 'Operational Capabilities' },
     { id: 'view_all_requests', label: 'View All POs', description: 'View POs from all sites/users', category: 'Operational Capabilities' },
     { id: 'approve_requests', label: 'Approve POs', description: 'Approve purchase orders', category: 'Operational Capabilities' },
     { id: 'link_concur', label: 'Link Concur', description: 'Link POs to Concur', category: 'Operational Capabilities' },
@@ -153,13 +154,15 @@ const Settings = () => {
     }
   }, [location.state]);
   
-  // --- Security: Strict Role Checks ---
+  // --- Security: Permission-based Guard ---
   useEffect(() => {
-      const restrictedTabs: AdminTab[] = ['USERS', 'SECURITY', 'WORKFLOW', 'BRANDING', 'NOTIFICATIONS', 'MIGRATION', 'EMAIL'];
-      if (currentUser?.role !== 'ADMIN' && restrictedTabs.includes(activeTab)) {
+      if (activeTab === 'PROFILE') return;
+      
+      const tabConfig = allTabs.find(t => t.id === activeTab);
+      if (tabConfig?.permission && !hasPermission(tabConfig.permission)) {
           setActiveTab('PROFILE');
       }
-  }, [currentUser, activeTab]);
+  }, [currentUser, activeTab, hasPermission]);
 
   // --- Email Templates State ---
   const [emailSubject, setEmailSubject] = useState(branding.emailTemplate?.subject || `Welcome to ${branding.appName}`);
@@ -574,22 +577,22 @@ const Settings = () => {
       return matchesSupplier && matchesFrom && matchesTo && matchesStatus;
   }).sort((a,b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime());
 
-  const allTabs = [
-      { id: 'ITEMS', icon: Box, label: 'Items' },
-      { id: 'CATALOG', icon: BookOpen, label: 'Catalog' },
-      { id: 'STOCK', icon: Database, label: 'Stock' },
-        { id: 'MAPPING', label: 'Mapping', icon: GitMerge },
-        { id: 'SUPPLIERS', label: 'Suppliers', icon: Truck },
-        { id: 'SITES', label: 'Sites', icon: MapPin },
-        { id: 'WORKFLOW', label: 'Workflow', icon: GitMerge },
-        { id: 'USERS', label: 'User Directory', icon: User },
-        { id: 'SECURITY', label: 'Security Roles', icon: Shield },
-        { id: 'NOTIFICATIONS', label: 'Notifications', icon: Bell },
-        { id: 'BRANDING', label: 'Branding', icon: Palette },
-        { id: 'MENU', label: 'Menu Config', icon: ListFilter },
-        { id: 'MIGRATION', label: 'Data Migration', icon: Upload },
-        { id: 'EMAIL', label: 'Email Templates', icon: Mail },
-        { id: 'AUDIT', label: 'System Audit', icon: History }
+  const allTabs: { id: AdminTab, icon: any, label: string, permission?: PermissionId }[] = [
+      { id: 'ITEMS', icon: Box, label: 'Items', permission: 'view_items' },
+      { id: 'CATALOG', icon: BookOpen, label: 'Catalog', permission: 'view_items' },
+      { id: 'STOCK', icon: Database, label: 'Stock', permission: 'view_stock' },
+      { id: 'MAPPING', label: 'Mapping', icon: GitMerge, permission: 'view_mapping' },
+      { id: 'SUPPLIERS', label: 'Suppliers', icon: Truck, permission: 'view_suppliers' },
+      { id: 'SITES', label: 'Sites', icon: MapPin, permission: 'view_sites' },
+      { id: 'WORKFLOW', label: 'Workflow', icon: GitMerge, permission: 'view_workflow' },
+      { id: 'USERS', label: 'User Directory', icon: User, permission: 'view_security' },
+      { id: 'SECURITY', label: 'Security Roles', icon: Shield, permission: 'view_security' },
+      { id: 'NOTIFICATIONS', label: 'Notifications', icon: Bell, permission: 'view_notifications' },
+      { id: 'BRANDING', label: 'Branding', icon: Palette, permission: 'view_branding' },
+      { id: 'MENU', label: 'Menu Config', icon: ListFilter, permission: 'manage_settings' },
+      { id: 'MIGRATION', label: 'Data Migration', icon: Upload, permission: 'manage_settings' },
+      { id: 'EMAIL', label: 'Email Templates', icon: Mail, permission: 'manage_settings' },
+      { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'manage_settings' }
   ];
 
   // --- Helper Functions ---
@@ -1091,7 +1094,7 @@ if __name__ == "__main__":
                 <User size={16} />
                 My Profile
             </button>
-             {allTabs.filter(tab => currentUser?.role === 'ADMIN' || !['SECURITY', 'WORKFLOW', 'BRANDING', 'MENU', 'NOTIFICATIONS', 'MIGRATION', 'EMAIL'].includes(tab.id as any)).map(tab => (
+             {allTabs.filter(tab => !tab.permission || hasPermission(tab.permission)).map(tab => (
                  <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
