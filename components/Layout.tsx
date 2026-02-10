@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
   LayoutDashboard, 
@@ -37,7 +37,25 @@ const Layout = () => {
   const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteIds, setActiveSiteIds, sites, userSites, siteName } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isProfileExpanded, setIsProfileExpanded] = React.useState(false);
+  const profileRef = React.useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Auto-collapse profile on route change
+  React.useEffect(() => {
+    setIsProfileExpanded(false);
+  }, [location.pathname]);
+
+  // Auto-collapse profile on click outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (isProfileExpanded && profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setIsProfileExpanded(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isProfileExpanded]);
 
   // Admin Role Switcher (Mock for testing permissions)
   const isActualAdmin = currentUser?.role === 'ADMIN'; // Real check would be against the DB record
@@ -163,7 +181,7 @@ const Layout = () => {
         </nav>
 
         {/* User Profile */}
-        <div className="mx-4 mb-4">
+        <div className="mx-4 mb-4" ref={profileRef}>
           <div 
             onClick={() => setIsProfileExpanded(!isProfileExpanded)}
             className={`p-3 rounded-xl border transition-all cursor-pointer group select-none ${
@@ -196,7 +214,7 @@ const Layout = () => {
           <div className={`space-y-3 overflow-hidden transition-all duration-300 ease-in-out ${isProfileExpanded ? 'max-h-96 opacity-100 mt-3 pl-2' : 'max-h-0 opacity-0 mt-0'}`}>
                {/* Quick Profile Link */}
                <button 
-                  onClick={() => navigate('/settings', { state: { activeTab: 'PROFILE' } })}
+                  onClick={() => { setIsProfileExpanded(false); navigate('/settings', { state: { activeTab: 'PROFILE' } }); }}
                   className={`w-full flex items-center gap-3 text-xs font-bold px-3 py-2 rounded-lg transition-colors ${
                       ['brand', 'dark'].includes(branding.sidebarTheme || '') 
                       ? 'text-white/70 hover:text-white hover:bg-white/10' 
@@ -229,7 +247,7 @@ const Layout = () => {
                )}
                
                <button 
-                  onClick={logout}
+                  onClick={() => { setIsProfileExpanded(false); logout(); }}
                   className={`w-full flex items-center justify-center gap-2 rounded-lg text-xs p-2.5 font-bold transition-all ${
                       ['brand', 'dark'].includes(branding.sidebarTheme || '') 
                       ? 'bg-white/10 text-white hover:bg-white/20 shadow-sm' 
