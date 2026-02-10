@@ -74,6 +74,7 @@ function App() {
             <Route path="requests" element={<Suspense fallback={<LoadingSpinner />}><POList filter="ALL" /></Suspense>} />
             <Route path="approvals" element={<Suspense fallback={<LoadingSpinner />}><POList filter="PENDING" /></Suspense>} />
             <Route path="active-requests" element={<Suspense fallback={<LoadingSpinner />}><ActiveRequestsView /></Suspense>} />
+            <Route path="completed" element={<Suspense fallback={<LoadingSpinner />}><POList filter="COMPLETED" /></Suspense>} />
             <Route path="requests/:id" element={<Suspense fallback={<LoadingSpinner />}><PODetail /></Suspense>} />
             <Route path="create" element={<Suspense fallback={<LoadingSpinner />}><POCreate /></Suspense>} />
             <Route path="finance" element={<Suspense fallback={<LoadingSpinner />}><FinanceView /></Suspense>} />

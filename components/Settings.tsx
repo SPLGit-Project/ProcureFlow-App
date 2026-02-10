@@ -8,7 +8,7 @@ import {
     Upload, Download, RefreshCw, Filter, ChevronDown, ChevronRight, X,
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
-    Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare,
+    Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
     Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap
 } from 'lucide-react';
 import { useToast, ToastContainer } from './ToastNotification';
@@ -40,6 +40,8 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'view_suppliers', label: 'Suppliers', description: 'View supplier list', icon: Truck, category: 'Sidebar Navigation' },
     { id: 'view_sites', label: 'Sites', description: 'View site list', icon: MapPin, category: 'Sidebar Navigation' },
     { id: 'view_finance', label: 'Finance Review', description: 'Access finance review and cost coding', icon: DollarSign, category: 'Sidebar Navigation' },
+    { id: 'view_active_requests', label: 'Active Requests', description: 'Access active/pending concur requests', icon: Activity, category: 'Sidebar Navigation' },
+    { id: 'view_completed_requests', label: 'Completed Requests', description: 'Access history of completed requests', icon: Clock, category: 'Sidebar Navigation' },
 
     // Admin Portal
     { id: 'view_mapping', label: 'Product Mapping', description: 'View and manage mappings', icon: GitMerge, category: 'Admin Portal' },

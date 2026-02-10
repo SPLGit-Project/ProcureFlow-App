@@ -5,13 +5,15 @@ import { Link } from 'react-router-dom';
 import { Search, Eye, Filter, Calendar, MapPin, DollarSign, User } from 'lucide-react';
 import ContextHelp from './ContextHelp';
 
-const POList = ({ filter = 'ALL' }: { filter?: 'ALL' | 'PENDING' }) => {
+const POList = ({ filter = 'ALL' }: { filter?: 'ALL' | 'PENDING' | 'COMPLETED' }) => {
   const { pos, currentUser, hasPermission } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   
   let filteredPos = pos;
   if (filter === 'PENDING') {
       filteredPos = filteredPos.filter(p => p.status === 'PENDING_APPROVAL');
+  } else if (filter === 'COMPLETED') {
+      filteredPos = filteredPos.filter(p => p.status === 'RECEIVED' || p.status === 'CLOSED');
   }
   // All users see every PO for their assigned sites (site filtering handled by AppContext)
 
@@ -46,7 +48,7 @@ const POList = ({ filter = 'ALL' }: { filter?: 'ALL' | 'PENDING' }) => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
-                {filter === 'PENDING' ? 'Pending Approvals' : 'Requests'}
+                {filter === 'PENDING' ? 'Pending Approvals' : filter === 'COMPLETED' ? 'Completed Requests' : 'Requests'}
                 <ContextHelp 
                     title="Approval Process" 
                     description="Understand the phases of approval and how to manage requests." 

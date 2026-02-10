@@ -12,6 +12,8 @@ export type PermissionId =
   | 'view_security'
   | 'view_notifications'
   | 'view_branding'
+  | 'view_active_requests'
+  | 'view_completed_requests'
   | 'create_request'
   | 'view_all_requests'
   | 'approve_requests'
