@@ -38,6 +38,11 @@ export interface RoleDefinition {
     isSystem: boolean; // System roles cannot be deleted
 }
 
+export interface UserPreferences {
+  theme: 'light' | 'dark';
+  activeSiteIds: string[];
+}
+
 export interface User {
   id: string;
   name: string;
@@ -53,6 +58,7 @@ export interface User {
   approvalReason?: string;
   invitedAt?: string;
   invitationExpiresAt?: string;
+  preferences?: UserPreferences;
 }
 
 export interface EmailTemplate {

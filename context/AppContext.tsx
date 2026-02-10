@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { User, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification, AttributeOption, SystemAuditLog } from '../types';
+import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification, AttributeOption, SystemAuditLog } from '../types';
 import { db } from '../services/db';
 import { supabase } from '../lib/supabaseClient';
 
@@ -167,10 +167,36 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // Auth Config is now managed in the backend (env vars/Azure)
 
   // Theme State
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+  const [theme, _setTheme] = useState<'light' | 'dark'>(() => {
       const saved = localStorage.getItem('app-theme');
       return (saved === 'light' || saved === 'dark') ? saved : 'dark';
   });
+
+  const savePreferences = async (updates: Partial<UserPreferences>) => {
+      if (!currentUser) return;
+      
+      const currentPrefs = currentUser.preferences || { theme, activeSiteIds };
+      const newPrefs = { ...currentPrefs, ...updates };
+
+      try {
+          const { error } = await supabase
+              .from('users')
+              .update({ preferences: newPrefs })
+              .eq('id', currentUser.id);
+          
+          if (error) throw error;
+          
+          setCurrentUser(prev => prev ? ({ ...prev, preferences: newPrefs }) : null);
+      } catch (e) {
+          console.error("Auth: Failed to persist preferences", e);
+      }
+  };
+
+  const setTheme = (newTheme: 'light' | 'dark') => {
+      _setTheme(newTheme);
+      localStorage.setItem('app-theme', newTheme);
+      savePreferences({ theme: newTheme });
+  };
 
   // Branding State
   const [branding, setBranding] = useState<AppBranding>(() => {
@@ -222,10 +248,17 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         if (currentUser && currentUser.role !== 'ADMIN' && currentUser.siteIds && currentUser.siteIds.length > 0) {
             validatedIds = ids.filter(id => currentUser.siteIds.includes(id));
         }
+
+        // Only update if changed
+        if (JSON.stringify(validatedIds) === JSON.stringify(activeSiteIds)) return;
+
         _setActiveSiteIds(validatedIds);
         localStorage.setItem('activeSiteIds', JSON.stringify(validatedIds));
         // Also cleanup old key
         localStorage.removeItem('activeSiteId');
+
+        // Persist to DB
+        savePreferences({ activeSiteIds: validatedIds });
     };
 
     // --- Computed: Sites the current user has access to ---
@@ -590,8 +623,22 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 createdAt: rawData.created_at,
                 siteIds: rawData.site_ids || [],
                 department: rawData.department,
-                approvalReason: rawData.approval_reason
+                approvalReason: rawData.approval_reason,
+                preferences: rawData.preferences
             } : null;
+
+            // 4. Load Persistent Preferences
+            if (userData?.preferences) {
+                const { theme: pTheme, activeSiteIds: pSites } = userData.preferences;
+                if (pTheme) {
+                    _setTheme(pTheme);
+                    localStorage.setItem('app-theme', pTheme);
+                }
+                if (pSites && Array.isArray(pSites)) {
+                    _setActiveSiteIds(pSites);
+                    localStorage.setItem('activeSiteIds', JSON.stringify(pSites));
+                }
+            }
 
             if (!userData) {
                 // 4. New User - Registration or Merge Logic
@@ -641,7 +688,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                             createdAt: mergedUser.created_at,
                             siteIds: mergedUser.site_ids || [],
                             department: mergedUser.department,
-                             approvalReason: mergedUser.approval_reason
+                             approvalReason: mergedUser.approval_reason,
+                             preferences: mergedUser.preferences
                         };
                      }
                 } else {
@@ -710,7 +758,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                         status: dbUser.status === 'APPROVED' ? 'APPROVED' : 'PENDING_APPROVAL',
                         createdAt: dbUser.created_at,
                         siteIds: [],
-                        department: dbUser.department
+                        department: dbUser.department,
+                        preferences: { theme, activeSiteIds }
                     };
                 }
             }
