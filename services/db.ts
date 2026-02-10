@@ -96,11 +96,12 @@ export const db = {
         // However, for orphaned auth users (deleted from public but not auth), we need
         // a server-side function. For now, we use an RPC if available.
         
+        const normalizedEmail = email.toLowerCase();
         // Fallback: Try to find in public.users first (case-insensitive)
         const { data } = await supabase
             .from('users')
             .select('id')
-            .ilike('email', email)
+            .ilike('email', normalizedEmail)
             .limit(1)
             .maybeSingle();
         
@@ -137,7 +138,7 @@ export const db = {
             // New user - insert
             const { error } = await supabase.from('users').insert({
                 id: user.id,
-                email: user.email,
+                email: normalizedEmail,
                 name: user.name,
                 role_id: user.role,
                 avatar: user.avatar,

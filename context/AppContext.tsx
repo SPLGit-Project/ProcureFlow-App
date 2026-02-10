@@ -550,7 +550,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
         if (!silent) setIsLoadingAuth(true);
         try {
-            const email = session.user.email;
+            const email = session.user.email?.toLowerCase();
             console.log("Auth: Handling user auth for", email);
 
             // 1. Security: Domain Lock
@@ -1181,11 +1181,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const addUser = async (user: User, shouldSendInvite: boolean = false) => {
       const expiry = new Date();
       expiry.setHours(expiry.getHours() + 48);
-      let userWithExpiry = { ...user, invitationExpiresAt: expiry.toISOString() };
+      const normalizedEmail = user.email?.toLowerCase();
+      let userWithExpiry = { ...user, email: normalizedEmail, invitationExpiresAt: expiry.toISOString() };
       
-      if (shouldSendInvite && user.email) {
+      if (shouldSendInvite && normalizedEmail) {
           try {
-              const emailSent = await sendWelcomeEmail(user.email, user.name || 'User');
+              const emailSent = await sendWelcomeEmail(normalizedEmail, user.name || 'User');
               if (emailSent) {
                   userWithExpiry = { ...userWithExpiry, invitedAt: new Date().toISOString() };
               }

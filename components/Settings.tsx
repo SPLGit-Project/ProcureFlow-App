@@ -2686,26 +2686,34 @@ if __name__ == "__main__":
                               </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
-                              {users.filter(u => {
-                                  // Filters
-                                  const matchesSearch = !userSearch || 
-                                      u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
-                                      u.email.toLowerCase().includes(userSearch.toLowerCase());
-                                  const matchesRole = !userRoleFilter || u.role === userRoleFilter;
-                                  const notArchived = u.status !== 'ARCHIVED';
-                                  
-                                  return matchesSearch && matchesRole && notArchived;
-                              }).length > 0 ? (
-                                  users.filter(u => {
-                                      // Filters (Repeat for map)
+                              {(() => {
+                                  // 1. Initial filter for Search, Role, and Archive status
+                                  const filtered = users.filter(u => {
                                       const matchesSearch = !userSearch || 
                                           u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
                                           u.email.toLowerCase().includes(userSearch.toLowerCase());
                                       const matchesRole = !userRoleFilter || u.role === userRoleFilter;
                                       const notArchived = u.status !== 'ARCHIVED';
-                                      
                                       return matchesSearch && matchesRole && notArchived;
-                                  }).map(user => (
+                                  });
+
+                                  // 2. Safety Deduplication by email (case-insensitive)
+                                  // This handles any temporary client-side duplicates before reloadData() completes
+                                  const uniqueByEmail = new Map<string, typeof users[0]>();
+                                  filtered.forEach(u => {
+                                      const emailKey = (u.email || '').toLowerCase();
+                                      // If duplicate, keep the one with higher privilege or approved status
+                                      const existing = uniqueByEmail.get(emailKey);
+                                      if (!existing || (u.status === 'APPROVED' && existing.status !== 'APPROVED')) {
+                                          uniqueByEmail.set(emailKey, u);
+                                      }
+                                  });
+
+                                  const displayUsers = Array.from(uniqueByEmail.values());
+
+                                  if (displayUsers.length === 0) return null;
+
+                                  return displayUsers.map(user => (
                                       <tr key={user.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
                                           <td className="px-6 py-4">
                                                <div className="flex items-center gap-4">
@@ -2818,8 +2826,8 @@ if __name__ == "__main__":
                                               </div>
                                           </td>
                                       </tr>
-                                  ))
-                              ) : (
+                                  ));
+                              })() || (
                                   <tr><td colSpan={2} className="px-6 py-20 text-center text-gray-400">
                                       <div className="flex flex-col items-center gap-3">
                                           <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
