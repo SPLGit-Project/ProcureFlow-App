@@ -868,10 +868,13 @@ export const db = {
         const existingSkuMap = new Map(existingItems.map((i: any) => [i.sku, i]));
         
         const timestamp = new Date().toISOString();
-        const upsertPayload: any[] = [];
+        const payloadMap = new Map<string, any>(); // Keyed by id — natural deduplication
         let skipped = 0;
         const processedNorms = new Set<string>();
         const fieldKeys = new Set<string>();
+        // Track which norms and SKUs have been assigned to prevent cross-collisions
+        const usedNorms = new Map<string, string>(); // norm -> id
+        const usedSkus = new Map<string, string>();  // sku  -> id
         
         for (const input of inputs) {
             Object.keys(input).forEach(k => fieldKeys.add(k));
@@ -889,6 +892,16 @@ export const db = {
             processedNorms.add(norm.normalized);
             // Match by normalized code OR by Sku (last resort for legacy items)
             const existing = existingMap.get(norm.normalized) || existingSkuMap.get(input.sku);
+            
+            const itemId = existing ? existing.id : crypto.randomUUID();
+
+            // Check if this norm or SKU would collide with a DIFFERENT item already in the payload
+            const normOwner = usedNorms.get(norm.normalized);
+            const skuOwner = usedSkus.get(input.sku);
+            if ((normOwner && normOwner !== itemId) || (skuOwner && skuOwner !== itemId)) {
+                skipped++; // Skip duplicate rows that would cause constraint violations
+                continue;
+            }
             
             const commonFields = {
                 sku: input.sku,
@@ -919,19 +932,17 @@ export const db = {
                 active_flag: true
             };
 
-            if (existing) {
-                upsertPayload.push({
-                    id: existing.id,
-                    ...commonFields
-                });
-            } else {
-                upsertPayload.push({
-                    id: crypto.randomUUID(),
-                    ...commonFields,
-                    created_at: timestamp
-                });
-            }
+            const record: any = { id: itemId, ...commonFields };
+            if (!existing) record.created_at = timestamp;
+
+            // Map.set naturally deduplicates — last write wins for same id
+            payloadMap.set(itemId, record);
+            usedNorms.set(norm.normalized, itemId);
+            usedSkus.set(input.sku, itemId);
         }
+        
+        const upsertPayload = Array.from(payloadMap.values());
+
         
         const registryPayload = Array.from(fieldKeys).map(k => ({
             field_key: k,
