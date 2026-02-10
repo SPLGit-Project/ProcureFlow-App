@@ -17,7 +17,7 @@ import { supabase } from '../lib/supabaseClient';
 import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 import { useLocation } from 'react-router-dom';
-import AdminAccessHub from './AdminAccessHub';
+// AdminAccessHub removed — access approvals no longer used
 import AdminMigration from './AdminMigration';
 
 import StockMappingConfirmation from './StockMappingConfirmation';
@@ -2622,42 +2622,18 @@ if __name__ == "__main__":
       {activeTab === 'USERS' && (
           <div className="animate-fade-in space-y-6">
               {/* User Dashboard Header */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-[var(--color-brand)] transition-all">
-                      <div className="w-12 h-12 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center group-hover:scale-110 transition-transform">
-                          <Users size={24}/>
-                      </div>
-                      <div>
-                          <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Total Members</div>
-                          <div className="text-2xl font-black text-gray-900 dark:text-white line-height-1">
-                              {users.filter(u => u.status !== 'ARCHIVED').length}
-                          </div>
-                      </div>
-                  </div>
-
-                  <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-amber-400 transition-all cursor-pointer">
-                      <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/20 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                          <Clock size={24}/>
-                      </div>
-                      <div>
-                          <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Pending Access</div>
-                          <div className="text-2xl font-black text-gray-900 dark:text-white line-height-1">
-                              {users.filter(u => u.status === 'PENDING').length}
-                          </div>
-                      </div>
-                  </div>
-              </div>
-
-              {/* User Approval Requests */}
-              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-gray-800">
-                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Access Approvals</h3>
-                    <p className="text-sm text-gray-500">Manage pending user requests and onboarding status.</p>
-                </div>
-                <div className="p-6">
-                    <AdminAccessHub />
-                </div>
-              </div>
+               {/* User Stats */}
+               <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-[var(--color-brand)] transition-all">
+                   <div className="w-12 h-12 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center group-hover:scale-110 transition-transform">
+                       <Users size={24}/>
+                   </div>
+                   <div>
+                       <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Total Members</div>
+                       <div className="text-2xl font-black text-gray-900 dark:text-white line-height-1">
+                           {users.filter(u => u.status !== 'ARCHIVED').length}
+                       </div>
+                   </div>
+               </div>
 
               {/* Global Directory */}
               <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
