@@ -32,32 +32,32 @@ import { HierarchyManager } from '../utils/hierarchyManager';
 import { seedCatalogData } from '../utils/catalogSeeder';
 
 
-const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, category: 'Module Access' | 'Operational Capabilities' | 'Administrative Capabilities' }[] = [
-    // Module Access (formerly Page Access)
-    { id: 'view_dashboard', label: 'Dashboard', description: 'Access dashboard overview', category: 'Module Access' },
-    { id: 'view_items', label: 'Items', description: 'View master item list', category: 'Module Access' },
-    { id: 'view_stock', label: 'Stock', description: 'View stock levels', category: 'Module Access' },
-    { id: 'view_mapping', label: 'Product Mapping', description: 'View product mappings', category: 'Module Access' },
-    { id: 'view_suppliers', label: 'Suppliers', description: 'View supplier list', category: 'Module Access' },
-    { id: 'view_sites', label: 'Sites', description: 'View site list', category: 'Module Access' },
-    { id: 'view_workflow', label: 'Workflow Designer', description: 'View approval workflows', category: 'Module Access' },
-    { id: 'view_security', label: 'Security & Roles', description: 'View users and roles', category: 'Module Access' },
-    { id: 'view_notifications', label: 'Notifications', description: 'View notification settings', category: 'Module Access' },
-    { id: 'view_branding', label: 'Branding', description: 'View branding settings', category: 'Module Access' },
-    { id: 'view_finance', label: 'Finance Review', description: 'Access finance review and cost coding', category: 'Module Access' },
+const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, icon: any, category: 'Sidebar Navigation' | 'Admin Portal' | 'Operational Actions' }[] = [
+    // Sidebar Navigation
+    { id: 'view_dashboard', label: 'Dashboard', description: 'Access dashboard overview', icon: Layout, category: 'Sidebar Navigation' },
+    { id: 'view_items', label: 'Items', description: 'View master item list', icon: Box, category: 'Sidebar Navigation' },
+    { id: 'view_stock', label: 'Stock', description: 'View stock levels', icon: Database, category: 'Sidebar Navigation' },
+    { id: 'view_suppliers', label: 'Suppliers', description: 'View supplier list', icon: Truck, category: 'Sidebar Navigation' },
+    { id: 'view_sites', label: 'Sites', description: 'View site list', icon: MapPin, category: 'Sidebar Navigation' },
+    { id: 'view_finance', label: 'Finance Review', description: 'Access finance review and cost coding', icon: DollarSign, category: 'Sidebar Navigation' },
 
-    // Operational Capabilities (formerly Functional Access)
-    { id: 'create_request', label: 'Create Request', description: 'Create new purchase orders', category: 'Operational Capabilities' },
-    { id: 'view_all_requests', label: 'View All POs', description: 'View POs from all sites/users', category: 'Operational Capabilities' },
-    { id: 'approve_requests', label: 'Approve POs', description: 'Approve purchase orders', category: 'Operational Capabilities' },
-    { id: 'link_concur', label: 'Link Concur', description: 'Link POs to Concur', category: 'Operational Capabilities' },
-    { id: 'receive_goods', label: 'Receive Goods', description: 'Mark items as received', category: 'Operational Capabilities' },
-    
-    // Administrative Capabilities (formerly Admin Access)
-    { id: 'manage_finance', label: 'Finance Management', description: 'Edit finance codes', category: 'Administrative Capabilities' },
-    { id: 'manage_settings', label: 'System Settings', description: 'Manage system config', category: 'Administrative Capabilities' },
-    { id: 'manage_items', label: 'Manage Items', description: 'Create/Edit/Delete Items', category: 'Administrative Capabilities' },
-    { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Administrative Capabilities' }
+    // Admin Portal
+    { id: 'view_mapping', label: 'Product Mapping', description: 'View and manage mappings', icon: GitMerge, category: 'Admin Portal' },
+    { id: 'view_workflow', label: 'Workflow Designer', description: 'View approval workflows', icon: Wand2, category: 'Admin Portal' },
+    { id: 'view_security', label: 'Security & Roles', description: 'View users and roles', icon: Shield, category: 'Admin Portal' },
+    { id: 'view_notifications', label: 'Notifications', description: 'View notification settings', icon: Bell, category: 'Admin Portal' },
+    { id: 'view_branding', label: 'Branding', description: 'View branding settings', icon: Palette, category: 'Admin Portal' },
+    { id: 'manage_settings', label: 'Menu Config', description: 'Manage system settings', icon: ListFilter, category: 'Admin Portal' },
+
+    // Operational Actions
+    { id: 'create_request', label: 'Create Request', description: 'Create new purchase orders', icon: Plus, category: 'Operational Actions' },
+    { id: 'approve_requests', label: 'Approve POs', description: 'Approve purchase orders', icon: CheckSquare, category: 'Operational Actions' },
+    { id: 'view_all_requests', label: 'View All POs', description: 'View POs from all sites/users', icon: Eye, category: 'Operational Actions' },
+    { id: 'link_concur', label: 'Link Concur', description: 'Link POs to Concur', icon: LinkIcon, category: 'Operational Actions' },
+    { id: 'receive_goods', label: 'Receive Goods', description: 'Mark items as received', icon: Package, category: 'Operational Actions' },
+    { id: 'manage_finance', label: 'Finance Management', description: 'Edit finance codes', icon: DollarSign, category: 'Operational Actions' },
+    { id: 'manage_items', label: 'Manage Items', description: 'Create/Edit/Delete Items', icon: Layers, category: 'Operational Actions' },
+    { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', icon: Truck, category: 'Operational Actions' }
 ];
 
 type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT';
@@ -2927,16 +2927,16 @@ if __name__ == "__main__":
                                                   <span className="px-2 py-1 rounded bg-[var(--color-brand)]/10 text-[var(--color-brand)] text-[10px] font-bold">{activeRole.permissions.length} Active Rules</span>
                                               </div>
                                               <div className="p-6">
-                                                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                                       {['Module Access', 'Operational Capabilities', 'Administrative Capabilities'].map((category) => {
-                                                           const categoryPerms = AVAILABLE_PERMISSIONS.filter(p => p.category === category);
+                                                  <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-8">
+                                                       {['Sidebar Navigation', 'Admin Portal', 'Operational Actions'].map((category) => {
+                                                           const categoryPerms = AVAILABLE_PERMISSIONS.filter(p => (p as any).category === category);
                                                            const allCategoryIds = categoryPerms.map(p => p.id);
                                                            const isAllSelected = allCategoryIds.every(id => activeRole.permissions.includes(id));
                                                            
                                                            return (
                                                                <div key={category} className="space-y-3">
                                                                    <div className="flex items-center justify-between pl-1">
-                                                                       <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{category}</div>
+                                                                       <div className="flex items-center gap-2"><div className="p-1.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-400">{category === 'Sidebar Navigation' ? <Layout size={12}/> : category === 'Admin Portal' ? <SettingsIcon size={12}/> : <Zap size={12}/>}</div><div className="text-[11px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">{category}</div></div>
                                                                        <button 
                                                                            onClick={() => {
                                                                                let newPerms: PermissionId[];
@@ -2955,14 +2955,13 @@ if __name__ == "__main__":
                                                                        </button>
                                                                    </div>
                                                                    <div className="bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl divide-y divide-gray-50 dark:divide-gray-800/50">
-                                                                       {categoryPerms.map(perm => {
-                                                                           const isEnabled = activeRole.permissions.includes(perm.id);
+                                                                       {categoryPerms.map(perm => {  const isEnabled = activeRole.permissions.includes(perm.id); const Icon = (perm as any).icon || Shield;
+                                                                           
                                                                            return (
-                                                                               <div key={perm.id} className="p-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                                                                                   <div className="flex-1">
-                                                                                       <div className="font-bold text-xs text-gray-900 dark:text-white leading-tight">{perm.label}</div>
-                                                                                       <div className="text-[10px] text-gray-400 mt-0.5">{perm.description}</div>
-                                                                                   </div>
+                                                                               <div key={perm.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
+                                                                                   <div className="flex items-center gap-3 flex-1 min-w-0"><div className={`p-2 rounded-xl transition-colors ${isEnabled ? 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]' : 'bg-gray-50 dark:bg-gray-800 text-gray-400 group-hover:bg-gray-100 dark:group-hover:bg-gray-700'}`}><Icon size={16}/></div><div className="min-w-0">
+                                                                                       <div className="font-bold text-xs text-gray-900 dark:text-white leading-tight truncate">{perm.label}</div>
+                                                                                       <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{perm.description}</div></div></div>
                                                                                    <button 
                                                                                        disabled={activeRole.id === 'ADMIN' && perm.id === 'manage_settings'} 
                                                                                        onClick={() => {
@@ -2973,7 +2972,7 @@ if __name__ == "__main__":
                                                                                            updateRole(updatedRole);
                                                                                            setActiveRole(updatedRole);
                                                                                        }}
-                                                                                       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 ${isEnabled ? 'bg-[var(--color-brand)]' : 'bg-gray-200 dark:bg-gray-700'}`}
+                                                                                       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 ${isEnabled ? 'bg-[var(--color-brand)]' : 'bg-gray-200 dark:bg-gray-700'}`}
                                                                                    >
                                                                                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isEnabled ? 'translate-x-[1.25rem]' : 'translate-x-[0.25rem]'}`} />
                                                                                    </button>
