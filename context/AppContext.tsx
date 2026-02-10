@@ -64,6 +64,7 @@ interface AppContextType {
   suppliers: Supplier[];
   items: Item[];
   sites: Site[];
+  userSites: Site[]; // Sites the current user has access to (admins see all)
   catalog: SupplierCatalogItem[];
   stockSnapshots: SupplierStockSnapshot[];
   
@@ -216,11 +217,28 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
     // --- Active Site Logic (Multi) ---
     const setActiveSiteIds = (ids: string[]) => {
-        _setActiveSiteIds(ids);
-        localStorage.setItem('activeSiteIds', JSON.stringify(ids));
+        // SECURITY: Validate that non-admin users can only select sites they have access to
+        let validatedIds = ids;
+        if (currentUser && currentUser.role !== 'ADMIN' && currentUser.siteIds && currentUser.siteIds.length > 0) {
+            validatedIds = ids.filter(id => currentUser.siteIds.includes(id));
+        }
+        _setActiveSiteIds(validatedIds);
+        localStorage.setItem('activeSiteIds', JSON.stringify(validatedIds));
         // Also cleanup old key
         localStorage.removeItem('activeSiteId');
     };
+
+    // --- Computed: Sites the current user has access to ---
+    const userSites = React.useMemo(() => {
+        if (!currentUser) return [];
+        // Admins see all sites
+        if (currentUser.role === 'ADMIN') return sites;
+        // Non-admins only see their assigned sites
+        if (currentUser.siteIds && currentUser.siteIds.length > 0) {
+            return sites.filter(s => currentUser.siteIds.includes(s.id));
+        }
+        return [];
+    }, [currentUser, sites]);
 
     // --- Helper for Site Name ---
     const siteName = useCallback((siteId?: string) => {
@@ -1867,7 +1885,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
     teamsWebhookUrl, updateTeamsWebhook,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
-    suppliers, items, sites, catalog, stockSnapshots,
+    suppliers, items, sites, userSites, catalog, stockSnapshots,
     mappings, availability, attributeOptions,
     
     // Methods

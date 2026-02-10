@@ -34,7 +34,7 @@ import VersionBadge from './VersionBadge';
 import { MultiSiteSelector } from './MultiSiteSelector';
 
 const Layout = () => {
-  const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteIds, setActiveSiteIds, sites, siteName } = useApp();
+  const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteIds, setActiveSiteIds, sites, userSites, siteName } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isProfileExpanded, setIsProfileExpanded] = React.useState(false);
   const navigate = useNavigate();
@@ -194,13 +194,13 @@ const Layout = () => {
                    <UserCog size={16} /> Edit Profile
                </button>
 
-               {(currentUser.role === 'ADMIN' || (currentUser.siteIds && currentUser.siteIds.length > 1)) && (
+               {userSites.length > 0 && (
                     <div className="space-y-1">
                         <p className={`text-[9px] uppercase font-bold px-1 flex items-center gap-1 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/40' : 'text-gray-400'}`}>
                             <MapPin size={10}/> Site Context
                         </p>
                         <MultiSiteSelector 
-                            sites={sites}
+                            sites={userSites}
                             selectedSiteIds={activeSiteIds}
                             onChange={setActiveSiteIds}
                             variant={['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'brand' : 'light'}

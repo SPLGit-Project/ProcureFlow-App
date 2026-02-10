@@ -24,7 +24,9 @@ import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp';
 
 const POCreate = () => {
-  const { items, suppliers, sites, mappings, stockSnapshots, currentUser, createPO, getEffectiveStock, reloadData } = useApp();
+  const { items, suppliers, sites: allSites, userSites, mappings, stockSnapshots, currentUser, createPO, getEffectiveStock, reloadData } = useApp();
+  // Use userSites for the dropdown (only sites user has access to), allSites for display lookups
+  const sites = userSites;
   const navigate = useNavigate();
   
   // Auto-Refresh Data on Mount
