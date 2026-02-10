@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
-import { Search, Link as LinkIcon, CheckCircle, Activity, Filter, List } from 'lucide-react';
+import { Search, Link as LinkIcon, CheckCircle, Activity, Filter, List, MapPin } from 'lucide-react';
 import { PORequest } from '../types';
 
 const ActiveRequestsView = () => {
@@ -32,6 +32,7 @@ const ActiveRequestsView = () => {
                     (po.displayId || po.id).toLowerCase().includes(searchLower) ||
                     po.supplierName.toLowerCase().includes(searchLower) ||
                     po.requesterName.toLowerCase().includes(searchLower) ||
+                    (po.site || '').toLowerCase().includes(searchLower) ||
                     po.totalAmount.toString().includes(searchLower)
                 );
             }
@@ -96,7 +97,7 @@ const ActiveRequestsView = () => {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                     <input 
                         type="text" 
-                        placeholder="Search PO #, Supplier, or Requester..." 
+                        placeholder="Search PO #, Site, Supplier, or Requester..." 
                         className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -111,6 +112,7 @@ const ActiveRequestsView = () => {
                         <tr>
                             <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">PO Number</th>
                             <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
+                            <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Site</th>
                             <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Supplier</th>
                             <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Requester</th>
                             <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Amount</th>
@@ -121,7 +123,7 @@ const ActiveRequestsView = () => {
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                         {filteredPOs.length === 0 ? (
                             <tr>
-                                <td colSpan={7} className="px-6 py-12 text-center text-gray-500 italic">
+                                <td colSpan={8} className="px-6 py-12 text-center text-gray-500 italic">
                                     No purchase orders found requiring Concur entry.
                                 </td>
                             </tr>
@@ -150,6 +152,12 @@ const ActiveRequestsView = () => {
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
                                         {new Date(po.requestDate).toLocaleDateString()}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                                            <MapPin size={12} className="mr-1.5 text-gray-400" />
+                                            {po.site || 'Unknown'}
+                                        </span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="text-sm font-medium text-gray-900 dark:text-white">{po.supplierName}</div>
