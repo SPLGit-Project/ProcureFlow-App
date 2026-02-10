@@ -116,6 +116,18 @@ const Layout = () => {
           <h1 className="text-lg font-bold tracking-tight truncate flex-1" title={branding.appName}>{branding.appName}</h1>
           <button className="md:hidden text-current opacity-70" onClick={() => setIsMobileMenuOpen(false)}><X size={20}/></button>
         </div>
+
+        {/* Site Selector — top of sidebar for clear visibility */}
+        {userSites.length > 0 && (
+            <div className="px-4 pb-4 shrink-0">
+                <MultiSiteSelector 
+                    sites={userSites}
+                    selectedSiteIds={activeSiteIds}
+                    onChange={setActiveSiteIds}
+                    variant={['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'brand' : 'light'}
+                />
+            </div>
+        )}
         
         {/* Navigation */}
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto py-4 scrollbar-hide">
@@ -194,19 +206,7 @@ const Layout = () => {
                    <UserCog size={16} /> Edit Profile
                </button>
 
-               {userSites.length > 0 && (
-                    <div className="space-y-1">
-                        <p className={`text-[9px] uppercase font-bold px-1 flex items-center gap-1 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/40' : 'text-gray-400'}`}>
-                            <MapPin size={10}/> Site Context
-                        </p>
-                        <MultiSiteSelector 
-                            sites={userSites}
-                            selectedSiteIds={activeSiteIds}
-                            onChange={setActiveSiteIds}
-                            variant={['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'brand' : 'light'}
-                        />
-                    </div>
-               )}
+
 
                {currentUser.realRole === 'ADMIN' && (
                    <div className="space-y-1">
