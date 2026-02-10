@@ -946,7 +946,7 @@ export const db = {
             const batchSize = 1000;
             for (let i = 0; i < upsertPayload.length; i += batchSize) {
                 const batch = upsertPayload.slice(i, i + batchSize);
-                const { error } = await supabase.from('items').upsert(batch, { onConflict: 'sap_item_code_norm' });
+                const { error } = await supabase.from('items').upsert(batch, { onConflict: 'id' });
                 if (error) throw error;
             }
         }
