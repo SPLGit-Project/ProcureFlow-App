@@ -61,6 +61,36 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
 
 type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT';
 
+const MASTER_ITEM_COLUMNS = [
+    { key: 'sku', label: 'SKU' },
+    { key: 'name', label: 'Name' },
+    { key: 'description', label: 'Description' },
+    { key: 'category', label: 'Category' },
+    { key: 'subCategory', label: 'Sub Category' },
+    { key: 'unitPrice', label: 'Unit Price' },
+    { key: 'uom', label: 'UOM' },
+    { key: 'upq', label: 'UPQ' },
+    { key: 'itemCatalog', label: 'Catalog' },
+    { key: 'itemType', label: 'Type' },
+    { key: 'itemPool', label: 'Pool' },
+    { key: 'stockLevel', label: 'Stock Level' },
+    { key: 'supplierId', label: 'Supplier ID' },
+    { key: 'rangeName', label: 'Range' },
+    { key: 'stockType', label: 'Stock Type' },
+    { key: 'itemWeight', label: 'Weight' },
+    { key: 'itemColour', label: 'Color' },
+    { key: 'itemPattern', label: 'Pattern' },
+    { key: 'itemMaterial', label: 'Material' },
+    { key: 'itemSize', label: 'Size' },
+    { key: 'measurements', label: 'Measurements' },
+    { key: 'rfidFlag', label: 'RFID' },
+    { key: 'cogFlag', label: 'COG' },
+    { key: 'cogCustomer', label: 'COG Customer' },
+    { key: 'minLevel', label: 'Min Level' },
+    { key: 'maxLevel', label: 'Max Level' },
+    { key: 'activeFlag', label: 'Status' }
+];
+
 const Settings = () => {
   const {
     currentUser, users, addUser, roles, hasPermission, createRole, updateRole, deleteRole, permissions, updateUserRole, updateUserAccess,
@@ -181,43 +211,23 @@ const Settings = () => {
    const itemImportInputRef = useRef<HTMLInputElement>(null);
 
    const handleExportItems = () => {
-               const data = items.map(i => ({
-            SKU: i.sku,
-            Name: i.name,
-            Description: i.description,
-            Category: i.category,
-            'Sub Category': i.subCategory,
-            'Unit Price': i.unitPrice,
-            UOM: i.uom,
-            'UPQ': i.upq,
-            'Catalog': i.itemCatalog,
-            'Type': i.itemType,
-            'Pool': i.itemPool,
-            'Stock Level': i.stockLevel,
-            'Supplier ID': i.supplierId,
-            'Range': i.rangeName,
-            'Stock Type': i.stockType,
-            'Weight': i.itemWeight,
-            'Color': i.itemColour,
-            'Pattern': i.itemPattern,
-            'Material': i.itemMaterial,
-            'Size': i.itemSize,
-            'Measurements': i.measurements,
-            'RFID': i.rfidFlag ? 'Yes' : 'No',
-            'COG': i.cogFlag ? 'Yes' : 'No',
-            'COG Customer': i.cogCustomer,
-            'Min Level': i.minLevel,
-            'Max Level': i.maxLevel,
-            'Status': i.activeFlag !== false ? 'Active' : 'Archived'
-        }));
-       
+       const data = items.map(i => {
+           const row: any = {};
+           MASTER_ITEM_COLUMNS.forEach(col => {
+               let val = i[col.key as keyof Item];
+               if (col.key === 'rfidFlag' || col.key === 'cogFlag') val = val ? 'Yes' : 'No';
+               if (col.key === 'activeFlag') val = val !== false ? 'Active' : 'Archived';
+               row[col.label] = val;
+           });
+           return row;
+       });
+
        const ws = XLSX.utils.json_to_sheet(data);
        const wb = XLSX.utils.book_new();
        XLSX.utils.book_append_sheet(wb, ws, "Master Items");
        XLSX.writeFile(wb, `Master_Items_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
        success('Item list exported successfully');
    };
-
     const handleImportItems = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -271,6 +281,7 @@ const Settings = () => {
                 cogCustomer: row['COG Customer'] || row['cog_customer'],
                 minLevel: parseInt(row['Min Level'] || row['min_level'] || '0'),
                 maxLevel: parseInt(row['Max Level'] || row['max_level'] || '0'),
+                activeFlag: row['Status'] ? row['Status'].toString().toLowerCase() === 'active' : true,
             })).filter(i => i.sku); // Ensure SKU exists
 
             if (mappedItems.length === 0) {
@@ -1340,59 +1351,34 @@ if __name__ == "__main__":
                     <table className="w-full text-left border-collapse relative">
                         <thead className="sticky top-0 z-30 bg-gray-50 dark:bg-[#1e2029] shadow-sm">
                             <tr className="border-b border-gray-200 dark:border-gray-700">
-                                {fieldRegistry.length > 0 ? (
-                                    (fieldRegistry || []).filter(f => f && f.is_visible && f.field_key !== 'range_name' && f.field_key !== 'stock_type').map((f, idx) => {
-                                        // Check if this field should have a filter
-                                        const isFilterable = ['category', 'subCategory', 'itemPool', 'itemCatalog', 'itemType'].includes(f.field_key) || f.field_key?.includes('Category');
-                                        const uniqueOptions = isFilterable ? Array.from((uniqueValues || {})[f.field_key] || []).sort() : [];
-                                        
-                                        const stickyClass = idx === 0 
-                                            ? "sticky left-0 z-20 bg-gray-50 dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]" 
-                                            : "";
+                                {MASTER_ITEM_COLUMNS.map((col, idx) => {
+                                    const isFilterable = ['category', 'subCategory', 'itemPool', 'itemCatalog', 'itemType'].includes(col.key);
+                                    const uniqueOptions = isFilterable ? Array.from((uniqueValues || {})[col.key] || []).sort() : [];
+                                    
+                                    const stickyClass = idx === 0 
+                                        ? "sticky left-0 z-20 bg-gray-50 dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]" 
+                                        : "";
 
-                                        return (
-                                            <th key={f.field_key} className={`px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase ${stickyClass}`}>
-                                                <div className="flex flex-col gap-1">
-                                                    <span>{f.label}</span>
-                                                    {isFilterable && (
-                                                        <select 
-                                                            className="text-[10px] font-normal border border-gray-200 dark:border-gray-700 rounded px-1 py-0.5 bg-white dark:bg-[#15171e] focus:ring-1 focus:ring-blue-500 max-w-[120px]"
-                                                            value={itemFilters[f.field_key] || ''}
-                                                            onChange={(e) => setItemFilters(prev => ({ ...prev, [f.field_key]: e.target.value }))}
-                                                        >
-                                                            <option value="">All</option>
-                                                            {uniqueOptions.map(opt => (
-                                                                <option key={opt} value={opt}>{opt}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-                                                </div>
-                                            </th>
-                                        );
-                                    })
-                                ) : (
-                                    // Fallback Static Header
-                                    <>
-                                    <th className="px-6 py-4 sticky left-0 z-20 bg-gray-50 dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 min-w-[200px] shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]">Item</th>
-                                    <th className="px-6 py-4">
-                                        <div className="flex flex-col gap-1">
-                                            <span>Category</span>
-                                            <select 
-                                                className="text-[10px] font-normal border border-gray-200 dark:border-gray-700 rounded px-1 py-0.5 bg-white dark:bg-[#15171e] focus:ring-1 focus:ring-blue-500 max-w-[120px]"
-                                                value={itemFilters['category'] || ''}
-                                                onChange={(e) => setItemFilters(prev => ({ ...prev, ['category']: e.target.value }))}
-                                            >
-                                                <option value="">All</option>
-                                                {Array.from((uniqueValues || {})['category'] || []).sort().map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                            </select>
-                                        </div>
-                                    </th>
-                                    <th className="px-6 py-4">Price</th>
-                                    <th className="px-6 py-4">SAP Code</th>
-                                    <th className="px-6 py-4">Mapping</th>
-                                    <th className="px-6 py-4">Attributes</th>
-                                    </>
-                                )}
+                                    return (
+                                        <th key={col.key} className={`px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase ${stickyClass}`}>
+                                            <div className="flex flex-col gap-1">
+                                                <span>{col.label}</span>
+                                                {isFilterable && (
+                                                    <select 
+                                                        className="text-[10px] font-normal border border-gray-200 dark:border-gray-700 rounded px-1 py-0.5 bg-white dark:bg-[#15171e] focus:ring-1 focus:ring-blue-500 max-w-[120px]"
+                                                        value={itemFilters[col.key] || ''}
+                                                        onChange={(e) => setItemFilters(prev => ({ ...prev, [col.key]: e.target.value }))}
+                                                    >
+                                                        <option value="">All</option>
+                                                        {uniqueOptions.map(opt => (
+                                                            <option key={opt} value={opt}>{opt}</option>
+                                                        ))}
+                                                    </select>
+                                                )}
+                                            </div>
+                                        </th>
+                                    );
+                                })}
                                 <th className="px-4 py-3 text-right bg-gray-50 dark:bg-[#1e2029] sticky right-0 z-20">Actions</th>
                             </tr>
                         </thead>
@@ -1424,43 +1410,36 @@ if __name__ == "__main__":
                                     return true;
                                 }).map(item => (
                                         <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
-                                    {(fieldRegistry || []).length > 0 ? (
-                                        <>
-                                        {(fieldRegistry || []).filter(f => f && f.is_visible).map((f, idx) => {
-                                             const val = item[f.field_key as keyof Item];
-                                             const stickyClass = idx === 0 
-                                                ? "sticky left-0 z-10 bg-white dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]" 
-                                                : "";
-                                             
-                                             // 1. Boolean Toggle
-                                             if (f.data_type === 'boolean') {
-                                                 return (
-                                                     <td key={f.field_key} className={`px-4 py-3 text-sm whitespace-nowrap ${stickyClass}`}>
-                                                         <button 
-                                                            onClick={() => handleCellUpdate(item.id, f.field_key, !val)}
-                                                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${val ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}`}
-                                                         >
-                                                             <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${val ? 'translate-x-5' : 'translate-x-1'}`} />
-                                                         </button>
-                                                     </td>
-                                                 );
-                                             }
+                                    {MASTER_ITEM_COLUMNS.map((col, idx) => {
+                                        const val = item[col.key as keyof Item];
+                                        const stickyClass = idx === 0 
+                                            ? "sticky left-0 z-10 bg-white dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]" 
+                                            : "";
+                                        
+                                        let displayVal: React.ReactNode = String(val === undefined || val === null ? '' : val);
+                                        
+                                        if (col.key === 'unitPrice') {
+                                            displayVal = `$${Number(val || 0).toFixed(2)}`;
+                                        } else if (col.key === 'rfidFlag' || col.key === 'cogFlag') {
+                                            displayVal = (
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${val ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                    {val ? 'Yes' : 'No'}
+                                                </span>
+                                            );
+                                        } else if (col.key === 'activeFlag') {
+                                            displayVal = (
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${val !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                    {val !== false ? 'Active' : 'Archived'}
+                                                </span>
+                                            );
+                                        }
 
-                                             // 2. Edit Mode Inputs REMOVED
-
-
-                                             // 3. Read Mode Display
-                                             return (
-                                                <td key={f.field_key} className={`px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap ${stickyClass}`}>
-                                                    {f.data_type === 'number' && (f.field_key.includes('price') || f.field_key.includes('Price')) 
-                                                        ? `$${Number(val || 0).toFixed(2)}`
-                                                        : String(val === undefined || val === null ? '' : val)
-                                                    }
-                                                </td>
-                                             );
-
-                                        })
-                                    }
+                                        return (
+                                            <td key={col.key} className={`px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap ${stickyClass}`}>
+                                                {displayVal}
+                                            </td>
+                                        );
+                                    })}
                                     <td className="px-4 py-3 text-right sticky right-0 z-20 bg-white dark:bg-[#1e2029] shadow-[-10px_0_10px_-10px_rgba(0,0,0,0.1)]">
                                         <div className="flex justify-end gap-2">
                                             <button onClick={() => { 
@@ -1483,55 +1462,11 @@ if __name__ == "__main__":
                                             </button>
                                         </div>
                                     </td>
-                                    </>
-                                ) : (
-                                    // Fallback Static Cells
-                                            <>
-                                                <td className="px-6 py-4 sticky left-0 z-10 bg-white dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 min-w-[200px] shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]">
-                                                    <div className="flex items-center">
-                                                        <div className="h-8 w-8 rounded bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 mr-3 hidden md:flex">
-                                                            <Box size={16} />
-                                                        </div>
-                                                        <div>
-                                                            <div className="font-medium text-gray-900 dark:text-white line-clamp-1" title={item.name}>{item.name}</div>
-                                                            <div className="text-xs text-gray-500 line-clamp-1">{item.description}</div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-sm text-gray-500">{item.category}</td>
-                                                <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">${(item.unitPrice || 0).toFixed(2)}</td>
-                                                <td className="px-6 py-4 text-sm font-mono text-gray-500">{item.sapItemCodeRaw || item.sku}</td>
-                                                <td className="px-6 py-4 text-sm font-mono text-blue-600 dark:text-blue-400">
-                                                    {item.sapItemCodeNorm ? <span className="bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded w-fit block">{item.sapItemCodeNorm}</span> : '-'}
-                                                </td>
-                                                <td className="px-6 py-4 text-xs text-gray-500 space-y-1">
-                                                    <div>{item.itemWeight ? `${item.itemWeight}kg` : ''} {item.itemPool}</div>
-                                                    <div>UPQ: {item.upq || 1}</div>
-                                                    <div className="flex gap-1">
-                                                        {item.rfidFlag && <span className="bg-purple-100 text-purple-700 px-1 rounded">RFID</span>}
-                                                        {item.cogFlag && <span className="bg-orange-100 text-orange-700 px-1 rounded">COG</span>}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-right sticky right-0 z-10 bg-white dark:bg-[#1e2029] shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">
-                                                    <div className="flex justify-end gap-2">
-                                                        <button onClick={() => { 
-                                                            setEditingItem(item); 
-                                                            setIsItemFormOpen(true); 
-                                                        }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500">
-                                                            <Edit2 size={16} />
-                                                        </button>
-                                                        <button onClick={() => requestDelete(item)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500" title="Archive Item">
-                                                            <Archive size={16} />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </>
-                                        )}
                                     </tr>
                                 ))}
                                 {items.length === 0 && (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                                        <td colSpan={MASTER_ITEM_COLUMNS.length + 1} className="px-6 py-8 text-center text-gray-500">
                                             No items found. Import items or add manually.
                                         </td>
                                     </tr>

@@ -865,6 +865,7 @@ export const db = {
         if (itemsRes.error) throw itemsRes.error;
         const existingItems = itemsRes.data || [];
         const existingMap = new Map(existingItems.map((i: any) => [i.sap_item_code_norm, i]));
+        const existingSkuMap = new Map(existingItems.map((i: any) => [i.sku, i]));
         
         const timestamp = new Date().toISOString();
         const upsertPayload: any[] = [];
@@ -886,7 +887,8 @@ export const db = {
             }
             
             processedNorms.add(norm.normalized);
-            const existing = existingMap.get(norm.normalized);
+            // Match by normalized code OR by Sku (last resort for legacy items)
+            const existing = existingMap.get(norm.normalized) || existingSkuMap.get(input.sku);
             
             const commonFields = {
                 sku: input.sku,
