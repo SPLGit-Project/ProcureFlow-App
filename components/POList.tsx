@@ -12,15 +12,20 @@ const POList = ({ filter = 'ALL' }: { filter?: 'ALL' | 'PENDING' }) => {
   let filteredPos = pos;
   if (filter === 'PENDING') {
       filteredPos = filteredPos.filter(p => p.status === 'PENDING_APPROVAL');
-  } else if (currentUser.role === 'SITE_USER') {
-      filteredPos = filteredPos.filter(p => p.requesterId === currentUser.id);
   }
+  // All users see every PO for their assigned sites (site filtering handled by AppContext)
 
-  filteredPos = filteredPos.filter(p => 
-      p.supplierName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.lines.some(l => l.concurPoNumber?.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  filteredPos = filteredPos.filter(p => {
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+          p.supplierName.toLowerCase().includes(term) || 
+          (p.displayId || p.id).toLowerCase().includes(term) ||
+          (p.site || '').toLowerCase().includes(term) ||
+          p.requesterName.toLowerCase().includes(term) ||
+          p.lines.some(l => l.concurPoNumber?.toLowerCase().includes(term))
+      );
+  });
 
   const StatusBadge = ({ status }: { status: string }) => {
       let colorClass = 'bg-gray-100 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700';
@@ -64,7 +69,7 @@ const POList = ({ filter = 'ALL' }: { filter?: 'ALL' | 'PENDING' }) => {
                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                  <input 
                     type="text" 
-                    placeholder="Search by ID, Supplier, or Concur Ref..." 
+                    placeholder="Search by ID, Site, Supplier, Requester, or Concur Ref..." 
                     className="pl-10 pr-4 py-2.5 w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] placeholder-gray-500 dark:placeholder-gray-600 transition-colors"
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
@@ -80,6 +85,7 @@ const POList = ({ filter = 'ALL' }: { filter?: 'ALL' | 'PENDING' }) => {
                         <th className="px-6 py-4">Request ID</th>
                         <th className="px-6 py-4">Ref</th>
                         <th className="px-6 py-4">Date</th>
+                        <th className="px-6 py-4">Site</th>
                         <th className="px-6 py-4">Supplier</th>
                         {filter === 'PENDING' && <th className="px-6 py-4">Requester</th>}
                         <th className="px-6 py-4 text-right">Amount</th>
@@ -97,6 +103,12 @@ const POList = ({ filter = 'ALL' }: { filter?: 'ALL' | 'PENDING' }) => {
                                 ) : <span className="text-gray-300 dark:text-gray-700">-</span>}
                             </td>
                             <td className="px-6 py-4">{new Date(po.requestDate).toLocaleDateString()}</td>
+                            <td className="px-6 py-4">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                                    <MapPin size={11} className="text-gray-400" />
+                                    {po.site || 'Unknown'}
+                                </span>
+                            </td>
                             <td className="px-6 py-4 text-gray-700 dark:text-gray-300 font-medium">{po.supplierName}</td>
                             {filter === 'PENDING' && <td className="px-6 py-4 flex items-center gap-2">
                                 <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${po.requesterName}`} className="w-6 h-6 rounded-full bg-gray-100"/>
@@ -114,7 +126,7 @@ const POList = ({ filter = 'ALL' }: { filter?: 'ALL' | 'PENDING' }) => {
                         </tr>
                     ))}
                     {filteredPos.length === 0 && (
-                        <tr><td colSpan={8} className="text-center py-12 text-gray-500 dark:text-gray-600">No requests found matching your filters.</td></tr>
+                        <tr><td colSpan={9} className="text-center py-12 text-gray-500 dark:text-gray-600">No requests found matching your filters.</td></tr>
                     )}
                 </tbody>
             </table>
@@ -127,11 +139,13 @@ const POList = ({ filter = 'ALL' }: { filter?: 'ALL' | 'PENDING' }) => {
                    <div className="flex justify-between items-start mb-3">
                        <div>
                            <div className="font-bold text-gray-900 dark:text-white mb-0.5">{po.supplierName}</div>
-                           <div className="text-xs text-gray-500 flex items-center gap-2">
-                               <span className="font-mono">{po.displayId || po.id}</span>
-                               <span>•</span>
-                               <span>{new Date(po.requestDate).toLocaleDateString()}</span>
-                           </div>
+                            <div className="text-xs text-gray-500 flex items-center gap-2">
+                                <span className="font-mono">{po.displayId || po.id}</span>
+                                <span>•</span>
+                                <span>{new Date(po.requestDate).toLocaleDateString()}</span>
+                                <span>•</span>
+                                <span className="inline-flex items-center gap-1"><MapPin size={10} />{po.site || 'Unknown'}</span>
+                            </div>
                        </div>
                        <StatusBadge status={po.status} />
                    </div>
