@@ -14,7 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, suppliers, updatePOStatus, currentUser, hasPermission, addDelivery, linkConcurPO, reloadData } = useApp();
+  const { pos, suppliers, updatePOStatus, currentUser, hasPermission, addDelivery, linkConcurPO, reloadData, deletePO } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -326,6 +326,19 @@ const PODetail = () => {
       } catch (e: any) {
           console.error(e);
           alert("Failed to update status: " + e.message);
+      }
+  };
+
+  const handleDeletePO = async () => {
+      if (!po) return;
+      if (!window.confirm(`ARE YOU SURE? \n\nThis will permanently delete PO ${po.displayId || po.id} and all associated data (lines, deliveries, approvals). This action cannot be undone.`)) return;
+      
+      try {
+          await deletePO(po.id);
+          navigate('/');
+      } catch (e: any) {
+          console.error(e);
+          alert("Failed to delete PO: " + e.message);
       }
   };
 
@@ -798,10 +811,19 @@ const PODetail = () => {
                             {s}
                         </button>
                     ))}
+                    
+                    <div className="pt-4 mt-4 border-t border-gray-100 dark:border-gray-800">
+                        <button 
+                            onClick={handleDeletePO}
+                            className="w-full text-left px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800"
+                        >
+                            DELETE REQUEST
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex justify-end">
-                    <button onClick={() => setIsStatusModalOpen(false)} className="px-4 py-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white font-medium text-sm">Cancel</button>
+                    <button onClick={() => setIsStatusModalOpen(false)} className="px-4 py-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-lg font-medium text-sm">Cancel</button>
                 </div>
             </div>
         </div>

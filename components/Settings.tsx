@@ -1231,7 +1231,7 @@ if __name__ == "__main__":
                 <div className="flex justify-between items-center">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         Master Item List 
-                        <span className="text-xs font-normal text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{(items || []).length} Items</span>
+                        <span className="text-xs font-normal text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{(items || []).filter(i => i.activeFlag !== false).length} Active Items</span>
                     </h3>
                     <div className="flex gap-3 items-center">
                         <label className="flex items-center gap-2 text-xs font-bold text-gray-500 cursor-pointer mr-2">

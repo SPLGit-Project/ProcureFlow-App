@@ -119,6 +119,7 @@ interface AppContextType {
 
 
   runAutoMapping: (supplierId: string) => Promise<{ confirmed: number, proposed: number }>;
+  deletePO: (id: string) => Promise<void>;
   getMappingQueue: (supplierId?: string) => Promise<SupplierProductMap[]>;
   getMappingMemory: (supplierId?: string) => Promise<SupplierProductMap[]>;
   deleteMapping: (id: string) => Promise<void>;
@@ -1458,6 +1459,20 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         console.error("Failed to update status", e);
         reloadData();
     }
+  };
+
+  const deletePO = async (id: string) => {
+      try {
+          // Optimistic remove
+          setPos(prev => prev.filter(p => p.id !== id));
+          
+          await db.deletePO(id);
+          // sendNotification('SYSTEM', { message: `PO ${id} deleted by admin` });
+      } catch (e) {
+          console.error("Failed to delete PO", e);
+          alert("Failed to delete PO");
+          reloadData(); // Revert
+      }
   };
 
   const linkConcurPO = async (poId: string, concurPoNumber: string) => {

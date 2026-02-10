@@ -607,6 +607,37 @@ export const db = {
         if (error) throw error;
     },
 
+    deletePO: async (id: string): Promise<void> => {
+        // 1. Get deliveries to find delivery lines
+        const { data: deliveries } = await supabase.from('deliveries').select('id').eq('po_request_id', id);
+        
+        if (deliveries && deliveries.length > 0) {
+            const deliveryIds = deliveries.map(d => d.id);
+            // Delete delivery lines
+            const { error: dlError } = await supabase.from('delivery_lines').delete().in('delivery_id', deliveryIds);
+            if (dlError) throw dlError;
+            
+            // Delete deliveries
+            const { error: dError } = await supabase.from('deliveries').delete().in('id', deliveryIds);
+            if (dError) throw dError;
+        }
+
+        // 2. Delete PO lines
+        const { error: plError } = await supabase.from('po_lines').delete().eq('po_request_id', id);
+        if (plError) throw plError;
+
+        // 3. Delete Approvals
+        const { error: aError } = await supabase.from('po_approvals').delete().eq('po_request_id', id);
+        if (aError) throw aError;
+        
+        // 4. Delete Notifications (if any relate to this PO directly, though schema might just be loose JSON)
+        // Skipping specific notification cleanup as it's often log-based, unless there's a specific FK.
+
+        // 5. Delete PO Request
+        const { error: poError } = await supabase.from('po_requests').delete().eq('id', id);
+        if (poError) throw poError;
+    },
+
     deleteNotificationRule: async (id: string): Promise<void> => {
         const { error } = await supabase.from('notification_settings').delete().eq('id', id);
         if (error) throw error;
