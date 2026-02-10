@@ -982,15 +982,19 @@ export const db = {
         };
 
         if (userId) {
-            await db.createAuditLog({
-                actionType: 'ITEM_IMPORT',
-                performedBy: userId,
-                summary: result,
-                details: {
-                    inputCount: inputs.length,
-                    deactivateMissingMode: deactivateMissing
-                }
-            });
+            try {
+                await db.createAuditLog({
+                    actionType: 'ITEM_IMPORT',
+                    performedBy: userId,
+                    summary: result,
+                    details: {
+                        inputCount: inputs.length,
+                        deactivateMissingMode: deactivateMissing
+                    }
+                });
+            } catch (auditErr) {
+                console.warn('Audit log write failed (non-fatal):', auditErr);
+            }
         }
         
         return result;
