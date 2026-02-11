@@ -419,70 +419,62 @@ export interface SystemAuditLog {
     createdAt: string;
 }
 
-// --- Enhanced Workflow Designer Types ---
+// --- Simplified Workflow System Types ---
 
-export type WorkflowNodeType = 'START' | 'APPROVAL' | 'NOTIFICATION' | 'CONDITIONAL' | 'DELAY' | 'SEND_EMAIL' | 'END';
-export type WorkflowActionType = 'APPROVE' | 'REJECT' | 'NOTIFY_EMAIL' | 'NOTIFY_TEAMS' | 'NOTIFY_INAPP' | 'WAIT' | 'CONDITIONAL_BRANCH';
+export type WorkflowType = 'APPROVAL' | 'POST_APPROVAL' | 'POST_DELIVERY' | 'POST_CAPITALIZATION';
 
-export interface WorkflowNode {
+export interface WorkflowConfiguration {
     id: string;
-    type: WorkflowNodeType;
-    label: string;
-    position: { x: number; y: number };
-    config: WorkflowNodeConfig;
-    connections: string[]; // IDs of connected nodes
-    isActive: boolean;
-}
-
-export interface WorkflowNodeConfig {
-    // Approval Node
-    approverType?: 'ROLE' | 'USER';
-    approverId?: string;
-    requireAll?: boolean; // If multiple approvers, require all or any
+    workflowType: WorkflowType;
+    isEnabled: boolean;
     
-    // Notification Node
-    notificationRecipients?: NotificationRecipient[];
-    emailTemplateId?: string;
-    customMessage?: string;
+    // Email Configuration
+    emailEnabled: boolean;
+    emailSubject: string;
+    emailBody: string;
     
-    // Conditional Node
-    condition?: {
-        field: 'amount' | 'site' | 'supplier' | 'requester' | 'custom';
-        operator: '>' | '<' | '=' | '!=' | '>=' | '<=' | 'contains';
-        value: any;
-    };
+    // In-App Notification
+    inappEnabled: boolean;
+    inappTitle: string;
+    inappMessage: string;
     
-    // Delay Node
-    delayHours?: number;
-    delayUntil?: string; // ISO datetime or expression like "next business day"
+    // Recipients
+    recipientType: 'ROLE' | 'USER' | 'REQUESTER' | 'CUSTOM';
+    recipientId?: string;
     
-    // Send Email Node
-    emailTo?: string[];
-    emailSubject?: string;
-    emailBody?: string;
+    // Additional Settings
+    escalationHours?: number;
     
-    // SLA Settings (for any node)
-    sla?: WorkflowSLA;
-}
-
-export interface EmailTemplateData {
-    id: string;
-    name: string;
-    type: 'APPROVAL' | 'NOTIFICATION' | 'REMINDER' | 'REJECTION';
-    subject: string;
-    body: string;
-    variables: string[]; // Available template variables like {{po_number}}, {{approver_name}}
-    isSystem?: boolean;
     createdAt?: string;
     updatedAt?: string;
 }
 
-export interface WorkflowConnection {
+export interface InAppNotification {
     id: string;
-    fromNodeId: string;
-    toNodeId: string;
-    label?: string; // For conditional branches: "Yes"/"No" or "Approved"/"Rejected"
-    condition?: string;
+    userId: string;
+    title: string;
+    message: string;
+    type: WorkflowType;
+    relatedPoId?: string;
+    isRead: boolean;
+    createdAt: string;
+}
+
+export interface WorkflowPreviewData {
+    approver_name: string;
+    requester_name: string;
+    po_number: string;
+    total_amount: string;
+    supplier_name: string;
+    site_name: string;
+    app_name: string;
+    approval_link: string;
+    po_link: string;
+    approval_date: string;
+    delivery_date: string;
+    capitalization_date: string;
+    reason_for_request: string;
+    recipient_name: string;
 }
 
 

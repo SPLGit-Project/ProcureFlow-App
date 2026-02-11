@@ -30,8 +30,7 @@ import MenuEditor from './MenuEditor';
 import { ItemWizard } from './ItemWizard';
 import { HierarchyManager } from '../utils/hierarchyManager';
 import { seedCatalogData } from '../utils/catalogSeeder';
-import WorkflowDesigner from './WorkflowDesigner';
-import EmailTemplateEditor from './EmailTemplateEditor';
+import SimpleWorkflowConfig from './SimpleWorkflowConfig';
 
 
 const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, icon: any, category: 'Sidebar Navigation' | 'Admin Portal' | 'Operational Actions' }[] = [
@@ -198,6 +197,140 @@ const Settings = () => {
          } else {
              alert("Failed to send test email. Check console/network.");
          }
+      }
+  };
+
+  // --- Workflow Configurations State ---
+  const [workflowConfigs, setWorkflowConfigs] = useState<any[]>([
+      {
+          id: '1',
+          workflowType: 'APPROVAL',
+          isEnabled: true,
+          emailEnabled: true,
+          emailSubject: 'Action Required: Approve Purchase Order {{po_number}}',
+          emailBody: '<p>Approval required for PO {{po_number}}</p>',
+          inappEnabled: true,
+          inappTitle: 'Approval Required',
+          inappMessage: 'Purchase Order {{po_number}} requires your approval',
+          recipientType: 'ROLE',
+          recipientId: ''
+      },
+      {
+          id: '2',
+          workflowType: 'POST_APPROVAL',
+          isEnabled: true,
+          emailEnabled: true,
+          emailSubject: 'Your Purchase Order {{po_number}} has been Approved',
+          emailBody: '<p>Your PO {{po_number}} has been approved</p>',
+          inappEnabled: true,
+          inappTitle: 'PO Approved',
+          inappMessage: 'Your Purchase Order {{po_number}} has been approved',
+          recipientType: 'REQUESTER'
+      },
+      {
+          id: '3',
+          workflowType: 'POST_DELIVERY',
+          isEnabled: true,
+          emailEnabled: true,
+          emailSubject: 'Order Delivered: PO {{po_number}}',
+          emailBody: '<p>Order {{po_number}} has been delivered</p>',
+          inappEnabled: true,
+          inappTitle: 'Order Delivered',
+          inappMessage: 'Your order {{po_number}} has been delivered',
+          recipientType: 'REQUESTER'
+      },
+      {
+          id: '4',
+          workflowType: 'POST_CAPITALIZATION',
+          isEnabled: true,
+          emailEnabled: true,
+          emailSubject: 'Order Finalized: PO {{po_number}}',
+          emailBody: '<p>PO {{po_number}} has been capitalized</p>',
+          inappEnabled: true,
+          inappTitle: 'Order Finalized',
+          inappMessage: 'PO {{po_number}} has been capitalized',
+          recipientType: 'ROLE',
+          recipientId: ''
+      }
+  ]);
+
+  // Load workflow configurations from database
+  useEffect(() => {
+      const loadWorkflowConfigs = async () => {
+          try {
+              const { data, error } = await supabase
+                  .from('workflow_configurations')
+                  .select('*');
+              
+              if (error) throw error;
+              
+              if(data && data.length > 0) {
+                  setWorkflowConfigs(data.map((wf: any) => ({
+                      id: wf.id,
+                      workflowType: wf.workflow_type,
+                      isEnabled: wf.is_enabled,
+                      emailEnabled: wf.email_enabled,
+                      emailSubject: wf.email_subject,
+                      emailBody: wf.email_body,
+                      inappEnabled: wf.inapp_enabled,
+                      inappTitle: wf.inapp_title,
+                      inappMessage: wf.inapp_message,
+                      recipientType: wf.recipient_type,
+                      recipientId: wf.recipient_id,
+                      escalationHours: wf.escalation_hours
+                  })));
+              }
+          } catch (err) {
+              console.error('Error loading workflow configurations:', err);
+          }
+      };
+
+      if (activeTab === 'WORKFLOW') {
+          loadWorkflowConfigs();
+      }
+  }, [activeTab]);
+
+  const handleSaveWorkflows = async (workflows: any[]) => {
+      try {
+          const updates = workflows.map(wf => ({
+              id: wf.id,
+              workflow_type: wf.workflowType,
+              is_enabled: wf.isEnabled,
+              email_enabled: wf.emailEnabled,
+              email_subject: wf.emailSubject,
+              email_body: wf.emailBody,
+              inapp_enabled: wf.inappEnabled,
+              inapp_title: wf.inappTitle,
+              inapp_message: wf.inappMessage,
+              recipient_type: wf.recipientType,
+              recipient_id: wf.recipientId,
+              escalation_hours: wf.escalationHours,
+              updated_at: new Date().toISOString()
+          }));
+
+          const { error } = await supabase
+              .from('workflow_configurations')
+              .upsert(updates);
+
+          if (error) throw error;
+
+          setWorkflowConfigs(workflows);
+          success('Workflow configurations saved successfully');
+      } catch (err) {
+          console.error('Error saving workflows:', err);
+          error('Failed to save workflow configurations');
+      }
+  };
+
+  const handleTestNotification = async (workflow: any) => {
+      try {
+          // Here you would send a test notification
+          // For now, just log it
+          console.log('Sending test notification for:', workflow);
+          success(`Test notification sent for ${workflow.workflowType}`);
+      } catch (err) {
+          console.error('Error sending test notification:', err);
+          error('Failed to send test notification');
       }
   };
 
@@ -2264,16 +2397,13 @@ if __name__ == "__main__":
       )}
 
       {activeTab === 'WORKFLOW' && (
-          <WorkflowDesigner
+          <SimpleWorkflowConfig
+              workflows={workflowConfigs}
               roles={roles}
               users={users}
-              emailTemplates={[]} // TODO: Load from database
-              onSave={async (nodes) => {
-                  // TODO: Implement save to database
-                  console.log('Saving workflow nodes:', nodes);
-                  // For now, we'll keep the existing workflow_steps table
-                  // In a future enhancement, we can migrate to workflow_nodes table
-              }}
+              appName={branding.appName}
+              onSave={handleSaveWorkflows}
+              onTest={handleTestNotification}
           />
       )}
 
