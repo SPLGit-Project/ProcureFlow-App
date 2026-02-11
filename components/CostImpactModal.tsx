@@ -27,13 +27,20 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose, orde
 
   // --- Filtering & Logic ---
   const filteredData = useMemo(() => {
+    if (!Array.isArray(orders)) return [];
+    
     return orders.filter(po => {
-      // Basic sanity check on status
-      if (po.status === 'REJECTED' || po.status === 'DRAFT') return false;
+      // Basic sanity check on status and date
+      if (!po || po.status === 'REJECTED' || po.status === 'DRAFT' || !po.requestDate) return false;
       
-      // Date filter
-      const poDate = po.requestDate.split('T')[0];
-      return poDate >= dateRange.start && poDate <= dateRange.end;
+      try {
+          // Date filter
+          const poDate = po.requestDate.split('T')[0];
+          return poDate >= dateRange.start && poDate <= dateRange.end;
+      } catch (e) {
+          console.warn('Invalid PO Request Date:', po);
+          return false;
+      }
     });
   }, [orders, dateRange]);
 
@@ -44,10 +51,11 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose, orde
     let total = 0;
 
     filteredData.forEach(po => {
-        if (po.reasonForRequest === 'Depletion') { // Or similar logic to Dashboard
-            replacement += po.totalAmount;
+        const amount = po.totalAmount || 0;
+        if (po.reasonForRequest === 'Depletion') {
+            replacement += amount;
         } else {
-            contract += po.totalAmount;
+            contract += amount;
         }
     });
     total = replacement + contract;
@@ -65,15 +73,19 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose, orde
     const months: Record<string, { replacement: number; contract: number }> = {};
 
     filteredData.forEach(po => {
+        if (!po.requestDate) return;
         const date = new Date(po.requestDate);
-        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
+        if (isNaN(date.getTime())) return;
+        
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const amount = po.totalAmount || 0;
         
         if (!months[key]) months[key] = { replacement: 0, contract: 0 };
         
         if (po.reasonForRequest === 'Depletion') {
-            months[key].replacement += po.totalAmount;
+            months[key].replacement += amount;
         } else {
-            months[key].contract += po.totalAmount;
+            months[key].contract += amount;
         }
     });
 
@@ -92,11 +104,17 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose, orde
      
      filteredData
         .filter(p => p.reasonForRequest === 'Depletion')
-        .flatMap(p => p.lines)
-        .forEach(line => {
-             if (!itemMap[line.itemName]) itemMap[line.itemName] = { qty: 0, cost: 0 };
-             itemMap[line.itemName].qty += line.quantityOrdered;
-             itemMap[line.itemName].cost += (line.quantityOrdered * line.unitPrice);
+        .forEach(p => {
+             if (!p.lines || !Array.isArray(p.lines)) return;
+             p.lines.forEach(line => {
+                 if (!line || !line.itemName) return;
+                 if (!itemMap[line.itemName]) itemMap[line.itemName] = { qty: 0, cost: 0 };
+                 
+                 const qty = line.quantityOrdered || 0;
+                 const price = line.unitPrice || 0;
+                 itemMap[line.itemName].qty += qty;
+                 itemMap[line.itemName].cost += (qty * price);
+             });
         });
 
      return Object.entries(itemMap)
