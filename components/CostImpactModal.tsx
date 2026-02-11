@@ -1,15 +1,14 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   X, TrendingUp, AlertCircle, Filter, FileText, DollarSign, 
   ChevronRight, Calendar, MapPin, LayoutGrid, BarChart2,
-  CheckCircle2, Clock, Package, Truck
+  CheckCircle2, Clock, Package, Truck, ChevronDown, Check
 } from 'lucide-react';
 import { 
   BarChart, Bar, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 import { useApp } from '../context/AppContext';
-import { PORequest } from '../types';
 
 interface CostImpactModalProps {
   isOpen: boolean;
@@ -17,11 +16,13 @@ interface CostImpactModalProps {
 }
 
 const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) => {
-  const { pos, userSites, siteName } = useApp();
+  const { pos, userSites } = useApp();
   
   // View States
   const [viewMode, setViewMode] = useState<'trends' | 'snapshot'>('trends');
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(userSites.map(s => s.id));
+  const [isSiteDropdownOpen, setIsSiteDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   
   // Date/Month States
   const [dateRange, setDateRange] = useState({
@@ -30,6 +31,17 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
   });
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsSiteDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -104,8 +116,6 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
         
         po.lines?.forEach(line => {
             const lineTotal = (Number(line.quantityOrdered) || 0) * (Number(line.unitPrice) || 0);
-            
-            // Check deliveries for this line across this PO
             let lineReceivedVal = 0;
             let lineCapVal = 0;
 
@@ -120,8 +130,8 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
             });
 
             capitalised += lineCapVal;
-            received += (lineReceivedVal - lineCapVal); // Received but not yet capitalised
-            pending += (lineTotal - lineReceivedVal); // Remaining to be received
+            received += (lineReceivedVal - lineCapVal);
+            pending += (lineTotal - lineReceivedVal);
         });
     });
 
@@ -130,201 +140,299 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
 
   const toggleSite = (id: string) => {
     setSelectedSiteIds(prev => 
-        prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        prev.includes(id) ? (prev.length > 1 ? prev.filter(x => x !== id) : prev) : [...prev, id]
     );
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 md:p-4 bg-black/70 backdrop-blur-md">
-      <div className="bg-surface w-full h-full md:h-auto md:max-w-7xl md:max-h-[92vh] md:rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-default animate-slide-up">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 md:p-4 bg-black/75 backdrop-blur-md">
+      <div className="bg-app w-full h-full md:h-auto md:max-w-7xl md:max-h-[95vh] md:rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-strong animate-slide-up relative">
         
-        {/* Top Navigation Bar */}
-        <div className="p-4 md:p-6 border-b border-default bg-surface flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        {/* Top Navigation Bar - High Contrast Header */}
+        <div className="p-4 md:p-6 border-b border-default bg-surface flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 z-10">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-red-50 dark:bg-red-500/10 rounded-2xl">
+            <div className="p-3 bg-red-500/10 rounded-2xl border border-red-500/20">
                <TrendingUp className="text-red-500" size={24} />
             </div>
             <div>
               <h2 className="text-xl md:text-2xl font-black text-primary tracking-tight">Financial Impact Hub</h2>
-              <div className="flex items-center gap-2 text-xs font-bold text-secondary uppercase tracking-widest mt-0.5">
-                 <MapPin size={12} />
-                 {selectedSiteIds.length === userSites.length ? 'Across All Sites' : `${selectedSiteIds.length} Sites Selected`}
+              <div className="flex items-center gap-2 text-[10px] font-black text-secondary uppercase tracking-[0.2em] mt-0.5">
+                 <MapPin size={10} className="text-[var(--color-brand)]" />
+                 {selectedSiteIds.length === userSites.length ? 'Across All Sites' : `${selectedSiteIds.length} Scopes Active`}
               </div>
             </div>
           </div>
           
           <div className="flex items-center gap-3 w-full sm:w-auto">
-             <div className="flex bg-app p-1 rounded-xl border border-default transition-all">
+             <div className="flex bg-surface-raised p-1 rounded-xl border border-default">
                 <button 
                    onClick={() => setViewMode('trends')}
-                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'trends' ? 'bg-surface text-primary shadow-sm' : 'text-secondary hover:text-primary'}`}
+                   className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-black transition-all ${viewMode === 'trends' ? 'bg-elevated text-primary shadow-lg border border-default active:scale-95' : 'text-secondary hover:text-primary'}`}
                 >
-                   <BarChart2 size={16} /> <span className="hidden sm:inline">Trends</span>
+                   <BarChart2 size={16} /> <span className="hidden sm:inline">TRENDS</span>
                 </button>
                 <button 
                    onClick={() => setViewMode('snapshot')}
-                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'snapshot' ? 'bg-surface text-primary shadow-sm' : 'text-secondary hover:text-primary'}`}
+                   className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-black transition-all ${viewMode === 'snapshot' ? 'bg-elevated text-primary shadow-lg border border-default active:scale-95' : 'text-secondary hover:text-primary'}`}
                 >
-                   <LayoutGrid size={16} /> <span className="hidden sm:inline">Snapshot</span>
+                   <LayoutGrid size={16} /> <span className="hidden sm:inline">SNAPSHOT</span>
                 </button>
              </div>
-             <button onClick={onClose} className="ml-auto p-2.5 hover:bg-surface-raised rounded-xl transition-all active:scale-95 border border-transparent hover:border-default">
-                <X size={20} className="text-secondary" />
+             <button onClick={onClose} className="ml-auto p-2.5 hover:bg-surface-raised rounded-xl transition-all active:scale-95 border border-transparent hover:border-default text-tertiary hover:text-primary">
+                <X size={20} />
              </button>
           </div>
         </div>
 
-        {/* Filters & Controls */}
-        <div className="bg-app border-b border-default p-4 md:p-6 overflow-x-auto">
-           <div className="flex flex-wrap items-center gap-6 min-w-max">
-              
-              {/* Site Selector Badges */}
-              <div className="flex flex-col gap-2">
-                 <span className="text-[10px] font-black text-secondary uppercase tracking-widest flex items-center gap-1">
-                    <Filter size={10} /> Active Scopes
-                 </span>
-                 <div className="flex gap-2">
-                    <button 
-                        onClick={() => setSelectedSiteIds(userSites.map(s => s.id))}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${selectedSiteIds.length === userSites.length ? 'bg-primary text-white border-primary' : 'bg-surface border-default text-secondary hover:border-primary'}`}
-                    >
-                        All
-                    </button>
-                    {userSites.map(site => (
+        {/* Global Control Bar - Enhanced Contrast for Dark Mode */}
+        <div className="bg-surface border-b border-default p-4 md:px-8 py-4 flex flex-wrap items-center gap-6 z-20">
+            {/* Site Dropdown */}
+            <div className="relative" ref={dropdownRef}>
+               <span className="text-[10px] font-black text-secondary uppercase tracking-widest block mb-1.5 flex items-center gap-1 opacity-70">
+                  <Filter size={10} /> Site Filter
+               </span>
+               <button 
+                  onClick={() => setIsSiteDropdownOpen(!isSiteDropdownOpen)}
+                  className="w-[240px] flex items-center justify-between bg-surface-raised hover:bg-elevated border border-default px-4 py-2 rounded-xl text-sm font-bold text-primary transition-all shadow-sm"
+               >
+                  <div className="flex items-center gap-2 truncate">
+                     <div className="w-5 h-5 rounded-md bg-[var(--color-brand)]/10 flex items-center justify-center text-[var(--color-brand)]">
+                        <MapPin size={12} />
+                     </div>
+                     <span className="truncate">
+                        {selectedSiteIds.length === userSites.length ? 'All Sites Selected' : `${selectedSiteIds.length} Sites Selected`}
+                     </span>
+                  </div>
+                  <ChevronDown size={16} className={`text-secondary transition-transform ${isSiteDropdownOpen ? 'rotate-180' : ''}`} />
+               </button>
+
+               {isSiteDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-2 w-[280px] bg-elevated border border-strong rounded-2xl shadow-2xl z-50 p-2 animate-slide-down">
+                     <div className="flex items-center justify-between p-2 mb-1 border-b border-default">
+                        <span className="text-[10px] font-black text-secondary uppercase tracking-widest">Active Sites</span>
                         <button 
-                            key={site.id}
-                            onClick={() => toggleSite(site.id)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${selectedSiteIds.includes(site.id) ? 'bg-surface border-primary text-primary shadow-sm ring-1 ring-primary/20' : 'bg-surface border-default text-secondary hover:border-primary'}`}
+                           onClick={() => setSelectedSiteIds(userSites.map(s => s.id))}
+                           className="text-[10px] font-bold text-[var(--color-brand)] hover:underline"
                         >
-                            {site.name}
+                           Select All
                         </button>
-                    ))}
-                 </div>
-              </div>
+                     </div>
+                     <div className="max-h-[300px] overflow-y-auto space-y-1 p-1">
+                        {userSites.map(site => {
+                           const isSelected = selectedSiteIds.includes(site.id);
+                           return (
+                              <button 
+                                 key={site.id}
+                                 onClick={() => toggleSite(site.id)}
+                                 className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all ${isSelected ? 'bg-[var(--color-brand)]/10 text-primary' : 'hover:bg-surface-raised text-secondary'}`}
+                              >
+                                 <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isSelected ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white' : 'border-default bg-surface'}`}>
+                                    {isSelected && <Check size={12} strokeWidth={4} />}
+                                 </div>
+                                 <span className="text-sm font-bold truncate">{site.name}</span>
+                              </button>
+                           );
+                        })}
+                     </div>
+                  </div>
+               )}
+            </div>
 
-              {/* View Specific Controls */}
-              <div className="h-10 w-[1px] bg-default hidden md:block"></div>
+            <div className="h-10 w-[1px] bg-default hidden md:block opacity-50"></div>
 
-              {viewMode === 'trends' ? (
-                <div className="flex items-center gap-4">
-                    <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-black text-secondary uppercase tracking-widest">Start Date</span>
-                        <input type="date" value={dateRange.start} onChange={(e)=>setDateRange(p=>({...p, start:e.target.value}))} className="bg-surface border border-default px-3 py-1.5 rounded-lg text-xs font-bold text-primary focus:ring-2 focus:ring-primary/20 outline-none" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-black text-secondary uppercase tracking-widest">End Date</span>
-                        <input type="date" value={dateRange.end} onChange={(e)=>setDateRange(p=>({...p, end:e.target.value}))} className="bg-surface border border-default px-3 py-1.5 rounded-lg text-xs font-bold text-primary focus:ring-2 focus:ring-primary/20 outline-none" />
+            {/* Date / Month Selectors */}
+            {viewMode === 'trends' ? (
+                <div className="flex items-center gap-6">
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-[10px] font-black text-secondary uppercase tracking-widest opacity-70">Analysis Portal</span>
+                        <div className="flex items-center gap-2">
+                           <input type="date" value={dateRange.start} onChange={(e)=>setDateRange(p=>({...p, start:e.target.value}))} className="bg-surface-raised border border-default px-3 py-2 rounded-xl text-xs font-bold text-primary focus:ring-2 focus:ring-[var(--color-brand)]/20 outline-none" />
+                           <span className="text-secondary opacity-50 text-xs font-bold font-mono">TO</span>
+                           <input type="date" value={dateRange.end} onChange={(e)=>setDateRange(p=>({...p, end:e.target.value}))} className="bg-surface-raised border border-default px-3 py-2 rounded-xl text-xs font-bold text-primary focus:ring-2 focus:ring-[var(--color-brand)]/20 outline-none" />
+                        </div>
                     </div>
                 </div>
               ) : (
-                <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-black text-secondary uppercase tracking-widest">Focus Month</span>
-                    <input type="month" value={selectedMonth} onChange={(e)=>setSelectedMonth(e.target.value)} className="bg-surface border border-default px-4 py-1.5 rounded-lg text-xs font-bold text-primary focus:ring-2 focus:ring-primary/20 outline-none" />
+                <div className="flex flex-col gap-1.5 w-[180px]">
+                    <span className="text-[10px] font-black text-secondary uppercase tracking-widest opacity-70">Focus Month</span>
+                    <input type="month" value={selectedMonth} onChange={(e)=>setSelectedMonth(e.target.value)} className="bg-surface-raised border border-default px-4 py-2 rounded-xl text-xs font-bold text-primary focus:ring-2 focus:ring-[var(--color-brand)]/20 outline-none w-full" />
                 </div>
-              )}
-           </div>
+            )}
         </div>
 
-        {/* Workspace Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 bg-app/50">
+        {/* Main Application Area */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 bg-app transition-all">
            
            {viewMode === 'trends' ? (
               <>
-                 {/* High Level Stats */}
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                 {/* High Level Stats Portal */}
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8">
                     <MetricCard label="Total Period Spend" val={metrics.total} format="currency" icon={DollarSign} color="blue" />
-                    <MetricCard label="Replacement Impact" val={metrics.replacement} format="currency" sub={`${metrics.pct}% of total`} icon={TrendingUp} color="red" />
-                    <MetricCard label="Total Resources" val={metrics.totalQty} format="number" sub="Units Processed" icon={Package} color="purple" />
-                    <MetricCard label="Efficiency Score" val={100 - metrics.pct} format="pct" sub={metrics.pct > 30 ? 'High Depletion' : 'Healthy'} icon={CheckCircle2} color={metrics.pct < 20 ? 'emerald' : metrics.pct < 40 ? 'amber' : 'red'} />
+                    <MetricCard label="Replacement Impact" val={metrics.replacement} format="currency" sub={`${metrics.pct}% Cost Weight`} icon={TrendingUp} color="red" />
+                    <MetricCard label="Resource Units" val={metrics.totalQty} format="number" sub="Processed Inventory" icon={Package} color="purple" />
+                    <MetricCard label="Efficiency Index" val={100 - metrics.pct} format="pct" sub={metrics.pct > 30 ? 'Optimization Needed' : 'Efficient Pipeline'} icon={CheckCircle2} color={metrics.pct < 20 ? 'emerald' : metrics.pct < 40 ? 'amber' : 'red'} />
                  </div>
 
-                 {/* Main Chart */}
-                 <div className="bg-surface rounded-3xl border border-default p-6 md:p-8 shadow-sm">
-                    <div className="flex justify-between items-center mb-10">
+                 {/* Visualization Deck */}
+                 <div className="bg-surface rounded-[2rem] border border-strong p-6 md:p-10 shadow-2xl relative overflow-hidden">
+                    <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
                        <div>
-                          <h3 className="text-lg font-bold text-primary">Monthly Spend Outcome</h3>
-                          <p className="text-sm text-secondary">Historical month-on-month comparison of allocation</p>
-                       </div>
-                       <div className="flex gap-4">
-                          <div className="flex items-center gap-2 text-xs font-bold text-secondary">
-                             <div className="w-3 h-3 rounded-full bg-red-500"></div> Replacement
+                          <h3 className="text-xl font-black text-primary tracking-tight mb-2">Monthly Spend Trajectory</h3>
+                          <div className="flex items-center gap-2 px-3 py-1 bg-surface-raised rounded-full border border-default w-fit">
+                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                             <span className="text-[10px] font-black text-secondary uppercase tracking-widest leading-none">Live Financial Feed</span>
                           </div>
-                          <div className="flex items-center gap-2 text-xs font-bold text-secondary">
-                             <div className="w-3 h-3 rounded-full bg-emerald-500"></div> Contract
+                       </div>
+                       <div className="flex flex-wrap gap-6 bg-app p-4 rounded-2xl border border-default">
+                          <div className="flex items-center gap-3">
+                             <div className="w-4 h-4 rounded-lg bg-red-500 shadow-lg shadow-red-500/20"></div>
+                             <div>
+                                <p className="text-[9px] font-black text-secondary uppercase leading-none mb-1">Impact</p>
+                                <p className="text-xs font-bold text-primary">Replacement</p>
+                             </div>
+                          </div>
+                          <div className="flex items-center gap-3 border-l border-default pl-6">
+                             <div className="w-4 h-4 rounded-lg bg-emerald-500 shadow-lg shadow-emerald-500/20"></div>
+                             <div>
+                                <p className="text-[9px] font-black text-secondary uppercase leading-none mb-1">Core</p>
+                                <p className="text-xs font-bold text-primary">Contract</p>
+                             </div>
                           </div>
                        </div>
                     </div>
-                    <div className="h-[300px] md:h-[400px] w-full">
+
+                    <div className="h-[340px] md:h-[420px] w-full">
                        {monthlyTrend.length > 0 ? (
                           <ResponsiveContainer width="100%" height="100%">
-                             <BarChart data={monthlyTrend} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-subtle)" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: 'var(--text-secondary)', fontSize: 10, fontWeight: 700}} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{fill: 'var(--text-secondary)', fontSize: 10, fontWeight: 700}} tickFormatter={(v)=>`$${v/1000}k`} />
+                             <BarChart data={monthlyTrend} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
+                                <defs>
+                                   <linearGradient id="replacementGradient" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%" stopColor="#ff4b2b" stopOpacity={1} />
+                                      <stop offset="100%" stopColor="#ff4b2b" stopOpacity={0.8} />
+                                   </linearGradient>
+                                   <linearGradient id="contractGradient" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%" stopColor="#10b981" stopOpacity={1} />
+                                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.8} />
+                                   </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="6 6" vertical={false} stroke="var(--border-default)" opacity={0.3} />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: 'var(--text-secondary)', fontSize: 11, fontWeight: 800}} dy={15} />
+                                <YAxis axisLine={false} tickLine={false} tick={{fill: 'var(--text-secondary)', fontSize: 11, fontWeight: 800}} tickFormatter={(v)=>`$${Math.round(v/1000)}k`} />
                                 <Tooltip 
-                                   cursor={{ fill: 'rgba(0,0,0,0.02)' }}
-                                   contentStyle={{ backgroundColor: 'var(--bg-elevated)', borderRadius: '16px', border: '1px solid var(--border-strong)', boxShadow: 'var(--shadow-lg)' }}
-                                   itemStyle={{ fontWeight: 700 }}
+                                   cursor={{ fill: 'var(--bg-tertiary)', opacity: 0.1 }}
+                                   contentStyle={{ 
+                                       backgroundColor: 'var(--bg-elevated)', 
+                                       borderRadius: '20px', 
+                                       border: '1px solid var(--border-strong)', 
+                                       boxShadow: 'var(--shadow-xl)',
+                                       padding: '16px'
+                                   }}
+                                   itemStyle={{ fontWeight: 800, fontSize: '12px' }}
                                 />
-                                <Bar dataKey="Replacement" stackId="a" fill="#ef4444" radius={[0, 0, 4, 4]} barSize={40} />
-                                <Bar dataKey="Contract" stackId="a" fill="#10b981" radius={[6, 6, 0, 0]} barSize={40} />
+                                <Bar dataKey="Replacement" stackId="a" fill="url(#replacementGradient)" radius={[0, 0, 8, 8]} barSize={44} />
+                                <Bar dataKey="Contract" stackId="a" fill="url(#contractGradient)" radius={[8, 8, 0, 0]} barSize={44} />
                              </BarChart>
                           </ResponsiveContainer>
                        ) : (
-                          <div className="h-full flex items-center justify-center text-secondary font-bold text-sm bg-app/50 rounded-2xl border border-dashed border-default">
-                             No data found for this period
+                          <div className="h-full flex flex-col items-center justify-center bg-surface-raised rounded-3xl border border-dashed border-strong/50">
+                             <Package size={48} className="text-secondary opacity-20 mb-4" />
+                             <p className="text-sm font-black text-secondary uppercase tracking-[0.2em]">Void Data Period</p>
                           </div>
                        )}
                     </div>
                  </div>
               </>
            ) : (
-              /* MONTHLY SNAPSHOT VIEW */
-              <div className="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              /* High Precision Snapshot View */
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
                  
-                 <div className="flex flex-col md:flex-row gap-6 md:items-stretch">
-                    {/* Month Total Card */}
-                    <div className="flex-1 bg-surface-raised border border-default p-8 rounded-3xl flex flex-col justify-center relative overflow-hidden group">
-                        <div className="absolute -right-10 -bottom-10 opacity-5 group-hover:rotate-12 transition-transform duration-700">
-                           <Calendar size={200} />
+                 <div className="flex flex-col lg:flex-row gap-8 items-stretch">
+                    {/* Primary Month Focus Card */}
+                    <div className="lg:w-1/2 bg-elevated border border-strong p-10 rounded-[2.5rem] flex flex-col justify-center relative overflow-hidden group shadow-2xl">
+                        <div className="absolute -right-16 -bottom-16 opacity-[0.03] group-hover:rotate-6 group-hover:scale-110 transition-all duration-1000 pointer-events-none text-primary">
+                           <Calendar size={320} />
                         </div>
-                        <span className="text-xs font-black text-secondary uppercase tracking-widest mb-2">Month Total Value</span>
-                        <h2 className="text-5xl font-black text-primary tracking-tighter">${snapshotData.total.toLocaleString()}</h2>
-                        <p className="text-sm text-secondary mt-4 font-medium">Snapshot of all validated POs created in {selectedMonth}</p>
+                        <div className="flex items-center gap-3 mb-6">
+                           <div className="px-3 py-1 bg-[var(--color-brand)]/10 text-[var(--color-brand)] text-[10px] font-black uppercase tracking-widest rounded-full border border-[var(--color-brand)]/20">
+                              Monthly Audit
+                           </div>
+                           <span className="text-xs font-bold text-secondary">{selectedMonth} Reporting Cycle</span>
+                        </div>
+                        <h4 className="text-[10px] font-black text-secondary uppercase tracking-[0.3em] mb-2 pl-1 italic">Consolidated Total</h4>
+                        <div className="flex items-baseline gap-2">
+                           <span className="text-6xl font-black text-primary tracking-tighter">${snapshotData.total.toLocaleString()}</span>
+                        </div>
+                        <div className="mt-10 p-4 bg-app/50 rounded-2xl border border-default flex items-center gap-4">
+                           <div className="p-2.5 bg-elevated rounded-xl border border-default">
+                              <LayoutGrid size={18} className="text-[var(--color-brand)]" />
+                           </div>
+                           <p className="text-xs font-bold text-secondary leading-relaxed">
+                              Snapshot includes <span className="text-primary font-black underline decoration-[var(--color-brand)]/30 decoration-2 underline-offset-4">{globalFilteredData.filter(po => po.requestDate?.startsWith(selectedMonth)).length} transactions</span> in this cycle.
+                           </p>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:w-3/5">
-                        <SnapshotStat label="Pending Value" val={snapshotData.pending} color="amber" icon={Clock} desc="Requested/Approved not yet received" />
-                        <SnapshotStat label="Received Value" val={snapshotData.received} color="blue" icon={Truck} desc="On-site waiting for finance" />
-                        <SnapshotStat label="Capitalised Value" val={snapshotData.capitalised} color="emerald" icon={CheckCircle2} desc="Finalised and accounted" />
+                    {/* High Precision Mini-Stat Deck */}
+                    <div className="lg:w-1/2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <SnapshotStat label="Pending Value" val={snapshotData.pending} color="amber" icon={Clock} desc="Capital exposure awaiting arrival" />
+                        <SnapshotStat label="Received Value" val={snapshotData.received} color="blue" icon={Truck} desc="Assets logged waiting final lock" />
+                        <SnapshotStat label="Capitalised" val={snapshotData.capitalised} color="emerald" icon={CheckCircle2} desc="Finalized financial outcome" />
+                        <div className="hidden lg:flex sm:col-span-2 lg:col-span-3 bg-surface border border-default p-6 rounded-[1.5rem] items-center gap-6 group hover:border-strong transition-all">
+                           <div className="p-4 bg-emerald-500/10 text-emerald-500 rounded-2xl group-hover:scale-110 transition-transform">
+                              <DollarSign size={24} strokeWidth={3} />
+                           </div>
+                           <div className="flex-1">
+                              <div className="flex justify-between items-end mb-2">
+                                 <span className="text-[10px] font-black text-secondary uppercase tracking-widest leading-none">Capitalisation Progress</span>
+                                 <span className="text-sm font-black text-emerald-500">
+                                    {snapshotData.total > 0 ? Math.round((snapshotData.capitalised / snapshotData.total) * 100) : 0}%
+                                 </span>
+                              </div>
+                              <div className="h-2 bg-app rounded-full overflow-hidden">
+                                 <div className="h-full bg-emerald-500 rounded-full transition-all duration-1000" style={{ width: `${snapshotData.total > 0 ? (snapshotData.capitalised / snapshotData.total) * 100 : 0}%` }}></div>
+                              </div>
+                           </div>
+                        </div>
                     </div>
                  </div>
 
-                 {/* Detailed Breakdown Section */}
+                 {/* Detailed Analytic Grid */}
                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                     <div className="bg-surface rounded-3xl border border-default p-6 md:p-8">
-                        <h4 className="font-bold text-primary mb-6 flex items-center gap-2">
-                           <FileText size={18} className="text-secondary" /> Allocation Percentage
-                        </h4>
-                        <div className="space-y-8">
-                           <ProgressBar label="Capitalised" val={snapshotData.capitalised} total={snapshotData.total} color="bg-emerald-500" />
-                           <ProgressBar label="Received (Pending Cap)" val={snapshotData.received} total={snapshotData.total} color="bg-blue-500" />
-                           <ProgressBar label="Remaining Pending" val={snapshotData.pending} total={snapshotData.total} color="bg-amber-500" />
+                     <div className="bg-surface rounded-3xl border border-strong p-8 md:p-10 shadow-xl">
+                        <div className="flex items-center justify-between mb-10">
+                           <h4 className="text-lg font-black text-primary tracking-tight flex items-center gap-3">
+                              <FileText size={20} className="text-[var(--color-brand)]" /> Pipeline Distribution
+                           </h4>
+                           <span className="text-[10px] font-black text-secondary uppercase tracking-widest px-3 py-1 bg-surface-raised rounded-lg border border-default">Precise Audit</span>
+                        </div>
+                        <div className="space-y-12">
+                           <ProgressBar label="Capitalised Data" val={snapshotData.capitalised} total={snapshotData.total} color="bg-emerald-500" icon={CheckCircle2} />
+                           <ProgressBar label="Inbound (Unlocked)" val={snapshotData.received} total={snapshotData.total} color="bg-blue-500" icon={Truck} />
+                           <ProgressBar label="Awaiting Delivery" val={snapshotData.pending} total={snapshotData.total} color="bg-amber-500" icon={Clock} />
                         </div>
                      </div>
 
-                     <div className="bg-surface rounded-3xl border border-default p-6 md:p-8 flex flex-col justify-center items-center text-center">
-                        <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 ${
-                           snapshotData.capitalised > snapshotData.total * 0.8 ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                     <div className="bg-elevated rounded-3xl border border-strong p-10 flex flex-col justify-center items-center text-center relative overflow-hidden group">
+                        <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-brand)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000"></div>
+                        <div className={`w-28 h-28 rounded-[2rem] flex items-center justify-center mb-8 relative z-10 transition-transform duration-700 group-hover:rotate-[10deg] ${
+                           snapshotData.total === 0 ? 'bg-secondary/10 text-secondary' :
+                           snapshotData.capitalised > snapshotData.total * 0.85 ? 'bg-emerald-500/10 text-emerald-500 shadow-lg shadow-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 shadow-lg shadow-amber-500/10 border border-amber-500/20'
                         }`}>
-                           <AlertCircle size={40} />
+                           <AlertCircle size={48} strokeWidth={2.5} />
                         </div>
-                        <h4 className="text-xl font-bold text-primary mb-2">Month Integrity</h4>
-                        <p className="text-sm text-secondary max-w-xs font-medium">
-                           {snapshotData.total === 0 ? 'No data to analyze for this month.' : 
-                            snapshotData.capitalised === snapshotData.total ? 'All transactions for this month have been capitalised. Perfect data hygiene.' : 
-                            `There is still $${snapshotData.pending.toLocaleString()} worth of pending deliveries for this month.`}
-                        </p>
+                        <h4 className="text-2xl font-black text-primary mb-4 relative z-10">Data Integrity Pulse</h4>
+                        <div className="max-w-sm relative z-10">
+                           <p className="text-sm text-secondary font-bold leading-relaxed mb-6">
+                              {snapshotData.total === 0 ? 'Monthly cycle contains zero validated transactions. System is idling.' : 
+                               snapshotData.capitalised === snapshotData.total ? 'Audit complete. All transactions for this cycle have reached terminal capitalisation. Data hygiene is optimal.' : 
+                               `Attention required: Approximately $${snapshotData.pending.toLocaleString()} in capital is still trapped in the delivery pipeline for this cycle.`}
+                           </p>
+                           {snapshotData.total > 0 && snapshotData.capitalised < snapshotData.total && (
+                              <button className="text-[10px] font-black text-[var(--color-brand)] uppercase tracking-widest px-6 py-3 bg-[var(--color-brand)]/10 rounded-xl border border-[var(--color-brand)]/20 hover:bg-[var(--color-brand)] hover:text-white transition-all">
+                                 View Blocked Items
+                              </button>
+                           )}
+                        </div>
                      </div>
                  </div>
               </div>
@@ -332,16 +440,25 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
 
         </div>
 
-        {/* Universal Footer */}
-        <div className="p-4 md:p-6 border-t border-default bg-surface flex justify-between items-center bg-surface-raised">
-           <div className="hidden sm:block text-[10px] font-bold text-secondary uppercase tracking-widest">
-              Financial Analysis Engine v2.1
+        {/* Global Terminal Footer */}
+        <div className="p-4 md:px-10 py-6 border-t border-strong bg-surface flex flex-col sm:flex-row justify-between items-center gap-6 z-10">
+           <div className="flex items-center gap-6">
+              <div className="flex items-baseline gap-2">
+                 <span className="text-[10px] font-black text-secondary uppercase tracking-[0.3em]">Module</span>
+                 <span className="text-xs font-black text-primary">FIN_ANALYSIS_V2.2</span>
+              </div>
+              <div className="w-[1px] h-4 bg-default hidden sm:block"></div>
+              <div className="text-[10px] font-black text-secondary uppercase tracking-[0.3em] flex items-center gap-2">
+                 <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                 Active Session Secure
+              </div>
            </div>
+           
            <button 
                 onClick={onClose}
-                className="w-full sm:w-auto px-10 py-3 bg-primary text-white font-bold text-sm rounded-2xl shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
+                className="w-full sm:w-auto px-12 py-4 bg-primary text-app font-black text-xs uppercase tracking-[0.3em] rounded-2xl shadow-2xl hover:scale-105 active:scale-95 transition-all text-white border border-white/10"
            >
-                Close Analysis
+                Close Portal
            </button>
         </div>
 
@@ -350,61 +467,84 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
   );
 };
 
-// --- Sub-Components ---
+// --- Analytic Sub-Components ---
 
 const MetricCard = ({ label, val, format, sub, icon: Icon, color }: any) => {
-    const colorClasses: any = {
-        blue: 'text-blue-600 bg-blue-50 dark:bg-blue-500/10',
-        red: 'text-red-600 bg-red-50 dark:bg-red-500/10',
-        purple: 'text-purple-600 bg-purple-50 dark:bg-purple-500/10',
-        emerald: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10',
-        amber: 'text-amber-600 bg-amber-50 dark:bg-amber-500/10',
+    const colorTheme: any = {
+        blue: { glass: 'bg-blue-500/5', border: 'border-blue-500/20', text: 'text-blue-500' },
+        red: { glass: 'bg-red-500/5', border: 'border-red-500/20', text: 'text-red-500' },
+        purple: { glass: 'bg-purple-500/5', border: 'border-purple-500/20', text: 'text-purple-500' },
+        emerald: { glass: 'bg-emerald-500/5', border: 'border-emerald-500/20', text: 'text-emerald-500' },
+        amber: { glass: 'bg-amber-500/5', border: 'border-amber-500/20', text: 'text-amber-500' },
     };
 
     const formattedVal = format === 'currency' ? `$${val.toLocaleString()}` : format === 'pct' ? `${val}%` : val.toLocaleString();
 
     return (
-        <div className="bg-surface p-6 rounded-3xl border border-default shadow-sm hover:elevation-2 transition-all group overflow-hidden relative">
-            <div className={`absolute -right-4 -top-4 opacity-5 group-hover:scale-110 transition-transform duration-500 text-${color}-600`}>
-                <Icon size={80} />
+        <div className={`bg-elevated p-8 rounded-[2rem] border ${colorTheme[color].border} shadow-xl hover:shadow-2xl transition-all group relative overflow-hidden`}>
+            {/* Visual Decoration */}
+            <div className={`absolute -right-6 -bottom-6 opacity-[0.03] group-hover:scale-110 group-hover:rotate-[-10deg] transition-all duration-700 ${colorTheme[color].text}`}>
+                <Icon size={120} />
             </div>
-            <div className={`w-10 h-10 rounded-xl ${colorClasses[color]} flex items-center justify-center mb-4`}>
-                <Icon size={20} />
+            
+            <div className={`w-14 h-14 rounded-2xl ${colorTheme[color].glass} flex items-center justify-center mb-8 border border-white/5`}>
+                <Icon size={24} className={colorTheme[color].text} />
             </div>
-            <p className="text-[10px] font-black text-secondary uppercase tracking-widest mb-1">{label}</p>
-            <h3 className="text-2xl font-black text-primary tracking-tight">{formattedVal}</h3>
-            {sub && <p className="text-[10px] font-bold text-secondary mt-1 opacity-70">{sub}</p>}
+            
+            <div className="relative z-10">
+               <p className="text-[10px] font-black text-secondary uppercase tracking-[0.2em] mb-2">{label}</p>
+               <h3 className="text-3xl font-black text-primary tracking-tight mb-3">{formattedVal}</h3>
+               {sub && (
+                  <div className="flex items-center gap-2">
+                     <span className={`text-[10px] font-black ${colorTheme[color].text} uppercase`}>{sub}</span>
+                  </div>
+               )}
+            </div>
         </div>
     );
 };
 
-const SnapshotStat = ({ label, val, color, icon: Icon, desc }: any) => (
-    <div className={`p-6 rounded-3xl border border-default bg-surface flex flex-col items-center text-center group hover:bg-${color}-500 transition-all duration-300`}>
-        <div className={`p-4 rounded-2xl bg-${color}-50 dark:bg-${color}-500/10 text-${color}-600 mb-4 group-hover:bg-white/20 group-hover:text-white transition-all`}>
-            <Icon size={24} />
+const SnapshotStat = ({ label, val, color, icon: Icon, desc }: any) => {
+    const themes: any = {
+        amber: 'bg-amber-500 shadow-amber-500/30',
+        blue: 'bg-blue-500 shadow-blue-500/30',
+        emerald: 'bg-emerald-500 shadow-emerald-500/30'
+    };
+    
+    return (
+        <div className="p-8 rounded-[2rem] border border-strong bg-surface flex flex-col items-center text-center group hover:bg-elevated transition-all duration-500 shadow-lg relative overflow-hidden">
+            <div className={`p-5 rounded-2.5xl bg-app border border-default text-primary mb-6 transition-all duration-500 group-hover:scale-110 group-hover:-translate-y-2 group-hover:shadow-2xl`}>
+                <Icon size={28} className={`text-${color}-500`} />
+            </div>
+            <h4 className="text-2xl font-black text-primary group-hover:scale-105 transition-transform tracking-tight">${val.toLocaleString()}</h4>
+            <span className="text-[10px] font-black text-secondary uppercase tracking-[0.25em] mt-3 group-hover:text-primary transition-colors">{label}</span>
+            <div className="mt-6 w-full h-[1px] bg-default scale-x-50 group-hover:scale-x-100 transition-transform duration-700"></div>
+            <p className="mt-6 text-[10px] font-bold text-secondary leading-relaxed opacity-70 group-hover:opacity-100 transition-opacity">{desc}</p>
         </div>
-        <h4 className="text-xl font-black text-primary group-hover:text-white">${val.toLocaleString()}</h4>
-        <span className="text-[10px] font-black text-secondary uppercase tracking-widest mt-1 group-hover:text-white/80">{label}</span>
-        <p className="mt-3 text-[9px] font-bold text-secondary leading-relaxed group-hover:text-white/60">{desc}</p>
-    </div>
-);
+    );
+};
 
-const ProgressBar = ({ label, val, total, color }: any) => {
+const ProgressBar = ({ label, val, total, color, icon: Icon }: any) => {
     const pct = total > 0 ? (val / total) * 100 : 0;
     return (
-        <div className="space-y-2">
+        <div className="space-y-4">
             <div className="flex justify-between items-end">
-                <span className="text-sm font-bold text-primary">{label}</span>
-                <span className="text-xs font-medium text-secondary">${val.toLocaleString()} ({Math.round(pct)}%)</span>
+                <div className="flex items-center gap-3">
+                   <Icon size={16} className="text-secondary opacity-50" />
+                   <span className="text-sm font-black text-primary uppercase tracking-widest">{label}</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                   <span className="text-sm font-black text-primary underline decoration-2 decoration-default underline-offset-4">${val.toLocaleString()}</span>
+                   <span className="text-[10px] font-bold text-secondary">({Math.round(pct)}%)</span>
+                </div>
             </div>
-            <div className="h-2.5 bg-app rounded-full overflow-hidden border border-default">
-                <div className={`h-full ${color} rounded-full transition-all duration-1000`} style={{ width: `${pct}%` }}></div>
+            <div className="h-4 bg-app rounded-full overflow-hidden border border-default p-1 shadow-inner">
+                <div className={`h-full ${color} rounded-full transition-all duration-1000 relative shadow-lg`} style={{ width: `${pct}%` }}>
+                   <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                </div>
             </div>
         </div>
     );
 };
 
 export default CostImpactModal;
-
-
-
