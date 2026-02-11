@@ -135,7 +135,8 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                         z-50 bg-white dark:bg-[#1e2029] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden
                         animate-in fade-in zoom-in-95 duration-150 origin-top
                         fixed left-4 right-4 bottom-4 top-auto max-h-[70vh]
-                        md:absolute md:top-full md:left-0 md:right-auto md:bottom-auto md:mt-1.5 md:min-w-[280px] md:max-h-[400px] md:w-max
+                        md:absolute md:top-full md:left-0 md:right-auto md:bottom-auto md:mt-1.5 md:min-w-[280px] md:max-h-[500px] md:w-max
+                        flex flex-col
                     `}>
                         {/* Header */}
                         <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/80 dark:bg-white/5 sticky top-0 z-10">
@@ -163,8 +164,8 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                             </div>
                         </div>
 
-                        {/* Site List */}
-                        <div className="overflow-y-auto p-2" style={{ maxHeight: 'calc(70vh - 52px)' }}>
+                        {/* Site List - flex-1 min-h-0 allows it to scroll correctly within parent constraints */}
+                        <div className="overflow-y-auto p-2 flex-1 min-h-0">
                             {sites.length === 0 ? (
                                 <div className="p-8 text-center text-sm text-gray-400 italic">
                                     No sites assigned to your account.
