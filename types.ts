@@ -419,4 +419,70 @@ export interface SystemAuditLog {
     createdAt: string;
 }
 
+// --- Enhanced Workflow Designer Types ---
+
+export type WorkflowNodeType = 'START' | 'APPROVAL' | 'NOTIFICATION' | 'CONDITIONAL' | 'DELAY' | 'SEND_EMAIL' | 'END';
+export type WorkflowActionType = 'APPROVE' | 'REJECT' | 'NOTIFY_EMAIL' | 'NOTIFY_TEAMS' | 'NOTIFY_INAPP' | 'WAIT' | 'CONDITIONAL_BRANCH';
+
+export interface WorkflowNode {
+    id: string;
+    type: WorkflowNodeType;
+    label: string;
+    position: { x: number; y: number };
+    config: WorkflowNodeConfig;
+    connections: string[]; // IDs of connected nodes
+    isActive: boolean;
+}
+
+export interface WorkflowNodeConfig {
+    // Approval Node
+    approverType?: 'ROLE' | 'USER';
+    approverId?: string;
+    requireAll?: boolean; // If multiple approvers, require all or any
+    
+    // Notification Node
+    notificationRecipients?: NotificationRecipient[];
+    emailTemplateId?: string;
+    customMessage?: string;
+    
+    // Conditional Node
+    condition?: {
+        field: 'amount' | 'site' | 'supplier' | 'requester' | 'custom';
+        operator: '>' | '<' | '=' | '!=' | '>=' | '<=' | 'contains';
+        value: any;
+    };
+    
+    // Delay Node
+    delayHours?: number;
+    delayUntil?: string; // ISO datetime or expression like "next business day"
+    
+    // Send Email Node
+    emailTo?: string[];
+    emailSubject?: string;
+    emailBody?: string;
+    
+    // SLA Settings (for any node)
+    sla?: WorkflowSLA;
+}
+
+export interface EmailTemplateData {
+    id: string;
+    name: string;
+    type: 'APPROVAL' | 'NOTIFICATION' | 'REMINDER' | 'REJECTION';
+    subject: string;
+    body: string;
+    variables: string[]; // Available template variables like {{po_number}}, {{approver_name}}
+    isSystem?: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface WorkflowConnection {
+    id: string;
+    fromNodeId: string;
+    toNodeId: string;
+    label?: string; // For conditional branches: "Yes"/"No" or "Approved"/"Rejected"
+    condition?: string;
+}
+
 
