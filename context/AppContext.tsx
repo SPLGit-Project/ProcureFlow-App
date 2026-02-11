@@ -4,8 +4,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification, AttributeOption, SystemAuditLog } from '../types';
 import { db } from '../services/db';
 import { supabase } from '../lib/supabaseClient';
+import { GraphService } from '../services/graphService';
 
 const REQUIRED_ADMIN_ROLE = 'ADMIN';
+const USE_GRAPH_DELEGATED = import.meta.env.VITE_PROCUREFLOW_GRAPH_DELEGATED === 'true';
 
 // Helper to get raw site filter from localStorage or user defaults
 const getInitialSiteIds = (): string[] => {
@@ -114,8 +116,8 @@ interface AppContextType {
 
   // New Admin Capabilities
   getItemFieldRegistry: () => Promise<any[]>;
-  sendWelcomeEmail: (email: string, name: string) => Promise<boolean>;
   resendWelcomeEmail: (email: string, name: string) => Promise<boolean>;
+  getGraphService: () => Promise<GraphService | null>;
 
 
   runAutoMapping: (supplierId: string) => Promise<{ confirmed: number, proposed: number }>;
@@ -998,69 +1000,42 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const sendWelcomeEmail = async (toEmail: string, name: string): Promise<boolean> => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.provider_token;
-      
-      if (!token) {
-          console.error("Auth: No provider token found for Email Send");
+      if (!USE_GRAPH_DELEGATED) {
+          console.warn("Graph: Delegated model is DISABLED. Email not sent.");
           return false;
       }
-      // ... (body logic is fine)
-
-      const defaultSubject = `Welcome to ${branding.appName}`;
-      const defaultBody = `
-        <p>Hi ${name},</p>
-        <p>You have been invited to join <strong>${branding.appName}</strong>.</p>
-        <p>Please click the link below to get started:</p>
-        <p><a href="${window.location.origin}">${window.location.origin}</a></p>
-        <p>Best regards,<br/>The Admin Team</p>
-      `;
-
-      const subject = branding.emailTemplate?.subject ? 
-          branding.emailTemplate.subject.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName) 
-          : defaultSubject;
-          
-      const body = branding.emailTemplate?.body ? 
-          branding.emailTemplate.body.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName).replace(/{link}/g, `<a href="${window.location.origin}">${window.location.origin}</a>`) 
-          : defaultBody;
-
-      const emailPayload = {
-          message: {
-              subject: subject,
-              body: {
-                  contentType: "HTML",
-                  content: body
-              },
-              toRecipients: [
-                  {
-                      emailAddress: {
-                          address: toEmail
-                      }
-                  }
-              ]
-          },
-          saveToSentItems: true
-      };
 
       try {
-          const resp = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
-              method: 'POST',
-              headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(emailPayload)
-          });
+          const graph = await contextValue.getGraphService();
+          if (!graph) return false;
 
-          if (!resp.ok) {
-              const err = await resp.text();
-              console.error("Email send failed with status:", resp.status);
-              console.error("Error details:", err);
-              return false;
+          const defaultSubject = `Welcome to ${branding.appName}`;
+          const defaultBody = `
+            <p>Hi ${name},</p>
+            <p>You have been invited to join <strong>${branding.appName}</strong>.</p>
+            <p>Please click the link below to get started:</p>
+            <p><a href="${window.location.origin}">${window.location.origin}</a></p>
+            <p>Best regards,<br/>The Admin Team</p>
+          `;
+
+          const subject = branding.emailTemplate?.subject ? 
+              branding.emailTemplate.subject.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName) 
+              : defaultSubject;
+              
+          const body = branding.emailTemplate?.body ? 
+              branding.emailTemplate.body.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName).replace(/{link}/g, `<a href="${window.location.origin}">${window.location.origin}</a>`) 
+              : defaultBody;
+
+          return await graph.sendMail({
+              to: toEmail,
+              subject,
+              html: body
+          });
+      } catch (e: any) {
+          if (e.message === 'GRAPH_UNAUTHORIZED') {
+              console.error("Graph: Unauthorized. Forcing sign-out.");
+              await supabase.auth.signOut();
           }
-          return true;
-      } catch (e) {
-          console.error("Email network error", e);
           return false;
       }
   };
@@ -1224,36 +1199,28 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const resendWelcomeEmail = async (email: string, name: string): Promise<boolean> => {
-      const user = users.find(u => u.email === email);
-      if (!user) return false;
-
-      console.log(`Auth: Resending custom invite to ${email}`);
-      
-      // Use Custom Email Logic
-      const emailSent = await sendWelcomeEmail(email, name);
-
-      if (emailSent) {
-          const now = new Date();
-          const expiry = new Date();
-          expiry.setHours(expiry.getHours() + 48);
-          const updatedUser: User = { 
-            ...user, 
-            invitedAt: now.toISOString(),
-            invitationExpiresAt: expiry.toISOString() 
-          };
-          
-          setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
-          try {
-              await db.upsertUser(updatedUser);
-              return true;
-          } catch (e) {
-              console.error("Failed to update user expiry on resend", e);
-              return true; 
-          }
-      } else {
-          console.error("Auth: Failed to resend custom invite email");
+      if (!USE_GRAPH_DELEGATED) {
+          console.warn("Graph: Delegated model is DISABLED. Email not resent.");
           return false;
       }
+
+      const success = await sendWelcomeEmail(email, name);
+      if (success) {
+          try {
+              // Update invited_at timestamp to now
+              await supabase
+                  .from('users')
+                  .update({ 
+                      invited_at: new Date().toISOString(),
+                      // Reset expiry to 48 hours from now
+                      invitation_expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+                  })
+                  .eq('email', email);
+          } catch (e) {
+              console.warn("Auth: Failed to update invitation timestamp", e);
+          }
+      }
+      return success;
   };
 
   const archiveUser = async (userId: string) => {
@@ -1399,28 +1366,24 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
             
             if (target.email && target.emailAddress) {
-                 const { data: { session } } = await supabase.auth.getSession();
-                 const token = session?.provider_token;
-                 if (token) {
-                     const emailPayload = {
-                        message: {
-                            subject: `ProcureFlow Notification: ${event}`,
-                            body: {
-                                contentType: "Text",
-                                content: `Event: ${event}\n\nDetails:\n${JSON.stringify(data, null, 2)}`
-                            },
-                            toRecipients: [
-                                { emailAddress: { address: target.emailAddress } }
-                            ]
-                        }
-                     };
+                 if (USE_GRAPH_DELEGATED) {
                      try {
-                        await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                            body: JSON.stringify(emailPayload)
-                        });
-                     } catch(e) { console.error("Failed to send email", e); }
+                         const graph = await contextValue.getGraphService();
+                         if (graph) {
+                             await graph.sendMail({
+                                 to: target.emailAddress,
+                                 subject: `ProcureFlow Notification: ${event}`,
+                                 html: `<p>Event: ${event}</p><p>Details:</p><pre>${JSON.stringify(data, null, 2)}</pre>`
+                             });
+                         }
+                     } catch (e: any) {
+                         if (e.message === 'GRAPH_UNAUTHORIZED') {
+                             await supabase.auth.signOut();
+                         }
+                         console.error("Failed to send notification email", e);
+                     }
+                 } else {
+                     console.warn("Graph: Delegated model is DISABLED. Notification email not sent.");
                  }
             }
         }
@@ -1975,11 +1938,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     deleteMapping,
     syncItemsFromSnapshots,
     getAuditLogs,
-    sendWelcomeEmail,
     resendWelcomeEmail,
 
+    getGraphService: async () => {
+        if (!USE_GRAPH_DELEGATED) return null;
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.provider_token;
+        if (!token) {
+            console.warn("Auth: No provider token found for Graph Service");
+            return null;
+        }
+        return new GraphService(token);
+    },
+
     searchDirectory: async (query: string) => {
-        // Find session token
+        if (!USE_GRAPH_DELEGATED) {
+            console.warn("Graph: Delegated model is DISABLED (VITE_PROCUREFLOW_GRAPH_DELEGATED=false)");
+            return [];
+        }
+
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.provider_token;
         if (!token) {
@@ -1988,31 +1965,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
         
         try {
-            // Microsoft Graph Advanced Query
-            // Use quotes for the search term to handle spaces/symbols correctly
-            const escapedQuery = query.replace(/"/g, '\\"');
-            const url = `https://graph.microsoft.com/v1.0/users?$search="displayName:${escapedQuery}" OR "mail:${escapedQuery}"&$select=id,displayName,mail,jobTitle,department,officeLocation&$top=10`;
-            
-            const resp = await fetch(url, {
-                headers: { 
-                    Authorization: `Bearer ${token}`,
-                    ConsistencyLevel: 'eventual'
-                }
-            });
-            
-            if (resp.ok) {
-                const data = await resp.json();
-                return data.value.map((u: any) => ({
-                    id: u.id,
-                    name: u.displayName,
-                    email: u.mail,
-                    jobTitle: u.jobTitle,
-                    department: u.department || u.officeLocation
-                }));
+            const graph = new GraphService(token);
+            const results = await graph.searchDirectory(query);
+            return results || [];
+        } catch (e: any) {
+            if (e.message === 'GRAPH_UNAUTHORIZED') {
+                console.error("Graph: Unauthorized. Forcing sign-out for re-auth.");
+                await supabase.auth.signOut();
             }
-            return [];
-        } catch (e) {
-            console.error("Directory Search Failed", e);
             return [];
         }
     },

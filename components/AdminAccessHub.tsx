@@ -64,14 +64,23 @@ const AdminAccessHub = () => {
                     avatar: selectedUser.avatar
                 }]);
                 if (error) throw error;
-                await sendWelcomeEmail(selectedUser.email, selectedUser.name);
+                if (error) throw error;
+                const emailSent = await sendWelcomeEmail(selectedUser.email, selectedUser.name);
+                if (!emailSent) {
+                    const fallbackLink = window.location.origin;
+                    if (confirm("Approval processed, but welcome email failed to send (Delegated Graph error). \n\nWould you like to copy the application link to manually send it to the user?")) {
+                        navigator.clipboard.writeText(fallbackLink);
+                        alert("Link copied to clipboard!");
+                    }
+                }
             }
 
             await reloadData();
             setSelectedUser(null);
-            alert("Approval processed successfully.");
+            console.log(`Auth: Approval processed for ${selectedUser.email} [Success]`);
+            // alert("Approval processed successfully."); // Removing redundant alert if confirm/clip-copy was used
         } catch (error) {
-            console.error("Approval failed", error);
+            console.error("Auth: Approval failed", error);
             alert("Failed to approve user.");
         } finally {
             setIsProcessing(false);
@@ -104,12 +113,18 @@ const AdminAccessHub = () => {
 
             setResendingUserId(user.id);
             try {
-                const success = await resendWelcomeEmail(user.email, user.name);
-                if (success) {
+                const inviteSuccess = await resendWelcomeEmail(user.email, user.name);
+                if (inviteSuccess) {
                     success(`Invitation sent to ${user.name}`, 4000);
                     await reloadData(); // Refresh to show updated expiry
                 } else {
-                    error('Failed to send invitation. Please try again.', 5000);
+                    const fallbackLink = window.location.origin;
+                    if (confirm("Email failed to send (Delegated Graph error). \n\nWould you like to copy the application link to manually send it to the user?")) {
+                        navigator.clipboard.writeText(fallbackLink);
+                        alert("Link copied to clipboard!");
+                    } else {
+                        error('Failed to send invitation. Please try again.', 5000);
+                    }
                 }
             } catch (err) {
                 error('An error occurred while sending the invitation.', 5000);
@@ -213,6 +228,7 @@ const AdminAccessHub = () => {
     useEffect(() => {
         const delayDebounceFn = setTimeout(async () => {
             if (dirQuery.length > 2) {
+                console.log(`UI: Triggering directory search for "${dirQuery}"...`);
                 setIsSearching(true);
                 const results = await searchDirectory(dirQuery);
                 setDirResults(results);
@@ -220,7 +236,7 @@ const AdminAccessHub = () => {
             } else {
                 setDirResults([]);
             }
-        }, 500);
+        }, 250); // Debounce 250ms (faster UX for directory search)
         return () => clearTimeout(delayDebounceFn);
     }, [dirQuery, searchDirectory]);
 
