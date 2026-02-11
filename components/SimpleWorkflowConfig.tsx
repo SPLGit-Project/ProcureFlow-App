@@ -163,8 +163,8 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Workflow Notifications</h2>
-                    <p className="text-gray-600 mt-1">Configure automated email and in-app notifications for key events</p>
+                    <h2 className="text-2xl font-bold text-primary dark:text-white">Workflow Notifications</h2>
+                    <p className="text-secondary dark:text-gray-400 mt-1">Configure automated email and in-app notifications for key events</p>
                 </div>
                 <button
                     onClick={handleSave}
@@ -206,9 +206,9 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                         {metadata.icon}
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-semibold text-gray-900">{metadata.title}</h3>
-                                        <p className="text-sm text-gray-600">{metadata.description}</p>
-                                        <p className="text-xs text-gray-500 mt-1">
+                                        <h3 className="text-lg font-semibold text-primary dark:text-gray-900">{metadata.title}</h3>
+                                        <p className="text-sm text-secondary dark:text-gray-600">{metadata.description}</p>
+                                        <p className="text-xs text-tertiary dark:text-gray-500 mt-1">
                                             <Zap size={12} className="inline mr-1" />
                                             {metadata.trigger}
                                         </p>
@@ -225,7 +225,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                             }}
                                             className="w-5 h-5"
                                         />
-                                        <span className="font-medium text-gray-900">Enabled</span>
+                                        <span className="font-medium text-primary dark:text-gray-900">Enabled</span>
                                     </label>
                                     {isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
                                 </div>
@@ -236,7 +236,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                 <div className="border-t-2 border-gray-200 p-6 bg-white space-y-6">
                                     {/* Recipient Configuration */}
                                     <div>
-                                        <h4 className="font-semibold text-gray-900 mb-3">Who should receive this notification?</h4>
+                                        <h4 className="font-semibold text-primary dark:text-gray-900 mb-3">Who should receive this notification?</h4>
                                         
                                         {/* Recipient Type Selection */}
                                         <div className="grid grid-cols-3 gap-3 mb-4">
@@ -278,7 +278,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                         {/* Multi-Select for Roles */}
                                         {workflow.recipientType === 'ROLE' && (
                                             <div className="space-y-2">
-                                                <label className="text-sm font-medium text-gray-700">Select Role(s)</label>
+                                                <label className="text-sm font-medium text-secondary dark:text-gray-700">Select Role(s)</label>
                                                 <div className="border-2 rounded-lg p-3 bg-gray-50 max-h-48 overflow-y-auto space-y-2">
                                                     {roles.map(role => (
                                                         <label key={role.id} className="flex items-center gap-2 hover:bg-gray-100 p-2 rounded cursor-pointer">
@@ -299,7 +299,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                         {/* Multi-Select for Users */}
                                         {workflow.recipientType === 'USER' && (
                                             <div className="space-y-2">
-                                                <label className="text-sm font-medium text-gray-700">Select User(s)</label>
+                                                <label className="text-sm font-medium text-secondary dark:text-gray-700">Select User(s)</label>
                                                 <div className="border-2 rounded-lg p-3 bg-gray-50 max-h-48 overflow-y-auto space-y-2">
                                                     {users.map(user => (
                                                         <label key={user.id} className="flex items-center gap-2 hover:bg-gray-100 p-2 rounded cursor-pointer">
@@ -310,8 +310,8 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                                                 className="w-4 h-4"
                                                             />
                                                             <UserIcon size={14} className="text-green-600" />
-                                                            <span className="text-sm">{user.name}</span>
-                                                            <span className="text-xs text-gray-500">({user.email})</span>
+                                                            <span className="text-sm text-primary dark:text-gray-900">{user.name}</span>
+                                                            <span className="text-xs text-tertiary dark:text-gray-500">({user.email})</span>
                                                         </label>
                                                     ))}
                                                 </div>
@@ -328,7 +328,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                                     className="w-4 h-4"
                                                 />
                                                 <Plus size={16} className="text-blue-600" />
-                                                <span className="text-sm font-medium text-gray-900">
+                                                <span className="text-sm font-medium text-primary dark:text-gray-900">
                                                     Also notify the requester (in addition to selected recipients)
                                                 </span>
                                             </label>
@@ -373,13 +373,13 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                                 className="w-5 h-5"
                                             />
                                             <Mail size={20} />
-                                            <span className="font-semibold text-gray-900">Email Notification</span>
+                                            <span className="font-semibold text-primary dark:text-gray-900">Email Notification</span>
                                         </label>
 
                                         {workflow.emailEnabled && (
                                             <div className="pl-7 space-y-4">
                                                 <div>
-                                                    <label className="text-sm font-medium text-gray-700">Subject</label>
+                                                    <label className="text-sm font-medium text-secondary dark:text-gray-700">Subject</label>
                                                     <input
                                                         type="text"
                                                         value={workflow.emailSubject}
@@ -390,7 +390,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                                 </div>
 
                                                 <div>
-                                                    <label className="text-sm font-medium text-gray-700">Body (HTML)</label>
+                                                    <label className="text-sm font-medium text-secondary dark:text-gray-700">Body (HTML)</label>
                                                     <textarea
                                                         value={workflow.emailBody}
                                                         onChange={(e) => updateWorkflow(workflow.workflowType, { emailBody: e.target.value })}
@@ -421,13 +421,13 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                                 className="w-5 h-5"
                                             />
                                             <Bell size={20} />
-                                            <span className="font-semibold text-gray-900">In-App Notification</span>
+                                            <span className="font-semibold text-primary dark:text-gray-900">In-App Notification</span>
                                         </label>
 
                                         {workflow.inappEnabled && (
                                             <div className="pl-7 space-y-4">
                                                 <div>
-                                                    <label className="text-sm font-medium text-gray-700">Title</label>
+                                                    <label className="text-sm font-medium text-secondary dark:text-gray-700">Title</label>
                                                     <input
                                                         type="text"
                                                         value={workflow.inappTitle}
@@ -438,7 +438,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                                 </div>
 
                                                 <div>
-                                                    <label className="text-sm font-medium text-gray-700">Message</label>
+                                                    <label className="text-sm font-medium text-secondary dark:text-gray-700">Message</label>
                                                     <textarea
                                                         value={workflow.inappMessage}
                                                         onChange={(e) => updateWorkflow(workflow.workflowType, { inappMessage: e.target.value })}
@@ -455,7 +455,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                     <div className="border-t-2 pt-6">
                                         <button
                                             onClick={() => handleTest(workflow)}
-                                            className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300"
+                                            className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-primary dark:text-gray-900 rounded-lg hover:bg-gray-300"
                                         >
                                             <Send size={16} />
                                             Send Test Notification
@@ -483,7 +483,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                         </div>
                         <div className="flex-1 overflow-auto p-6">
                             <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                                <div className="text-sm font-medium text-gray-700">Subject:</div>
+                                <div className="text-sm font-medium text-secondary dark:text-gray-700">Subject:</div>
                                 <div className="text-lg font-bold">{renderPreview(previewModal.workflow.emailSubject)}</div>
                             </div>
                             <div

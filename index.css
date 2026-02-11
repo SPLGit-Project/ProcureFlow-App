@@ -26,10 +26,10 @@
   --elevation-2: var(--shadow-lg);
   --elevation-3: var(--shadow-xl);
   
-  /* Text Colors */
-  --text-primary: #212529;
-  --text-secondary: #6c757d;
-  --text-tertiary: #adb5bd;
+  /* Text Colors - Enhanced Contrast for Light Mode */
+  --text-primary: #1a1a1a;         /* Darker for better contrast */
+  --text-secondary: #4a5568;       /* Darker gray for secondary text */
+  --text-tertiary: #6b7280;        /* Darker for better readability */
 }
 
 .dark {

@@ -178,7 +178,7 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                    <LayoutGrid size={16} /> <span className="hidden sm:inline">SNAPSHOT</span>
                 </button>
              </div>
-             <button onClick={onClose} className="ml-auto p-2.5 hover:bg-surface-raised rounded-xl transition-all active:scale-95 border border-transparent hover:border-default text-tertiary hover:text-primary">
+             <button onClick={onClose} className="ml-auto p-2.5 hover:bg-surface-raised rounded-xl transition-all active:scale-95 border border-transparent hover:border-default text-tertiary dark:text-gray-400 hover:text-primary">
                 <X size={20} />
              </button>
           </div>
@@ -188,7 +188,7 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
         <div className="bg-surface border-b border-default p-4 md:px-8 py-4 flex flex-wrap items-center gap-6 z-20">
             {/* Site Dropdown */}
             <div className="relative" ref={dropdownRef}>
-               <span className="text-[10px] font-black text-gray-500 dark:text-gray-300 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
+               <span className="text-[10px] font-black text-secondary dark:text-gray-300 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
                   <Filter size={10} /> SITE FILTER
                </span>
                <button 
@@ -203,13 +203,13 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                         {selectedSiteIds.length === userSites.length ? 'All Sites Selected' : `${selectedSiteIds.length} Scopes Active`}
                      </span>
                   </div>
-                  <ChevronDown size={16} className={`text-gray-400 group-hover:text-white transition-transform ${isSiteDropdownOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown size={16} className={`text-tertiary dark:text-gray-400 group-hover:text-primary dark:group-hover:text-white transition-transform ${isSiteDropdownOpen ? 'rotate-180' : ''}`} />
                </button>
 
                {isSiteDropdownOpen && (
                   <div className="absolute top-full left-0 mt-2 w-[280px] bg-elevated border border-strong rounded-2xl shadow-2xl z-50 p-2 animate-slide-down">
                      <div className="flex items-center justify-between p-2 mb-1 border-b border-default">
-                        <span className="text-[10px] font-black text-secondary uppercase tracking-widest">Active Sites</span>
+                        <span className="text-[10px] font-black text-secondary dark:text-gray-400 uppercase tracking-widest">Active Sites</span>
                         <button 
                            onClick={() => setSelectedSiteIds(userSites.map(s => s.id))}
                            className="text-[10px] font-bold text-[var(--color-brand)] hover:underline"
@@ -224,7 +224,7 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                               <button 
                                  key={site.id}
                                  onClick={() => toggleSite(site.id)}
-                                 className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all ${isSelected ? 'bg-[var(--color-brand)]/10 dark:bg-[var(--color-brand)]/20 text-primary dark:text-white' : 'hover:bg-surface-raised text-secondary dark:text-gray-400 hover:text-white'}`}
+                                 className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all ${isSelected ? 'bg-[var(--color-brand)]/10 dark:bg-[var(--color-brand)]/20 text-primary dark:text-white' : 'hover:bg-surface-raised text-secondary dark:text-gray-400 hover:text-primary dark:hover:text-white'}`}
                               >
                                  <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isSelected ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white' : 'border-default bg-surface'}`}>
                                     {isSelected && <Check size={12} strokeWidth={4} />}
@@ -244,7 +244,7 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
             {viewMode === 'trends' ? (
                 <div className="flex items-center gap-6">
                     <div className="flex flex-col gap-1.5">
-                        <span className="text-[10px] font-black text-gray-500 dark:text-gray-300 uppercase tracking-widest">ANALYSIS PORTAL</span>
+                        <span className="text-[10px] font-black text-secondary dark:text-gray-300 uppercase tracking-widest">ANALYSIS PORTAL</span>
                         <div className="flex items-center gap-2">
                            <input type="date" value={dateRange.start} onChange={(e)=>setDateRange(p=>({...p, start:e.target.value}))} className="bg-surface-raised border border-default px-3 py-2 rounded-xl text-xs font-bold text-primary dark:text-white dark:bg-slate-800/50 focus:ring-2 focus:ring-[var(--color-brand)]/20 outline-none" />
                            <span className="text-secondary dark:text-gray-500 text-xs font-black font-mono">TO</span>
@@ -254,7 +254,7 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5 w-[180px]">
-                    <span className="text-[10px] font-black text-gray-500 dark:text-gray-300 uppercase tracking-widest">FOCUS MONTH</span>
+                    <span className="text-[10px] font-black text-secondary dark:text-gray-300 uppercase tracking-widest">FOCUS MONTH</span>
                     <input type="month" value={selectedMonth} onChange={(e)=>setSelectedMonth(e.target.value)} className="bg-surface-raised border border-default px-4 py-2 rounded-xl text-xs font-bold text-primary dark:text-white dark:bg-slate-800/50 focus:ring-2 focus:ring-[var(--color-brand)]/20 outline-none w-full" />
                 </div>
             )}
@@ -287,14 +287,14 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                           <div className="flex items-center gap-3">
                              <div className="w-4 h-4 rounded-lg bg-red-500 shadow-lg shadow-red-500/40"></div>
                              <div>
-                                <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase leading-none mb-1">IMPACT</p>
+                                <p className="text-[9px] font-black text-tertiary dark:text-gray-500 uppercase leading-none mb-1">IMPACT</p>
                                 <p className="text-xs font-bold text-primary dark:text-white">Replacement</p>
                              </div>
                           </div>
                           <div className="flex items-center gap-3 border-l border-default pl-6">
                              <div className="w-4 h-4 rounded-lg bg-emerald-500 shadow-lg shadow-emerald-500/40"></div>
                              <div>
-                                <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase leading-none mb-1">CORE</p>
+                                <p className="text-[9px] font-black text-tertiary dark:text-gray-500 uppercase leading-none mb-1">CORE</p>
                                 <p className="text-xs font-bold text-primary dark:text-white">Contract</p>
                              </div>
                           </div>
@@ -335,8 +335,8 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                           </ResponsiveContainer>
                        ) : (
                           <div className="h-full flex flex-col items-center justify-center bg-surface-raised rounded-3xl border border-dashed border-strong/50">
-                             <Package size={48} className="text-secondary opacity-20 mb-4" />
-                             <p className="text-sm font-black text-secondary uppercase tracking-[0.2em]">Void Data Period</p>
+                             <Package size={48} className="text-tertiary dark:text-secondary opacity-20 mb-4" />
+                             <p className="text-sm font-black text-secondary dark:text-gray-400 uppercase tracking-[0.2em]">Void Data Period</p>
                           </div>
                        )}
                     </div>
@@ -356,9 +356,9 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                            <div className="px-3 py-1 bg-[var(--color-brand)]/10 dark:bg-[var(--color-brand)]/20 text-[var(--color-brand)] text-[10px] font-black uppercase tracking-widest rounded-full border border-[var(--color-brand)]/20">
                               MONTHLY AUDIT
                            </div>
-                           <span className="text-xs font-bold text-gray-500 dark:text-gray-400">{selectedMonth} Reporting Cycle</span>
+                           <span className="text-xs font-bold text-secondary dark:text-gray-400">{selectedMonth} Reporting Cycle</span>
                         </div>
-                        <h4 className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.3em] mb-2 pl-1 italic">Consolidated Total</h4>
+                        <h4 className="text-[10px] font-black text-tertiary dark:text-gray-400 uppercase tracking-[0.3em] mb-2 pl-1 italic">Consolidated Total</h4>
                         <div className="flex items-baseline gap-2">
                            <span className="text-6xl font-black text-primary dark:text-white tracking-tighter">${snapshotData.total.toLocaleString()}</span>
                         </div>
@@ -366,7 +366,7 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                            <div className="p-2.5 bg-elevated rounded-xl border border-default shadow-sm">
                               <LayoutGrid size={18} className="text-[var(--color-brand)]" />
                            </div>
-                           <p className="text-xs font-bold text-gray-500 dark:text-gray-400 leading-relaxed">
+                           <p className="text-xs font-bold text-secondary dark:text-gray-400 leading-relaxed">
                               Snapshot includes <span className="text-primary dark:text-white font-black underline decoration-[var(--color-brand)]/40 decoration-2 underline-offset-4">{globalFilteredData.filter(po => po.requestDate?.startsWith(selectedMonth)).length} transactions</span> in this cycle.
                            </p>
                         </div>
@@ -383,7 +383,7 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                            </div>
                            <div className="flex-1">
                               <div className="flex justify-between items-end mb-2">
-                                 <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-none">CAPITALISATION PROGRESS</span>
+                                 <span className="text-[10px] font-black text-tertiary dark:text-gray-500 uppercase tracking-widest leading-none">CAPITALISATION PROGRESS</span>
                                  <span className="text-sm font-black text-emerald-500">
                                     {snapshotData.total > 0 ? Math.round((snapshotData.capitalised / snapshotData.total) * 100) : 0}%
                                  </span>
@@ -403,7 +403,7 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                            <h4 className="text-lg font-black text-primary dark:text-white tracking-tight flex items-center gap-3">
                               <FileText size={20} className="text-[var(--color-brand)]" /> Pipeline Distribution
                            </h4>
-                           <span className="text-[10px] font-black text-gray-500 dark:text-gray-300 uppercase tracking-widest px-3 py-1 bg-surface-raised rounded-lg border border-default">Precise Audit</span>
+                           <span className="text-[10px] font-black text-tertiary dark:text-gray-300 uppercase tracking-widest px-3 py-1 bg-surface-raised rounded-lg border border-default">Precise Audit</span>
                         </div>
                         <div className="space-y-12">
                            <ProgressBar label="Capitalised Data" val={snapshotData.capitalised} total={snapshotData.total} color="bg-emerald-500" icon={CheckCircle2} />
@@ -422,7 +422,7 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                         </div>
                         <h4 className="text-2xl font-black text-primary dark:text-white mb-4 relative z-10">Data Integrity Pulse</h4>
                         <div className="max-w-sm relative z-10">
-                           <p className="text-sm text-gray-500 dark:text-gray-300 font-bold leading-relaxed mb-6">
+                           <p className="text-sm text-secondary dark:text-gray-300 font-bold leading-relaxed mb-6">
                               {snapshotData.total === 0 ? 'Monthly cycle contains zero validated transactions. System is idling.' : 
                                snapshotData.capitalised === snapshotData.total ? 'Audit complete. All transactions for this cycle have reached terminal capitalisation. Data hygiene is optimal.' : 
                                `Attention required: Approximately $${snapshotData.pending.toLocaleString()} in capital is still trapped in the delivery pipeline for this cycle.`}
@@ -444,11 +444,11 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
         <div className="p-4 md:px-10 py-6 border-t border-strong bg-surface flex flex-col sm:flex-row justify-between items-center gap-6 z-10">
            <div className="flex items-center gap-6">
               <div className="flex items-baseline gap-2">
-                 <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.3em]">Module</span>
+                 <span className="text-[10px] font-black text-tertiary dark:text-gray-400 uppercase tracking-[0.3em]">Module</span>
                  <span className="text-xs font-black text-primary dark:text-white">FIN_ANALYSIS_V2.2</span>
               </div>
               <div className="w-[1px] h-4 bg-default hidden sm:block opacity-50"></div>
-              <div className="text-[10px] font-black text-gray-400 dark:text-emerald-400 uppercase tracking-[0.3em] flex items-center gap-2">
+              <div className="text-[10px] font-black text-tertiary dark:text-emerald-400 uppercase tracking-[0.3em] flex items-center gap-2">
                  <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)] animate-pulse"></div>
                  Active Session Secure
               </div>
@@ -519,9 +519,9 @@ const SnapshotStat = ({ label, val, color, icon: Icon, desc }: any) => {
                 <Icon size={28} strokeWidth={2.5} />
             </div>
             <h4 className="text-2xl font-black text-primary dark:text-white group-hover:scale-105 transition-transform tracking-tight">${val.toLocaleString()}</h4>
-            <span className="text-[11px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.25em] mt-3 group-hover:text-primary transition-colors">{label}</span>
+            <span className="text-[11px] font-black text-tertiary dark:text-gray-300 uppercase tracking-[0.25em] mt-3 group-hover:text-primary transition-colors">{label}</span>
             <div className="mt-6 w-full h-[1px] bg-default scale-x-50 group-hover:scale-x-100 transition-transform duration-700 opacity-50"></div>
-            <p className="mt-6 text-[10px] font-bold text-gray-500 dark:text-gray-400 leading-relaxed opacity-80 group-hover:opacity-100 transition-opacity">{desc}</p>
+            <p className="mt-6 text-[10px] font-bold text-secondary dark:text-gray-400 leading-relaxed opacity-80 group-hover:opacity-100 transition-opacity">{desc}</p>
         </div>
     );
 };
@@ -532,12 +532,12 @@ const ProgressBar = ({ label, val, total, color, icon: Icon }: any) => {
         <div className="space-y-4">
             <div className="flex justify-between items-end">
                 <div className="flex items-center gap-3">
-                   <Icon size={16} className="text-gray-400 dark:text-gray-500" />
+                   <Icon size={16} className="text-tertiary dark:text-gray-500" />
                    <span className="text-sm font-black text-primary dark:text-white uppercase tracking-widest">{label}</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                    <span className="text-sm font-black text-primary dark:text-white underline decoration-2 decoration-default underline-offset-4">${val.toLocaleString()}</span>
-                   <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">({Math.round(pct)}%)</span>
+                   <span className="text-[10px] font-bold text-tertiary dark:text-gray-500">({Math.round(pct)}%)</span>
                 </div>
             </div>
             <div className="h-4 bg-app dark:bg-slate-900 rounded-full overflow-hidden border border-default p-1 shadow-inner">

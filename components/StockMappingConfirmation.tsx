@@ -120,7 +120,7 @@ export default function StockMappingConfirmation({
                             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                                 Confirm Column Mapping
                             </h2>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            <p className="text-sm text-secondary dark:text-gray-400 mt-1">
                                 Review and adjust how columns from your file map to our system
                             </p>
                         </div>
@@ -128,20 +128,20 @@ export default function StockMappingConfirmation({
                             onClick={onCancel}
                             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                         >
-                            <X size={24} className="text-gray-500" />
+                            <X size={24} className="text-secondary" />
                         </button>
                     </div>
 
                     {/* File Info */}
                     <div className="mt-4 flex items-center gap-6 text-sm">
                         <div className="flex items-center gap-2">
-                            <span className="text-gray-600 dark:text-gray-400">Rows:</span>
+                            <span className="text-secondary dark:text-gray-400">Rows:</span>
                             <span className="font-bold text-gray-900 dark:text-white">
                                 {parseResult.rawData?.length || 0}
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="text-gray-600 dark:text-gray-400">Confidence:</span>
+                            <span className="text-secondary dark:text-gray-400">Confidence:</span>
                             <span className={`font-bold ${getConfidenceColor(confidence.overall)}`}>
                                 {Math.round(confidence.overall * 100)}%
                             </span>
@@ -178,7 +178,7 @@ export default function StockMappingConfirmation({
                                                         <label className="block text-sm font-medium text-gray-900 dark:text-white">
                                                             {field.label}
                                                         </label>
-                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                        <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
                                                             {field.description}
                                                         </p>
                                                     </div>
@@ -230,7 +230,7 @@ export default function StockMappingConfirmation({
                                                     <span className="text-sm font-medium text-gray-900 dark:text-white block">
                                                         {field.label}
                                                     </span>
-                                                    <span className="text-xs text-gray-500 dark:text-gray-400 block truncate">
+                                                    <span className="text-xs text-secondary dark:text-gray-400 block truncate">
                                                         {field.description}
                                                     </span>
                                                 </div>
@@ -258,7 +258,7 @@ export default function StockMappingConfirmation({
                             <h3 className="font-bold text-gray-900 dark:text-white mb-3">
                                 Incoming Stock (Future Dates)
                             </h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                            <p className="text-sm text-secondary dark:text-gray-400 mb-3">
                                 Select which date columns to import as incoming stock forecasts
                             </p>
                             <div className="flex flex-wrap gap-2">
@@ -296,7 +296,7 @@ export default function StockMappingConfirmation({
                                 {unmappedColumns.map(col => (
                                     <span
                                         key={col}
-                                        className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-xs text-gray-600 dark:text-gray-400"
+                                        className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-xs text-secondary dark:text-gray-400"
                                     >
                                         {col}
                                     </span>
@@ -325,7 +325,7 @@ export default function StockMappingConfirmation({
                                                 {Object.entries(currentMapping)
                                                     .filter(([_, m]: [string, any]) => m.sourceColumn)
                                                     .map(([field, mapping]: [string, any]) => (
-                                                        <th key={field} className="text-left p-2 font-medium text-gray-700 dark:text-gray-300 text-xs">
+                                                        <th key={field} className="text-left p-2 font-medium text-secondary dark:text-gray-300 text-xs">
                                                             {mapping.sourceColumn}
                                                             <div className="text-[10px] text-gray-400 font-normal">{field}</div>
                                                         </th>
@@ -355,7 +355,7 @@ export default function StockMappingConfirmation({
                 {/* Footer */}
                 <div className="p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                     <div className="flex items-center justify-between gap-4">
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                        <div className="text-sm text-secondary dark:text-gray-400">
                             {confidence.hasErrors ? (
                                 <span className="text-red-600 dark:text-red-400 font-medium">
                                     Please map all required fields before continuing

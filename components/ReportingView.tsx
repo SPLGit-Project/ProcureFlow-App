@@ -104,7 +104,7 @@ const ReportingView = () => {
         <div className="space-y-6 pb-20 animate-fade-in">
             <div>
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Reports & Analytics</h1>
-                <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Generate reports for delivery tracking and financial auditing.</p>
+                <p className="text-secondary dark:text-gray-400 text-sm mt-1">Generate reports for delivery tracking and financial auditing.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -113,21 +113,21 @@ const ReportingView = () => {
                     <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-2">
                         <button 
                             onClick={() => { setActiveReport('OUTSTANDING_DELIVERIES'); setReportData([]); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'OUTSTANDING_DELIVERIES' ? 'bg-[var(--color-brand)] text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'OUTSTANDING_DELIVERIES' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                         >
                             <AlertCircle size={18}/>
                             Outstanding Deliveries
                         </button>
                         <button 
                             onClick={() => { setActiveReport('FINANCE_SUMMARY'); setReportData([]); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'FINANCE_SUMMARY' ? 'bg-[var(--color-brand)] text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'FINANCE_SUMMARY' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                         >
                             <TrendingUp size={18}/>
                             Finance Summary
                         </button>
                         <button 
                             onClick={() => { setActiveReport('PO_STATUS'); setReportData([]); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'PO_STATUS' ? 'bg-[var(--color-brand)] text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'PO_STATUS' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                         >
                             <FileText size={18}/>
                             PO Status Report
@@ -169,7 +169,7 @@ const ReportingView = () => {
 
                         <div className="flex-1 p-0 overflow-x-auto">
                             {reportData.length === 0 && !isLoading ? (
-                                <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4 py-20">
+                                <div className="flex flex-col items-center justify-center h-full text-tertiary dark:text-gray-400 space-y-4 py-20">
                                     <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
                                         <BarChart3 size={32} className="opacity-50"/>
                                     </div>
@@ -180,7 +180,7 @@ const ReportingView = () => {
                                 </div>
                             ) : (
                                 <table className="w-full text-sm text-left">
-                                    <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0">
+                                    <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0">
                                         <tr>
                                             {activeReport === 'OUTSTANDING_DELIVERIES' && (
                                                 <>
@@ -220,10 +220,10 @@ const ReportingView = () => {
                                                     <>
                                                         <td className="px-6 py-3">
                                                             <div className="font-bold text-gray-900 dark:text-white">{row.supplier}</div>
-                                                            <div className="text-xs text-gray-500 font-mono">{row.poNumber}</div>
+                                                            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.poNumber}</div>
                                                         </td>
                                                         <td className="px-6 py-3">{row.site}</td>
-                                                        <td className="px-6 py-3 text-gray-600 dark:text-gray-300">{row.item}</td>
+                                                        <td className="px-6 py-3 text-secondary dark:text-gray-300">{row.item}</td>
                                                         <td className="px-6 py-3 text-center">{row.ordered}</td>
                                                         <td className="px-6 py-3 text-center text-green-600">{row.received}</td>
                                                         <td className="px-6 py-3 text-center font-bold text-orange-500 bg-orange-50 dark:bg-orange-900/10">{row.remaining}</td>
@@ -233,31 +233,31 @@ const ReportingView = () => {
                                                     <>
                                                         <td className="px-6 py-3">
                                                             <div className="font-bold text-gray-900 dark:text-white">{row.receivedDate}</div>
-                                                            <div className="text-xs text-gray-500">{row.docket}</div>
+                                                            <div className="text-xs text-tertiary dark:text-gray-500">{row.docket}</div>
                                                         </td>
                                                         <td className="px-6 py-3">
                                                             <div className="font-medium">{row.supplier}</div>
-                                                            <div className="text-xs text-gray-400">{row.poNumber}</div>
+                                                            <div className="text-xs text-tertiary dark:text-gray-400">{row.poNumber}</div>
                                                         </td>
                                                         <td className="px-6 py-3 font-mono text-xs">{row.invoice}</td>
                                                         <td className="px-6 py-3 text-right font-medium">${row.amount.toLocaleString()}</td>
                                                         <td className="px-6 py-3 text-center">
-                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${row.isCapitalised === 'Yes' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400'}`}>
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${row.isCapitalised === 'Yes' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-secondary dark:bg-white/10 dark:text-gray-400'}`}>
                                                                 {row.isCapitalised}
                                                             </span>
                                                         </td>
-                                                        <td className="px-6 py-3 text-xs text-gray-500">{row.capDate}</td>
+                                                        <td className="px-6 py-3 text-xs text-secondary dark:text-gray-500">{row.capDate}</td>
                                                     </>
                                                 )}
                                                  {activeReport === 'PO_STATUS' && (
                                                     <>
                                                         <td className="px-6 py-3">
                                                             <div className="font-bold text-gray-900 dark:text-white">{row.displayId || row.id.substring(0,8)}</div>
-                                                            <div className="text-xs text-gray-500">{row.supplier}</div>
+                                                            <div className="text-xs text-tertiary dark:text-gray-500">{row.supplier}</div>
                                                         </td>
                                                         <td className="px-6 py-3">
                                                             <div className="text-sm">{row.requester}</div>
-                                                            <div className="text-xs text-gray-400">{row.date}</div>
+                                                            <div className="text-xs text-tertiary dark:text-gray-400">{row.date}</div>
                                                         </td>
                                                         <td className="px-6 py-3 text-right font-medium">${row.total.toLocaleString()}</td>
                                                         <td className="px-6 py-3 text-center">{row.lineCount}</td>
@@ -265,7 +265,7 @@ const ReportingView = () => {
                                                             <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase border ${
                                                                 row.status === 'APPROVED' ? 'bg-green-50 text-green-700 border-green-200' :
                                                                 row.status === 'REJECTED' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                                'bg-gray-50 text-gray-600 border-gray-200'
+                                                                'bg-gray-50 text-secondary border-gray-200'
                                                             }`}>
                                                                 {row.status.replace('_', ' ')}
                                                             </span>

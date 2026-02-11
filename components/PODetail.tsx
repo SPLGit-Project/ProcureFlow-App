@@ -49,7 +49,7 @@ const PODetail = () => {
     // 1. Approval History
     po.approvalHistory.forEach((h, idx) => {
       let icon = FileText;
-      let colorClass = 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
+      let colorClass = 'bg-gray-100 text-secondary border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
       let title = h.action;
 
       if (h.action === 'SUBMITTED') {
@@ -114,7 +114,7 @@ const PODetail = () => {
     return events.sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [po]);
 
-  if (!po) return <div className="p-8 text-gray-900 dark:text-white">PO Not Found</div>;
+  if (!po) return <div className="p-8 text-primary dark:text-white">PO Not Found</div>;
 
   const canApprove = hasPermission('approve_requests') && po.status === 'PENDING_APPROVAL';
   const canLinkConcur = (hasPermission('link_concur') || po.requesterId === currentUser?.id) && po.status === 'APPROVED_PENDING_CONCUR';
@@ -344,7 +344,7 @@ const PODetail = () => {
 
   return (
     <div className="max-w-6xl mx-auto pb-20">
-      <button onClick={() => navigate(-1)} className="flex items-center text-gray-500 hover:text-gray-900 dark:hover:text-white mb-6 transition-colors font-medium text-sm">
+      <button onClick={() => navigate(-1)} className="flex items-center text-secondary hover:text-primary dark:hover:text-white mb-6 transition-colors font-medium text-sm">
         <ArrowLeft size={16} className="mr-1" /> Back to List
       </button>
 
@@ -353,19 +353,19 @@ const PODetail = () => {
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-6">
            <div>
               <div className="flex flex-wrap items-center gap-3 mb-2">
-                  <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">{po.displayId || po.id}</h1>
+                  <h1 className="text-2xl md:text-3xl font-bold text-primary dark:text-white">{po.displayId || po.id}</h1>
                   <span className={`px-3 py-1 rounded-full text-xs font-bold border
                     ${po.status === 'ACTIVE' || po.status === 'RECEIVED' ? 'bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-500 border-green-200 dark:border-green-500/20' : 
                       po.status === 'PENDING_APPROVAL' ? 'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-500 border-yellow-200 dark:border-yellow-500/20' :
                       po.status === 'APPROVED_PENDING_CONCUR' ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-500 border-blue-200 dark:border-blue-500/20' : 
                       po.status === 'VARIANCE_PENDING' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-500 border-amber-200 dark:border-amber-500/20' : 
-                      po.status === 'REJECTED' ? 'bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-500 border-red-200 dark:border-red-500/20' : 'bg-gray-100 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+                      po.status === 'REJECTED' ? 'bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-500 border-red-200 dark:border-red-500/20' : 'bg-gray-100 dark:bg-gray-700/30 text-secondary dark:text-gray-400 border-gray-200 dark:border-gray-700'
                     }`}>
                     {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur Sync' : po.status.replace(/_/g, ' ')}
                   </span>
               </div>
-               <p className="text-gray-500 dark:text-gray-400 text-sm flex items-center gap-1">
-                   <Calendar size={14}/> {new Date(po.requestDate).toLocaleDateString()} by <span className="text-gray-700 dark:text-gray-300 font-medium">{po.requesterName}</span>
+               <p className="text-secondary dark:text-gray-400 text-sm flex items-center gap-1">
+                   <Calendar size={14}/> {new Date(po.requestDate).toLocaleDateString()} by <span className="text-primary dark:text-gray-300 font-medium">{po.requesterName}</span>
                </p>
             </div>
             
@@ -373,7 +373,7 @@ const PODetail = () => {
                {/* Admin Edit Toggle */}
                {currentUser?.role === 'ADMIN' && (
                    !isEditing ? (
-                       <button onClick={handleStartEdit} className="p-2.5 text-gray-500 hover:text-gray-900 border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors">
+                       <button onClick={handleStartEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors">
                            <Edit2 size={18} />
                        </button>
                    ) : (
@@ -440,9 +440,9 @@ const PODetail = () => {
         {(po.customerName || po.reasonForRequest || po.comments || isEditing) && (
             <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl p-4 border border-gray-100 dark:border-gray-800 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="flex gap-3 items-start">
-                    <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><User size={16}/></div>
+                    <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-secondary"><User size={16}/></div>
                     <div className="w-full">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Customer</p>
+                        <p className="text-xs text-secondary uppercase font-bold">Customer</p>
                         {isEditing ? (
                             <input 
                                 className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
@@ -450,7 +450,7 @@ const PODetail = () => {
                                 onChange={e => setHeaderEdits({...headerEdits, clientName: e.target.value})}
                             />
                         ) : (
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">{po.customerName || '-'}</p>
+                            <p className="text-sm font-medium text-primary dark:text-white">{po.customerName || '-'}</p>
                         )}
                     </div>
                 </div>
@@ -458,25 +458,25 @@ const PODetail = () => {
                 <div className="flex gap-3 items-start">
                     <div className="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg"><Building size={16}/></div>
                     <div className="w-full">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Supplier</p>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{po.supplierName}</p>
+                        <p className="text-xs text-secondary uppercase font-bold">Supplier</p>
+                        <p className="text-sm font-medium text-primary dark:text-white">{po.supplierName}</p>
                     </div>
                 </div>
 
                 <div className="flex gap-3 items-start">
                     <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg"><LinkIcon size={16}/></div>
                     <div className="w-full">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Concur PO #</p>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        <p className="text-xs text-secondary uppercase font-bold">Concur PO #</p>
+                        <p className="text-sm font-medium text-primary dark:text-white">
                              {Array.from(new Set(po.lines.map(l => l.concurPoNumber).filter(Boolean))).join(', ') || '-'}
                         </p>
                     </div>
                 </div>
 
                 <div className="flex gap-3 items-start">
-                    <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><Info size={16}/></div>
+                    <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-secondary"><Info size={16}/></div>
                     <div className="w-full">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Reason</p>
+                        <p className="text-xs text-secondary uppercase font-bold">Reason</p>
                          {isEditing ? (
                             <input 
                                 className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
@@ -484,7 +484,7 @@ const PODetail = () => {
                                 onChange={e => setHeaderEdits({...headerEdits, reason: e.target.value})}
                             />
                         ) : (
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">{po.reasonForRequest || '-'}</p>
+                            <p className="text-sm font-medium text-primary dark:text-white">{po.reasonForRequest || '-'}</p>
                         )}
                     </div>
                 </div>
@@ -501,7 +501,7 @@ const PODetail = () => {
                                 onChange={e => setHeaderEdits({...headerEdits, comments: e.target.value})}
                             />
                         ) : (
-                            <p className="text-sm text-gray-600 dark:text-gray-300 italic">{po.comments ? `"${po.comments}"` : '-'}</p>
+                            <p className="text-sm text-secondary dark:text-gray-300 italic">{po.comments ? `"${po.comments}"` : '-'}</p>
                         )}
                     </div>
                 </div>
@@ -538,16 +538,16 @@ const PODetail = () => {
 
       {/* Tabs and Tables */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-6 overflow-x-auto scrollbar-hide">
-          <button onClick={() => setActiveTab('LINES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'LINES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Order Lines</button>
-          <button onClick={() => setActiveTab('DELIVERIES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'DELIVERIES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Deliveries ({po.deliveries.length})</button>
-          <button onClick={() => setActiveTab('HISTORY')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'HISTORY' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>History</button>
+          <button onClick={() => setActiveTab('LINES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'LINES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Order Lines</button>
+          <button onClick={() => setActiveTab('DELIVERIES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'DELIVERIES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Deliveries ({po.deliveries.length})</button>
+          <button onClick={() => setActiveTab('HISTORY')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'HISTORY' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>History</button>
       </div>
       
       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[300px]">
           {activeTab === 'LINES' && (
               <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400">
-                      <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
+                  <table className="w-full text-left text-sm text-secondary dark:text-gray-400">
+                      <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
                           <tr>
                               <th className="px-6 py-4">Item Details</th>
                               <th className="px-6 py-4 text-center">Ordered</th>
@@ -560,10 +560,10 @@ const PODetail = () => {
                           {po.lines.map(line => (
                               <tr key={line.id} className="hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors">
                                   <td className="px-6 py-4">
-                                      <div className="font-bold text-gray-900 dark:text-white">{line.itemName}</div>
-                                      <div className="text-xs text-gray-500 font-mono mt-0.5">{line.sku}</div>
+                                      <div className="font-bold text-primary dark:text-white">{line.itemName}</div>
+                                      <div className="text-xs text-tertiary dark:text-gray-500 font-mono mt-0.5">{line.sku}</div>
                                   </td>
-                                  <td className="px-6 py-4 text-center font-medium text-gray-900 dark:text-white">
+                                  <td className="px-6 py-4 text-center font-medium text-primary dark:text-white">
                                       {isEditing && (po.status === 'PENDING_APPROVAL' || po.status === 'APPROVED_PENDING_CONCUR') ? (
                                           <input 
                                               type="number" 
@@ -577,7 +577,7 @@ const PODetail = () => {
                                   </td>
                                   <td className="px-6 py-4 text-center">
                                       <div className="flex flex-col items-center justify-center">
-                                          <span className={line.quantityReceived >= line.quantityOrdered ? 'text-green-600 dark:text-green-500 font-bold' : 'text-gray-500'}>
+                                          <span className={line.quantityReceived >= line.quantityOrdered ? 'text-green-600 dark:text-green-500 font-bold' : 'text-secondary'}>
                                               {line.quantityReceived}
                                           </span>
                                           {line.quantityReceived > line.quantityOrdered && (
@@ -603,7 +603,7 @@ const PODetail = () => {
                                           `$${line.unitPrice.toFixed(2)}`
                                       )}
                                   </td>
-                                  <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-white">${line.totalPrice.toLocaleString()}</td>
+                                  <td className="px-6 py-4 text-right font-bold text-primary dark:text-white">${line.totalPrice.toLocaleString()}</td>
                               </tr>
                           ))}
                       </tbody>
@@ -614,7 +614,7 @@ const PODetail = () => {
           {activeTab === 'DELIVERIES' && (
                <div className="p-4 md:p-6 space-y-6">
                     {po.deliveries.length === 0 ? (
-                        <div className="text-center text-gray-400 py-12 flex flex-col items-center border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                        <div className="text-center text-tertiary dark:text-gray-400 py-12 flex flex-col items-center border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
                             <Package size={48} className="mb-2 opacity-20"/>
                             <p>No deliveries recorded yet.</p>
                         </div>
@@ -625,7 +625,7 @@ const PODetail = () => {
                                     <div className="flex items-center gap-3">
                                         <div className="bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 p-2 rounded-lg"><Truck size={18}/></div>
                                         <div>
-                                            <span className="font-bold text-gray-900 dark:text-white block text-sm md:text-base">
+                                            <span className="font-bold text-primary dark:text-white block text-sm md:text-base">
                                                 {isEditing ? (
                                                     <input 
                                                         className="px-1 border rounded dark:bg-gray-800 dark:border-gray-700 text-sm"
@@ -634,7 +634,7 @@ const PODetail = () => {
                                                     />
                                                 ) : del.docketNumber}
                                             </span>
-                                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                                            <span className="text-xs text-tertiary dark:text-gray-500 flex items-center gap-1">
                                                  {isEditing ? (
                                                     <>
                                                         <input 
@@ -660,7 +660,7 @@ const PODetail = () => {
                                 <div className="p-4 bg-white dark:bg-[#1e2029]">
                                     <table className="w-full text-sm">
                                         <thead>
-                                            <tr className="text-xs text-gray-500 text-left uppercase">
+                                            <tr className="text-xs text-tertiary dark:text-gray-500 text-left uppercase">
                                                 <th className="pb-2 font-bold">Item</th>
                                                 <th className="pb-2 text-right font-bold">Rec. Qty</th>
                                                 <th className="pb-2 pl-4 font-bold hidden md:table-cell">Invoice</th>
@@ -672,8 +672,8 @@ const PODetail = () => {
                                                 const poLine = po.lines.find(l => l.id === dLine.poLineId);
                                                 return (
                                                     <tr key={dLine.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
-                                                        <td className="py-3 text-gray-700 dark:text-gray-300 font-medium">{poLine?.itemName}</td>
-                                                        <td className="py-3 text-right font-bold text-gray-900 dark:text-white">{dLine.quantity}</td>
+                                                        <td className="py-3 text-secondary dark:text-gray-300 font-medium">{poLine?.itemName}</td>
+                                                        <td className="py-3 text-right font-bold text-primary dark:text-white">{dLine.quantity}</td>
                                                         
                                                         {/* Invoice - Read Only */}
                                                         <td className="py-3 pl-4 hidden md:table-cell">
@@ -685,7 +685,7 @@ const PODetail = () => {
                                                                     placeholder="Inv #"
                                                                 />
                                                             ) : (
-                                                                <span className="text-gray-700 dark:text-gray-300 font-mono text-xs bg-gray-100 dark:bg-white/5 px-2 py-1 rounded">
+                                                                <span className="text-secondary dark:text-gray-300 font-mono text-xs bg-gray-100 dark:bg-white/5 px-2 py-1 rounded">
                                                                     {dLine.invoiceNumber || '-'}
                                                                 </span>
                                                             )}
@@ -728,13 +728,13 @@ const PODetail = () => {
 
                             <div className="ml-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
-                                    <p className="font-bold text-gray-900 dark:text-white text-sm">{event.title}</p>
-                                    <span className="hidden sm:inline text-gray-300 dark:text-gray-600">•</span>
-                                    <p className="text-xs text-gray-500 font-mono">{event.date.toLocaleDateString()}</p>
+                                    <p className="font-bold text-primary dark:text-white text-sm">{event.title}</p>
+                                    <span className="hidden sm:inline text-tertiary dark:text-gray-600">•</span>
+                                    <p className="text-xs text-tertiary dark:text-gray-500 font-mono">{event.date.toLocaleDateString()}</p>
                                 </div>
-                                <p className="text-sm text-gray-600 dark:text-gray-300">{event.subtitle}</p>
+                                <p className="text-sm text-secondary dark:text-gray-300">{event.subtitle}</p>
                                 {event.description && (
-                                    <div className="mt-2 bg-gray-50 dark:bg-[#15171e] p-3 rounded-xl text-sm text-gray-600 dark:text-gray-400 italic border border-gray-100 dark:border-gray-700 inline-block">
+                                    <div className="mt-2 bg-gray-50 dark:bg-[#15171e] p-3 rounded-xl text-sm text-secondary dark:text-gray-400 italic border border-gray-100 dark:border-gray-700 inline-block">
                                         "{event.description}"
                                     </div>
                                 )}
@@ -742,7 +742,7 @@ const PODetail = () => {
                         </div>
                     ))}
                     {timelineEvents.length === 0 && (
-                        <div className="text-gray-500 text-sm italic pl-8">No history recorded.</div>
+                        <div className="text-tertiary text-sm italic pl-8">No history recorded.</div>
                     )}
                 </div>
               </div>
@@ -762,8 +762,8 @@ const PODetail = () => {
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
             <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800 transform transition-all scale-100">
                 <div className="mb-4">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">Link Concur PO</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    <h2 className="text-xl font-bold text-primary dark:text-white">Link Concur PO</h2>
+                    <p className="text-sm text-secondary dark:text-gray-400 mt-1">
                         Enter the SAP Concur PO Number to synchronize.
                     </p>
                 </div>
@@ -771,12 +771,12 @@ const PODetail = () => {
                     type="text" 
                     autoFocus
                     placeholder="e.g. PO-88123"
-                    className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-300 dark:border-gray-700 rounded-xl p-3 mb-6 focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none text-gray-900 dark:text-white"
+                    className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-300 dark:border-gray-700 rounded-xl p-3 mb-6 focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none text-primary dark:text-white"
                     value={concurInput}
                     onChange={e => setConcurInput(e.target.value)}
                 />
                 <div className="flex justify-end gap-3">
-                    <button onClick={() => setIsConcurModalOpen(false)} className="px-4 py-2.5 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-lg font-medium">Cancel</button>
+                    <button onClick={() => setIsConcurModalOpen(false)} className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg font-medium">Cancel</button>
                     <button onClick={handleConcurLink} disabled={!concurInput} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 font-bold shadow-lg shadow-indigo-500/20">Sync & Activate</button>
                 </div>
             </div>
@@ -791,10 +791,10 @@ const PODetail = () => {
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
             <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-sm w-full p-6 border border-gray-200 dark:border-gray-800">
                 <div className="mb-4">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-primary dark:text-white flex items-center gap-2">
                         <Shield size={20} className="text-amber-500"/> Force Status Update
                     </h2>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-secondary mt-1">
                         Override the current workflow state.
                     </p>
                 </div>

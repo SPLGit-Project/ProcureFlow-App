@@ -248,7 +248,7 @@ export default function UpdateToast() {
               </h3>
               <p className={`
                 text-xs mb-3
-                ${isDark ? 'text-gray-400' : 'text-gray-500'}
+                ${isDark ? 'text-gray-400' : 'text-secondary'}
               `}>
                 {getStatusText()}
                 {newVersion?.gitHash && !isUpdating && (
@@ -283,7 +283,7 @@ export default function UpdateToast() {
                       transition-colors
                       ${isDark 
                         ? 'text-gray-400 hover:bg-white/10 hover:text-white' 
-                        : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                        : 'text-secondary hover:bg-gray-100 hover:text-gray-900'
                       }
                     `}
                   >
@@ -296,7 +296,7 @@ export default function UpdateToast() {
               {isUpdating && (
                 <div className={`
                   flex items-center gap-2 text-xs
-                  ${isDark ? 'text-gray-400' : 'text-gray-500'}
+                  ${isDark ? 'text-gray-400' : 'text-secondary'}
                 `}>
                   <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                     <div 
@@ -317,7 +317,7 @@ export default function UpdateToast() {
                   shrink-0 p-1 rounded-lg transition-colors
                   ${isDark 
                     ? 'text-gray-500 hover:text-white hover:bg-white/10' 
-                    : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+                    : 'text-tertiary hover:text-secondary hover:bg-gray-100'
                   }
                 `}
                 aria-label="Dismiss"

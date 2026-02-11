@@ -145,13 +145,13 @@ const Dashboard = () => {
               <div className={`p-2.5 rounded-xl bg-${color}-50 dark:bg-${color}-500/10 text-${color}-600 dark:text-${color}-500 group-hover:scale-110 transition-transform`}>
                   <Icon size={22} />
               </div>
-              <span className="flex items-center text-gray-400 text-xs font-medium gap-1 opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
+              <span className="flex items-center text-secondary dark:text-gray-400 text-xs font-medium gap-1 opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
                   View <ChevronRight size={12}/>
               </span>
           </div>
           <div>
               <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-1 tracking-tight">{value}</h3>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
+              <p className="text-sm font-medium text-secondary dark:text-gray-400">{title}</p>
           </div>
       </div>
   );
@@ -163,7 +163,7 @@ const Dashboard = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 pb-2">
          <div>
              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Dashboard</h1>
-             <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm md:text-base">
+             <p className="text-secondary dark:text-gray-400 mt-1 text-sm md:text-base">
                  Overview for <span className="font-semibold text-gray-700 dark:text-gray-200">{currentUser.name}</span>
              </p>
          </div>
@@ -177,7 +177,7 @@ const Dashboard = () => {
 
       {/* Pipeline Flow Visual */}
       <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 overflow-hidden">
-          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">
+          <h3 className="text-sm font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-4">
               Request Pipeline {activeSiteIds.length > 0 
                   ? (activeSiteIds.length === 1 ? `(${siteName(activeSiteIds[0])})` : `(${activeSiteIds.length} Sites)`) 
                   : '(None Selected)'}
@@ -207,7 +207,7 @@ const Dashboard = () => {
       </div>
 
       {/* Metrics & Analysis Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:col-span-3 gap-6">
           
           {/* Depletion/Replacement Analysis */}
           <div className="lg:col-span-2 space-y-6">
@@ -217,7 +217,7 @@ const Dashboard = () => {
                       <div className="flex justify-between items-start">
                           <div>
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Cost Impact Analysis</h3>
-                            <p className="text-sm text-gray-500 mb-6">Financial impact of replacements (Depletion) vs Contract inclusions.</p>
+                            <p className="text-sm text-secondary dark:text-gray-500 mb-6">Financial impact of replacements (Depletion) vs Contract inclusions.</p>
                           </div>
                           <button 
                             onClick={() => setIsCostModalOpen(true)}
@@ -236,7 +236,7 @@ const Dashboard = () => {
                               <div className="w-full h-3 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
                                   <div className="h-full bg-red-500 rounded-full" style={{ width: `${replacePct}%` }}></div>
                               </div>
-                              <p className="text-xs text-gray-500 mt-1">Direct cost impact from lost/damaged inventory.</p>
+                              <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Direct cost impact from lost/damaged inventory.</p>
                           </div>
                           <div>
                               <div className="flex justify-between text-sm font-medium mb-1">
@@ -246,7 +246,7 @@ const Dashboard = () => {
                               <div className="w-full h-3 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
                                   <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${100 - replacePct}%` }}></div>
                               </div>
-                              <p className="text-xs text-gray-500 mt-1">Covered under contract hire terms.</p>
+                              <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Covered under contract hire terms.</p>
                           </div>
                       </div>
                   </div>
@@ -265,7 +265,7 @@ const Dashboard = () => {
                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                            <div className="text-center">
                                <div className="text-2xl font-bold text-gray-900 dark:text-white">{replacePct}%</div>
-                               <div className="text-[10px] uppercase text-gray-500 font-bold">Replacement</div>
+                                <div className="text-[10px] uppercase text-tertiary dark:text-gray-500 font-bold">Replacement</div>
                            </div>
                        </div>
                   </div>
@@ -287,7 +287,7 @@ const Dashboard = () => {
                                   </div>
                                   <div>
                                       <div className="font-bold text-sm text-gray-900 dark:text-white truncate max-w-[200px]" title={item}>{item}</div>
-                                      <div className="text-[10px] text-gray-500">Units Replaced</div>
+                                      <div className="text-[10px] text-tertiary dark:text-gray-500">Units Replaced</div>
                                   </div>
                               </div>
                               <div className="text-right">
@@ -313,7 +313,7 @@ const Dashboard = () => {
                              <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center text-amber-700 font-bold">{myPendingApprovals.length}</div>
                              <div>
                                  <div className="font-bold text-gray-900">Approvals</div>
-                                 <div className="text-xs text-gray-500">Requires review</div>
+                                 <div className="text-xs text-tertiary dark:text-gray-500">Requires review</div>
                              </div>
                          </div>
                      )}
@@ -322,7 +322,7 @@ const Dashboard = () => {
                              <div className="w-8 h-8 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 font-bold">{actionConcur.length}</div>
                              <div>
                                  <div className="font-bold text-gray-900">Link Concur</div>
-                                 <div className="text-xs text-gray-500">Sync POs</div>
+                                 <div className="text-xs text-tertiary dark:text-gray-500">Sync POs</div>
                              </div>
                          </div>
                      )}
@@ -331,7 +331,7 @@ const Dashboard = () => {
                              <div className="w-8 h-8 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-700 font-bold">{myPendingDeliveries.length}</div>
                              <div>
                                  <div className="font-bold text-gray-900">Receiving</div>
-                                 <div className="text-xs text-gray-500">Confirm deliveries</div>
+                                 <div className="text-xs text-tertiary dark:text-gray-500">Confirm deliveries</div>
                              </div>
                          </div>
                      )}

@@ -1192,7 +1192,7 @@ if __name__ == "__main__":
 
   const ColorPicker = ({ label, value, onChange }: { label: string, value: string, onChange: (val: string) => void }) => (
     <div className="space-y-4">
-        <label className="text-xs font-bold text-gray-500 uppercase block">{label}</label>
+        <label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase block">{label}</label>
         <div className="flex flex-wrap gap-3">
             {PRESET_COLORS.slice(0, 6).map(color => (
                 <button
@@ -1224,7 +1224,7 @@ if __name__ == "__main__":
          <SettingsIcon className="text-gray-900 dark:text-white" size={32} />
          <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Admin Portal</h1>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">System Configuration</p>
+            <p className="text-secondary dark:text-gray-400 text-sm">System Configuration</p>
          </div>
       </div>
 
@@ -1235,7 +1235,7 @@ if __name__ == "__main__":
                 className={`pb-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
                     activeTab === 'PROFILE'
                         ? 'border-[var(--color-brand)] text-[var(--color-brand)]'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        : 'border-transparent text-secondary hover:text-primary dark:text-gray-500 dark:hover:text-gray-300'
                 }`}
             >
                 <User size={16} />
@@ -1248,7 +1248,7 @@ if __name__ == "__main__":
                     className={`pb-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
                         activeTab === tab.id
                             ? 'border-[var(--color-brand)] text-[var(--color-brand)]'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            : 'border-transparent text-secondary hover:text-primary dark:text-gray-500 dark:hover:text-gray-300'
                     }`}
                 >
                     <tab.icon size={16} />
@@ -1271,7 +1271,7 @@ if __name__ == "__main__":
                             src={profileForm.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileForm.name || 'U')}&background=random`} 
                             className="w-32 h-32 rounded-3xl object-cover bg-gray-100 dark:bg-white/5 border-2 border-gray-200 dark:border-gray-800 shadow-lg"
                           />
-                          <button className="absolute bottom-2 right-2 p-2 bg-white dark:bg-[#15171e] rounded-xl shadow-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-[var(--color-brand)] transition-colors">
+                          <button className="absolute bottom-2 right-2 p-2 bg-white dark:bg-[#15171e] rounded-xl shadow-md border border-gray-200 dark:border-gray-700 text-secondary dark:text-gray-500 hover:text-[var(--color-brand)] transition-colors">
                               <Image size={16}/>
                           </button>
                       </div>
@@ -1330,7 +1330,7 @@ if __name__ == "__main__":
                                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white">
                                           Hide PWA install prompt
                                       </span>
-                                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                      <p className="text-xs text-tertiary dark:text-gray-400 mt-0.5">
                                           When enabled, the app install prompt and floating install button will be hidden. Uncheck to show them again.
                                       </p>
                                   </div>
@@ -1376,11 +1376,11 @@ if __name__ == "__main__":
                 <div className="flex justify-between items-center">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         Master Item List 
-                        <span className="text-xs font-normal text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{(items || []).filter(i => i.activeFlag !== false).length} Active Items</span>
+                        <span className="text-xs font-normal text-secondary dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{(items || []).filter(i => i.activeFlag !== false).length} Active Items</span>
                     </h3>
                     <div className="flex gap-3 items-center">
-                        <label className="flex items-center gap-2 text-xs font-bold text-gray-500 cursor-pointer mr-2">
-                           <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded text-gray-500 focus:ring-gray-400"/>
+                        <label className="flex items-center gap-2 text-xs font-bold text-secondary dark:text-gray-500 cursor-pointer mr-2">
+                           <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded text-secondary dark:text-gray-500 focus:ring-gray-400"/>
                            Show Archived
                         </label>
                         <button 
@@ -1409,7 +1409,7 @@ if __name__ == "__main__":
                         <button 
                             onClick={() => itemImportInputRef.current?.click()} 
                             disabled={isImportingItems}
-                            className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 
+                            className="p-2 text-secondary hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 
                             title="Import from Excel"
                         >
                             {isImportingItems ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16}/>}
@@ -1492,7 +1492,7 @@ if __name__ == "__main__":
                             <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
                             <div className="text-center">
                                 <p className="font-bold text-gray-900 dark:text-white">Processing Master Items</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Updating database and refreshing UI, please wait...</p>
+                                <p className="text-xs text-secondary dark:text-gray-400">Updating database and refreshing UI, please wait...</p>
                             </div>
                         </div>
                     </div>
@@ -1510,7 +1510,7 @@ if __name__ == "__main__":
                                         : "";
 
                                     return (
-                                        <th key={col.key} className={`px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase ${stickyClass}`}>
+                                        <th key={col.key} className={`px-4 py-3 text-left text-xs font-bold text-secondary dark:text-gray-500 uppercase ${stickyClass}`}>
                                             <div className="flex flex-col gap-1">
                                                 <span>{col.label}</span>
                                                 {isFilterable && (
@@ -1572,7 +1572,7 @@ if __name__ == "__main__":
                                             displayVal = `$${Number(val || 0).toFixed(2)}`;
                                         } else if (col.key === 'rfidFlag' || col.key === 'cogFlag') {
                                             displayVal = (
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${val ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${val ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-secondary dark:text-gray-500'}`}>
                                                     {val ? 'Yes' : 'No'}
                                                 </span>
                                             );
@@ -1604,7 +1604,7 @@ if __name__ == "__main__":
                                                     minLevel: item.minLevel, maxLevel: item.maxLevel
                                                 }); 
                                                 setIsItemFormOpen(true); 
-                                            }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500">
+                                            }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-secondary dark:text-gray-500">
                                                 <Edit2 size={16} />
                                             </button>
                                             <button onClick={() => requestDelete(item)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500" title="Archive Item">
@@ -1616,7 +1616,7 @@ if __name__ == "__main__":
                                 ))}
                                 {items.length === 0 && (
                                     <tr>
-                                        <td colSpan={MASTER_ITEM_COLUMNS.length + 1} className="px-6 py-8 text-center text-gray-500">
+                                        <td colSpan={MASTER_ITEM_COLUMNS.length + 1} className="px-6 py-8 text-center text-secondary dark:text-gray-500">
                                             No items found. Import items or add manually.
                                         </td>
                                     </tr>
@@ -1661,7 +1661,7 @@ if __name__ == "__main__":
                             <BookOpen className="text-blue-600" size={24} />
                             Catalog Management
                         </h2>
-                        <p className="text-gray-500 dark:text-gray-400 mt-1">Manage dynamic attributes for your items including Categories, Groups, and Units of Measure.</p>
+                        <p className="text-secondary dark:text-gray-400 mt-1">Manage dynamic attributes for your items including Categories, Groups, and Units of Measure.</p>
                     </div>
                 </div>
                 
@@ -1689,10 +1689,10 @@ if __name__ == "__main__":
                               <Package size={20} className="text-[var(--color-brand)]" />
                               Stock Management
                           </h3>
-                          <p className="text-sm text-gray-500 mt-1">Select a supplier to manage their stock levels and history.</p>
+                          <p className="text-sm text-secondary dark:text-gray-400 mt-1">Select a supplier to manage their stock levels and history.</p>
                       </div>
                       <div className="flex items-center gap-3 w-full md:w-auto">
-                          <span className="text-xs font-bold text-gray-500 uppercase whitespace-nowrap hidden md:inline-block">Active Supplier:</span>
+                          <span className="text-xs font-bold text-secondary dark:text-gray-500 uppercase whitespace-nowrap hidden md:inline-block">Active Supplier:</span>
                           <div className="relative flex-1 md:flex-none">
                               <select 
                                   className="w-full md:w-64 bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg py-2.5 pl-3 pr-10 text-sm font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all appearance-none"
@@ -1720,7 +1720,7 @@ if __name__ == "__main__":
                          <div className="flex flex-col md:flex-row gap-4 mb-4">
                             <div className="w-full md:w-1/3 space-y-4">
                                <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase">Snapshot Date</label>
+                                    <label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Snapshot Date</label>
                                     <input type="date" className="input-field mt-1" value={importDate} onChange={e => setImportDate(e.target.value)} />
                                </div>
                                <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded text-xs text-blue-800 dark:text-blue-200 border border-blue-100 dark:border-blue-800">
@@ -1730,7 +1730,7 @@ if __name__ == "__main__":
                             <div className="w-full space-y-4">
                                 {/* FILE UPLOAD OPTION */}
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Upload File (Excel, CSV, TSV)</label>
+                                    <label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase mb-1 block">Upload File (Excel, CSV, TSV)</label>
                                     <input 
                                         type="file" 
                                         accept=".xlsx,.xls,.csv,.tsv"
@@ -1814,7 +1814,7 @@ if __name__ == "__main__":
                   </div>
 
                  <div className="overflow-x-auto">
-                     <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400 min-w-[1200px]">
+                     <table className="w-full text-left text-sm text-secondary dark:text-gray-400 min-w-[1200px]">
                          <thead className="table-header">
                               <tr>
                                   <th className="px-4 py-4">Status</th>
@@ -1843,7 +1843,7 @@ if __name__ == "__main__":
                                          {isMapped ? (
                                              <div className="flex flex-col">
                                                  <span className="badge bg-green-100 text-green-800 border-green-200 w-fit">Mapped</span>
-                                                 <span className="text-[10px] text-gray-500 font-mono mt-0.5 max-w-[100px] truncate" title={mappedItem?.name}>{mappedItem?.sku}</span>
+                                                 <span className="text-[10px] text-tertiary dark:text-gray-500 font-mono mt-0.5 max-w-[100px] truncate" title={mappedItem?.name}>{mappedItem?.sku}</span>
                                              </div>
                                          ) : (
                                              <button onClick={() => { setMappingSource(snap); setIsManualMapOpen(true); }} className="badge bg-red-100 text-red-800 border-red-200 hover:bg-red-200 w-fit">Unmapped</button>
@@ -1890,17 +1890,17 @@ if __name__ == "__main__":
                     <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Add Stock Snapshot</h2>
                         <form onSubmit={handleAddSnapshot} className="space-y-4">
-                            <div><label className="text-xs font-bold text-gray-500 uppercase">Supplier</label><select className="input-field mt-1" value={snapSupplierId} onChange={e => setSnapSupplierId(e.target.value)}>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                            <div><label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Supplier</label><select className="input-field mt-1" value={snapSupplierId} onChange={e => setSnapSupplierId(e.target.value)}>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Supplier SKU</label><input required className="input-field mt-1" value={snapSku} onChange={e => setSnapSku(e.target.value)}/></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Product Name</label><input required className="input-field mt-1" value={snapProductName} onChange={e => setSnapProductName(e.target.value)}/></div>
+                                <div><label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Supplier SKU</label><input required className="input-field mt-1" value={snapSku} onChange={e => setSnapSku(e.target.value)}/></div>
+                                <div><label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Product Name</label><input required className="input-field mt-1" value={snapProductName} onChange={e => setSnapProductName(e.target.value)}/></div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Total SOH</label><input required type="number" className="input-field mt-1" value={snapTotal} onChange={e => setSnapTotal(parseInt(e.target.value))}/></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Available</label><input required type="number" className="input-field mt-1" value={snapAvailable} onChange={e => setSnapAvailable(parseInt(e.target.value))}/></div>
+                                <div><label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Total SOH</label><input required type="number" className="input-field mt-1" value={snapTotal} onChange={e => setSnapTotal(parseInt(e.target.value))}/></div>
+                                <div><label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Available</label><input required type="number" className="input-field mt-1" value={snapAvailable} onChange={e => setSnapAvailable(parseInt(e.target.value))}/></div>
                             </div>
                             <div className="flex justify-end gap-3 pt-4">
-                                <button type="button" onClick={() => setIsSnapshotFormOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                                <button type="button" onClick={() => setIsSnapshotFormOpen(false)} className="px-4 py-2 text-secondary dark:text-gray-400 font-medium hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">Cancel</button>
                                 <button type="submit" className="btn-primary">Add Snapshot</button>
                             </div>
                         </form>
@@ -1921,7 +1921,7 @@ if __name__ == "__main__":
                           {/* Card 1: Confirmed (Good) */}
                           <div className="bg-white dark:bg-[#1e2029] p-4 rounded-xl border-l-4 border-green-500 shadow-sm flex items-center justify-between">
                               <div>
-                                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Ready for POs</p>
+                                  <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Ready for POs</p>
                                   <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappings.filter(m => m.mappingStatus === 'CONFIRMED').length}</p>
                                   <p className="text-[10px] text-green-600 font-medium">Stock Visible in App</p>
                               </div>
@@ -1933,7 +1933,7 @@ if __name__ == "__main__":
                           {/* Card 2: Proposed (Action) */}
                           <div className="bg-white dark:bg-[#1e2029] p-4 rounded-xl border-l-4 border-yellow-400 shadow-sm flex items-center justify-between relative overflow-hidden group hover:shadow-md transition-shadow cursor-pointer" onClick={() => setMappingSubTab('PROPOSED')}>
                               <div className="relative z-10">
-                                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Needs Review</p>
+                                  <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Needs Review</p>
                                   <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappings.filter(m => m.mappingStatus === 'PROPOSED').length}</p>
                                   <p className="text-[10px] text-yellow-600 font-medium font-bold underline">Review Proposals &rarr;</p>
                               </div>
@@ -1946,7 +1946,7 @@ if __name__ == "__main__":
                           {/* Card 3: Unmapped (Critical) */}
                           <div className="bg-white dark:bg-[#1e2029] p-4 rounded-xl border-l-4 border-red-500 shadow-sm flex items-center justify-between">
                               <div>
-                                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Unmapped Stock</p>
+                                  <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Unmapped Stock</p>
                                   <p className="text-2xl font-bold text-gray-900 dark:text-white">
                                       {stockSnapshots.filter(s => !mappings.some(m => m.supplierId === s.supplierId && m.supplierSku === s.supplierSku)).length}
                                   </p>
@@ -1969,28 +1969,28 @@ if __name__ == "__main__":
                                   <div className="w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 flex items-center justify-center font-bold text-xs shrink-0">1</div>
                                   <div>
                                       <p className="font-bold text-gray-900 dark:text-white">Run Auto-Matching</p>
-                                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">System attempts to match Unmapped items using fuzzy logic. Use the button on the right.</p>
+                                      <p className="text-xs text-secondary dark:text-gray-400 mt-1">System attempts to match Unmapped items using fuzzy logic. Use the button on the right.</p>
                                   </div>
                               </div>
                               <div className="flex gap-3">
                                   <div className="w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 flex items-center justify-center font-bold text-xs shrink-0">2</div>
                                   <div>
                                       <p className="font-bold text-gray-900 dark:text-white">Review Proposals</p>
-                                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Check the "Proposed" tab. Confirm correct matches. This moves them to "Ready".</p>
+                                      <p className="text-xs text-secondary dark:text-gray-400 mt-1">Check the "Proposed" tab. Confirm correct matches. This moves them to "Ready".</p>
                                   </div>
                               </div>
                               <div className="flex gap-3">
                                   <div className="w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 flex items-center justify-center font-bold text-xs shrink-0">3</div>
                                   <div>
                                       <p className="font-bold text-gray-900 dark:text-white">Manual Mapping</p>
-                                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">For any remaining Red items, go to the <b>Stock History</b> tab and click the red "Unmapped" badge to map manually.</p>
+                                      <p className="text-xs text-secondary dark:text-gray-400 mt-1">For any remaining Red items, go to the <b>Stock History</b> tab and click the red "Unmapped" badge to map manually.</p>
                                   </div>
                               </div>
                           </div>
                       </div>
                   </div>
                    <div className="flex gap-3 items-center mt-2 md:mt-0">
-                       <button onClick={() => refreshAvailability().then(() => alert('Availability Recalculated'))} className="text-gray-500 hover:text-[var(--color-brand)] text-xs font-bold flex items-center gap-1 transition-colors">
+                       <button onClick={() => refreshAvailability().then(() => alert('Availability Recalculated'))} className="text-secondary hover:text-[var(--color-brand)] text-xs font-bold flex items-center gap-1 transition-colors">
                            <RefreshCw size={14}/> Update Mapping
                        </button>
                        <button onClick={async () => {
@@ -2024,13 +2024,13 @@ if __name__ == "__main__":
 
               {/* Sub Tabs */}
               <div className="flex gap-6 border-b border-gray-200 dark:border-gray-800">
-                  <button onClick={() => setMappingSubTab('PROPOSED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'PROPOSED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                  <button onClick={() => setMappingSubTab('PROPOSED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'PROPOSED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
                       Proposed Mappings ({mappings.filter(m => m.mappingStatus === 'PROPOSED').length})
                   </button>
-                  <button onClick={() => setMappingSubTab('CONFIRMED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'CONFIRMED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                  <button onClick={() => setMappingSubTab('CONFIRMED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'CONFIRMED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
                       Confirmed ({mappings.filter(m => m.mappingStatus === 'CONFIRMED').length})
                   </button>
-                  <button onClick={() => setMappingSubTab('REJECTED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'REJECTED' ? 'border-red-500 text-red-500' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                  <button onClick={() => setMappingSubTab('REJECTED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'REJECTED' ? 'border-red-500 text-red-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
                       Rejected ({mappings.filter(m => m.mappingStatus === 'REJECTED').length})
                   </button>
                   <button 
@@ -2038,7 +2038,7 @@ if __name__ == "__main__":
                         setMappingSubTab('MEMORY');
                         getMappingMemory().then(setMappingMemory);
                     }} 
-                    className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'MEMORY' ? 'border-purple-500 text-purple-500' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                    className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'MEMORY' ? 'border-purple-500 text-purple-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}
                   >
                       Mapping Memory (All Suppliers)
                   </button>
@@ -2072,7 +2072,7 @@ if __name__ == "__main__":
                                   Sync Item Prices
                               </button>
                           </div>
-                          <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400 min-w-[900px]">
+                          <table className="w-full text-left text-sm text-secondary dark:text-gray-400 min-w-[900px]">
                               <thead className="table-header"><tr>
                                   <th className="px-6 py-4">Supplier</th>
                                   <th className="px-6 py-4">Supplier SKU</th>
@@ -2122,7 +2122,7 @@ if __name__ == "__main__":
                           </table>
                       </div>
                   ) : (
-                      <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400 min-w-[900px]">
+                      <table className="w-full text-left text-sm text-secondary dark:text-gray-400 min-w-[900px]">
                           <thead className="table-header"><tr>
                               <th className="px-6 py-4">Status</th>
                               <th className="px-6 py-4">Internal Master Item</th>
@@ -2171,7 +2171,7 @@ if __name__ == "__main__":
                                                   // Find matching snapshot for extra details
                                                   const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
                                                   if (snapshot?.productName) {
-                                                      return <div className="text-xs text-gray-500 mt-1 italic line-clamp-2" title={snapshot.productName}>{snapshot.productName}</div>
+                                                      return <div className="text-xs text-secondary mt-1 italic line-clamp-2" title={snapshot.productName}>{snapshot.productName}</div>
                                                   }
                                                   return null;
                                               })()}
@@ -2225,7 +2225,7 @@ if __name__ == "__main__":
                                                  return (
                                                      <div className="flex flex-col items-end">
                                                          <span className="font-bold text-gray-900 dark:text-white">{snapshot.stockOnHand}</span>
-                                                         <span className="text-[10px] text-gray-500">Avail: {snapshot.availableQty}</span>
+                                                         <span className="text-[10px] text-tertiary">Avail: {snapshot.availableQty}</span>
                                                      </div>
                                                  );
                                              })()}
@@ -2291,7 +2291,7 @@ if __name__ == "__main__":
              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
                  <div className="flex justify-end mb-4"><button onClick={() => openSupplierForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Supplier</button></div>
                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400 min-w-[700px]">
+                    <table className="w-full text-left text-sm text-secondary dark:text-gray-400 min-w-[700px]">
                         <thead className="table-header"><tr><th className="px-6 py-4">Supplier</th><th className="px-6 py-4">Key Contact</th><th className="px-6 py-4">Categories</th><th className="px-6 py-4 text-center">Action</th></tr></thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                             {suppliers.map(s => (
@@ -2337,7 +2337,7 @@ if __name__ == "__main__":
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Categories (comma separated)</label>
                                 <input className="input-field" value={supplierForm.categories} onChange={e => setSupplierForm({...supplierForm, categories: e.target.value})}/>
                             </div>
-                            <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setIsSupplierFormOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="btn-primary">Save Supplier</button></div>
+                            <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setIsSupplierFormOpen(false)} className="px-4 py-2 text-secondary font-medium hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="btn-primary">Save Supplier</button></div>
                         </form>
                     </div>
                  </div>
@@ -2350,7 +2350,7 @@ if __name__ == "__main__":
              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
                  <div className="flex justify-end mb-4"><button onClick={() => openSiteForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Site</button></div>
                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400 min-w-[700px]">
+                    <table className="w-full text-left text-sm text-secondary dark:text-gray-400 min-w-[700px]">
                         <thead className="table-header"><tr><th className="px-6 py-4">Site Name</th><th className="px-6 py-4">Suburb</th><th className="px-6 py-4">Address</th><th className="px-6 py-4">State</th><th className="px-6 py-4">Contact</th><th className="px-6 py-4 text-center">Action</th></tr></thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                             {sites.map(s => (
@@ -2398,7 +2398,7 @@ if __name__ == "__main__":
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Contact person</label>
                                 <input required className="input-field" value={siteForm.contactPerson} onChange={e => setSiteForm({...siteForm, contactPerson: e.target.value})}/>
                             </div>
-                            <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setIsSiteFormOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="btn-primary">Save Site</button></div>
+                            <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setIsSiteFormOpen(false)} className="px-4 py-2 text-secondary font-medium hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="btn-primary">Save Site</button></div>
                         </form>
                     </div>
                  </div>

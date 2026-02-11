@@ -105,13 +105,13 @@ const Layout = () => {
       }
       return isActive 
         ? `${base} bg-[rgba(var(--color-brand-rgb),0.1)] text-[var(--color-brand)]` 
-        : `${base} text-slate-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white`;
+        : `${base} text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-primary dark:hover:text-white`;
   };
 
   if (!currentUser) return null;
 
   return (
-    <div className="flex h-screen bg-app text-slate-700 dark:text-slate-300 font-sans selection:bg-[var(--color-brand)] selection:text-white transition-colors duration-200" style={{fontFamily: 'var(--font-family)'}}>
+    <div className="flex h-screen bg-app text-secondary dark:text-slate-300 font-sans selection:bg-[var(--color-brand)] selection:text-white transition-colors duration-200" style={{fontFamily: 'var(--font-family)'}}>
       <PwaInstaller />
       
       {/* Mobile Overlay */}
@@ -149,7 +149,7 @@ const Layout = () => {
         
         {/* Navigation */}
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto py-4 scrollbar-hide">
-          <p className={`px-4 text-xs font-bold uppercase tracking-wider mb-3 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/50' : 'text-gray-400'}`}>Menu</p>
+          <p className={`px-4 text-xs font-bold uppercase tracking-wider mb-3 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/50' : 'text-tertiary'}`}>Menu</p>
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -166,10 +166,10 @@ const Layout = () => {
           })}
           
           <div className="mt-8">
-             <p className={`px-4 text-xs font-bold uppercase tracking-wider mb-3 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/50' : 'text-gray-400'}`}>System</p>
+             <p className={`px-4 text-xs font-bold uppercase tracking-wider mb-3 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/50' : 'text-tertiary'}`}>System</p>
              <div 
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-slate-500 hover:bg-gray-100 hover:text-gray-900'}`}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-secondary hover:bg-gray-100 hover:text-primary'}`}
              >
                  {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
                  <span className="font-medium text-sm">{theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
@@ -198,11 +198,11 @@ const Layout = () => {
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-bold truncate transition-colors ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white' : 'text-gray-900'}`}>{currentUser.name}</p>
+                    <p className={`text-sm font-bold truncate transition-colors ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white' : 'text-primary'}`}>{currentUser.name}</p>
                     <p className={`text-[10px] uppercase font-bold px-1.5 rounded inline-block shadow-sm mt-0.5 ${
                       ['brand', 'dark'].includes(branding.sidebarTheme || '') 
                         ? 'bg-white/20 text-white border border-white/10' 
-                        : 'bg-gray-100 text-gray-500 border border-gray-200'
+                        : 'bg-gray-100 text-tertiary border border-gray-200'
                     }`}>
                       {roles.find(r => r.id === currentUser.role)?.name || currentUser.role}
                     </p>
@@ -218,7 +218,7 @@ const Layout = () => {
                   className={`w-full flex items-center gap-3 text-xs font-bold px-3 py-2 rounded-lg transition-colors ${
                       ['brand', 'dark'].includes(branding.sidebarTheme || '') 
                       ? 'text-white/70 hover:text-white hover:bg-white/10' 
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      : 'text-secondary hover:text-primary hover:bg-gray-100'
                   }`}
                >
                    <UserCog size={16} /> Edit Profile
@@ -228,12 +228,12 @@ const Layout = () => {
 
                {currentUser.realRole === 'ADMIN' && (
                    <div className="space-y-1">
-                       <p className={`text-[9px] uppercase font-bold px-1 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/40' : 'text-gray-400'}`}>Switch View</p>
+                       <p className={`text-[9px] uppercase font-bold px-1 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/40' : 'text-tertiary'}`}>Switch View</p>
                        <select 
                           className={`w-full rounded-lg text-xs p-2.5 outline-none appearance-none cursor-pointer font-bold transition-all ${
                               ['brand', 'dark'].includes(branding.sidebarTheme || '') 
                               ? 'bg-black/30 text-white border border-white/10 hover:bg-black/40' 
-                              : 'bg-gray-50 text-gray-700 border border-gray-200 hover:border-gray-300 hover:bg-white shadow-sm'
+                              : 'bg-gray-50 text-secondary border border-gray-200 hover:border-gray-300 hover:bg-white shadow-sm'
                           }`}
                           value={currentUser.role}
                           onChange={(e) => switchRole(e.target.value as any)}
@@ -272,10 +272,10 @@ const Layout = () => {
         {/* Mobile Header */}
         <header className="md:hidden bg-white/90 dark:bg-[#15171e]/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-4 z-20 shrink-0 sticky top-0">
             <div className="flex items-center gap-3">
-                <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 -ml-2 text-slate-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg">
+                <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 -ml-2 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg">
                     <Menu />
                 </button>
-                <span className="font-bold text-lg text-gray-900 dark:text-white tracking-tight">{branding.appName}</span>
+                <span className="font-bold text-lg text-primary dark:text-white tracking-tight">{branding.appName}</span>
             </div>
             <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-gray-700">
                 <img src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`} alt="User" className="w-full h-full object-cover" />
