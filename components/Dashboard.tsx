@@ -345,11 +345,14 @@ const Dashboard = () => {
           </div>
       </div>
 
-      <CostImpactModal 
-        isOpen={isCostModalOpen} 
-        onClose={() => setIsCostModalOpen(false)} 
-        orders={filteredPos} 
-      />
+      {/* Modals */}
+      {isCostModalOpen && (
+        <CostImpactModal 
+          isOpen={isCostModalOpen} 
+          onClose={() => setIsCostModalOpen(false)} 
+          orders={filteredPos} 
+        />
+      )}
     </div>
   );
 };
