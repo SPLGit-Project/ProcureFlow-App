@@ -1000,14 +1000,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const sendWelcomeEmail = async (toEmail: string, name: string): Promise<boolean> => {
+      console.log(`[GraphDebug] sendWelcomeEmail called for ${toEmail}. Flag: ${USE_GRAPH_DELEGATED}`);
+      
       if (!USE_GRAPH_DELEGATED) {
-          console.warn("Graph: Delegated model is DISABLED. Email not sent.");
+          console.warn("[GraphDebug] Delegated model is DISABLED. Email not sent.");
           return false;
       }
 
       try {
           const graph = await contextValue.getGraphService();
-          if (!graph) return false;
+          if (!graph) {
+              console.error("[GraphDebug] GraphService could not be initialized (missing token?)");
+              return false;
+          }
 
           const defaultSubject = `Welcome to ${branding.appName}`;
           const defaultBody = `
@@ -1945,22 +1950,26 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.provider_token;
         if (!token) {
-            console.warn("Auth: No provider token found for Graph Service");
+            console.warn("[GraphDebug] Auth: No provider token found for Graph Service. Claims:", session?.user?.app_metadata);
             return null;
         }
+        // DEBUG: Print token audience/info (redacted)
+        console.log("[GraphDebug] Provider Token found. Length:", token.length);
         return new GraphService(token);
     },
 
     searchDirectory: async (query: string) => {
+        console.log(`[GraphDebug] searchDirectory called for "${query}". Flag: ${USE_GRAPH_DELEGATED}`);
+        
         if (!USE_GRAPH_DELEGATED) {
-            console.warn("Graph: Delegated model is DISABLED (VITE_PROCUREFLOW_GRAPH_DELEGATED=false)");
+            console.warn("[GraphDebug] Delegated model is DISABLED (VITE_PROCUREFLOW_GRAPH_DELEGATED=false)");
             return [];
         }
 
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.provider_token;
         if (!token) {
-            console.warn("Auth: No provider token found for Directory Search");
+            console.warn("[GraphDebug] Auth: No provider token found for Directory Search");
             return [];
         }
         

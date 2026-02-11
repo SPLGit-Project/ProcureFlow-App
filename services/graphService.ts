@@ -22,13 +22,17 @@ export class GraphService {
         }
         this.abortController = new AbortController();
 
-        const escapedQuery = query.replace(/"/g, '\\"');
+        this.abortController = new AbortController();
+
+        const cleanQuery = query.trim();
+        const escapedQuery = cleanQuery.replace(/"/g, '\\"');
         // Quoted search expression for robustness
         const searchExpr = `"displayName:${escapedQuery}" OR "mail:${escapedQuery}"`;
         const url = `https://graph.microsoft.com/v1.0/users?$search=${encodeURIComponent(searchExpr)}&$select=id,displayName,mail,jobTitle,department,officeLocation&$top=${limit}`;
 
         try {
-            console.log(`Graph: Searching directory for "${query}" (limit: ${limit})...`);
+            console.log(`[GraphDebug] Searching directory for "${cleanQuery}" (limit: ${limit})...`);
+            console.log(`[GraphDebug] Request URL: ${url} (ConsistencyLevel: eventual)`);
             const resp = await fetch(url, {
                 headers: {
                     Authorization: `Bearer ${this.token}`,
@@ -39,7 +43,7 @@ export class GraphService {
 
             if (resp.ok) {
                 const data = await resp.json();
-                console.log(`Graph: Search successful, found ${data.value?.length || 0} results.`);
+                console.log(`[GraphDebug] Search successful, found ${data.value?.length || 0} results.`);
                 return data.value.map((u: any) => ({
                     id: u.id,
                     name: u.displayName,
@@ -51,12 +55,12 @@ export class GraphService {
 
             // Handle specific status codes
             const errorBody = await resp.json().catch(() => ({}));
-            console.error(`Graph: Search failed [${resp.status}]`, JSON.stringify(errorBody, null, 2));
+            console.error(`[GraphDebug] Search failed [${resp.status}]`, JSON.stringify(errorBody, null, 2));
 
             if (resp.status === 400) {
-                console.warn("Graph: Invalid search syntax or parameters (400).");
+                console.warn("[GraphDebug] Invalid search syntax or parameters (400).");
             } else if (resp.status === 401) {
-                console.warn("Graph: Token expired or unauthorized (401). Triggering logic for re-auth...");
+                console.warn("[GraphDebug] Token expired or unauthorized (401). Triggering logic for re-auth...");
                 throw new Error("GRAPH_UNAUTHORIZED");
             }
 
@@ -95,7 +99,7 @@ export class GraphService {
         };
 
         try {
-            console.log(`Graph: Sending email to "${params.to}" with subject "${params.subject}"...`);
+            console.log(`[GraphDebug] Sending email to "${params.to}" with subject "${params.subject}"...`);
             const resp = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -106,12 +110,12 @@ export class GraphService {
             });
 
             if (resp.ok) {
-                console.log("Graph: Email sent successfully.");
+                console.log("[GraphDebug] Email sent successfully.");
                 return true;
             }
 
             const errorBody = await resp.json().catch(() => ({}));
-            console.error(`Graph: SendMail failed [${resp.status}]`, JSON.stringify(errorBody, null, 2));
+            console.error(`[GraphDebug] SendMail failed [${resp.status}]`, JSON.stringify(errorBody, null, 2));
 
             if (resp.status === 401) {
                 throw new Error("GRAPH_UNAUTHORIZED");
