@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   BarChart, Bar, Cell, ResponsiveContainer
@@ -9,10 +9,12 @@ import {
   ArrowRight, Truck, Database, FileText, ChevronRight, MapPin
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import CostImpactModal from './CostImpactModal';
 
 const Dashboard = () => {
   const { pos, currentUser, hasPermission, isLoadingData, activeSiteIds, siteName } = useApp();
   const navigate = useNavigate();
+  const [isCostModalOpen, setIsCostModalOpen] = useState(false);
 
   // Use global filtered data directly
   const filteredPos = pos;
@@ -212,8 +214,18 @@ const Dashboard = () => {
               {/* Cost Impact Breakdown */}
               <div className="bg-elevated rounded-2xl p-6 border border-strong elevation-2 flex flex-col md:flex-row items-center gap-6">
                   <div className="flex-1">
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Cost Impact Analysis</h3>
-                      <p className="text-sm text-gray-500 mb-6">Financial impact of replacements (Depletion) vs Contract inclusions.</p>
+                      <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Cost Impact Analysis</h3>
+                            <p className="text-sm text-gray-500 mb-6">Financial impact of replacements (Depletion) vs Contract inclusions.</p>
+                          </div>
+                          <button 
+                            onClick={() => setIsCostModalOpen(true)}
+                            className="text-xs flex items-center gap-1 text-[var(--color-brand)] font-medium hover:underline bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            View Details <ChevronRight size={14} />
+                          </button>
+                      </div>
                       
                       <div className="flex flex-col gap-4">
                           <div>
@@ -332,6 +344,12 @@ const Dashboard = () => {
               </div>
           </div>
       </div>
+
+      <CostImpactModal 
+        isOpen={isCostModalOpen} 
+        onClose={() => setIsCostModalOpen(false)} 
+        orders={filteredPos} 
+      />
     </div>
   );
 };
