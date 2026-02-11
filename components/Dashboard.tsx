@@ -350,7 +350,6 @@ const Dashboard = () => {
         <CostImpactModal 
           isOpen={isCostModalOpen} 
           onClose={() => setIsCostModalOpen(false)} 
-          orders={filteredPos} 
         />
       )}
     </div>
