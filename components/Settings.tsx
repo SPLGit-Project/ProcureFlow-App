@@ -213,7 +213,9 @@ const Settings = () => {
           inappTitle: 'Approval Required',
           inappMessage: 'Purchase Order {{po_number}} requires your approval',
           recipientType: 'ROLE',
-          recipientId: ''
+          recipientIds: [],
+          includeRequester: false,
+          appUrl: window.location.origin
       },
       {
           id: '2',
@@ -225,7 +227,10 @@ const Settings = () => {
           inappEnabled: true,
           inappTitle: 'PO Approved',
           inappMessage: 'Your Purchase Order {{po_number}} has been approved',
-          recipientType: 'REQUESTER'
+          recipientType: 'REQUESTER',
+          recipientIds: [],
+          includeRequester: false,
+          appUrl: window.location.origin
       },
       {
           id: '3',
@@ -237,7 +242,10 @@ const Settings = () => {
           inappEnabled: true,
           inappTitle: 'Order Delivered',
           inappMessage: 'Your order {{po_number}} has been delivered',
-          recipientType: 'REQUESTER'
+          recipientType: 'REQUESTER',
+          recipientIds: [],
+          includeRequester: false,
+          appUrl: window.location.origin
       },
       {
           id: '4',
@@ -250,7 +258,9 @@ const Settings = () => {
           inappTitle: 'Order Finalized',
           inappMessage: 'PO {{po_number}} has been capitalized',
           recipientType: 'ROLE',
-          recipientId: ''
+          recipientIds: [],
+          includeRequester: false,
+          appUrl: window.location.origin
       }
   ]);
 

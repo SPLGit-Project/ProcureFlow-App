@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { WorkflowConfiguration, WorkflowType, RoleDefinition, User, WorkflowPreviewData } from '../types';
 import { 
     CheckCircle, Bell, Truck, DollarSign, Mail, Save, Eye, Send,
-    ChevronDown, ChevronUp, User as UserIcon, Shield, Zap, X
+    ChevronDown, ChevronUp, User as UserIcon, Shield, Zap, X, Plus
 } from 'lucide-react';
 
 interface SimpleWorkflowConfigProps {
@@ -37,10 +37,10 @@ const WORKFLOW_METADATA: Record<WorkflowType, {
     },
     'POST_DELIVERY': {
         title: 'Post-Delivery Notification',
-        description: 'Notify when an order is delivered',
+        description: 'Notify when all deliveries are received',
         icon: <Truck size={24} />,
         color: 'purple',
-        trigger: 'When an order is marked as delivered'
+        trigger: 'When order status changes to COMPLETE'
     },
     'POST_CAPITALIZATION': {
         title: 'Post-Capitalization Notification',
@@ -60,13 +60,16 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
     onTest
 }) => {
     const [localWorkflows, setLocalWorkflows] = useState<WorkflowConfiguration[]>(workflows);
-    const [expandedWorkflow, setExpandedWorkflow] = useState<WorkflowType | null>('APPROVAL');
-    const [previewingWorkflow, setPreviewingWorkflow] = useState<WorkflowType | null>(null);
+    const [expandedWorkflow, setExpandedWorkflow] = useState<WorkflowType | null>(null);
+    const [previewModal, setPreviewModal] = useState<{ open: boolean; workflow: WorkflowConfiguration | null }>({ 
+        open: false, 
+        workflow: null 
+    });
     const [isSaving, setIsSaving] = useState(false);
 
     const updateWorkflow = (workflowType: WorkflowType, updates: Partial<WorkflowConfiguration>) => {
-        setLocalWorkflows(localWorkflows.map(w => 
-            w.workflowType === workflowType ? { ...w, ...updates } : w
+        setLocalWorkflows(prev => prev.map(wf => 
+            wf.workflowType === workflowType ? { ...wf, ...updates } : wf
         ));
     };
 
@@ -74,10 +77,6 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
         setIsSaving(true);
         try {
             await onSave(localWorkflows);
-            alert('Workflow configurations saved successfully!');
-        } catch (error) {
-            alert('Failed to save workflows');
-            console.error(error);
         } finally {
             setIsSaving(false);
         }
@@ -86,357 +85,415 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
     const handleTest = async (workflow: WorkflowConfiguration) => {
         try {
             await onTest(workflow);
-            alert(`Test notification sent for ${WORKFLOW_METADATA[workflow.workflowType].title}`);
         } catch (error) {
-            alert('Failed to send test notification');
-            console.error(error);
+            console.error('Test notification failed:', error);
         }
     };
 
-    const getPreviewData = (): WorkflowPreviewData => ({
-        approver_name: 'John Smith',
-        requester_name: 'Jane Doe',
-        po_number: 'PO-2024-045',
-        total_amount: '1,250.00',
-        supplier_name: 'Acme Supplies',
-        site_name: 'Sydney Office',
-        app_name: appName,
-        approval_link: '#',
-        po_link: '#',
-        approval_date: new Date().toLocaleDateString(),
-        delivery_date: new Date().toLocaleDateString(),
-        capitalization_date: new Date().toLocaleDateString(),
-        reason_for_request: 'Quarterly office supplies replenishment',
-        recipient_name: 'Finance Team'
-    });
+    const getPreviewData = (): WorkflowPreviewData => {
+        return {
+            approver_name: 'John Approver',
+            requester_name: 'Jane Requester',
+            recipient_name: 'Recipient Name',
+            po_number: 'PO-2024-001',
+            total_amount: '5,250.00',
+            supplier_name: 'ABC Supplies Pty Ltd',
+            site_name: 'Head Office - Melbourne',
+            item_count: '12',
+            status: 'PENDING_APPROVAL',
+            request_date: new Date().toLocaleDateString(),
+            approval_date: new Date().toLocaleDateString(),
+            delivery_date: new Date().toLocaleDateString(),
+            capitalization_date: new Date().toLocaleDateString(),
+            app_name: appName,
+            app_logo: '',
+            organization_name: appName,
+            current_year: new Date().getFullYear().toString(),
+            action_link: `${window.location.origin}/requests?id=sample`,
+            action_text: 'Take Action',
+            approval_link: `${window.location.origin}/requests?id=sample`,
+            po_link: `${window.location.origin}/requests?id=sample`,
+            reason_for_request: 'Stock replenishment for Q1 2024'
+        };
+    };
 
     const renderPreview = (template: string): string => {
         const data = getPreviewData();
-        let preview = template;
-        Object.entries(data).forEach(([key, value]) => {
-            const regex = new RegExp(`{{${key}}}`, 'g');
-            preview = preview.replace(regex, value);
+        return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+            return data[key as keyof WorkflowPreviewData] || match;
         });
-        return preview;
     };
 
-    const getColorClasses = (color: string) => ({
-        border: `border-${color}-500`,
-        bg: `bg-${color}-50 dark:bg-${color}-900/10`,
-        text: `text-${color}-600 dark:text-${color}-400`,
-        button: `bg-${color}-500 hover:bg-${color}-600`
-    });
+    const getColorClasses = (color: string) => {
+        const colors = {
+            blue: 'border-blue-500 bg-blue-50',
+            green: 'border-green-500 bg-green-50',
+            purple: 'border-purple-500 bg-purple-50',
+            amber: 'border-amber-500 bg-amber-50'
+        };
+        return colors[color as keyof typeof colors] || colors.blue;
+    };
+
+    const toggleRecipient = (workflow: WorkflowConfiguration, id: string) => {
+        const currentIds = workflow.recipientIds || [];
+        const newIds = currentIds.includes(id)
+            ? currentIds.filter(existingId => existingId !== id)
+            : [...currentIds, id];
+        
+        updateWorkflow(workflow.workflowType, { recipientIds: newIds });
+    };
+
+    const getRecipientLabel = (workflow: WorkflowConfiguration): string => {
+        const ids = workflow.recipientIds || [];
+        if (ids.length === 0) return 'Select recipients...';
+        
+        if (workflow.recipientType === 'ROLE') {
+            const selectedRoles = roles.filter(r => ids.includes(r.id));
+            return selectedRoles.map(r => r.name).join(', ');
+        } else if (workflow.recipientType === 'USER') {
+            const selectedUsers = users.filter(u => ids.includes(u.id));
+            return selectedUsers.map(u => u.name).join(', ');
+        }
+        
+        return 'Select recipients...';
+    };
 
     return (
-        <div className="max-w-6xl mx-auto py-6 space-y-6">
+        <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between bg-white dark:bg-[#1e2029] p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Workflow Configuration</h2>
-                    <p className="text-sm text-gray-500 mt-1">Configure email and in-app notifications for key events</p>
+                    <h2 className="text-2xl font-bold text-gray-900">Workflow Notifications</h2>
+                    <p className="text-gray-600 mt-1">Configure automated email and in-app notifications for key events</p>
                 </div>
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="px-6 py-3 bg-[var(--color-brand)] text-white rounded-lg hover:opacity-90 font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
+                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isSaving ? (
                         <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             Saving...
                         </>
                     ) : (
                         <>
-                            <Save size={18} />
-                            Save All Changes
+                            <Save size={20} />
+                            Save All
                         </>
                     )}
                 </button>
             </div>
 
             {/* Workflow Cards */}
-            {localWorkflows.map((workflow) => {
-                const meta = WORKFLOW_METADATA[workflow.workflowType];
-                const isExpanded = expandedWorkflow === workflow.workflowType;
+            <div className="space-y-4">
+                {localWorkflows.map((workflow) => {
+                    const metadata = WORKFLOW_METADATA[workflow.workflowType];
+                    const isExpanded = expandedWorkflow === workflow.workflowType;
 
-                return (
-                    <div
-                        key={workflow.workflowType}
-                        className={`bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border-2 transition-all ${
-                            workflow.isEnabled 
-                                ? `border-${meta.color}-500` 
-                                : 'border-gray-200 dark:border-gray-800'
-                        }`}
-                    >
-                        {/* Card Header */}
+                    return (
                         <div
-                            className="p-6 cursor-pointer"
-                            onClick={() => setExpandedWorkflow(isExpanded ? null : workflow.workflowType)}
+                            key={workflow.workflowType}
+                            className={`border-2 rounded-xl bg-white shadow-sm ${getColorClasses(metadata.color)}`}
                         >
-                            <div className="flex items-center justify-between">
+                            {/* Card Header */}
+                            <div
+                                className="p-6 cursor-pointer flex items-center justify-between"
+                                onClick={() => setExpandedWorkflow(isExpanded ? null : workflow.workflowType)}
+                            >
                                 <div className="flex items-center gap-4">
-                                    <div className={`w-12 h-12 rounded-xl bg-${meta.color}-100 dark:bg-${meta.color}-900/20 text-${meta.color}-600 dark:text-${meta.color}-400 flex items-center justify-center`}>
-                                        {meta.icon}
+                                    <div className={`p-3 rounded-lg bg-${metadata.color}-100`}>
+                                        {metadata.icon}
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{meta.title}</h3>
-                                        <p className="text-sm text-gray-500">{meta.description}</p>
+                                        <h3 className="text-lg font-semibold text-gray-900">{metadata.title}</h3>
+                                        <p className="text-sm text-gray-600">{metadata.description}</p>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            <Zap size={12} className="inline mr-1" />
+                                            {metadata.trigger}
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                    <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                        workflow.isEnabled 
-                                            ? `bg-${meta.color}-100 dark:bg-${meta.color}-900/20 text-${meta.color}-600` 
-                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
-                                    }`}>
-                                        {workflow.isEnabled ? 'ENABLED' : 'DISABLED'}
-                                    </div>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            updateWorkflow(workflow.workflowType, { isEnabled: !workflow.isEnabled });
-                                        }}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                            workflow.isEnabled ? `bg-${meta.color}-500` : 'bg-gray-300 dark:bg-gray-600'
-                                        }`}
-                                    >
-                                        <span
-                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                workflow.isEnabled ? 'translate-x-6' : 'translate-x-1'
-                                            }`}
+                                    <label className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={workflow.isEnabled}
+                                            onChange={(e) => {
+                                                e.stopPropagation();
+                                                updateWorkflow(workflow.workflowType, { isEnabled: e.target.checked });
+                                            }}
+                                            className="w-5 h-5"
                                         />
-                                    </button>
-                                    {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Card Content - Expanded */}
-                        {isExpanded && (
-                            <div className="px-6 pb-6 space-y-6 border-t border-gray-200 dark:border-gray-800 pt-6">
-                                {/* Trigger Info */}
-                                <div className={`p-4 rounded-lg bg-${meta.color}-50 dark:bg-${meta.color}-900/10 border border-${meta.color}-200 dark:border-${meta.color}-800`}>
-                                    <div className="flex items-start gap-2">
-                                        <Zap size={16} className={`text-${meta.color}-600 mt-0.5`} />
-                                        <div>
-                                            <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Trigger</div>
-                                            <div className="text-sm font-medium text-gray-900 dark:text-white">{meta.trigger}</div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Recipient Configuration */}
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">
-                                        Who should receive this notification?
+                                        <span className="font-medium text-gray-900">Enabled</span>
                                     </label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {(['ROLE', 'USER', 'REQUESTER'] as const).map((type) => (
-                                            <button
-                                                key={type}
-                                                onClick={() => updateWorkflow(workflow.workflowType, { recipientType: type })}
-                                                className={`px-4 py-3 rounded-lg border-2 transition-all font-medium ${
-                                                    workflow.recipientType === type
-                                                        ? `border-${meta.color}-500 bg-${meta.color}-50 dark:bg-${meta.color}-900/20 text-${meta.color}-600`
-                                                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
-                                                }`}
-                                            >
-                                                {type === 'ROLE' && <Shield size={16} className="inline mr-2" />}
-                                                {type === 'USER' && <UserIcon size={16} className="inline mr-2" />}
-                                                {type === 'REQUESTER' && <UserIcon size={16} className="inline mr-2" />}
-                                                {type === 'ROLE' ? 'Role' : type === 'USER' ? 'Specific User' : 'Requester'}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    
-                                    {workflow.recipientType === 'ROLE' && (
-                                        <select
-                                            value={workflow.recipientId || ''}
-                                            onChange={(e) => updateWorkflow(workflow.workflowType, { recipientId: e.target.value })}
-                                            className="mt-3 w-full px-4 py-2.5 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-[var(--color-brand)] dark:text-white"
-                                        >
-                                            <option value="">Select a role...</option>
-                                            {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                                        </select>
-                                    )}
-                                    
-                                    {workflow.recipientType === 'USER' && (
-                                        <select
-                                            value={workflow.recipientId || ''}
-                                            onChange={(e) => updateWorkflow(workflow.workflowType, { recipientId: e.target.value })}
-                                            className="mt-3 w-full px-4 py-2.5 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-[var(--color-brand)] dark:text-white"
-                                        >
-                                            <option value="">Select a user...</option>
-                                            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                        </select>
-                                    )}
-                                </div>
-
-                                <div className="h-px bg-gray-200 dark:bg-gray-800" />
-
-                                {/* Email Notification */}
-                                <div>
-                                    <div className="flex items-center justify-between mb-4">
-                                        <label className="flex items-center gap-2 text-sm font-bold text-gray-700 dark:text-gray-300">
-                                            <Mail size={18} />
-                                            Email Notification
-                                        </label>
-                                        <button
-                                            onClick={() => updateWorkflow(workflow.workflowType, { emailEnabled: !workflow.emailEnabled })}
-                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                workflow.emailEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-                                            }`}
-                                        >
-                                            <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                    workflow.emailEnabled ? 'translate-x-6' : 'translate-x-1'
-                                                }`}
-                                            />
-                                        </button>
-                                    </div>
-
-                                    {workflow.emailEnabled && (
-                                        <div className="space-y-3">
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Subject</label>
-                                                <input
-                                                    type="text"
-                                                    value={workflow.emailSubject}
-                                                    onChange={(e) => updateWorkflow(workflow.workflowType, { emailSubject: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-[var(--color-brand)] dark:text-white"
-                                                placeholder="Email subject with {{variables}}"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Body (HTML)</label>
-                                                <textarea
-                                                    value={workflow.emailBody}
-                                                    onChange={(e) => updateWorkflow(workflow.workflowType, { emailBody: e.target.value })}
-                                                    rows={6}
-                                                    className="w-full px-4 py-3 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-[var(--color-brand)] dark:text-white font-mono text-sm"
-                                                    placeholder="Email body with {{variables}}"
-                                                />
-                                            </div>
-                                            <button
-                                                onClick={() => setPreviewingWorkflow(workflow.workflowType)}
-                                                className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 font-medium transition-colors flex items-center gap-2"
-                                            >
-                                                <Eye size={16} />
-                                                Preview Email
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="h-px bg-gray-200 dark:bg-gray-800" />
-
-                                {/* In-App Notification */}
-                                <div>
-                                    <div className="flex items-center justify-between mb-4">
-                                        <label className="flex items-center gap-2 text-sm font-bold text-gray-700 dark:text-gray-300">
-                                            <Bell size={18} />
-                                            In-App Notification
-                                        </label>
-                                        <button
-                                            onClick={() => updateWorkflow(workflow.workflowType, { inappEnabled: !workflow.inappEnabled })}
-                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                workflow.inappEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-                                            }`}
-                                        >
-                                            <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                    workflow.inappEnabled ? 'translate-x-6' : 'translate-x-1'
-                                                }`}
-                                            />
-                                        </button>
-                                    </div>
-
-                                    {workflow.inappEnabled && (
-                                        <div className="space-y-3">
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Title</label>
-                                                <input
-                                                    type="text"
-                                                    value={workflow.inappTitle}
-                                                    onChange={(e) => updateWorkflow(workflow.workflowType, { inappTitle: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-[var(--color-brand)] dark:text-white"
-                                                    placeholder="Notification title"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Message</label>
-                                                <input
-                                                    type="text"
-                                                    value={workflow.inappMessage}
-                                                    onChange={(e) => updateWorkflow(workflow.workflowType, { inappMessage: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-[var(--color-brand)] dark:text-white"
-                                                    placeholder="Notification message with {{variables}}"
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex justify-end gap-3 pt-4">
-                                    <button
-                                        onClick={() => handleTest(workflow)}
-                                        className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 font-medium transition-colors flex items-center gap-2"
-                                    >
-                                        <Send size={16} />
-                                        Send Test
-                                    </button>
+                                    {isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
                                 </div>
                             </div>
-                        )}
-                    </div>
-                );
-            })}
+
+                            {/* Card Body (Expanded) */}
+                            {isExpanded && (
+                                <div className="border-t-2 border-gray-200 p-6 bg-white space-y-6">
+                                    {/* Recipient Configuration */}
+                                    <div>
+                                        <h4 className="font-semibold text-gray-900 mb-3">Who should receive this notification?</h4>
+                                        
+                                        {/* Recipient Type Selection */}
+                                        <div className="grid grid-cols-3 gap-3 mb-4">
+                                            <button
+                                                className={`p-3 rounded-lg border-2 flex items-center gap-2 ${
+                                                    workflow.recipientType === 'ROLE' 
+                                                        ? 'border-blue-500 bg-blue-50' 
+                                                        : 'border-gray-300 hover:border-gray-400'
+                                                }`}
+                                                onClick={() => updateWorkflow(workflow.workflowType, { recipientType: 'ROLE', recipientIds: [] })}
+                                            >
+                                                <Shield size={16} />
+                                                Role
+                                            </button>
+                                            <button
+                                                className={`p-3 rounded-lg border-2 flex items-center gap-2 ${
+                                                    workflow.recipientType === 'USER' 
+                                                        ? 'border-blue-500 bg-blue-50' 
+                                                        : 'border-gray-300 hover:border-gray-400'
+                                                }`}
+                                                onClick={() => updateWorkflow(workflow.workflowType, { recipientType: 'USER', recipientIds: [] })}
+                                            >
+                                                <UserIcon size={16} />
+                                                Specific User(s)
+                                            </button>
+                                            <button
+                                                className={`p-3 rounded-lg border-2 flex items-center gap-2 ${
+                                                    workflow.recipientType === 'REQUESTER' 
+                                                        ? 'border-blue-500 bg-blue-50' 
+                                                        : 'border-gray-300 hover:border-gray-400'
+                                                }`}
+                                                onClick={() => updateWorkflow(workflow.workflowType, { recipientType: 'REQUESTER', recipientIds: [] })}
+                                            >
+                                                <UserIcon size={16} />
+                                                Requester
+                                            </button>
+                                        </div>
+
+                                        {/* Multi-Select for Roles */}
+                                        {workflow.recipientType === 'ROLE' && (
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium text-gray-700">Select Role(s)</label>
+                                                <div className="border-2 rounded-lg p-3 bg-gray-50 max-h-48 overflow-y-auto space-y-2">
+                                                    {roles.map(role => (
+                                                        <label key={role.id} className="flex items-center gap-2 hover:bg-gray-100 p-2 rounded cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={(workflow.recipientIds || []).includes(role.id)}
+                                                                onChange={() => toggleRecipient(workflow, role.id)}
+                                                                className="w-4 h-4"
+                                                            />
+                                                            <Shield size={14} className="text-blue-600" />
+                                                            <span className="text-sm">{role.name}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Multi-Select for Users */}
+                                        {workflow.recipientType === 'USER' && (
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium text-gray-700">Select User(s)</label>
+                                                <div className="border-2 rounded-lg p-3 bg-gray-50 max-h-48 overflow-y-auto space-y-2">
+                                                    {users.map(user => (
+                                                        <label key={user.id} className="flex items-center gap-2 hover:bg-gray-100 p-2 rounded cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={(workflow.recipientIds || []).includes(user.id)}
+                                                                onChange={() => toggleRecipient(workflow, user.id)}
+                                                                className="w-4 h-4"
+                                                            />
+                                                            <UserIcon size={14} className="text-green-600" />
+                                                            <span className="text-sm">{user.name}</span>
+                                                            <span className="text-xs text-gray-500">({user.email})</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Include Requester Checkbox (for ROLE and USER types) */}
+                                        {(workflow.recipientType === 'ROLE' || workflow.recipientType === 'USER') && (
+                                            <label className="flex items-center gap-2 mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={workflow.includeRequester || false}
+                                                    onChange={(e) => updateWorkflow(workflow.workflowType, { includeRequester: e.target.checked })}
+                                                    className="w-4 h-4"
+                                                />
+                                                <Plus size={16} className="text-blue-600" />
+                                                <span className="text-sm font-medium text-gray-900">
+                                                    Also notify the requester (in addition to selected recipients)
+                                                </span>
+                                            </label>
+                                        )}
+
+                                        {/* Selected Recipients Display */}
+                                        {(workflow.recipientIds && workflow.recipientIds.length > 0) && (
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {workflow.recipientIds.map(id => {
+                                                    const item = workflow.recipientType === 'ROLE'
+                                                        ? roles.find(r => r.id === id)
+                                                        : users.find(u => u.id === id);
+                                                    
+                                                    if (!item) return null;
+                                                    
+                                                    return (
+                                                        <span
+                                                            key={id}
+                                                            className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                                                        >
+                                                            {workflow.recipientType === 'ROLE' ? <Shield size={12} /> : <UserIcon size={12} />}
+                                                            {'name' in item ? item.name : ''}
+                                                            <X
+                                                                size={14}
+                                                                className="cursor-pointer hover:text-blue-900"
+                                                                onClick={() => toggleRecipient(workflow, id)}
+                                                            />
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Email Notification */}
+                                    <div className="border-t-2 pt-6">
+                                        <label className="flex items-center gap-2 mb-4">
+                                            <input
+                                                type="checkbox"
+                                                checked={workflow.emailEnabled}
+                                                onChange={(e) => updateWorkflow(workflow.workflowType, { emailEnabled: e.target.checked })}
+                                                className="w-5 h-5"
+                                            />
+                                            <Mail size={20} />
+                                            <span className="font-semibold text-gray-900">Email Notification</span>
+                                        </label>
+
+                                        {workflow.emailEnabled && (
+                                            <div className="pl-7 space-y-4">
+                                                <div>
+                                                    <label className="text-sm font-medium text-gray-700">Subject</label>
+                                                    <input
+                                                        type="text"
+                                                        value={workflow.emailSubject}
+                                                        onChange={(e) => updateWorkflow(workflow.workflowType, { emailSubject: e.target.value })}
+                                                        className="w-full mt-1 px-3 py-2 border rounded-lg"
+                                                        placeholder="Email subject line..."
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-sm font-medium text-gray-700">Body (HTML)</label>
+                                                    <textarea
+                                                        value={workflow.emailBody}
+                                                        onChange={(e) => updateWorkflow(workflow.workflowType, { emailBody: e.target.value })}
+                                                        className="w-full mt-1 px-3 py-2 border rounded-lg font-mono text-xs"
+                                                        rows={8}
+                                                        placeholder="Email body with HTML..."
+                                                    />
+                                                </div>
+
+                                                <button
+                                                    onClick={() => setPreviewModal({ open: true, workflow })}
+                                                    className="flex items-center gap-2 px-4 py-2 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50"
+                                                >
+                                                    <Eye size={16} />
+                                                    Preview Email
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* In-App Notification */}
+                                    <div className="border-t-2 pt-6">
+                                        <label className="flex items-center gap-2 mb-4">
+                                            <input
+                                                type="checkbox"
+                                                checked={workflow.inappEnabled}
+                                                onChange={(e) => updateWorkflow(workflow.workflowType, { inappEnabled: e.target.checked })}
+                                                className="w-5 h-5"
+                                            />
+                                            <Bell size={20} />
+                                            <span className="font-semibold text-gray-900">In-App Notification</span>
+                                        </label>
+
+                                        {workflow.inappEnabled && (
+                                            <div className="pl-7 space-y-4">
+                                                <div>
+                                                    <label className="text-sm font-medium text-gray-700">Title</label>
+                                                    <input
+                                                        type="text"
+                                                        value={workflow.inappTitle}
+                                                        onChange={(e) => updateWorkflow(workflow.workflowType, { inappTitle: e.target.value })}
+                                                        className="w-full mt-1 px-3 py-2 border rounded-lg"
+                                                        placeholder="Notification title..."
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-sm font-medium text-gray-700">Message</label>
+                                                    <textarea
+                                                        value={workflow.inappMessage}
+                                                        onChange={(e) => updateWorkflow(workflow.workflowType, { inappMessage: e.target.value })}
+                                                        className="w-full mt-1 px-3 py-2 border rounded-lg"
+                                                        rows={3}
+                                                        placeholder="Notification message..."
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Test Button */}
+                                    <div className="border-t-2 pt-6">
+                                        <button
+                                            onClick={() => handleTest(workflow)}
+                                            className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300"
+                                        >
+                                            <Send size={16} />
+                                            Send Test Notification
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
 
             {/* Email Preview Modal */}
-            {previewingWorkflow && (() => {
-                const workflow = localWorkflows.find(w => w.workflowType === previewingWorkflow);
-                if (!workflow) return null;
-
-                return (
-                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                        <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-                            {/* Header */}
-                            <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-white/5">
-                                <div>
-                                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Email Preview</h3>
-                                    <p className="text-sm text-gray-500">{WORKFLOW_METADATA[workflow.workflowType].title}</p>
-                                </div>
-                                <button
-                                    onClick={() => setPreviewingWorkflow(null)}
-                                    className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                >
-                                    <X size={18} />
-                                </button>
+            {previewModal.open && previewModal.workflow && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                        <div className="p-6 border-b flex items-center justify-between">
+                            <h3 className="text-xl font-bold">Email Preview</h3>
+                            <button
+                                onClick={() => setPreviewModal({ open: false, workflow: null })}
+                                className="p-2 hover:bg-gray-100 rounded-lg"
+                            >
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-auto p-6">
+                            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                                <div className="text-sm font-medium text-gray-700">Subject:</div>
+                                <div className="text-lg font-bold">{renderPreview(previewModal.workflow.emailSubject)}</div>
                             </div>
-
-                            {/* Content */}
-                            <div className="flex-1 overflow-y-auto p-6">
-                                <div className="bg-white dark:bg-[#1e2029] rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg overflow-hidden">
-                                    {/* Email Header */}
-                                    <div className="bg-gray-100 dark:bg-gray-800 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                        <div className="text-xs text-gray-500 mb-1">Subject:</div>
-                                        <div className="font-bold text-gray-900 dark:text-white">
-                                            {renderPreview(workflow.emailSubject)}
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Email Body */}
-                                    <div
-                                        className="p-6"
-                                        dangerouslySetInnerHTML={{ __html: renderPreview(workflow.emailBody) }}
-                                    />
-                                </div>
-                            </div>
+                            <div
+                                className="prose max-w-none"
+                                dangerouslySetInnerHTML={{ __html: renderPreview(previewModal.workflow.emailBody) }}
+                            />
                         </div>
                     </div>
-                );
-            })()}
+                </div>
+            )}
         </div>
     );
 };

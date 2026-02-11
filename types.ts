@@ -438,11 +438,13 @@ export interface WorkflowConfiguration {
     inappTitle: string;
     inappMessage: string;
     
-    // Recipients
+    // Recipients - Enhanced for multi-select
     recipientType: 'ROLE' | 'USER' | 'REQUESTER' | 'CUSTOM';
-    recipientId?: string;
+    recipientIds?: string[]; // Changed from recipientId to support multiple
+    includeRequester?: boolean; // NEW: Include requester in addition to role/users
     
-    // Additional Settings
+    // App Settings
+    appUrl?: string; // NEW: For generating email CTA links
     escalationHours?: number;
     
     createdAt?: string;
@@ -461,20 +463,40 @@ export interface InAppNotification {
 }
 
 export interface WorkflowPreviewData {
+    // User information
     approver_name: string;
     requester_name: string;
+    recipient_name: string;
+    
+    // PO details
     po_number: string;
     total_amount: string;
     supplier_name: string;
     site_name: string;
-    app_name: string;
-    approval_link: string;
-    po_link: string;
+    item_count: string; // NEW
+    status: string; // NEW
+    
+    // Dates
+    request_date: string; // NEW
     approval_date: string;
     delivery_date: string;
     capitalization_date: string;
+    
+    // App branding
+    app_name: string;
+    app_logo: string; // NEW
+    organization_name: string; // NEW
+    current_year: string; // NEW
+    
+    // Links and actions
+    action_link: string; // NEW: Replaces individual links
+    action_text: string; // NEW: CTA button text
+    approval_link: string; // Legacy support
+    po_link: string; // Legacy support
+    
+    // Additional context
     reason_for_request: string;
-    recipient_name: string;
 }
+
 
 
