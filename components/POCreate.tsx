@@ -18,6 +18,7 @@ import {
   X,
   DollarSign,
   ChevronLeft,
+  Calendar,
   ChevronRight
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -43,6 +44,8 @@ const POCreate = () => {
   const [customerName, setCustomerName] = useState('');
   const [reasonForRequest, setReasonForRequest] = useState<'Depletion' | 'New Customer' | 'Other'>('Depletion');
   const [comments, setComments] = useState('');
+  const [requestDate, setRequestDate] = useState(new Date().toISOString().split('T')[0]);
+
   
   // Cart & Item State
   const [cart, setCart] = useState<POLineItem[]>([]);
@@ -232,8 +235,9 @@ const POCreate = () => {
 
     const newPO: PORequest = {
       id: uuidv4(),
-      requestDate: new Date().toISOString().split('T')[0],
+      requestDate: requestDate,
       requesterId: currentUser.id,
+
       requesterName: currentUser.name,
       siteId: selectedSite.id,
       site: selectedSite.name,
@@ -410,7 +414,7 @@ const POCreate = () => {
         {/* Expanded Content */}
         {isHeaderExpanded && (
             <div className="p-5 pt-0 border-t border-gray-100 dark:border-gray-800 animate-fade-in mt-2">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                     {/* Column 1: Core Logistics */}
                     <div className="space-y-4">
                         <div>
@@ -440,8 +444,21 @@ const POCreate = () => {
                         </div>
                     </div>
                     
-                    {/* Column 2: Request Details */}
+                    {/* Column 2: Dates & References */}
                     <div className="space-y-4">
+                        <div>
+                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Request Date <span className="text-red-500">*</span></label>
+                             <div className="relative">
+                                 <Calendar size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                 <input 
+                                    type="date"
+                                    className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-3 py-3 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
+                                    value={requestDate}
+                                    onChange={(e) => setRequestDate(e.target.value)}
+                                 />
+                             </div>
+                        </div>
+
                         <div>
                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Customer Name</label>
                              <input 
@@ -452,10 +469,13 @@ const POCreate = () => {
                                 onChange={(e) => setCustomerName(e.target.value)}
                              />
                         </div>
+                    </div>
 
+                    {/* Column 3: Request Details */}
+                    <div className="space-y-4">
                         <div>
                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Reason for Request <span className="text-red-500">*</span></label>
-                             <div className="grid grid-cols-3 gap-2">
+                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                  {['Depletion', 'New Customer', 'Other'].map(option => (
                                      <button
                                         key={option}
@@ -471,7 +491,7 @@ const POCreate = () => {
                         </div>
                     </div>
 
-                    {/* Column 3: Comments & Logic */}
+                    {/* Column 4: Comments & Logic */}
                     <div className="space-y-4 flex flex-col">
                         <div className="flex-1">
                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
@@ -486,6 +506,7 @@ const POCreate = () => {
                         </div>
                     </div>
                 </div>
+
             </div>
         )}
       </div>
