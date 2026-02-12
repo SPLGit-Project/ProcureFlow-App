@@ -1,129 +1,67 @@
 
+import { SupabaseClient } from '@supabase/supabase-js';
+
 /**
- * GraphService handles delegated Microsoft Graph API calls using the provider_token
- * retrieved from the Supabase session.
+ * DirectoryService handles directory search and email via Supabase Edge Functions.
+ * Replaces the legacy GraphService.
  */
-export class GraphService {
-    private token: string;
-    private abortController: AbortController | null = null;
+export class DirectoryService {
+    private supabase: SupabaseClient;
 
-    constructor(token: string) {
-        this.token = token;
+    constructor(supabaseClient: SupabaseClient) {
+        this.supabase = supabaseClient;
     }
 
     /**
-     * Search the directory for users by name or email.
-     * Uses the advanced $search query with ConsistencyLevel: eventual.
+     * Search the directory using the 'directory-suggest' Edge Function.
      */
-    async searchDirectory(query: string, limit: number = 8) {
-        // Abort previous search if still pending
-        if (this.abortController) {
-            this.abortController.abort();
-        }
-        this.abortController = new AbortController();
-
-        this.abortController = new AbortController();
-
-        const cleanQuery = query.trim();
-        const escapedQuery = cleanQuery.replace(/"/g, '\\"');
-        // Quoted search expression for robustness
-        const searchExpr = `"displayName:${escapedQuery}" OR "mail:${escapedQuery}"`;
-        const url = `https://graph.microsoft.com/v1.0/users?$search=${encodeURIComponent(searchExpr)}&$select=id,displayName,mail,jobTitle,department,officeLocation&$top=${limit}`;
+    async searchDirectory(query: string, siteId: string) {
+        if (!query || query.length < 2) return [];
 
         try {
-            console.log(`[GraphDebug] Searching directory for "${cleanQuery}" (limit: ${limit})...`);
-            console.log(`[GraphDebug] Request URL: ${url} (ConsistencyLevel: eventual)`);
-            const resp = await fetch(url, {
-                headers: {
-                    Authorization: `Bearer ${this.token}`,
-                    ConsistencyLevel: 'eventual'
-                },
-                signal: this.abortController.signal
+            console.log(`[DirectoryService] Searching: "${query}" for Site: ${siteId}`);
+            
+            const { data, error } = await this.supabase.functions.invoke('directory-suggest', {
+                body: { query, site_id: siteId }
             });
 
-            if (resp.ok) {
-                const data = await resp.json();
-                console.log(`[GraphDebug] Search successful, found ${data.value?.length || 0} results.`);
-                return data.value.map((u: any) => ({
-                    id: u.id,
-                    name: u.displayName,
-                    email: u.mail,
-                    jobTitle: u.jobTitle,
-                    department: u.department || u.officeLocation
-                }));
+            if (error) {
+                console.error("[DirectoryService] Edge Function Error:", error);
+                throw error;
             }
 
-            // Handle specific status codes
-            const errorBody = await resp.json().catch(() => ({}));
-            console.error(`[GraphDebug] Search failed [${resp.status}]`, JSON.stringify(errorBody, null, 2));
-
-            if (resp.status === 400) {
-                console.warn("[GraphDebug] Invalid search syntax or parameters (400).");
-            } else if (resp.status === 401) {
-                console.warn("[GraphDebug] Token expired or unauthorized (401). Triggering logic for re-auth...");
-                throw new Error("GRAPH_UNAUTHORIZED");
-            }
-
-            return [];
-        } catch (e: any) {
-            if (e.name === 'AbortError') {
-                console.log("Graph: Search aborted due to new request.");
-                return null; // Signals aborted
-            }
-            console.error("Graph: Directory Search Error", e);
-            throw e;
-        }
-    }
-
-    /**
-     * Send an email using the /me/sendMail endpoint.
-     */
-    async sendMail(params: { to: string; subject: string; html: string }) {
-        const url = 'https://graph.microsoft.com/v1.0/me/sendMail';
-        const body = {
-            message: {
-                subject: params.subject,
-                body: {
-                    contentType: 'HTML',
-                    content: params.html
-                },
-                toRecipients: [
-                    {
-                        emailAddress: {
-                            address: params.to
-                        }
-                    }
-                ]
-            },
-            saveToSentItems: 'true'
-        };
-
-        try {
-            console.log(`[GraphDebug] Sending email to "${params.to}" with subject "${params.subject}"...`);
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(body)
-            });
-
-            if (resp.ok) {
-                console.log("[GraphDebug] Email sent successfully.");
-                return true;
-            }
-
-            const errorBody = await resp.json().catch(() => ({}));
-            console.error(`[GraphDebug] SendMail failed [${resp.status}]`, JSON.stringify(errorBody, null, 2));
-
-            if (resp.status === 401) {
-                throw new Error("GRAPH_UNAUTHORIZED");
-            }
-
-            return false;
+            console.log(`[DirectoryService] Found ${data?.length || 0} results.`);
+            return data || [];
         } catch (e) {
-            console.error("Graph: Email Send Error", e);
+            console.error("[DirectoryService] Search failed", e);
+            return [];
+        }
+    }
+
+    /**
+     * Send an invite email using the 'send-invite-email' Edge Function.
+     */
+    async sendMail(params: { to: string; subject?: string; html?: string; siteId: string, invitedByName: string }) {
+        try {
+            console.log(`[DirectoryService] Sending invite to "${params.to}"...`);
+            
+            const { data, error } = await this.supabase.functions.invoke('send-invite-email', {
+                body: { 
+                    email: params.to,
+                    site_id: params.siteId,
+                    invited_by_name: params.invitedByName
+                }
+            });
+
+            if (error) {
+                console.error("[DirectoryService] Send Email Error:", error);
+                throw error;
+            }
+
+            console.log("[DirectoryService] Email sent successfully.");
+            return true;
+        } catch (e) {
+            console.error("[DirectoryService] Email Send Exception", e);
             throw e;
         }
     }

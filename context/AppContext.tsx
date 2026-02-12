@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification, AttributeOption, SystemAuditLog } from '../types';
 import { db } from '../services/db';
 import { supabase } from '../lib/supabaseClient';
-import { GraphService } from '../services/graphService';
+import { DirectoryService } from '../services/graphService'; // Refactored to DirectoryService
 
 const REQUIRED_ADMIN_ROLE = 'ADMIN';
 const USE_GRAPH_DELEGATED = import.meta.env.VITE_PROCUREFLOW_GRAPH_DELEGATED === 'true';
@@ -117,7 +117,7 @@ interface AppContextType {
   // New Admin Capabilities
   getItemFieldRegistry: () => Promise<any[]>;
   resendWelcomeEmail: (email: string, name: string) => Promise<boolean>;
-  getGraphService: () => Promise<GraphService | null>;
+  getDirectoryService: () => Promise<DirectoryService | null>;
 
 
   runAutoMapping: (supplierId: string) => Promise<{ confirmed: number, proposed: number }>;
@@ -564,29 +564,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 return;
             }
 
-            // 2. Azure AD Graph Sync (Auto-fetch Job/Dept)
+            // 2. Azure AD Graph Sync (Auto-fetch Job/Dept) - DEPRECATED / REMOVED
+            // We now rely on the 'sync-directory' Edge Function or DirectoryService if needed.
+            // For now, we skip the direct Graph call to avoid 'provider_token' dependency.
             let adProfile = { jobTitle: '', department: '', officeLocation: '' };
-            const providerToken = session.provider_token; // Captured if 'persistSession' is true & provider scopes allow
-            
-            if (providerToken) {
-                 try {
-                     console.log("Auth: Fetching profile from Microsoft Graph...");
-                     const resp = await fetch('https://graph.microsoft.com/v1.0/me', {
-                         headers: { Authorization: `Bearer ${providerToken}` }
-                     });
-                     if (resp.ok) {
-                         const data = await resp.json();
-                         adProfile = {
-                             jobTitle: data.jobTitle || '',
-                             department: data.department || '', // Sometimes checks 'officeLocation' or 'department'
-                             officeLocation: data.officeLocation || ''
-                         };
-                         console.log("Auth: Graph Sync Success", adProfile);
-                     }
-                 } catch (e) {
-                     console.warn("Auth: Graph Sync failed", e);
-                 }
-            }
+
 
             // 3. Fetch user from our DB
             // We prioritize email lookup to handle pre-invited users who have a placeholder UUID 
@@ -630,7 +612,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 preferences: rawData.preferences
             } : null;
 
-            // 4. Load Persistent Preferences
+            // 4. JIT Migration: Link Auth ID if missing
+            if (rawData && session.user.id && (!rawData.auth_user_id || rawData.auth_user_id !== session.user.id)) {
+                 console.log("Auth: Linking user identity...");
+                 supabase.rpc('link_user_identity').then(({ error }) => {
+                     if (error) console.error("Auth: Failed to link identity", error);
+                     else console.log("Auth: Identity linked successfully.");
+                 });
+            }
+
+            // 5. Load Persistent Preferences
             if (userData?.preferences) {
                 const { theme: pTheme, activeSiteIds: pSites } = userData.preferences;
                 if (pTheme) {
@@ -1000,47 +991,36 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const sendWelcomeEmail = async (toEmail: string, name: string): Promise<boolean> => {
-      console.log(`[GraphDebug] sendWelcomeEmail called for ${toEmail}. Flag: ${USE_GRAPH_DELEGATED}`);
-      
-      if (!USE_GRAPH_DELEGATED) {
-          console.warn("[GraphDebug] Delegated model is DISABLED. Email not sent.");
-          return false;
-      }
+       try {
+          // Updated to use Edge Function via DirectoryService
 
-      try {
-          const graph = await contextValue.getGraphService();
-          if (!graph) {
-              console.error("[GraphDebug] GraphService could not be initialized (missing token?)");
-              return false;
-          }
 
-          const defaultSubject = `Welcome to ${branding.appName}`;
-          const defaultBody = `
-            <p>Hi ${name},</p>
-            <p>You have been invited to join <strong>${branding.appName}</strong>.</p>
-            <p>Please click the link below to get started:</p>
-            <p><a href="${window.location.origin}">${window.location.origin}</a></p>
-            <p>Best regards,<br/>The Admin Team</p>
-          `;
 
-          const subject = branding.emailTemplate?.subject ? 
-              branding.emailTemplate.subject.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName) 
-              : defaultSubject;
-              
-          const body = branding.emailTemplate?.body ? 
-              branding.emailTemplate.body.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName).replace(/{link}/g, `<a href="${window.location.origin}">${window.location.origin}</a>`) 
-              : defaultBody;
-
-          return await graph.sendMail({
+          const svc = new DirectoryService(supabase);
+          
+          // Need site ID to verify permission in Edge Function?
+          // We pass context.
+          const siteId = activeSiteIds[0] || currentUser?.siteIds?.[0] || '';
+          
+          return await svc.sendMail({
               to: toEmail,
-              subject,
-              html: body
+              subject: branding.emailTemplate?.subject ? 
+                  branding.emailTemplate.subject.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName) 
+                  : `Welcome to ${branding.appName}`,
+              html: branding.emailTemplate?.body ? 
+                  branding.emailTemplate.body.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName).replace(/{link}/g, `<a href="${window.location.origin}">${window.location.origin}</a>`) 
+                  : `
+                    <p>Hi ${name},</p>
+                    <p>You have been invited to join <strong>${branding.appName}</strong>.</p>
+                    <p>Please click the link below to get started:</p>
+                    <p><a href="${window.location.origin}">${window.location.origin}</a></p>
+                    <p>Best regards,<br/>The Admin Team</p>
+                  `,
+              siteId,
+              invitedByName: currentUser?.name || 'Admin'
           });
       } catch (e: any) {
-          if (e.message === 'GRAPH_UNAUTHORIZED') {
-              console.error("Graph: Unauthorized. Forcing sign-out.");
-              await supabase.auth.signOut();
-          }
+          console.error("Failed to send welcome email", e);
           return false;
       }
   };
@@ -1371,25 +1351,23 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
             
             if (target.email && target.emailAddress) {
-                 if (USE_GRAPH_DELEGATED) {
-                     try {
-                         const graph = await contextValue.getGraphService();
-                         if (graph) {
-                             await graph.sendMail({
-                                 to: target.emailAddress,
-                                 subject: `ProcureFlow Notification: ${event}`,
-                                 html: `<p>Event: ${event}</p><p>Details:</p><pre>${JSON.stringify(data, null, 2)}</pre>`
-                             });
-                         }
-                     } catch (e: any) {
-                         if (e.message === 'GRAPH_UNAUTHORIZED') {
-                             await supabase.auth.signOut();
-                         }
-                         console.error("Failed to send notification email", e);
-                     }
-                 } else {
-                     console.warn("Graph: Delegated model is DISABLED. Notification email not sent.");
+                 // Updated to use DirectoryService for notifications
+                 try {
+                     const svc = new DirectoryService(supabase);
+                     const siteId = activeSiteIds[0] || currentUser?.siteIds?.[0] || '';
+                     
+                     await svc.sendMail({
+                         to: target.emailAddress,
+                         subject: `ProcureFlow Notification: ${event}`,
+                         html: `<p>Event: ${event}</p><p>Details:</p><pre>${JSON.stringify(data, null, 2)}</pre>`,
+                         siteId,
+                         invitedByName: 'System Notification'
+                     });
+                 } catch (e) {
+                     console.error("Failed to send notification email", e);
                  }
+                 // Removed USE_GRAPH_DELEGATED check as we use System Sender now
+
             }
         }
     };
@@ -1945,45 +1923,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     getAuditLogs,
     resendWelcomeEmail,
 
-    getGraphService: async () => {
-        if (!USE_GRAPH_DELEGATED) return null;
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.provider_token;
-        if (!token) {
-            console.warn("[GraphDebug] Auth: No provider token found for Graph Service. Claims:", session?.user?.app_metadata);
-            return null;
-        }
-        // DEBUG: Print token audience/info (redacted)
-        console.log("[GraphDebug] Provider Token found. Length:", token.length);
-        return new GraphService(token);
+    getDirectoryService: async () => {
+        return new DirectoryService(supabase);
     },
 
     searchDirectory: async (query: string) => {
-        console.log(`[GraphDebug] searchDirectory called for "${query}". Flag: ${USE_GRAPH_DELEGATED}`);
+        // Updated to use DirectoryService (Edge Function)
+        const activeSiteId = activeSiteIds[0]; // TODO: Use specific site or passed site?
+        // Logic: Search should be scoped to current context.
+        // Assuming strict site scoping, we need a site ID.
+        // Using the first active site ID or a heuristic.
+        const siteId = activeSiteId || currentUser?.siteIds?.[0];
         
-        if (!USE_GRAPH_DELEGATED) {
-            console.warn("[GraphDebug] Delegated model is DISABLED (VITE_PROCUREFLOW_GRAPH_DELEGATED=false)");
+        if (!siteId) {
+            console.warn("[Directory] No Site ID available for search.");
             return [];
         }
 
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.provider_token;
-        if (!token) {
-            console.warn("[GraphDebug] Auth: No provider token found for Directory Search");
-            return [];
-        }
-        
-        try {
-            const graph = new GraphService(token);
-            const results = await graph.searchDirectory(query);
-            return results || [];
-        } catch (e: any) {
-            if (e.message === 'GRAPH_UNAUTHORIZED') {
-                console.error("Graph: Unauthorized. Forcing sign-out for re-auth.");
-                await supabase.auth.signOut();
-            }
-            return [];
-        }
+        const svc = new DirectoryService(supabase);
+        return await svc.searchDirectory(query, siteId);
     },
     sendNotification,
     deletePO

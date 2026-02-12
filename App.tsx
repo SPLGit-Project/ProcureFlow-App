@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import Login from './components/Login';
 import OnboardingWizard from './components/OnboardingWizard';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+import InviteLanding from './components/InviteLanding';
 
 // Register Service Worker
 if ('serviceWorker' in navigator) {
@@ -66,6 +67,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/invite" element={<InviteLanding />} />
           <Route path="/pending-approval" element={<OnboardingWizard />} />
           
           <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>

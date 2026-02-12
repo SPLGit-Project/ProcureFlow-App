@@ -1,4 +1,6 @@
 
+import { DirectoryService } from './services/graphService';
+
 export type UserRole = string; // Was union, now string to support dynamic roles
 
 export type PermissionId = 
