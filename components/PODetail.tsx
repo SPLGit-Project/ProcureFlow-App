@@ -26,7 +26,7 @@ const PODetail = () => {
   const [isEditing, setIsEditing] = useState(false);
   
   // Local state for edits
-  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: '', comments: '' });
+  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: '', comments: '', concurPoNumber: '' });
 
   const po = pos.find(p => p.id === id);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -187,24 +187,32 @@ const PODetail = () => {
 
   const handleStartEdit = () => {
        if (!po) return;
-       setHeaderEdits({
-           clientName: po.customerName || '',
-           reason: po.reasonForRequest || '',
-           comments: po.comments || ''
-       });
-       setIsEditing(true);
+        setHeaderEdits({
+            clientName: po.customerName || '',
+            reason: po.reasonForRequest || '',
+            comments: po.comments || '',
+            concurPoNumber: po.lines[0]?.concurPoNumber || ''
+        });
+        setIsEditing(true);
   };
 
   const handleSaveHeader = async () => {
        if (!po) return;
-       try {
-           await db.updatePODetails(po.id, {
-               clientName: headerEdits.clientName,
-               reasonForRequest: headerEdits.reason,
-               comments: headerEdits.comments
-           });
-           setIsEditing(false);
-           window.location.reload(); 
+        try {
+            await db.updatePODetails(po.id, {
+                clientName: headerEdits.clientName,
+                reasonForRequest: headerEdits.reason,
+                comments: headerEdits.comments
+            });
+
+            // If Concur PO number was changed, update it across all lines
+            const currentConcur = po.lines[0]?.concurPoNumber || '';
+            if (headerEdits.concurPoNumber !== currentConcur) {
+                await linkConcurPO(po.id, headerEdits.concurPoNumber);
+            }
+
+            setIsEditing(false);
+            reloadData(true);
        } catch (err: any) {
            console.error(err);
            alert('Failed to save changes: ' + err.message);
@@ -467,9 +475,17 @@ const PODetail = () => {
                     <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg"><LinkIcon size={16}/></div>
                     <div className="w-full">
                         <p className="text-xs text-secondary uppercase font-bold">Concur PO #</p>
-                        <p className="text-sm font-medium text-primary dark:text-white">
-                             {Array.from(new Set(po.lines.map(l => l.concurPoNumber).filter(Boolean))).join(', ') || '-'}
-                        </p>
+                        {isEditing ? (
+                            <input 
+                                className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                value={headerEdits.concurPoNumber}
+                                onChange={e => setHeaderEdits({...headerEdits, concurPoNumber: e.target.value})}
+                            />
+                        ) : (
+                            <p className="text-sm font-medium text-primary dark:text-white">
+                                 {Array.from(new Set(po.lines.map(l => l.concurPoNumber).filter(Boolean))).join(', ') || '-'}
+                            </p>
+                        )}
                     </div>
                 </div>
 
