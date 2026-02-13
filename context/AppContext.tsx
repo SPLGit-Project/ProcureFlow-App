@@ -1422,23 +1422,45 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const linkConcurPO = async (poId: string, concurPoNumber: string) => {
-      // Optimistic Update
+      if (!concurPoNumber.trim()) {
+          alert("Please enter a valid Concur PO number.");
+          return;
+      }
+
+      // 1. Optimistic Update (Immediate Feedback)
       setPos(prev => prev.map(p => {
           if (p.id !== poId) return p;
           const updatedLines = p.lines.map(l => ({ ...l, concurPoNumber }));
-          return { ...p, lines: updatedLines, status: 'ACTIVE' };
+          return { ...p, lines: updatedLines, status: 'ACTIVE' as POStatus };
       }));
       
       try {
-          // Persist (Batch update effectively)
-          // We need the lines to update. 
+          // 2. Locate PO in current state (to get line IDs)
+          // Note: We use the existing 'pos' from closure here, but we should verify it has lines.
           const po = pos.find(p => p.id === poId);
-          if (po) {
-             await Promise.all(po.lines.map(l => db.linkConcurPO(l.id, concurPoNumber)));
-             await db.updatePOStatus(poId, 'ACTIVE'); 
+          
+          if (!po || !po.lines || po.lines.length === 0) {
+              console.warn("linkConcurPO: PO or lines not found in state, attempting to proceed via DB if IDs match.");
+              // If po is missing from state (unlikely but possible if filter changed), 
+              // we can't get line IDs easily without a fresh fetch. 
+              // However, the optimistic update already happened, so we can't easily revert without reload.
+              throw new Error("PO details not found in current view. Please refresh and try again.");
           }
+
+          // 3. Persist line-level updates
+          // We do this sequentially to ensure reliability, though Promise.all is faster.
+          for (const line of po.lines) {
+              await db.linkConcurPO(line.id, concurPoNumber);
+          }
+
+          // 4. Update Header Status
+          await db.updatePOStatus(poId, 'ACTIVE'); 
+          
+          console.log(`Successfully linked Concur PO ${concurPoNumber} to PO ${poId}`);
       } catch (e) {
-          console.error("Failed to link Concur PO", e);
+          console.error("Failed to link Concur PO:", e);
+          alert(`Failed to link Concur PO: ${e instanceof Error ? e.message : 'Unknown error'}`);
+          // Revert state
           reloadData();
       }
   };
@@ -1927,13 +1949,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         return new DirectoryService(supabase);
     },
 
-    searchDirectory: async (query: string) => {
+    searchDirectory: async (query: string, siteIdOverride?: string) => {
         // Updated to use DirectoryService (Edge Function)
-        const activeSiteId = activeSiteIds[0]; // TODO: Use specific site or passed site?
+        const activeSiteId = activeSiteIds[0];
         // Logic: Search should be scoped to current context.
-        // Assuming strict site scoping, we need a site ID.
-        // Using the first active site ID or a heuristic.
-        const siteId = activeSiteId || currentUser?.siteIds?.[0];
+        // If an override is provided (e.g. from Invite Modal), use it.
+        // Otherwise fall back to active site or user's first site.
+        const siteId = siteIdOverride || activeSiteId || currentUser?.siteIds?.[0];
         
         if (!siteId) {
             console.warn("[Directory] No Site ID available for search.");

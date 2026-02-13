@@ -112,7 +112,8 @@ const Settings = () => {
     getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, archiveUser, searchDirectory,
     archiveItem, getAuditLogs,
     // Catalog Management
-    attributeOptions, upsertAttributeOption, deleteAttributeOption
+    attributeOptions, upsertAttributeOption, deleteAttributeOption,
+    activeSiteIds
   } = useApp();
 
 
@@ -613,7 +614,10 @@ const Settings = () => {
   const handleResetInviteWizard = () => {
       setInviteStep(1);
       setInviteTab('SEARCH');
-      setInviteForm({ id: '', name: '', email: '', jobTitle: '', role: 'SITE_USER', siteIds: [] });
+      setInviteForm({ 
+        id: '', name: '', email: '', jobTitle: '', role: 'SITE_USER', 
+        siteIds: activeSiteIds.length > 0 ? activeSiteIds : (sites.length > 0 ? [sites[0].id] : [])
+      });
       setDirectorySearch('');
       setDirectoryResults([]);
       setIsDirectoryModalOpen(false);
@@ -1126,7 +1130,9 @@ if __name__ == "__main__":
     setDirectoryLoading(true);
     
     try {
-        const results = await searchDirectory(directorySearch);
+        // Use first selected site, or active site, or first available site to context the search
+        const searchContextSiteId = inviteForm.siteIds[0] || activeSiteIds[0] || sites[0]?.id;
+        const results = await searchDirectory(directorySearch, searchContextSiteId);
         
         // Deduplicate: remove if already in local matches (by email or id)
         const directoryMatches = results.filter(du => 
@@ -2556,7 +2562,14 @@ if __name__ == "__main__":
                               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
                           </div>
 
-                          <button onClick={() => { setIsDirectoryModalOpen(true); setUserRoleFilter(''); }} className="btn-primary py-2 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20">
+                          <button onClick={() => { 
+                              setInviteForm(prev => ({ 
+                                ...prev, 
+                                siteIds: activeSiteIds.length > 0 ? activeSiteIds : (sites.length > 0 ? [sites[0].id] : []) 
+                              }));
+                              setIsDirectoryModalOpen(true); 
+                              setUserRoleFilter(''); 
+                          }} className="btn-primary py-2 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20">
                               <UserPlus size={16}/> Add User
                           </button>
                       </div>
