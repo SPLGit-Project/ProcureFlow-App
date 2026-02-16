@@ -49,7 +49,9 @@ export class DirectoryService {
                 body: { 
                     email: params.to,
                     site_id: params.siteId,
-                    invited_by_name: params.invitedByName
+                    invited_by_name: params.invitedByName,
+                    subject: params.subject,
+                    html: params.html
                 }
             });
 

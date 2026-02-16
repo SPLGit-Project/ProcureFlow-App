@@ -1002,22 +1002,24 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           // We pass context.
           const siteId = activeSiteIds[0] || currentUser?.siteIds?.[0] || '';
           
+          const invitedByName = currentUser?.name || 'Admin';
+          
           return await svc.sendMail({
               to: toEmail,
               subject: branding.emailTemplate?.subject ? 
-                  branding.emailTemplate.subject.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName) 
+                  branding.emailTemplate.subject.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName).replace(/{invited_by_name}/g, invitedByName) 
                   : `Welcome to ${branding.appName}`,
               html: branding.emailTemplate?.body ? 
-                  branding.emailTemplate.body.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName).replace(/{link}/g, `<a href="${window.location.origin}">${window.location.origin}</a>`) 
+                  branding.emailTemplate.body.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName).replace(/{invited_by_name}/g, invitedByName) 
                   : `
                     <p>Hi ${name},</p>
-                    <p>You have been invited to join <strong>${branding.appName}</strong>.</p>
+                    <p>You have been invited to join <strong>${branding.appName}</strong> by ${invitedByName}.</p>
                     <p>Please click the link below to get started:</p>
-                    <p><a href="${window.location.origin}">${window.location.origin}</a></p>
+                    <p>{link}</p>
                     <p>Best regards,<br/>The Admin Team</p>
                   `,
               siteId,
-              invitedByName: currentUser?.name || 'Admin'
+              invitedByName
           });
       } catch (e: any) {
           console.error("Failed to send welcome email", e);
@@ -1183,29 +1185,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
 
-  const resendWelcomeEmail = async (email: string, name: string): Promise<boolean> => {
-      if (!USE_GRAPH_DELEGATED) {
-          console.warn("Graph: Delegated model is DISABLED. Email not resent.");
-          return false;
-      }
-
-      const success = await sendWelcomeEmail(email, name);
+  const resendWelcomeEmail = async (email: string, name: string, siteId?: string): Promise<boolean> => {
+    try {
+      setLoading(true);
+      
+      const success = await sendWelcomeEmail(email, name, siteId);
+      
       if (success) {
-          try {
-              // Update invited_at timestamp to now
-              await supabase
-                  .from('users')
-                  .update({ 
-                      invited_at: new Date().toISOString(),
-                      // Reset expiry to 48 hours from now
-                      invitation_expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
-                  })
-                  .eq('email', email);
-          } catch (e) {
-              console.warn("Auth: Failed to update invitation timestamp", e);
-          }
+          // Update the user's invitation status in our local state/DB if needed
+          // The Edge function handles the invite record creation.
+          // We might want to refresh users to see updated expiry if we track it.
+          await loadUsers();
       }
       return success;
+    } catch (e) {
+      console.error("Resend failed", e);
+      return false;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const archiveUser = async (userId: string) => {

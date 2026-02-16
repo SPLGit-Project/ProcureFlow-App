@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
           { global: { headers: { Authorization: authHeader! } } }
       )
 
-      const { email, site_id, invited_by_name } = await req.json()
+      const { email, site_id, invited_by_name, subject, html } = await req.json()
 
       // Verify the user is an admin or allowed to invite
       const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
       // Check role
       const { data: dbUser } = await supabaseClient
           .from('users')
-          .select('role_id, site_ids')
+          .select('id, role_id, site_ids')
           .eq('auth_user_id', user.id)
           .single()
       
@@ -46,11 +46,7 @@ Deno.serve(async (req) => {
       }
 
       // 2. Generate Token & Create Invite Record
-      // We do this server-side to ensure integrity
       const token = crypto.randomUUID()
-      // Ideally hashing happens here or DB. 
-      // Let's store plain token in DB for now (Migration #2 assumed hash, but for simplicity let's store direct)
-      // Wait, Migration #2 said "token_hash". I should hash it.
       
       // Simple sha256 hash
       const msgBuffer = new TextEncoder().encode(token);
@@ -60,18 +56,15 @@ Deno.serve(async (req) => {
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
 
       // Insert into DB
-      const { error: insertError } = await supabaseClient // Use Service Role to bypass strict RLS if needed? No, user has RLS to insert.
+      const { error: insertError } = await supabaseClient 
           .from('invites')
           .insert({
               site_id,
               email,
-              token_hash: tokenHash, // In a real app, use the hash.
-              invited_by: dbUser.id, // we might need the UUID not auth.uid if users table PK is different
+              token_hash: tokenHash, 
+              invited_by: dbUser.id, 
               expires_at: expiresAt
           })
-          
-      // Wait, 'invited_by' references users.id (UUID). 
-      // If dbUser.id came from 'users' table, it's correct.
       
       if (insertError) throw insertError
 
@@ -79,7 +72,7 @@ Deno.serve(async (req) => {
       const tenantId = Deno.env.get('AZURE_TENANT_ID')
       const clientId = Deno.env.get('AZURE_CLIENT_ID')
       const clientSecret = Deno.env.get('AZURE_CLIENT_SECRET')
-      const senderEmail = Deno.env.get('SYSTEM_SENDER_EMAIL') // e.g. no-reply@splservices.com.au
+      const senderEmail = Deno.env.get('SYSTEM_SENDER_EMAIL') 
 
       const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`
       const tokenResp = await fetch(tokenUrl, {
@@ -94,40 +87,42 @@ Deno.serve(async (req) => {
       })
       const { access_token } = await tokenResp.json()
 
-      const inviteUrl = `${req.headers.get('origin')}/invite?token=${token}`
-      // CAUTION: Migration #2 compares token_hash = v_token_hash. 
-      // So if I persist hash, I must send the raw token to user. 
-      // Use 'token' in URL.
-      // But Migration #2 `accept_invite` takes `p_token`. 
-      // And I implemented strict comparison `token_hash = v_token_hash`. 
-      // So if I pass 'token' to `accept_invite`, it will fail equality check with `token_hash` unless I hash it inside RPC.
-      // In Migration #2 I wrote: `v_token_hash := p_token;`. 
-      // So I must send the HASH in the URL if the RPC expects the value stored in DB.
-      // Or I should update RPC to hash the input. 
-      // For now, I'll send the HASH in the URL to match the RPC logic exactly.
-      // This technically defeats the purpose of hashing (if the hash is the secret).
-      // BUT for this task, consistency is key. I'll send the value that matches the DB column.
+      const origin = req.headers.get('origin') || 'https://procureflow.splservices.com.au'
+      const inviteUrl = `${origin}/invite?token=${token}`
       
-      const paramToSend = tokenHash; 
+      // If custom html is provided, replace {link} with inviteUrl
+      let finalHtml = html
+    if (finalHtml) {
+      finalHtml = finalHtml
+        .replace(/{link}/g, `<a href="${inviteUrl}">${inviteUrl}</a>`)
+        .replace(/{invited_by_name}/g, invited_by_name || 'Admin')
+    } else {
+      finalHtml = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+          <h1>Welcome to ProcureFlow</h1>
+          <p>You have been invited to join by ${invited_by_name}.</p>
+          <div style="margin: 30px 0;">
+            <a href="${inviteUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; rounded: 8px; font-weight: bold;">Accept Invitation</a>
+          </div>
+          <p style="color: #666; font-size: 14px;">If the button doesn't work, copy and paste this link into your browser:</p>
+          <p style="color: #666; font-size: 14px;">${inviteUrl}</p>
+          <p style="color: #666; font-size: 14px; margin-top: 20px;">Link expires in 7 days.</p>
+        </div>
+      `
+    }
 
       const emailBody = {
           message: {
-              subject: `You have been invited to ProcureFlow by ${invited_by_name}`,
+              subject: subject || `You have been invited to ProcureFlow by ${invited_by_name}`,
               body: {
                   contentType: 'HTML',
-                  content: `
-                    <h1>Welcome to ProcureFlow</h1>
-                    <p>You have been invited to join.</p>
-                    <p><a href="${inviteUrl}">Click here to accept invitation</a></p>
-                    <p>Link expires in 7 days.</p>
-                  `
+                  content: finalHtml
               },
               toRecipients: [{ emailAddress: { address: email } }]
           },
           saveToSentItems: 'false'
       }
       
-      // If using shared mailbox, we might need simple /users/{sender}/sendMail
       const sendUrl = `https://graph.microsoft.com/v1.0/users/${senderEmail}/sendMail`
       
       const emailResp = await fetch(sendUrl, {

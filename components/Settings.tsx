@@ -2691,7 +2691,7 @@ if __name__ == "__main__":
                                                                     
                                                                     setResendingUserId(user.id);
                                                                     try {
-                                                                        const result = await resendWelcomeEmail(user.email, user.name);
+                                                                         const result = await resendWelcomeEmail(user.email, user.name, user.siteIds?.[0]);
                                                                         if (result) {
                                                                             success(`Invitation sent to ${user.name}`, 4000);
                                                                             await reloadData();
@@ -3316,9 +3316,9 @@ if __name__ == "__main__":
 
                            <div>
                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Email Body (HTML)</label>
-                               <div className="text-xs text-gray-500 mb-2">
-                                   Supported Placeholders: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{name}'}</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{app_name}'}</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{link}'}</code>
-                               </div>
+                                <div className="text-xs text-gray-500 mb-2">
+                                    Supported Placeholders: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{name}'}</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{app_name}'}</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{link}'}</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{invited_by_name}'}</code>
+                                </div>
                                <textarea 
                                   className="input-field w-full font-mono text-sm min-h-[300px]"
                                   value={emailBody}
@@ -3329,12 +3329,13 @@ if __name__ == "__main__":
                            
                            <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-lg p-4">
                                <h4 className="font-bold text-blue-800 dark:text-blue-300 mb-2 text-sm">Preview</h4>
-                               <div className="bg-white p-4 rounded border border-gray-200 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ 
-                                   __html: emailBody
-                                    .replace(/{name}/g, 'John Doe')
-                                    .replace(/{app_name}/g, branding.appName)
-                                    .replace(/{link}/g, '<a href="#">http://example.com</a>') 
-                                }}></div>
+                                <div className="bg-white p-4 rounded border border-gray-200 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ 
+                                    __html: emailBody
+                                     .replace(/{name}/g, 'John Doe')
+                                     .replace(/{app_name}/g, branding.appName)
+                                     .replace(/{link}/g, '<a href="#">http://example.com</a>')
+                                     .replace(/{invited_by_name}/g, currentUser?.name || 'Admin')
+                                 }}></div>
                             </div>
                        </div>
                   </div>
@@ -3841,7 +3842,7 @@ if __name__ == "__main__":
                                                                        onClick={(e) => {
                                                                            e.stopPropagation();
                                                                            if(confirm(`Resend invitation to ${u.name}?`)) {
-                                                                               resendWelcomeEmail(u.email, u.name).then(ok => ok && alert('Invitation sent successfully!'));
+                                                                                resendWelcomeEmail(u.email, u.name, u.site_id).then(ok => ok && alert('Invitation sent successfully!'));
                                                                            }
                                                                        }}
                                                                        className="text-[10px] font-bold text-gray-400 hover:text-[var(--color-brand)] flex items-center gap-1 hover:bg-gray-100 dark:hover:bg-white/5 py-1 px-1.5 rounded"
