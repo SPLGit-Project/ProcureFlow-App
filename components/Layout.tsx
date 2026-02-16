@@ -33,6 +33,7 @@ import UpdateToast from './UpdateToast';
 import VersionBadge from './VersionBadge';
 import { MultiSiteSelector } from './MultiSiteSelector';
 import TaskDrawer from './TaskDrawer';
+import AccountDrawer from './AccountDrawer';
 import { Bell, ClipboardList as TaskIcon } from 'lucide-react';
 
 const Layout = () => {
@@ -40,6 +41,7 @@ const Layout = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isProfileExpanded, setIsProfileExpanded] = React.useState(false);
   const [isTaskDrawerOpen, setIsTaskDrawerOpen] = React.useState(false);
+  const [isAccountDrawerOpen, setIsAccountDrawerOpen] = React.useState(false);
   const profileRef = React.useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -224,7 +226,7 @@ const Layout = () => {
                 <div className="w-px h-6 bg-gray-200 dark:bg-gray-800 mx-1 hidden sm:block"></div>
 
                 <div 
-                   onClick={() => navigate('/settings')}
+                   onClick={() => setIsAccountDrawerOpen(true)}
                    className="flex items-center gap-3 pl-1 pr-1 md:pr-3 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-white/5 transition-all cursor-pointer group"
                 >
                     <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm group-hover:border-[var(--color-brand)] transition-colors">
@@ -248,6 +250,12 @@ const Layout = () => {
       <TaskDrawer 
         isOpen={isTaskDrawerOpen} 
         onClose={() => setIsTaskDrawerOpen(false)} 
+      />
+
+      {/* Account Drawer */}
+      <AccountDrawer
+        isOpen={isAccountDrawerOpen}
+        onClose={() => setIsAccountDrawerOpen(false)}
       />
     </div>
   );
