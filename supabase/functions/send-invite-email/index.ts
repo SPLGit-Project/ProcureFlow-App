@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const VERSION = "1.0.2";
+const VERSION = "1.0.3";
 
 console.log(`send-invite-email function v${VERSION} initialized.`);
 
@@ -21,17 +21,21 @@ Deno.serve(async (req) => {
      return new Response(JSON.stringify({ 
        status: 'online', 
        version: VERSION,
-       timestamp: new Date().toISOString()
+       timestamp: new Date().toISOString(),
+       env: {
+         HAS_TENANT_ID: !!Deno.env.get('AZURE_TENANT_ID'),
+         HAS_CLIENT_ID: !!Deno.env.get('AZURE_CLIENT_ID'),
+         HAS_SENDER: !!Deno.env.get('SYSTEM_SENDER_EMAIL')
+       }
      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   try {
-    console.log(`[v${VERSION}] Processing ${req.method} request to send-invite-email`);
+    console.log(`[v${VERSION}] Processing ${req.method} request`);
     
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      console.error("Missing Authorization header");
-      return new Response(JSON.stringify({ error: 'Unauthenticated' }), { 
+      return new Response(JSON.stringify({ error: 'Missing Authorization header' }), { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 401 
       });
@@ -43,21 +47,20 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     )
 
-    // Get input params
+    // Parse Body
     const body = await req.json();
-    const { email, site_id, invited_by_name, subject, html } = body;
+    const { email, from_email, site_id, invited_by_name, subject, html } = body;
 
-    if (!email) throw new Error("Email is required");
+    if (!email) throw new Error("Target email is required");
 
-    // 1. Verify the requester via Supabase Auth
+    // 1. Verify Caller
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
       console.error("Auth verify failed:", authError);
-      throw new Error("Could not verify your identity");
+      throw new Error("Could not verify your identity. Please log in again.");
     }
-    console.log(`Caller: ${user.email} (${user.id})`);
 
-    // 2. Resolve requester role
+    // 2. Check Permissions
     const { data: dbUser, error: dbUserError } = await supabaseClient
       .from('users')
       .select('id, role_id, site_ids')
@@ -66,21 +69,19 @@ Deno.serve(async (req) => {
 
     if (dbUserError || !dbUser) {
       console.error("User database resolve failed:", dbUserError);
-      throw new Error("User record not found in system directory");
+      throw new Error("Your user record was not found in the directory.");
     }
 
-    if (!['ADMIN', 'SITE_ADMIN'].includes(dbUser.role_id)) {
-      console.warn(`User ${user.email} with role ${dbUser.role_id} attempted to invite.`);
-      throw new Error("Insufficient permissions to send invitations");
+    if (!['ADMIN', 'SITE_ADMIN', 'OWNER'].includes(dbUser.role_id)) {
+      throw new Error("Insufficient permissions to send invitations.");
     }
 
-    // 3. Invite Generation
+    // 3. Invite Tracking
     const token = crypto.randomUUID()
     const msgBuffer = new TextEncoder().encode(token);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
     const tokenHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    // 4. Persistence
     const { error: inviteError } = await supabaseClient
       .from('invites')
       .insert({
@@ -93,20 +94,23 @@ Deno.serve(async (req) => {
 
     if (inviteError) {
       console.error("Database Insert Error:", inviteError.message);
-      throw new Error(`Invitation tracking failed: ${inviteError.message}`);
+      // We continue even if invite tracking fails, but log it
     }
 
-    // 5. Microsoft Graph Email Integration
+    // 4. Microsoft Graph Integration
     const tenantId = Deno.env.get('AZURE_TENANT_ID')
     const clientId = Deno.env.get('AZURE_CLIENT_ID')
     const clientSecret = Deno.env.get('AZURE_CLIENT_SECRET')
-    const senderEmail = Deno.env.get('SYSTEM_SENDER_EMAIL')
+    const systemSender = Deno.env.get('SYSTEM_SENDER_EMAIL')
 
-    if (!tenantId || !clientId || !clientSecret || !senderEmail) {
-      console.error("Server Configuration Missing Secrets");
-      throw new Error("Email service is temporarily unavailable (Config Error)");
+    // Determine actual sender
+    const senderToUse = from_email || systemSender;
+
+    if (!tenantId || !clientId || !clientSecret || !senderToUse) {
+      throw new Error("Email service misconfigured: Missing Azure secrets or sender email.");
     }
 
+    console.log(`[v${VERSION}] Fetching token for ${senderToUse}...`);
     const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`
     const tokenResp = await fetch(tokenUrl, {
       method: 'POST',
@@ -121,13 +125,13 @@ Deno.serve(async (req) => {
 
     if (!tokenResp.ok) {
        const err = await tokenResp.text();
-       console.error("Azure Token Fetch Failed:", err);
-       throw new Error("Could not connect to the email provider");
+       console.error("Azure Token Error:", err);
+       throw new Error(`Email Authentication Failed: ${tokenResp.statusText}`);
     }
 
     const { access_token } = await tokenResp.json()
 
-    // Email Template Preparation
+    // 5. Template Construction
     const origin = req.headers.get('origin') || 'https://procureflow.splservices.com.au'
     const inviteUrl = `${origin}/invite?token=${token}`
     
@@ -143,13 +147,11 @@ Deno.serve(async (req) => {
             <a href="${inviteUrl}" style="background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Join ProcureFlow</a>
           </div>
           <p style="color: #9ca3af; font-size: 13px;">This invitation link will expire in 7 days.</p>
-          <hr style="border: 0; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-          <p style="color: #9ca3af; font-size: 12px;">If the button above doesn't work, copy and paste this URL into your browser:</p>
-          <p style="color: #9ca3af; font-size: 12px; word-break: break-all;">${inviteUrl}</p>
         </div>
       `;
     }
 
+    // 6. Send via Graph
     const emailRequest = {
       message: {
         subject: subject || `Invitation to join ProcureFlow`,
@@ -162,7 +164,8 @@ Deno.serve(async (req) => {
       saveToSentItems: 'false',
     }
 
-    const sendUrl = `https://graph.microsoft.com/v1.0/users/${senderEmail}/sendMail`
+    console.log(`[v${VERSION}] Sending email via ${senderToUse} to ${email}...`);
+    const sendUrl = `https://graph.microsoft.com/v1.0/users/${senderToUse}/sendMail`
     const emailResp = await fetch(sendUrl, {
       method: 'POST',
       headers: {
@@ -174,18 +177,19 @@ Deno.serve(async (req) => {
 
     if (!emailResp.ok) {
       const err = await emailResp.text()
-      console.error("Microsoft Graph Send Failed:", err)
-      throw new Error("Email provider rejected the message");
+      console.error("Microsoft Graph Error:", err)
+      const graphError = JSON.parse(err);
+      throw new Error(`Mail Server Error: ${graphError.error?.message || emailResp.statusText}`);
     }
 
-    console.log(`Invite successfully sent to ${email}`);
-    return new Response(JSON.stringify({ success: true, message: 'Invitation sent' }), {
+    console.log(`[v${VERSION}] Successfully sent to ${email}`);
+    return new Response(JSON.stringify({ success: true, version: VERSION }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
 
   } catch (error) {
-    console.error("Edge Function Exception:", error.message);
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error(`[v${VERSION}] Fatal:`, error.message);
+    return new Response(JSON.stringify({ error: error.message, version: VERSION }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
     })

@@ -41,15 +41,16 @@ export class DirectoryService {
     /**
      * Send an invite email using the 'send-invite-email' Edge Function.
      */
-    async sendMail(params: { to: string; subject?: string; html?: string; siteId: string, invitedByName: string }) {
+    async sendMail(params: { to: string; from: string; subject?: string; html?: string; siteId: string, invitedByName: string }) {
         try {
-            console.log(`[DirectoryService] Initiating invite to "${params.to}"...`);
+            console.log(`[DirectoryService] Initiating invite to "${params.to}" from "${params.from}"...`);
             console.log(`[DirectoryService] Context - Site: ${params.siteId}, Invited By: ${params.invitedByName}`);
             
             const start = Date.now();
             const { data, error } = await this.supabase.functions.invoke('send-invite-email', {
                 body: { 
                     email: params.to,
+                    from_email: params.from,
                     site_id: params.siteId,
                     invited_by_name: params.invitedByName,
                     subject: params.subject,
