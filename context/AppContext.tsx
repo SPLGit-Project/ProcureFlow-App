@@ -1349,6 +1349,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                      
                      await svc.sendMail({
                          to: target.emailAddress,
+                         from: currentUser?.email || '',
                          subject: `ProcureFlow Notification: ${event}`,
                          html: `<p>Event: ${event}</p><p>Details:</p><pre>${JSON.stringify(data, null, 2)}</pre>`,
                          siteId,
