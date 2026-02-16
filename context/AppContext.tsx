@@ -990,17 +990,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
 
-  const sendWelcomeEmail = async (toEmail: string, name: string): Promise<boolean> => {
+  const sendWelcomeEmail = async (toEmail: string, name: string, siteIdOverride?: string): Promise<boolean> => {
        try {
-          // Updated to use Edge Function via DirectoryService
-
-
-
           const svc = new DirectoryService(supabase);
           
-          // Need site ID to verify permission in Edge Function?
-          // We pass context.
-          const siteId = activeSiteIds[0] || currentUser?.siteIds?.[0] || '';
+          const siteId = siteIdOverride || activeSiteIds[0] || currentUser?.siteIds?.[0] || '';
           
           const invitedByName = currentUser?.name || 'Admin';
           
@@ -1187,22 +1181,20 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const resendWelcomeEmail = async (email: string, name: string, siteId?: string): Promise<boolean> => {
     try {
-      setLoading(true);
+      setIsLoadingData(true);
       
       const success = await sendWelcomeEmail(email, name, siteId);
       
       if (success) {
-          // Update the user's invitation status in our local state/DB if needed
-          // The Edge function handles the invite record creation.
-          // We might want to refresh users to see updated expiry if we track it.
-          await loadUsers();
+          // Reload all data to refresh invitation status and expiry
+          await reloadData();
       }
       return success;
     } catch (e) {
       console.error("Resend failed", e);
       return false;
     } finally {
-      setLoading(false);
+      setIsLoadingData(false);
     }
   };
 
