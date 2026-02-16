@@ -210,12 +210,21 @@ const CostImpactModal: React.FC<CostImpactModalProps> = ({ isOpen, onClose }) =>
                   <div className="absolute top-full left-0 mt-2 w-[280px] bg-elevated border border-strong rounded-2xl shadow-2xl z-50 p-2 animate-slide-down">
                      <div className="flex items-center justify-between p-2 mb-1 border-b border-default">
                         <span className="text-[10px] font-black text-secondary dark:text-gray-400 uppercase tracking-widest">Active Sites</span>
-                        <button 
-                           onClick={() => setSelectedSiteIds(userSites.map(s => s.id))}
-                           className="text-[10px] font-bold text-[var(--color-brand)] hover:underline"
-                        >
-                           Select All
-                        </button>
+                        <div className="flex items-center gap-2">
+                           <button 
+                              onClick={() => setSelectedSiteIds(userSites.map(s => s.id))}
+                              className="text-[10px] font-bold text-[var(--color-brand)] hover:underline"
+                           >
+                              Select All
+                           </button>
+                           <span className="text-gray-400 text-[10px]">|</span>
+                           <button 
+                              onClick={() => setSelectedSiteIds([])}
+                              className="text-[10px] font-bold text-gray-400 hover:text-red-500 hover:underline"
+                           >
+                              Deselect All
+                           </button>
+                        </div>
                      </div>
                      <div className="max-h-[300px] overflow-y-auto space-y-1 p-1">
                         {userSites.map(site => {

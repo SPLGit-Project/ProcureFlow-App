@@ -47,14 +47,6 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
         onChange(newIds);
     };
 
-    const handleSelectAll = () => {
-        if (selectedSiteIds.length === sites.length) {
-            onChange([]); // Deselect all
-        } else {
-            onChange(sites.map(s => s.id)); // Select all
-        }
-    };
-
     // Display label
     let label = 'Select Sites...';
     if (selectedSiteIds.length === 0) {
@@ -145,12 +137,21 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                                 <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Site Access</span>
                             </div>
                             <div className="flex items-center gap-3">
-                                <button 
-                                    onClick={handleSelectAll}
-                                    className="text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 hover:underline"
-                                >
-                                    {selectedSiteIds.length === sites.length ? 'None' : 'All'}
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button 
+                                        onClick={() => onChange(sites.map(s => s.id))}
+                                        className="text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 hover:underline"
+                                    >
+                                        All
+                                    </button>
+                                    <span className="text-gray-300 dark:text-gray-700 text-[10px]">|</span>
+                                    <button 
+                                        onClick={() => onChange([])}
+                                        className="text-[11px] font-bold uppercase tracking-wider text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:underline"
+                                    >
+                                        None
+                                    </button>
+                                </div>
                                 <span className="text-[11px] text-gray-400 font-semibold bg-gray-100 dark:bg-white/10 px-2 py-0.5 rounded-full">
                                     {selectedSiteIds.length}/{sites.length}
                                 </span>
