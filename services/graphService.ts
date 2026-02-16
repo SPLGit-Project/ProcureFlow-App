@@ -43,8 +43,10 @@ export class DirectoryService {
      */
     async sendMail(params: { to: string; subject?: string; html?: string; siteId: string, invitedByName: string }) {
         try {
-            console.log(`[DirectoryService] Sending invite to "${params.to}"...`);
+            console.log(`[DirectoryService] Initiating invite to "${params.to}"...`);
+            console.log(`[DirectoryService] Context - Site: ${params.siteId}, Invited By: ${params.invitedByName}`);
             
+            const start = Date.now();
             const { data, error } = await this.supabase.functions.invoke('send-invite-email', {
                 body: { 
                     email: params.to,
@@ -56,14 +58,15 @@ export class DirectoryService {
             });
 
             if (error) {
-                console.error("[DirectoryService] Send Email Error:", error);
+                console.error("[DirectoryService] Edge Function Invocation Failed:", error);
+                // Check for 404 (Function missing) or 401 (Unauthorized)
                 throw error;
             }
 
-            console.log("[DirectoryService] Email sent successfully.");
+            console.log(`[DirectoryService] Invite API Success in ${Date.now() - start}ms:`, data);
             return true;
         } catch (e) {
-            console.error("[DirectoryService] Email Send Exception", e);
+            console.error("[DirectoryService] Fatal Exception during sendMail:", e);
             throw e;
         }
     }
