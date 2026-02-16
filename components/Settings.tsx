@@ -649,12 +649,12 @@ const Settings = () => {
     if (query.length > 0) {
       const localMatches = users.filter(u => 
           u.status !== 'ARCHIVED' && (
-          u.name.toLowerCase().includes(query) || 
-          u.email.toLowerCase().includes(query)
+          (u.name || '').toLowerCase().includes(query) || 
+          (u.email || '').toLowerCase().includes(query)
       )).map(u => ({
           id: u.id,
-          name: u.name,
-          email: u.email,
+          name: u.name || 'Unknown User',
+          email: u.email || '',
           jobTitle: u.jobTitle,
           isExisting: true,
           currentRole: u.role,
@@ -1135,8 +1135,17 @@ if __name__ == "__main__":
         const results = await searchDirectory(directorySearch, searchContextSiteId);
         
         // Deduplicate: remove if already in local matches (by email or id)
-        const directoryMatches = results.filter(du => 
-            !users.some(u => u.id === du.id || u.email === du.email)
+        // Map directory results to match frontend expectations (name, jobTitle)
+        // RPC returns display_name, email, job_title, department
+        const directoryMatches = (results || []).map((du: any) => ({
+            id: du.id,
+            name: du.display_name || 'New User',
+            email: du.email,
+            jobTitle: du.job_title,
+            department: du.department,
+            isExisting: false
+        })).filter((du: any) => 
+            !users.some(u => u.id === du.id || (u.email && du.email && u.email.toLowerCase() === du.email.toLowerCase()))
         );
 
         setDirectoryResults(prev => {
@@ -1144,12 +1153,12 @@ if __name__ == "__main__":
             const query = directorySearch.trim().toLowerCase();
             const localMatches = users.filter(u => 
                 u.status !== 'ARCHIVED' && (
-                u.name.toLowerCase().includes(query) || 
-                u.email.toLowerCase().includes(query)
+                (u.name || '').toLowerCase().includes(query) || 
+                (u.email || '').toLowerCase().includes(query)
             )).map(u => ({
                 id: u.id,
-                name: u.name,
-                email: u.email,
+                name: u.name || 'Unknown User',
+                email: u.email || '',
                 jobTitle: u.jobTitle,
                 isExisting: true,
                 currentRole: u.role,
@@ -2588,8 +2597,8 @@ if __name__ == "__main__":
                                   // 1. Initial filter for Search, Role, and Archive status
                                   const filtered = users.filter(u => {
                                       const matchesSearch = !userSearch || 
-                                          u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
-                                          u.email.toLowerCase().includes(userSearch.toLowerCase());
+                                          (u.name || '').toLowerCase().includes(userSearch.toLowerCase()) || 
+                                          (u.email || '').toLowerCase().includes(userSearch.toLowerCase());
                                       const matchesRole = !userRoleFilter || u.role === userRoleFilter;
                                       const notArchived = u.status !== 'ARCHIVED';
                                       return matchesSearch && matchesRole && notArchived;
@@ -2622,8 +2631,8 @@ if __name__ == "__main__":
                                                       <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-white dark:border-[#1e2029] ${user.status === 'APPROVED' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'}`}></div>
                                                   </div>
                                                   <div className="flex-1 min-w-0">
-                                                     <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight leading-none mb-1">{user.name}</div>
-                                                     <div className="text-xs text-gray-500 font-medium">{user.email}</div>
+                                                     <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight leading-none mb-1">{user.name || 'Unknown User'}</div>
+                                                     <div className="text-xs text-gray-500 font-medium">{user.email || 'No Email'}</div>
                                                       <div className="flex flex-wrap gap-1 mt-2">
                                                         <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>{user.role}</span>
                                                         {user.siteIds && user.siteIds.map(sid => {
@@ -3756,7 +3765,7 @@ if __name__ == "__main__":
                                                                     
                                                                     <div className="relative flex-shrink-0">
                                                                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg shadow-sm group-hover:scale-105 transition-transform ${u.isExisting ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'}`}>
-                                                                            {u.name.charAt(0)}
+                                                                            {(u.name || '?').charAt(0)}
                                                                         </div>
                                                                         {u.isExisting && (
                                                                             <div className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-600 border-2 border-white dark:border-[#15171e] rounded-full flex items-center justify-center shadow-sm">

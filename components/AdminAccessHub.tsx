@@ -231,7 +231,14 @@ const AdminAccessHub = () => {
                 console.log(`UI: Triggering directory search for "${dirQuery}"...`);
                 setIsSearching(true);
                 const results = await searchDirectory(dirQuery);
-                setDirResults(results);
+                // Map the results to match local expectations (name, jobTitle, department)
+                const mappedResults = (results || []).map((res: any) => ({
+                    ...res,
+                    name: res.display_name,
+                    jobTitle: res.job_title,
+                    department: res.department
+                }));
+                setDirResults(mappedResults);
                 setIsSearching(false);
             } else {
                 setDirResults([]);
@@ -267,7 +274,7 @@ const AdminAccessHub = () => {
                                 <div key={res.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-full bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center font-black text-xs uppercase">
-                                            {res.name.substring(0, 2)}
+                                            {(res.name || '??').substring(0, 2)}
                                         </div>
                                         <div>
                                             <div className="text-sm font-bold text-gray-900 dark:text-white">{res.name}</div>
