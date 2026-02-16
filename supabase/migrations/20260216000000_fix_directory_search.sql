@@ -20,9 +20,9 @@ BEGIN
   -- Check permission: User must have access to p_site_id OR be an Admin
   -- Note: We still require the user to have valid access to the application
   IF NOT EXISTS (
-    SELECT 1 FROM public.users 
-    WHERE (auth_user_id = auth.uid() OR id = auth.uid())
-    AND (p_site_id = ANY(site_ids) OR role_id = 'ADMIN')
+    SELECT 1 FROM public.users u
+    WHERE (u.auth_user_id = auth.uid() OR u.id = auth.uid())
+    AND (p_site_id::text = ANY(u.site_ids) OR u.role_id = 'ADMIN')
   ) THEN
     RETURN; -- Return empty if no access to the requested site context
   END IF;
