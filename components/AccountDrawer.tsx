@@ -2,7 +2,7 @@
 import React from 'react';
 import { 
   X, LogOut, UserCog, ChevronDown, ChevronUp, User, 
-  Settings, Shield, ExternalLink, Globe, Bell
+  Settings, Shield, ExternalLink, Globe, Bell, ChevronRight
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
