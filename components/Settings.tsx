@@ -169,6 +169,7 @@ const Settings = () => {
   }, [currentUser, activeTab, hasPermission]);
 
   // --- Email Templates State ---
+  const [senderEmail, setSenderEmail] = useState(branding.emailTemplate?.fromEmail || '');
   const [emailSubject, setEmailSubject] = useState(branding.emailTemplate?.subject || `Welcome to ${branding.appName}`);
   const [emailBody, setEmailBody] = useState(branding.emailTemplate?.body || `
 <p>Hi {name},</p>
@@ -183,7 +184,8 @@ const Settings = () => {
            ...branding,
            emailTemplate: {
                subject: emailSubject,
-               body: emailBody
+               body: emailBody,
+               fromEmail: senderEmail
            }
        };
        await updateBranding(newBranding);
@@ -3304,6 +3306,16 @@ if __name__ == "__main__":
                       </div>
 
                       <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 space-y-6">
+                           <div>
+                               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Sender Email (From)</label>
+                               <input 
+                                  className="input-field w-full font-medium"
+                                  value={senderEmail}
+                                  onChange={(e) => setSenderEmail(e.target.value)}
+                                  placeholder="admin@splservices.com.au"
+                               />
+                               <p className="text-xs text-gray-500 mt-1">If blank, invites will come from the person sending them.</p>
+                           </div>
                            <div>
                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Email Subject</label>
                                <input 

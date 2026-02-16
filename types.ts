@@ -68,6 +68,7 @@ export interface User {
 export interface EmailTemplate {
   subject: string;
   body: string; // HTML supported
+  fromEmail?: string;
 }
 
 export interface AppBranding {

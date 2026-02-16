@@ -1000,7 +1000,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           
           return await svc.sendMail({
               to: toEmail,
-              from: currentUser?.email || '',
+              from: branding.emailTemplate?.fromEmail || currentUser?.email || '',
               subject: branding.emailTemplate?.subject ? 
                   branding.emailTemplate.subject.replace(/{name}/g, name).replace(/{app_name}/g, branding.appName).replace(/{invited_by_name}/g, invitedByName) 
                   : `Welcome to ${branding.appName}`,

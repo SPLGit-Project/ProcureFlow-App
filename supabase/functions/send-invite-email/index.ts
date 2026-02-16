@@ -34,7 +34,14 @@ Deno.serve(async (req) => {
     console.log(`[v${VERSION}] Processing ${req.method} request`);
     
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    
+    // Allow GET without auth for diagnostics (or valid checking)
+    if (req.method === 'GET') {
+      // Check auth if present, but don't fail if not? No, let's keep it simple for now. 
+      // Just return status.
+    }
+
+    if (req.method !== 'GET' && !authHeader) {
       return new Response(JSON.stringify({ error: 'Missing Authorization header' }), { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 401 
@@ -44,7 +51,7 @@ Deno.serve(async (req) => {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: authHeader || '' } } }
     )
 
     // Parse Body
