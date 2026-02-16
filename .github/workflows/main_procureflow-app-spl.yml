@@ -7,7 +7,14 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   workflow_dispatch:
+
+concurrency:
+  group: "production-deploy"
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -22,6 +29,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: "20.x"
+          cache: "npm"
 
       - name: npm install, build, and test
         run: |
