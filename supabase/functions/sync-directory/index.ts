@@ -1,5 +1,5 @@
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from '@supabase/supabase-js'
 
 console.log("Hello from sync-directory!")
 
@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
 
     // 3. Fetch Users from Graph
     // Paging logic would go here, for now doing top 999 to start
-    const graphUrl = 'https://graph.microsoft.com/v1.0/users?$select=id,displayName,mail,userPrincipalName,jobTitle,department,officeLocation&$top=999'
+    const graphUrl = 'https://graph.microsoft.com/v1.0/users?$filter=accountEnabled eq true&$select=id,displayName,mail,userPrincipalName,jobTitle,department,officeLocation&$top=999'
     const graphResp = await fetch(graphUrl, {
       headers: { Authorization: `Bearer ${access_token}` }
     })
