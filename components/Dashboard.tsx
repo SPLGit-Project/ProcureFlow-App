@@ -221,9 +221,12 @@ const Dashboard = () => {
                           </div>
                           <button 
                             onClick={() => setIsCostModalOpen(true)}
-                            className="text-xs flex items-center gap-1 text-[var(--color-brand)] font-medium hover:underline bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg transition-colors"
+                            className="group relative overflow-hidden flex items-center gap-2 bg-gradient-to-br from-[var(--color-brand)] to-blue-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-95 transition-all outline-none border border-white/10"
                           >
-                            View Details <ChevronRight size={14} />
+                            <span className="relative z-10 flex items-center gap-2 text-xs uppercase tracking-widest">
+                                Financial Hub <ArrowRight size={14} strokeWidth={3} />
+                            </span>
+                            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
                           </button>
                       </div>
                       
@@ -304,45 +307,22 @@ const Dashboard = () => {
                </div>
           </div>
 
-          {/* User Tasks (Right Column) */}
-          <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 flex flex-col h-full">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">My Tasks</h3>
-              <div className="space-y-3 overflow-y-auto max-h-[600px] custom-scrollbar">
-                     {myPendingApprovals.length > 0 && (
-                         <div onClick={() => navigate('/approvals')} className="p-3 bg-amber-50 rounded-xl cursor-pointer hover:bg-amber-100 transition-colors flex items-center gap-3">
-                             <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center text-amber-700 font-bold">{myPendingApprovals.length}</div>
-                             <div>
-                                 <div className="font-bold text-gray-900">Approvals</div>
-                                 <div className="text-xs text-tertiary dark:text-gray-500">Requires review</div>
-                             </div>
-                         </div>
-                     )}
-                      {actionConcur.length > 0 && (
-                         <div onClick={() => navigate('/requests')} className="p-3 bg-blue-50 rounded-xl cursor-pointer hover:bg-blue-100 transition-colors flex items-center gap-3">
-                             <div className="w-8 h-8 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 font-bold">{actionConcur.length}</div>
-                             <div>
-                                 <div className="font-bold text-gray-900">Link Concur</div>
-                                 <div className="text-xs text-tertiary dark:text-gray-500">Sync POs</div>
-                             </div>
-                         </div>
-                     )}
-                     {myPendingDeliveries.length > 0 && (
-                         <div onClick={() => navigate('/requests')} className="p-3 bg-emerald-50 rounded-xl cursor-pointer hover:bg-emerald-100 transition-colors flex items-center gap-3">
-                             <div className="w-8 h-8 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-700 font-bold">{myPendingDeliveries.length}</div>
-                             <div>
-                                 <div className="font-bold text-gray-900">Receiving</div>
-                                 <div className="text-xs text-tertiary dark:text-gray-500">Confirm deliveries</div>
-                             </div>
-                         </div>
-                     )}
-                     {myPendingApprovals.length === 0 && actionConcur.length === 0 && myPendingDeliveries.length === 0 && (
-                         <div className="text-center py-10 text-gray-400">
-                             <CheckCircle2 size={32} className="mx-auto mb-2 opacity-50"/>
-                             All caught up!
-                         </div>
-                     )}
-              </div>
-          </div>
+                {/* Action Shortcuts (Reduced) */}
+                <div className="bg-gradient-to-br from-indigo-500/5 to-purple-500/5 dark:from-indigo-500/10 dark:to-purple-500/10 rounded-3xl p-6 border border-indigo-500/10 dark:border-indigo-500/20 flex-1 flex flex-col justify-center items-center text-center group">
+                    <div className="w-16 h-16 rounded-2xl bg-white dark:bg-white/5 shadow-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500 border border-default">
+                        <TrendingUp className="text-indigo-500" size={32} />
+                    </div>
+                    <h3 className="text-lg font-black text-primary dark:text-white mb-2 tracking-tight">Strategy Insights</h3>
+                    <p className="text-xs text-secondary dark:text-gray-400 font-medium mb-6 leading-relaxed max-w-[200px]">
+                        Review your procurement strategy and supplier performance metrics.
+                    </p>
+                    <button 
+                        onClick={() => navigate('/reports')}
+                        className="w-full py-3 bg-white dark:bg-white/5 border border-default rounded-xl text-xs font-bold text-primary dark:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all active:scale-95"
+                    >
+                        Review Reports
+                    </button>
+                </div>
       </div>
 
       {/* Modals */}

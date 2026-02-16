@@ -32,11 +32,14 @@ import PwaInstaller from './PwaInstaller';
 import UpdateToast from './UpdateToast';
 import VersionBadge from './VersionBadge';
 import { MultiSiteSelector } from './MultiSiteSelector';
+import TaskDrawer from './TaskDrawer';
+import { Bell, ClipboardList as TaskIcon } from 'lucide-react';
 
 const Layout = () => {
   const { currentUser, logout, users, switchRole, roles, theme, setTheme, branding, hasPermission, activeSiteIds, setActiveSiteIds, sites, userSites, siteName } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isProfileExpanded, setIsProfileExpanded] = React.useState(false);
+  const [isTaskDrawerOpen, setIsTaskDrawerOpen] = React.useState(false);
   const profileRef = React.useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -269,16 +272,46 @@ const Layout = () => {
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative w-full">
         
 
-        {/* Mobile Header */}
-        <header className="md:hidden bg-white/90 dark:bg-[#15171e]/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-4 z-20 shrink-0 sticky top-0">
+        {/* Desktop & Mobile Global Header */}
+        <header className="bg-white/80 dark:bg-[#15171e]/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-4 md:px-8 z-20 shrink-0 sticky top-0 transition-all">
             <div className="flex items-center gap-3">
-                <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 -ml-2 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg">
+                <button 
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+                  className="md:hidden p-2 -ml-2 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors"
+                >
                     <Menu />
                 </button>
-                <span className="font-bold text-lg text-primary dark:text-white tracking-tight">{branding.appName}</span>
+                <div className="hidden md:flex items-center gap-2">
+                    <span className="text-sm font-bold text-tertiary uppercase tracking-widest">{location.pathname.substring(1) || 'Dashboard'}</span>
+                </div>
             </div>
-            <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-gray-700">
-                <img src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`} alt="User" className="w-full h-full object-cover" />
+            
+            <div className="flex items-center gap-2 md:gap-4">
+                {/* Task Center Trigger */}
+                <button 
+                    onClick={() => setIsTaskDrawerOpen(true)}
+                    className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"
+                    title="Task Center"
+                >
+                    <TaskIcon size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
+                    <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#15171e] animate-pulse"></span>
+                </button>
+
+                <button className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95" title="Notifications">
+                    <Bell size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
+                </button>
+
+                <div className="w-px h-6 bg-gray-200 dark:bg-gray-800 mx-1 hidden sm:block"></div>
+
+                <div 
+                   onClick={() => navigate('/settings')}
+                   className="flex items-center gap-3 pl-1 pr-1 md:pr-3 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-white/5 transition-all cursor-pointer group"
+                >
+                    <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm group-hover:border-[var(--color-brand)] transition-colors">
+                        <img src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`} alt="User" className="w-full h-full object-cover" />
+                    </div>
+                    <span className="hidden md:block text-xs font-bold text-primary dark:text-white group-hover:text-[var(--color-brand)] transition-colors">{currentUser.name.split(' ')[0]}</span>
+                </div>
             </div>
         </header>
         
@@ -290,6 +323,12 @@ const Layout = () => {
       
       {/* Update Toast Notification */}
       <UpdateToast />
+
+      {/* Task Center Drawer */}
+      <TaskDrawer 
+        isOpen={isTaskDrawerOpen} 
+        onClose={() => setIsTaskDrawerOpen(false)} 
+      />
     </div>
   );
 };
