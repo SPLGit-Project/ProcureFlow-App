@@ -168,99 +168,7 @@ const Layout = () => {
             );
           })}
           
-          <div className="mt-8">
-             <p className={`px-4 text-xs font-bold uppercase tracking-wider mb-3 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/50' : 'text-tertiary'}`}>System</p>
-             <div 
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-secondary hover:bg-gray-100 hover:text-primary'}`}
-             >
-                 {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
-                 <span className="font-medium text-sm">{theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
-                 <div className={`ml-auto w-8 h-4 rounded-full relative transition-colors ${theme === 'dark' ? 'bg-[var(--color-brand)]' : 'bg-gray-300'}`}>
-                     <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${theme === 'dark' ? 'right-0.5' : 'left-0.5'}`}></div>
-                 </div>
-             </div>
-          </div>
         </nav>
-
-        {/* User Profile */}
-        <div className="mx-4 mb-4" ref={profileRef}>
-          <div 
-            onClick={() => setIsProfileExpanded(!isProfileExpanded)}
-            className={`p-3 rounded-xl border transition-all cursor-pointer group select-none ${
-              ['brand', 'dark'].includes(branding.sidebarTheme || '') 
-                ? 'bg-white/10 border-white/10 hover:bg-white/15' 
-                : 'bg-white border-gray-200 hover:border-gray-300 shadow-sm'
-            }`}
-          >
-             <div className="flex items-center gap-3">
-                <div className="relative">
-                  <img src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`} alt="User" className="w-10 h-10 rounded-full bg-gray-200 border-2 border-white/20 shadow-sm" />
-                  <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-[#1e2029] flex items-center justify-center ${isProfileExpanded ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-200 text-gray-500'}`}>
-                     {isProfileExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-bold truncate transition-colors ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white' : 'text-primary'}`}>{currentUser.name}</p>
-                    <p className={`text-[10px] uppercase font-bold px-1.5 rounded inline-block shadow-sm mt-0.5 ${
-                      ['brand', 'dark'].includes(branding.sidebarTheme || '') 
-                        ? 'bg-white/20 text-white border border-white/10' 
-                        : 'bg-gray-100 text-tertiary border border-gray-200'
-                    }`}>
-                      {roles.find(r => r.id === currentUser.role)?.name || currentUser.role}
-                    </p>
-                </div>
-             </div>
-          </div>
-          
-          {/* Collapsible Content */}
-          <div className={`space-y-3 overflow-hidden transition-all duration-300 ease-in-out ${isProfileExpanded ? 'max-h-96 opacity-100 mt-3 pl-2' : 'max-h-0 opacity-0 mt-0'}`}>
-               {/* Quick Profile Link */}
-               <button 
-                  onClick={() => { setIsProfileExpanded(false); navigate('/settings', { state: { activeTab: 'PROFILE' } }); }}
-                  className={`w-full flex items-center gap-3 text-xs font-bold px-3 py-2 rounded-lg transition-colors ${
-                      ['brand', 'dark'].includes(branding.sidebarTheme || '') 
-                      ? 'text-white/70 hover:text-white hover:bg-white/10' 
-                      : 'text-secondary hover:text-primary hover:bg-gray-100'
-                  }`}
-               >
-                   <UserCog size={16} /> Edit Profile
-               </button>
-
-
-
-               {currentUser.realRole === 'ADMIN' && (
-                   <div className="space-y-1">
-                       <p className={`text-[9px] uppercase font-bold px-1 ${['brand', 'dark'].includes(branding.sidebarTheme || '') ? 'text-white/40' : 'text-tertiary'}`}>Switch View</p>
-                       <select 
-                          className={`w-full rounded-lg text-xs p-2.5 outline-none appearance-none cursor-pointer font-bold transition-all ${
-                              ['brand', 'dark'].includes(branding.sidebarTheme || '') 
-                              ? 'bg-black/30 text-white border border-white/10 hover:bg-black/40' 
-                              : 'bg-gray-50 text-secondary border border-gray-200 hover:border-gray-300 hover:bg-white shadow-sm'
-                          }`}
-                          value={currentUser.role}
-                          onChange={(e) => switchRole(e.target.value as any)}
-                       >
-                         <option value="ADMIN" className="text-gray-900 bg-white">Administrator View</option>
-                         {roles.filter(r => r.id !== 'ADMIN').map(r => (
-                             <option key={r.id} value={r.id} className="text-gray-900 bg-white">{r.name} View</option>
-                         ))}
-                       </select>
-                   </div>
-               )}
-               
-               <button 
-                  onClick={() => { setIsProfileExpanded(false); logout(); }}
-                  className={`w-full flex items-center justify-center gap-2 rounded-lg text-xs p-2.5 font-bold transition-all ${
-                      ['brand', 'dark'].includes(branding.sidebarTheme || '') 
-                      ? 'bg-white/10 text-white hover:bg-white/20 shadow-sm' 
-                      : 'bg-white text-red-500 hover:bg-red-50 hover:text-red-600 border border-gray-200 hover:border-red-200 shadow-sm'
-                  }`}
-               >
-                   <LogOut size={14} /> Sign Out
-               </button>
-            </div>
-        </div>
 
         {/* Version Badge */}
         <div className="mx-4 mb-4 mt-2">
@@ -299,6 +207,18 @@ const Layout = () => {
 
                 <button className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95" title="Notifications">
                     <Bell size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
+                </button>
+
+                <button 
+                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                    className="p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all active:scale-95 group"
+                    title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                >
+                    {theme === 'dark' ? (
+                        <Sun size={20} className="group-hover:text-amber-500 transition-colors" />
+                    ) : (
+                        <Moon size={20} className="group-hover:text-indigo-500 transition-colors" />
+                    )}
                 </button>
 
                 <div className="w-px h-6 bg-gray-200 dark:bg-gray-800 mx-1 hidden sm:block"></div>

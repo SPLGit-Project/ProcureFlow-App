@@ -3,7 +3,8 @@ import React, { useMemo } from 'react';
 import { 
   X, CheckCircle2, AlertCircle, Clock, Link as LinkIcon, 
   Package, ChevronRight, Bell, Calendar, ArrowRight,
-  ClipboardList, Info, ExternalLink
+  ClipboardList, Info, ExternalLink, LogOut, UserCog,
+  ChevronUp, ChevronDown, User
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
@@ -14,8 +15,9 @@ interface TaskDrawerProps {
 }
 
 const TaskDrawer: React.FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
-    const { pos, currentUser, hasPermission, activeSiteIds } = useApp();
+    const { pos, currentUser, hasPermission, activeSiteIds, roles, switchRole, logout } = useApp();
     const navigate = useNavigate();
+    const [isAccountExpanded, setIsAccountExpanded] = React.useState(false);
 
     // --- Task Logic (Extracted from Dashboard) ---
     const pendingApprovals = useMemo(() => pos.filter(p => p.status === 'PENDING_APPROVAL' && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
@@ -182,6 +184,80 @@ const TaskDrawer: React.FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
                                 <p className="text-2xl font-black text-primary dark:text-white">
                                     ${Math.round(pos.filter(p => p.status === 'ACTIVE').reduce((sum, p) => sum + p.totalAmount, 0) / 1000)}k
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* User Account Section (Premium Footer) */}
+                    <div className="space-y-4 pt-4 border-t border-default">
+                        <h3 className="text-xs font-black text-tertiary dark:text-gray-500 uppercase tracking-widest">Account</h3>
+                        
+                        <div className="bg-surface border border-default rounded-3xl overflow-hidden shadow-sm">
+                            <div 
+                                onClick={() => setIsAccountExpanded(!isAccountExpanded)}
+                                className="p-4 flex items-center gap-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group"
+                            >
+                                <div className="relative">
+                                    <img 
+                                        src={currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.name || '')}&background=random&color=fff`} 
+                                        alt="User" 
+                                        className="w-12 h-12 rounded-2xl bg-gray-200 border-2 border-white dark:border-gray-800 shadow-sm"
+                                    />
+                                    <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[var(--color-brand)] text-white rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center">
+                                        {isAccountExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                    </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="font-bold text-primary dark:text-white truncate">{currentUser?.name}</h4>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/10 text-tertiary dark:text-gray-400 border border-default">
+                                            {roles.find(r => r.id === currentUser?.role)?.name || currentUser?.role}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isAccountExpanded ? 'max-h-96 opacity-100 p-4 pt-0 space-y-3' : 'max-h-0 opacity-0'}`}>
+                                <div className="h-px bg-default mx-2 mb-3"></div>
+                                
+                                <button 
+                                    onClick={() => { onClose(); navigate('/settings', { state: { activeTab: 'PROFILE' } }); }}
+                                    className="w-full flex items-center gap-3 p-3 rounded-xl text-xs font-bold text-secondary dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-primary dark:hover:text-white transition-all"
+                                >
+                                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
+                                        <UserCog size={16} />
+                                    </div>
+                                    Edit Profile
+                                </button>
+
+                                {currentUser?.realRole === 'ADMIN' && (
+                                    <div className="space-y-2 p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-default">
+                                        <p className="text-[9px] uppercase font-bold text-tertiary ml-1">Switch View</p>
+                                        <div className="relative">
+                                            <select 
+                                                className="w-full bg-white dark:bg-gray-800 border border-default rounded-lg p-2.5 text-xs font-bold outline-none appearance-none cursor-pointer focus:border-[var(--color-brand)] transition-all pr-8"
+                                                value={currentUser.role}
+                                                onChange={(e) => switchRole(e.target.value as any)}
+                                            >
+                                                <option value="ADMIN">Administrator View</option>
+                                                {roles.filter(r => r.id !== 'ADMIN').map(r => (
+                                                    <option key={r.id} value={r.id}>{r.name} View</option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-tertiary pointer-events-none" />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <button 
+                                    onClick={() => { onClose(); logout(); }}
+                                    className="w-full flex items-center gap-3 p-3 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all border border-transparent hover:border-red-200 dark:hover:border-red-500/30"
+                                >
+                                    <div className="p-2 rounded-lg bg-red-500/10 text-red-500">
+                                        <LogOut size={16} />
+                                    </div>
+                                    Sign Out
+                                </button>
                             </div>
                         </div>
                     </div>
