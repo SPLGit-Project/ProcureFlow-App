@@ -49,6 +49,7 @@ const FinanceView = () => {
                   qty: dLine.quantity,
                   unitPrice: poLine?.unitPrice || 0,
                   totalValue: (poLine?.unitPrice || 0) * dLine.quantity,
+                  freightAmount: dLine.freightAmount || 0,
                   data: dLine 
               };
           });
@@ -59,7 +60,8 @@ const FinanceView = () => {
               docket: del.docketNumber,
               receivedBy: del.receivedBy,
               lines,
-              totalValue: lines.reduce((sum, l) => sum + l.totalValue, 0)
+              totalValue: lines.reduce((sum, l) => sum + l.totalValue, 0),
+              totalFreight: lines.reduce((sum, l) => sum + l.freightAmount, 0)
           };
       });
 
@@ -71,6 +73,7 @@ const FinanceView = () => {
           supplier: po.supplierName,
           requestDate: po.requestDate,
           totalAmount: po.totalAmount, // PO Total
+          totalFreight: deliveries.reduce((sum, d) => sum + d.totalFreight, 0),
           deliveries: deliveries.filter(d => d.lines.length > 0) // Only show deliveries with lines
       };
   }).filter(po => po.deliveries.length > 0); // Only show POs with deliveries
@@ -119,6 +122,11 @@ const FinanceView = () => {
 
   const handleInvoiceChange = (poId: string, deliveryId: string, lineId: string, val: string) => {
       updateFinanceInfo(poId, deliveryId, lineId, { invoiceNumber: val });
+  };
+
+  const handleFreightChange = (poId: string, deliveryId: string, lineId: string, val: string) => {
+      const numericVal = parseFloat(val.replace(/[^0-9.]/g, '')) || 0;
+      updateFinanceInfo(poId, deliveryId, lineId, { freightAmount: numericVal });
   };
 
   return (
@@ -196,9 +204,15 @@ const FinanceView = () => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <div className="font-bold text-gray-900 dark:text-white text-lg">${po.totalAmount.toLocaleString()}</div>
-                                <div className="text-xs text-gray-500">Total PO Value</div>
+                            <div className="text-right flex items-center gap-6">
+                                <div className="text-right">
+                                    <div className="font-bold text-gray-900 dark:text-white text-lg">${po.totalAmount.toLocaleString()}</div>
+                                    <div className="text-xs text-gray-500">Total PO Value</div>
+                                </div>
+                                <div className="text-right px-4 py-1.5 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                                    <div className="font-bold text-blue-700 dark:text-blue-400 text-lg">${po.totalFreight.toLocaleString()}</div>
+                                    <div className="text-xs text-blue-600/70 dark:text-blue-400/70">Total Freight Cost</div>
+                                </div>
                             </div>
                             <div className="ml-4 pl-4 border-l border-gray-200 dark:border-gray-700">
                                 {!fullyCapitalised && (
@@ -246,7 +260,8 @@ const FinanceView = () => {
                                                         <th className="px-4 py-3 font-normal">Item Details</th>
                                                         <th className="px-4 py-3 font-normal text-center w-24">Qty</th>
                                                         <th className="px-4 py-3 font-normal text-right w-32">Value</th>
-                                                        <th className="px-4 py-3 font-normal w-48">Invoice #</th>
+                                                        <th className="px-4 py-3 font-normal w-40">Invoice #</th>
+                                                        <th className="px-4 py-3 font-normal w-40">Freight $</th>
                                                         <th className="px-4 py-3 font-normal w-40 text-center">Capitalisation</th>
                                                         <th className="px-4 py-3 font-normal w-40">Cap Date</th>
                                                     </tr>
@@ -273,6 +288,18 @@ const FinanceView = () => {
                                                                         value={line.data.invoiceNumber || ''}
                                                                         placeholder="INV-..."
                                                                         onChange={(e) => handleInvoiceChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
+                                                                    />
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                <div className="relative">
+                                                                    <DollarSign size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+                                                                    <input 
+                                                                        type="text"
+                                                                        className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 pl-7 text-xs text-gray-900 dark:text-white focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none transition-all placeholder:text-gray-300"
+                                                                        value={line.data.freightAmount || ''}
+                                                                        placeholder="0.00"
+                                                                        onChange={(e) => handleFreightChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
                                                                     />
                                                                 </div>
                                                             </td>
@@ -319,17 +346,32 @@ const FinanceView = () => {
                                                         </div>
 
                                                         <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                            <div>
-                                                                <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Invoice Number</label>
-                                                                <div className="relative">
-                                                                    <FileText size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
-                                                                    <input 
-                                                                        type="text"
-                                                                        className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 pl-7 text-xs text-gray-900 dark:text-white focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none"
-                                                                        value={line.data.invoiceNumber || ''}
-                                                                        placeholder="INV-..."
-                                                                        onChange={(e) => handleInvoiceChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
-                                                                    />
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                <div>
+                                                                    <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Invoice Number</label>
+                                                                    <div className="relative">
+                                                                        <FileText size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+                                                                        <input 
+                                                                            type="text"
+                                                                            className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 pl-7 text-xs text-gray-900 dark:text-white focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none"
+                                                                            value={line.data.invoiceNumber || ''}
+                                                                            placeholder="INV-..."
+                                                                            onChange={(e) => handleInvoiceChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Freight Amount</label>
+                                                                    <div className="relative">
+                                                                        <DollarSign size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+                                                                        <input 
+                                                                            type="text"
+                                                                            className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 pl-7 text-xs text-gray-900 dark:text-white focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none"
+                                                                            value={line.data.freightAmount || ''}
+                                                                            placeholder="0.00"
+                                                                            onChange={(e) => handleFreightChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
+                                                                        />
+                                                                    </div>
                                                                 </div>
                                                             </div>
 

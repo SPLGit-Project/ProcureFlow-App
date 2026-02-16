@@ -539,7 +539,8 @@ export const db = {
                     quantity: dl.quantity,
                     invoiceNumber: dl.invoice_number,
                     isCapitalised: dl.is_capitalised,
-                    capitalisedDate: dl.capitalised_date
+                    capitalisedDate: dl.capitalised_date,
+                    freightAmount: dl.freight_amount
                 }))
             })),
             reasonForRequest: p.reason_for_request,
@@ -764,7 +765,8 @@ export const db = {
         const { error } = await supabase.from('delivery_lines').update({
             invoice_number: updates.invoiceNumber,
             is_capitalised: updates.isCapitalised,
-            capitalised_date: updates.capitalisedDate
+            capitalised_date: updates.capitalisedDate,
+            freight_amount: updates.freightAmount
         }).eq('id', lineId);
         if (error) throw error;
     },

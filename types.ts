@@ -332,6 +332,7 @@ export interface DeliveryLineItem {
   invoiceNumber?: string;
   isCapitalised: boolean;
   capitalisedDate?: string; // Changed from capitalisedMonth to full date
+  freightAmount?: number;
 }
 
 // --- Workflow & Admin Types ---
