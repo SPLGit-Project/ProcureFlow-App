@@ -42,6 +42,7 @@ const AdminAccessHub = () => {
         setIsProcessing(true);
         try {
             const finalSiteIds = grantAllSites ? sites.map(s => s.id) : specificSiteIds;
+            const exists = users.find(u => u.id === selectedUser.id);
             const currentEmail = selectedUser.email;
             const currentName = selectedUser.name;
             const firstSiteId = finalSiteIds[0] || '';
@@ -116,7 +117,7 @@ const AdminAccessHub = () => {
 
             setResendingUserId(user.id);
             try {
-                const inviteSuccess = await resendWelcomeEmail(user.email, user.name, user.site_ids?.[0]);
+                const inviteSuccess = await resendWelcomeEmail(user.email, user.name, user.siteIds?.[0]);
                 if (inviteSuccess) {
                     success(`Invitation sent to ${user.name}`, 4000);
                     await reloadData(); // Refresh to show updated expiry
