@@ -116,7 +116,7 @@ interface AppContextType {
 
   // New Admin Capabilities
   getItemFieldRegistry: () => Promise<any[]>;
-  resendWelcomeEmail: (email: string, name: string) => Promise<boolean>;
+  resendWelcomeEmail: (email: string, name: string, siteId?: string) => Promise<boolean>;
   getDirectoryService: () => Promise<DirectoryService | null>;
 
 
@@ -1138,13 +1138,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const addUser = async (user: User, shouldSendInvite: boolean = false) => {
       const expiry = new Date();
-      expiry.setHours(expiry.getHours() + 48);
+      expiry.setDate(expiry.getDate() + 7); // Aligned to 7 days
       const normalizedEmail = user.email?.toLowerCase();
       let userWithExpiry = { ...user, email: normalizedEmail, invitationExpiresAt: expiry.toISOString() };
       
       if (shouldSendInvite && normalizedEmail) {
           try {
-              const emailSent = await sendWelcomeEmail(normalizedEmail, user.name || 'User');
+              // Pass the user's primary siteId if available
+              const emailSent = await sendWelcomeEmail(normalizedEmail, user.name || 'User', user.siteIds?.[0]);
               if (emailSent) {
                   userWithExpiry = { ...userWithExpiry, invitedAt: new Date().toISOString() };
               }

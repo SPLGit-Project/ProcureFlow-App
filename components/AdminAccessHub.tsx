@@ -42,46 +42,49 @@ const AdminAccessHub = () => {
         setIsProcessing(true);
         try {
             const finalSiteIds = grantAllSites ? sites.map(s => s.id) : specificSiteIds;
-            const exists = users.find(u => u.id === selectedUser.id);
-            
+            const currentEmail = selectedUser.email;
+            const currentName = selectedUser.name;
+            const firstSiteId = finalSiteIds[0] || '';
+
             if (exists) {
-                 const { error } = await supabase.from('users').update({ 
+                 const { error: updateErr } = await supabase.from('users').update({ 
                     status: 'APPROVED',
                     role_id: selectedRole,
                     site_ids: finalSiteIds
                 }).eq('id', selectedUser.id);
-                if (error) throw error;
+                if (updateErr) throw updateErr;
             } else {
-                const { error } = await supabase.from('users').insert([{
+                const { error: insertErr } = await supabase.from('users').insert([{
                     id: selectedUser.id,
-                    email: selectedUser.email,
-                    name: selectedUser.name,
-                    job_title: selectedUser.jobTitle,
-                    department: selectedUser.department,
+                    email: currentEmail,
+                    name: currentName,
+                    job_title: selectedUser.jobTitle || '',
+                    department: selectedUser.department || '',
                     role_id: selectedRole,
                     site_ids: finalSiteIds,
                     status: 'APPROVED',
-                    avatar: selectedUser.avatar
+                    avatar: selectedUser.avatar || ''
                 }]);
-                if (error) throw error;
-                if (error) throw error;
-                const emailSent = await sendWelcomeEmail(selectedUser.email, selectedUser.name);
-                if (!emailSent) {
-                    const fallbackLink = window.location.origin;
-                    if (confirm("Approval processed, but welcome email failed to send (Delegated Graph error). \n\nWould you like to copy the application link to manually send it to the user?")) {
-                        navigator.clipboard.writeText(fallbackLink);
-                        alert("Link copied to clipboard!");
-                    }
+                if (insertErr) throw insertErr;
+            }
+
+            const emailSent = await sendWelcomeEmail(currentEmail, currentName, firstSiteId);
+            
+            if (!emailSent) {
+                const fallbackLink = window.location.origin;
+                if (confirm("Approval processed, but the invitation email could not be sent automatically.\n\nThis is usually due to Azure permission settings for the Application Registration.\n\nWould you like to copy the application link to manually send it to the user?")) {
+                    navigator.clipboard.writeText(fallbackLink);
+                    alert("Link copied to clipboard!");
                 }
             }
 
             await reloadData();
+            console.log(`Auth: Approval processed for ${currentEmail} [Success]`);
             setSelectedUser(null);
-            console.log(`Auth: Approval processed for ${selectedUser.email} [Success]`);
             // alert("Approval processed successfully."); // Removing redundant alert if confirm/clip-copy was used
-        } catch (error) {
-            console.error("Auth: Approval failed", error);
-            alert("Failed to approve user.");
+        } catch (err) {
+            console.error("Auth: Approval failed", err);
+            error("Failed to approve user. Check console for details.");
         } finally {
             setIsProcessing(false);
         }
@@ -107,19 +110,19 @@ const AdminAccessHub = () => {
 
         const handleResendInvite = async () => {
             // Confirmation dialog
-            if (!confirm(`Resend invitation to ${user.name} (${user.email})?\n\nThis will generate a new invitation link valid for 48 hours.`)) {
+            if (!confirm(`Resend invitation to ${user.name} (${user.email})?\n\nThis will generate a new invitation link valid for 7 days.`)) {
                 return;
             }
 
             setResendingUserId(user.id);
             try {
-                const inviteSuccess = await resendWelcomeEmail(user.email, user.name);
+                const inviteSuccess = await resendWelcomeEmail(user.email, user.name, user.site_ids?.[0]);
                 if (inviteSuccess) {
                     success(`Invitation sent to ${user.name}`, 4000);
                     await reloadData(); // Refresh to show updated expiry
                 } else {
                     const fallbackLink = window.location.origin;
-                    if (confirm("Email failed to send (Delegated Graph error). \n\nWould you like to copy the application link to manually send it to the user?")) {
+                    if (confirm("Email failed to send. This may be due to Azure Application permissions.\n\nWould you like to copy the application link to manually send it to the user?")) {
                         navigator.clipboard.writeText(fallbackLink);
                         alert("Link copied to clipboard!");
                     } else {

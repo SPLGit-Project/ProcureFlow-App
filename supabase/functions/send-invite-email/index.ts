@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const VERSION = "1.0.3";
+const VERSION = "1.0.4";
 
 console.log(`send-invite-email function v${VERSION} initialized.`);
 
@@ -110,8 +110,8 @@ Deno.serve(async (req) => {
     const clientSecret = Deno.env.get('AZURE_CLIENT_SECRET')
     const systemSender = Deno.env.get('SYSTEM_SENDER_EMAIL')
 
-    // Determine actual sender
-    const senderToUse = from_email || systemSender;
+    // SEAMLESS REFINEMENT: Prioritize system sender for delivery reliability
+    const senderToUse = systemSender || from_email;
 
     if (!tenantId || !clientId || !clientSecret || !senderToUse) {
       throw new Error("Email service misconfigured: Missing Azure secrets or sender email.");

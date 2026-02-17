@@ -20,7 +20,7 @@ Two core Edge Functions drive this module:
     *   **Purpose**: Generates and sends a secure invitation link via email.
     *   **Mechanism**: Uses Microsoft Graph API (`/sendMail`) to send emails on behalf of the system or a specific user.
     *   **Token Generation**: Creates a cryptographically unique token, hashes it, and stores it in the `invites` table with an expiration (7 days).
-    *   **Version**: 1.0.3 (supports dynamic sender personalization).
+    *   **Version**: 1.0.4 (supports dynamic sender personalization and site name placeholders).
 
 ### 2.2 Database Schema
 *   **`users` table**: Stores detailed profile info (synced from AD + local overrides).
