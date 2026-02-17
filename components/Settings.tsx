@@ -192,16 +192,23 @@ const Settings = () => {
        alert("Email template saved!");
   };
 
-  const handleTestEmail = async () => {
-      const email = prompt("Enter email to send test to:", currentUser?.email);
-      if (email) {
-         if (await sendWelcomeEmail(email, "Test User")) {
-             alert(`Test email sent to ${email}`);
-         } else {
-             alert("Failed to send test email. Check console/network.");
-         }
-      }
-  };
+   const handleTestEmail = async () => {
+       const email = prompt("Enter email to send test to:", currentUser?.email);
+       if (email) {
+          success(`Initiating test email to ${email}...`);
+          try {
+              const success_sent = await sendWelcomeEmail(email, "Test User");
+              if (success_sent) {
+                  success(`Test email sent successfully to ${email}. Please check your inbox (and spam folder).`);
+              } else {
+                  error("The email function failed to deliver. This is usually due to Azure App Registration permissions or an invalid Sender Email.");
+              }
+          } catch (e: any) {
+              console.error("Test email failed:", e);
+              error(`Test failed: ${e.message || 'Unknown error'}`);
+          }
+       }
+   };
 
   // --- Workflow Configurations State ---
   const [workflowConfigs, setWorkflowConfigs] = useState<any[]>([
@@ -1141,10 +1148,10 @@ if __name__ == "__main__":
         // RPC returns display_name, email, job_title, department
         const directoryMatches = (results || []).map((du: any) => ({
             id: du.id,
-            name: du.display_name || 'New User',
+            name: du.name || du.display_name || du.email.split('@')[0], // Fallback to email prefix
             email: du.email,
-            jobTitle: du.job_title,
-            department: du.department,
+            jobTitle: du.jobTitle || du.job_title,
+            department: du.department || du.office_location,
             isExisting: false
         })).filter((du: any) => 
             !users.some(u => u.id === du.id || (u.email && du.email && u.email.toLowerCase() === du.email.toLowerCase()))
@@ -2633,7 +2640,7 @@ if __name__ == "__main__":
                                                       <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-white dark:border-[#1e2029] ${user.status === 'APPROVED' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'}`}></div>
                                                   </div>
                                                   <div className="flex-1 min-w-0">
-                                                     <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight leading-none mb-1">{user.name || 'Unknown User'}</div>
+                                                     <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight leading-none mb-1">{user.name || (user.email ? user.email.split('@')[0] : 'Unknown User')}</div>
                                                      <div className="text-xs text-gray-500 font-medium">{user.email || 'No Email'}</div>
                                                       <div className="flex flex-wrap gap-1 mt-2">
                                                         <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>{user.role}</span>
@@ -3215,7 +3222,7 @@ if __name__ == "__main__":
         .btn-primary { @apply bg-[var(--color-brand)] text-white px-4 py-2.5 rounded-xl hover:opacity-90 transition-opacity font-bold shadow-lg shadow-[var(--color-brand)]/20 active:scale-95; }
         .btn-secondary { @apply px-4 py-2.5 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors; }
         .table-header { @apply bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800; }
-        .table-row { @apply hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors border-b border-gray-100 dark:border-gray-800 last:border-0; }
+        .table-row { @apply hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors border-b border-100 dark:border-gray-800 last:border-0; }
         .badge { @apply inline-block bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300 text-xs px-2.5 py-1 rounded-full font-medium border border-gray-200 dark:border-gray-700; }
         .icon-btn-blue { @apply p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors; }
         .icon-btn-red { @apply p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors; }
@@ -3306,16 +3313,33 @@ if __name__ == "__main__":
                       </div>
 
                       <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 space-y-6">
-                           <div>
-                               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Sender Email (From)</label>
-                               <input 
-                                  className="input-field w-full font-medium"
-                                  value={senderEmail}
-                                  onChange={(e) => setSenderEmail(e.target.value)}
-                                  placeholder="admin@splservices.com.au"
-                               />
-                               <p className="text-xs text-gray-500 mt-1">If blank, invites will come from the person sending them.</p>
-                           </div>
+                            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800 rounded-xl p-4 mb-6">
+                                <div className="flex gap-3">
+                                    <Info className="text-amber-600 shrink-0" size={18} />
+                                    <div className="space-y-1">
+                                        <h4 className="text-sm font-bold text-amber-900 dark:text-amber-400">Email Delivery Logic</h4>
+                                        <p className="text-xs text-amber-800/80 dark:text-amber-500/80 leading-relaxed">
+                                            Emails are sent via the <strong>Microsoft Graph API</strong>. For maximum reliability, ensure the <code>SYSTEM_SENDER_EMAIL</code> secret is configured in Supabase to a valid mailbox that the Azure App Registration has <code>Mail.Send</code> permissions for.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                    <Mail size={16} className="text-gray-400"/> Sender Email (From)
+                                </label>
+                                <input 
+                                   className="input-field w-full font-medium"
+                                   value={senderEmail}
+                                   onChange={(e) => setSenderEmail(e.target.value)}
+                                   placeholder="admin@splservices.com.au"
+                                />
+                                <p className="text-xs text-gray-500 mt-2 flex items-start gap-1">
+                                    <AlertCircle size={12} className="mt-0.5 shrink-0"/>
+                                    <span>If blank, the system will attempt to use the <code>SYSTEM_SENDER_EMAIL</code> environment secret. Ensure this email has an active M365 license.</span>
+                                </p>
+                            </div>
                            <div>
                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Email Subject</label>
                                <input 
