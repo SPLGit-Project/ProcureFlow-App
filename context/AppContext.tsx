@@ -1945,16 +1945,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     searchDirectory: async (query: string, siteIdOverride?: string) => {
         // Updated to use DirectoryService (Edge Function)
         const activeSiteId = activeSiteIds[0];
-        // Logic: Search should be scoped to current context.
-        // If an override is provided (e.g. from Invite Modal), use it.
-        // Otherwise fall back to active site or user's first site.
-        const siteId = siteIdOverride || activeSiteId || currentUser?.siteIds?.[0];
+        // Logic: Search should be scoped to current context if possible.
+        const siteId = siteIdOverride || activeSiteId || currentUser?.siteIds?.[0] || 'global';
         
-        if (!siteId) {
-            console.warn("[Directory] No Site ID available for search.");
-            return [];
-        }
-
         const svc = new DirectoryService(supabase);
         return await svc.searchDirectory(query, siteId);
     },

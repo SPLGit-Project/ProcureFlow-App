@@ -235,12 +235,13 @@ const AdminAccessHub = () => {
                 console.log(`UI: Triggering directory search for "${dirQuery}"...`);
                 setIsSearching(true);
                 const results = await searchDirectory(dirQuery);
-                // Map the results to match local expectations (name, jobTitle, department)
+                // Map the results to match local expectations (handle both camelCase and snake_case)
                 const mappedResults = (results || []).map((res: any) => ({
-                    ...res,
-                    name: res.display_name,
-                    jobTitle: res.job_title,
-                    department: res.department
+                    id: res.id,
+                    name: res.name || res.display_name || 'Unknown',
+                    email: res.email,
+                    jobTitle: res.jobTitle || res.job_title || 'General',
+                    department: res.department || 'General'
                 }));
                 setDirResults(mappedResults);
                 setIsSearching(false);
