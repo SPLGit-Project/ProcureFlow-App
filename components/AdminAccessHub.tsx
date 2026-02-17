@@ -238,7 +238,7 @@ const AdminAccessHub = () => {
                 // Map the results to match local expectations (handle both camelCase and snake_case)
                 const mappedResults = (results || []).map((res: any) => ({
                     id: res.id,
-                    name: res.name || res.display_name || 'Unknown',
+                    name: res.name || res.display_name || res.email?.split('@')[0] || 'Unknown',
                     email: res.email,
                     jobTitle: res.jobTitle || res.job_title || 'General',
                     department: res.department || 'General'
