@@ -192,7 +192,40 @@ const Settings = () => {
        alert("Email template saved!");
   };
 
-   const handleTestEmail = async () => {
+    const handleCheckAzureConnection = async () => {
+        success("Checking Azure App Registration permissions...");
+        try {
+            const { data, error: funcError } = await supabase.functions.invoke('check-azure-perms');
+            if (funcError) throw funcError;
+
+            if (data.success) {
+                const report = data.report;
+                const permissions = report.permissions_detected;
+                const mailbox = report.mailbox_validation;
+
+                if (report.verdict.startsWith("ALL CLEAR")) {
+                    success(`Azure Connection Verified! Sender ${report.configuration.systemSender} is ready.`);
+                } else {
+                    if (!permissions.can_send_mail) {
+                        error("Missing Mail.Send permission in Azure App Registration.");
+                    }
+                    if (mailbox.status.includes("ERROR")) {
+                        error(`Mailbox Error: ${mailbox.status}`);
+                    } else {
+                        warning(report.verdict);
+                    }
+                    console.warn("Azure Diagnostic Report:", report);
+                }
+            } else {
+                error(`Diagnostic failed: ${data.error || 'Unknown error'}`);
+            }
+        } catch (e: any) {
+            console.error("Azure check failed:", e);
+            error(`Connection check failed: ${e.message || 'Check Supabase logs'}`);
+        }
+    };
+
+    const handleTestEmail = async () => {
        const email = prompt("Enter email to send test to:", currentUser?.email);
        if (email) {
           success(`Initiating test email to ${email}...`);
@@ -3302,10 +3335,13 @@ if __name__ == "__main__":
                               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Email Templates</h2>
                               <p className="text-sm text-gray-500">Customize the welcome email sent to new users.</p>
                           </div>
-                          <div className="flex gap-3">
-                              <button onClick={handleTestEmail} className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 font-medium transition-colors">
-                                  Send Test Email
-                              </button>
+                           <div className="flex gap-3">
+                               <button onClick={handleCheckAzureConnection} className="px-4 py-2 bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 font-medium transition-colors flex items-center gap-2">
+                                   <Zap size={18} /> Check Azure Connection
+                               </button>
+                               <button onClick={handleTestEmail} className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 font-medium transition-colors">
+                                   Send Test Email
+                               </button>
                               <button onClick={handleSaveEmailTemplate} className="px-4 py-2 bg-[var(--color-brand)] text-white rounded-lg hover:opacity-90 font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2">
                                   <Save size={18} /> Save Changes
                               </button>
