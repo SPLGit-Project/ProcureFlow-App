@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 }
 
-const VERSION = "1.0.7";
+const VERSION = "1.0.8";
 
 console.log(`send-invite-email function v${VERSION} initialized.`);
 
@@ -49,21 +49,27 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader || '' } } }
     )
 
+    // Privileged client for DB checks & writes (Bypass RLS)
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
     // Parse Body
     const body = await req.json();
     const { email, from_email, site_id, invited_by_name, subject, html } = body;
 
     if (!email) throw new Error("Target email is required");
 
-    // 1. Verify Caller
+    // 1. Verify Caller Identity (must utilize the Auth Header)
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
       console.error("Auth verify failed:", authError);
       throw new Error("Could not verify your identity. Please log in again.");
     }
 
-    // 2. Check Permissions
-    const { data: dbUser, error: dbUserError } = await supabaseClient
+    // 2. Check Permissions (Use Admin Client to ensure we can read the user role)
+    const { data: dbUser, error: dbUserError } = await supabaseAdmin
       .from('users')
       .select('id, role_id, site_ids')
       .eq('auth_user_id', user.id)
@@ -78,13 +84,13 @@ Deno.serve(async (req) => {
       throw new Error("Insufficient permissions to send invitations.");
     }
 
-    // 3. Invite Tracking
+    // 3. Invite Tracking (Use Admin Client to ensure write succeeds)
     const token = crypto.randomUUID()
     const msgBuffer = new TextEncoder().encode(token);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
     const tokenHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    const { error: inviteError } = await supabaseClient
+    const { error: inviteError } = await supabaseAdmin
       .from('invites')
       .insert({
         email,
