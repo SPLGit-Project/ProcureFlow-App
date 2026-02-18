@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { WorkflowConfiguration, WorkflowType, RoleDefinition, User, WorkflowPreviewData } from '../types';
+import { WorkflowConfiguration, WorkflowType, RoleDefinition, User, WorkflowPreviewData } from '../types.ts';
 import { 
     CheckCircle, Bell, Truck, DollarSign, Mail, Save, Eye, Send,
     ChevronDown, ChevronUp, User as UserIcon, Shield, Zap, X, Plus, Check
@@ -51,14 +51,14 @@ const WORKFLOW_METADATA: Record<WorkflowType, {
     }
 };
 
-const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
+const SimpleWorkflowConfig = ({
     workflows,
     roles,
     users,
     appName,
     onSave,
     onTest
-}) => {
+}: SimpleWorkflowConfigProps) => {
     const [localWorkflows, setLocalWorkflows] = useState<WorkflowConfiguration[]>(workflows);
     const [expandedWorkflow, setExpandedWorkflow] = useState<WorkflowType | null>(null);
     const [previewModal, setPreviewModal] = useState<{ open: boolean; workflow: WorkflowConfiguration | null }>({ 
@@ -124,10 +124,10 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
             app_logo: '',
             organization_name: appName,
             current_year: new Date().getFullYear().toString(),
-            action_link: `${window.location.origin}/requests?id=sample`,
+            action_link: `${globalThis.location.origin}/requests?id=sample`,
             action_text: 'Take Action',
-            approval_link: `${window.location.origin}/requests?id=sample`,
-            po_link: `${window.location.origin}/requests?id=sample`,
+            approval_link: `${globalThis.location.origin}/requests?id=sample`,
+            po_link: `${globalThis.location.origin}/requests?id=sample`,
             reason_for_request: 'Stock replenishment for Q1 2024'
         };
     };
@@ -158,7 +158,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
         updateWorkflow(workflow.workflowType, { recipientIds: newIds });
     };
 
-    const getRecipientLabel = (workflow: WorkflowConfiguration): string => {
+    const _getRecipientLabel = (workflow: WorkflowConfiguration): string => {
         const ids = workflow.recipientIds || [];
         if (ids.length === 0) return 'Select recipients...';
         
@@ -196,6 +196,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                         </span>
                     )}
                     <button
+                        type="button"
                         onClick={handleSave}
                         disabled={isSaving || (!isDirty && !isSaving)}
                         className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-all disabled:cursor-not-allowed ${
@@ -275,6 +276,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                         {/* Recipient Type Selection */}
                                         <div className="grid grid-cols-3 gap-3 mb-4">
                                             <button
+                                                type="button"
                                                 className={`p-3 rounded-lg border-2 flex items-center gap-2 ${
                                                     workflow.recipientType === 'ROLE' 
                                                         ? 'border-blue-500 bg-blue-50' 
@@ -286,6 +288,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                                 Role
                                             </button>
                                             <button
+                                                type="button"
                                                 className={`p-3 rounded-lg border-2 flex items-center gap-2 ${
                                                     workflow.recipientType === 'USER' 
                                                         ? 'border-blue-500 bg-blue-50' 
@@ -297,6 +300,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                                 Specific User(s)
                                             </button>
                                             <button
+                                                type="button"
                                                 className={`p-3 rounded-lg border-2 flex items-center gap-2 ${
                                                     workflow.recipientType === 'REQUESTER' 
                                                         ? 'border-blue-500 bg-blue-50' 
@@ -435,6 +439,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                                 </div>
 
                                                 <button
+                                                    type="button"
                                                     onClick={() => setPreviewModal({ open: true, workflow })}
                                                     className="flex items-center gap-2 px-4 py-2 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50"
                                                 >
@@ -488,6 +493,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                                     {/* Test Button */}
                                     <div className="border-t-2 pt-6">
                                         <button
+                                            type="button"
                                             onClick={() => handleTest(workflow)}
                                             className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-primary dark:text-gray-900 rounded-lg hover:bg-gray-300"
                                         >
@@ -509,6 +515,7 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                         <div className="p-6 border-b flex items-center justify-between">
                             <h3 className="text-xl font-bold">Email Preview</h3>
                             <button
+                                type="button"
                                 onClick={() => setPreviewModal({ open: false, workflow: null })}
                                 className="p-2 hover:bg-gray-100 rounded-lg"
                             >

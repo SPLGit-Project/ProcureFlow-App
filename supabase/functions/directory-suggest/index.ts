@@ -1,5 +1,5 @@
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.1'
+import { createClient } from "@supabase/supabase-js"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -72,9 +72,19 @@ Deno.serve(async (req) => {
     }
 
     const { value: users } = await graphResp.json()
+    
+    interface GraphUser {
+      id: string;
+      displayName: string;
+      mail?: string;
+      userPrincipalName: string;
+      jobTitle?: string;
+      department?: string;
+      officeLocation?: string;
+    }
 
     // 4. Map to Application User Format
-    const results = users.map((u: any) => ({
+    const results = users.map((u: GraphUser) => ({
       id: u.id,
       name: u.displayName,
       email: u.mail || u.userPrincipalName,
@@ -87,8 +97,9 @@ Deno.serve(async (req) => {
     })
 
   } catch (error) {
-    console.error("Directory Suggest Error:", error.message)
-    return new Response(JSON.stringify({ error: error.message }), {
+    const err = error as Error;
+    console.error("Directory Suggest Error:", err.message)
+    return new Response(JSON.stringify({ error: err.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
     })

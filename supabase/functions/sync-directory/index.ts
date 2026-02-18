@@ -1,5 +1,5 @@
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.1'
+import { createClient } from "@supabase/supabase-js"
 
 console.log("sync-directory function initialized.")
 
@@ -67,8 +67,18 @@ Deno.serve(async (req) => {
     const { value: users } = await graphResp.json()
     console.log(`[sync-directory] Successfully fetched ${users.length} users.`);
 
+    interface GraphUser {
+      id: string;
+      displayName: string;
+      mail?: string;
+      userPrincipalName: string;
+      jobTitle?: string;
+      department?: string;
+      officeLocation?: string;
+    }
+
     // 4. Transform & Upsert
-    const updates = users.map((u: any) => {
+    const updates = users.map((u: GraphUser) => {
         const email = u.mail || u.userPrincipalName
         const displayName = u.displayName || 'Unknown'
         const searchText = `${displayName.toLowerCase()} ${email.toLowerCase()} ${u.jobTitle?.toLowerCase() || ''}`
@@ -102,8 +112,9 @@ Deno.serve(async (req) => {
     })
 
   } catch (error) {
-    console.error("[sync-directory] Error:", error.message)
-    return new Response(JSON.stringify({ error: error.message }), { 
+    const err = error as Error;
+    console.error("[sync-directory] Error:", err.message)
+    return new Response(JSON.stringify({ error: err.message }), { 
         status: 500,
         headers: { 'Content-Type': 'application/json' }
     })

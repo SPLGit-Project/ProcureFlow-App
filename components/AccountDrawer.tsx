@@ -1,10 +1,11 @@
 
 import React from 'react';
 import { 
-  X, LogOut, UserCog, ChevronDown, ChevronUp, User, 
-  Settings, Shield, ExternalLink, Globe, Bell, ChevronRight
+  X, LogOut, UserCog, ChevronDown, 
+  Settings, Shield, Globe, ChevronRight
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { UserRole } from '../types.ts';
+import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 
 interface AccountDrawerProps {
@@ -12,7 +13,7 @@ interface AccountDrawerProps {
     onClose: () => void;
 }
 
-const AccountDrawer: React.FC<AccountDrawerProps> = ({ isOpen, onClose }) => {
+const AccountDrawer = ({ isOpen, onClose }: AccountDrawerProps) => {
     const { currentUser, roles, switchRole, logout } = useApp();
     const navigate = useNavigate();
     const [isRoleSwitcherExpanded, setIsRoleSwitcherExpanded] = React.useState(false);
@@ -34,6 +35,7 @@ const AccountDrawer: React.FC<AccountDrawerProps> = ({ isOpen, onClose }) => {
                 <div className="p-6 border-b border-default bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">
                     <h2 className="text-xl font-bold text-primary dark:text-white">Account Settings</h2>
                     <button 
+                        type="button"
                         onClick={onClose}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors text-tertiary"
                     >
@@ -70,6 +72,7 @@ const AccountDrawer: React.FC<AccountDrawerProps> = ({ isOpen, onClose }) => {
                         <p className="text-[10px] font-black text-tertiary dark:text-gray-500 uppercase tracking-widest pl-1 mb-3">Preferences</p>
                         
                         <button 
+                            type="button"
                             onClick={() => { onClose(); navigate('/settings', { state: { activeTab: 'PROFILE' } }); }}
                             className="w-full flex items-center gap-4 p-4 rounded-2xl bg-surface border border-default hover:border-[var(--color-brand)]/30 hover:shadow-md transition-all group"
                         >
@@ -84,6 +87,7 @@ const AccountDrawer: React.FC<AccountDrawerProps> = ({ isOpen, onClose }) => {
                         </button>
 
                         <button 
+                            type="button"
                             onClick={() => { onClose(); navigate('/settings'); }}
                             className="w-full flex items-center gap-4 p-4 rounded-2xl bg-surface border border-default hover:border-[var(--color-brand)]/30 hover:shadow-md transition-all group"
                         >
@@ -102,6 +106,7 @@ const AccountDrawer: React.FC<AccountDrawerProps> = ({ isOpen, onClose }) => {
                     {currentUser?.realRole === 'ADMIN' && (
                         <div className="bg-gray-50 dark:bg-white/5 border border-default rounded-3xl overflow-hidden transition-all">
                             <button 
+                                type="button"
                                 onClick={() => setIsRoleSwitcherExpanded(!isRoleSwitcherExpanded)}
                                 className="w-full p-4 flex items-center justify-between text-left group"
                             >
@@ -128,7 +133,7 @@ const AccountDrawer: React.FC<AccountDrawerProps> = ({ isOpen, onClose }) => {
                                             name="role" 
                                             value={r.id} 
                                             checked={currentUser.role === r.id}
-                                            onChange={() => switchRole(r.id as any)}
+                                            onChange={() => switchRole(r.id as UserRole)}
                                             className="hidden"
                                         />
                                         <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${currentUser.role === r.id ? 'border-[var(--color-brand)]' : 'border-gray-300'}`}>
@@ -146,6 +151,7 @@ const AccountDrawer: React.FC<AccountDrawerProps> = ({ isOpen, onClose }) => {
                 {/* Footer */}
                 <div className="p-6 border-t border-default bg-gray-50/50 dark:bg-white/5 mt-auto">
                     <button 
+                        type="button"
                         onClick={() => { onClose(); logout(); }}
                         className="w-full flex items-center justify-center gap-3 py-4 bg-red-500/10 text-red-500 dark:bg-red-500/5 dark:text-red-400 border border-red-500/20 dark:border-red-500/10 rounded-2xl font-black hover:bg-red-500 hover:text-white dark:hover:bg-red-500 dark:hover:text-white hover:shadow-lg hover:shadow-red-500/20 active:scale-[0.98] transition-all text-sm group"
                     >

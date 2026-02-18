@@ -1,11 +1,11 @@
 
 import React from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock } from 'lucide-react';
+import { Shield } from 'lucide-react';
 
 const Login = () => {
-  const { login, bypassAuth, isAuthenticated, branding, isLoadingAuth } = useApp();
+  const { login, isAuthenticated, branding, isLoadingAuth } = useApp();
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -32,6 +32,7 @@ const Login = () => {
 
            <div className="space-y-4">
                <button 
+                type="button"
                 onClick={login}
                 disabled={isLoadingAuth}
                 className="w-full flex items-center justify-center gap-3 bg-[#2f2f2f] hover:bg-[#1f1f1f] text-white p-3 rounded-none border border-transparent transition-all shadow-md group relative overflow-hidden"

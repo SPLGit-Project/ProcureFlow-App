@@ -1,36 +1,36 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { AttributeOption, AttributeType } from '../types';
+import { AttributeOption, AttributeType, Item } from '../types.ts';
 import { 
     Plus, Edit2, Trash2, FolderTree, Tag, Layers, 
-    BookOpen, Scale, AlertTriangle, Save, X, 
+    BookOpen, Save, X, 
     Network, List as ListIcon, ChevronRight, Check,
-    Search, Filter, ArrowRightLeft, Maximize2, Minimize2,
-    Move, MousePointer2, ChevronsUp, ChevronsDown
+    Search, ArrowRightLeft, Maximize2, Minimize2,
+    ChevronsUp, ChevronsDown, MousePointer2 as _MousePointer2
 } from 'lucide-react';
-import { useToast } from './ToastNotification';
+import { useToast } from './ToastNotification.tsx';
 
 interface CatalogManagementProps {
     options: AttributeOption[];
-    items?: any[]; // Allow passing items for counts
+    items?: Item[]; // Allow passing items for counts
     upsertOption: (option: Partial<AttributeOption>) => Promise<void>;
     deleteOption: (id: string) => Promise<void>;
 }
 
 // Grouping related attributes for better UX
-const GROUPED_TABS: { id: string, label: string, icon: any, types: AttributeType[] }[] = [
+const GROUPED_TABS: { id: string, label: string, icon: typeof Network, types: AttributeType[] }[] = [
     { id: 'TAXONOMY', label: 'Taxonomy', icon: Network, types: ['CATEGORY', 'SUB_CATEGORY', 'TYPE', 'CATALOG', 'POOL'] },
     { id: 'ATTRIBUTES', label: 'Attributes', icon: Tag, types: ['UOM'] },
 ];
 
 type ViewMode = 'LIST' | 'TAXONOMY' | 'MIND_MAP';
 
-const CatalogManagement: React.FC<CatalogManagementProps> = ({ 
+const CatalogManagement = ({ 
     options = [], 
     items = [],
     upsertOption, 
     deleteOption 
-}) => {
+}: CatalogManagementProps) => {
     const safeOptions = Array.isArray(options) ? options : [];
     const { success, error } = useToast();
     const [activeTabId, setActiveTabId] = useState('TAXONOMY');
@@ -193,21 +193,21 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
 
             success(`${selectedType} saved successfully`);
             setIsModalOpen(false);
-        } catch (err: any) {
-            error('Failed to save: ' + err.message);
+        } catch (err: unknown) {
+            error('Failed to save: ' + (err as Error).message);
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (window.confirm('Are you sure you want to delete this option?')) {
+        if (globalThis.confirm('Are you sure you want to delete this option?')) {
             try {
                 await deleteOption(id);
                 success('Option deleted successfully');
                 if (selectedParentId === id) setSelectedParentId(null);
-            } catch (err: any) {
-                error('Failed to delete: ' + err.message);
+            } catch (err: unknown) {
+                error('Failed to delete: ' + (err as Error).message);
             }
         }
     };
@@ -229,7 +229,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     };
 
     // Sub-Categories for selected parent
-    const associatedSubCategories = useMemo(() => {
+    const _associatedSubCategories = useMemo(() => {
         if (!selectedParentId) return [];
         return allSubCategories.filter(s => s.parentIds?.includes(selectedParentId) || s.parentId === selectedParentId);
     }, [selectedParentId, allSubCategories]);
@@ -258,10 +258,10 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         const types = safeOptions.filter(o => o.type === 'TYPE');
         const categories = safeOptions.filter(o => o.type === 'CATEGORY');
         const subCategories = safeOptions.filter(o => o.type === 'SUB_CATEGORY');
-        const uoms = safeOptions.filter(o => o.type === 'UOM');
+        const _uoms = safeOptions.filter(o => o.type === 'UOM');
 
-        const nodes: any[] = [];
-        const links: any[] = [];
+        const nodes: { id: string; type: string; label: string; x: number; y: number; itemCount: number; width: number; height: number; original?: AttributeOption }[] = [];
+        const links: { source: string; target: string }[] = [];
 
         // Layout Config
         const LEVEL_WIDTH = 300;
@@ -286,10 +286,10 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         const buildLevel = (
             options: AttributeOption[], 
             levelIndex: number, 
-            prevLevelNodes: any[],
+            prevLevelNodes: { id: string; y: number; height: number }[],
             getParents: (opt: AttributeOption) => string[]
         ) => {
-            const myNodes: any[] = [];
+            const myNodes: typeof nodes = [];
             // Sort to cluster by parent for better aesthetics
             const sorted = [...options].sort((a, b) => {
                 const pA = getParents(a)[0] || '';
@@ -326,7 +326,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                 }
 
                 // Attempt to place near parent average
-                const myParents = getParents(opt);
+                const _myParents = getParents(opt);
                 
                 // If we aren't strict stacking, we could try to use parent average Y
                 // But strict stacking prevents overlap. Let's stick to strict flow for now to prevent collisions, 
@@ -349,7 +349,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                 const pIds = getParents(opt);
                 if (pIds.length > 0) {
                     pIds.forEach(pid => {
-                         const parentExists = nodes.find(n => n.id === pid);
+                         const _parentExists = nodes.find(n => n.id === pid);
                          // Only draw link if parent node is actually in our visual subset
                          const isParentVisible = prevLevelNodes.some(n => n.id === pid);
                          if (isParentVisible) {
@@ -364,12 +364,12 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             return myNodes; // Return these nodes for next level
         };
 
-        const poolNodes = buildLevel(pools, 1, [], o => []);
+        const _poolNodes = buildLevel(pools, 1, [], _o => []);
         
         // Filter children based on expanded parents
         // Key Fix: Filter active nodes based on ALL expanded parents to support multi-parent logic visually
         const activeCatalogs = catalogs.filter(c => (c.parentIds || []).some(pid => expandedNodeIds.includes(pid)) || (c.parentId && expandedNodeIds.includes(c.parentId)));
-        const catalogNodes = buildLevel(activeCatalogs, 2, poolNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
+        const catalogNodes = buildLevel(activeCatalogs, 2, _poolNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
         
         const activeTypes = types.filter(t => (t.parentIds || []).some(pid => expandedNodeIds.includes(pid)) || (t.parentId && expandedNodeIds.includes(t.parentId)));
         const typeNodes = buildLevel(activeTypes, 3, catalogNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
@@ -378,12 +378,12 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         const categoryNodes = buildLevel(activeCategories, 4, typeNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
         
         const activeSubCategories = subCategories.filter(s => (s.parentIds || []).some(pid => expandedNodeIds.includes(pid)) || (s.parentId && expandedNodeIds.includes(s.parentId)));
-        const subCategoryNodes = buildLevel(activeSubCategories, 5, categoryNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
+        const _subCategoryNodes = buildLevel(activeSubCategories, 5, categoryNodes, o => (o.parentIds && o.parentIds.length > 0) ? o.parentIds : (o.parentId ? [o.parentId] : []));
 
         // Center Root vertically based on pools
-        if (poolNodes.length > 0) {
-            const minY = Math.min(...poolNodes.map(n => n.y));
-            const maxY = Math.max(...poolNodes.map(n => n.y));
+        if (_poolNodes.length > 0) {
+            const minY = Math.min(..._poolNodes.map(n => n.y));
+            const maxY = Math.max(..._poolNodes.map(n => n.y));
             rootNode.y = (minY + maxY) / 2;
         }
 
@@ -417,9 +417,9 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     };
 
     // Calculate node Y position based on parents to reduce crossing
-    const calculateSmartY = (
+    const _calculateSmartY = (
         nodeParents: string[], 
-        prevLevelNodes: any[], 
+        prevLevelNodes: { id: string; y: number }[], 
         defaultY: number
     ) => {
         const connectedParents = prevLevelNodes.filter(p => nodeParents.includes(p.id));
@@ -440,6 +440,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                         const isActive = activeTabId === tab.id;
                         return (
                             <button
+                                type="button"
                                 key={tab.id}
                                 onClick={() => {
                                     setActiveTabId(tab.id);
@@ -461,6 +462,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
 
                 <div className="flex items-center bg-gray-100 dark:bg-gray-800/50 p-1.5 rounded-2xl border border-gray-200 dark:border-gray-700">
                     <button 
+                        type="button"
                         onClick={() => setViewMode(activeTabId === 'TAXONOMY' ? 'TAXONOMY' : 'LIST')}
                         className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                             viewMode !== 'MIND_MAP' 
@@ -472,6 +474,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                         <span>{activeTabId === 'TAXONOMY' ? 'Hierarchy Tree' : 'List View'}</span>
                     </button>
                     <button 
+                        type="button"
                         onClick={() => setViewMode('MIND_MAP')}
                         className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                             viewMode === 'MIND_MAP' 
@@ -500,9 +503,13 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                 )}
                                 <div className="flex items-center gap-1">
                                     {!minimizedColumns['POOL'] && (
-                                        <button onClick={() => handleOpenModal(undefined, 'POOL')} className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg hover:bg-blue-200"><Plus size={14} /></button>
+                                    <button 
+                                        type="button"
+                                        onClick={() => handleOpenModal(undefined, 'POOL')} className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg hover:bg-blue-200"><Plus size={14} /></button>
                                     )}
-                                    <button onClick={() => toggleMinimize('POOL')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                    <button 
+                                        type="button"
+                                        onClick={() => toggleMinimize('POOL')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                                         {minimizedColumns['POOL'] ? <Maximize2 size={14} className="mx-auto" /> : <Minimize2 size={14} />}
                                     </button>
                                 </div>
@@ -538,8 +545,8 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                             <div className="flex items-center gap-2">
                                                 {selectedPoolId === pool.id && <ChevronRight size={14} />}
                                                 <div className={`flex gap-1 ${selectedPoolId === pool.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleOpenModal(pool); }} className={`p-1 ${selectedPoolId === pool.id ? 'hover:text-blue-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(pool.id); }} className={`p-1 ${selectedPoolId === pool.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleOpenModal(pool); }} className={`p-1 ${selectedPoolId === pool.id ? 'hover:text-blue-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(pool.id); }} className={`p-1 ${selectedPoolId === pool.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -559,9 +566,9 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                     )}
                                     <div className="flex items-center gap-1">
                                         {!minimizedColumns['CATALOG'] && (
-                                            <button onClick={() => handleOpenModal(undefined, 'CATALOG')} className="p-1.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-lg hover:bg-emerald-200"><Plus size={14} /></button>
+                                            <button type="button" onClick={() => handleOpenModal(undefined, 'CATALOG')} className="p-1.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-lg hover:bg-emerald-200"><Plus size={14} /></button>
                                         )}
-                                        <button onClick={() => toggleMinimize('CATALOG')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                        <button type="button" onClick={() => toggleMinimize('CATALOG')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                                             {minimizedColumns['CATALOG'] ? <Maximize2 size={14} className="mx-auto" /> : <Minimize2 size={14} />}
                                         </button>
                                     </div>
@@ -592,8 +599,8 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                     <div className="flex items-center gap-2">
                                                         {selectedCatalogId === cat.id && <ChevronRight size={14} />}
                                                         <div className={`flex gap-1 ${selectedCatalogId === cat.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(cat); }} className={`p-1 ${selectedCatalogId === cat.id ? 'hover:text-emerald-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(cat.id); }} className={`p-1 ${selectedCatalogId === cat.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
+                                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleOpenModal(cat); }} className={`p-1 ${selectedCatalogId === cat.id ? 'hover:text-emerald-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
+                                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(cat.id); }} className={`p-1 ${selectedCatalogId === cat.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -618,9 +625,9 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                     )}
                                     <div className="flex items-center gap-1">
                                         {!minimizedColumns['TYPE'] && (
-                                            <button onClick={() => handleOpenModal(undefined, 'TYPE')} className="p-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 rounded-lg hover:bg-purple-200"><Plus size={14} /></button>
+                                            <button type="button" onClick={() => handleOpenModal(undefined, 'TYPE')} className="p-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 rounded-lg hover:bg-purple-200"><Plus size={14} /></button>
                                         )}
-                                        <button onClick={() => toggleMinimize('TYPE')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                        <button type="button" onClick={() => toggleMinimize('TYPE')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                                             {minimizedColumns['TYPE'] ? <Maximize2 size={14} className="mx-auto" /> : <Minimize2 size={14} />}
                                         </button>
                                     </div>
@@ -650,8 +657,8 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                     <div className="flex items-center gap-2">
                                                         {selectedTypeId === type.id && <ChevronRight size={14} />}
                                                         <div className={`flex gap-1 ${selectedTypeId === type.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(type); }} className={`p-1 ${selectedTypeId === type.id ? 'hover:text-purple-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(type.id); }} className={`p-1 ${selectedTypeId === type.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
+                                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleOpenModal(type); }} className={`p-1 ${selectedTypeId === type.id ? 'hover:text-purple-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
+                                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(type.id); }} className={`p-1 ${selectedTypeId === type.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -676,9 +683,9 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                     )}
                                     <div className="flex items-center gap-1">
                                         {!minimizedColumns['CATEGORY'] && (
-                                            <button onClick={() => handleOpenModal(undefined, 'CATEGORY')} className="p-1.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-lg hover:bg-amber-200"><Plus size={14} /></button>
+                                            <button type="button" onClick={() => handleOpenModal(undefined, 'CATEGORY')} className="p-1.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-lg hover:bg-amber-200"><Plus size={14} /></button>
                                         )}
-                                        <button onClick={() => toggleMinimize('CATEGORY')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                        <button type="button" onClick={() => toggleMinimize('CATEGORY')} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                                             {minimizedColumns['CATEGORY'] ? <Maximize2 size={14} className="mx-auto" /> : <Minimize2 size={14} />}
                                         </button>
                                     </div>
@@ -707,8 +714,8 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                     <div className="flex items-center gap-2">
                                                         {selectedParentId === cat.id && <ChevronRight size={14} />}
                                                         <div className={`flex gap-1 ${selectedParentId === cat.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(cat); }} className={`p-1 ${selectedParentId === cat.id ? 'hover:text-amber-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(cat.id); }} className={`p-1 ${selectedParentId === cat.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
+                                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleOpenModal(cat); }} className={`p-1 ${selectedParentId === cat.id ? 'hover:text-amber-200' : 'hover:text-blue-500'}`}><Edit2 size={12}/></button>
+                                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(cat.id); }} className={`p-1 ${selectedParentId === cat.id ? 'hover:text-red-200' : 'hover:text-red-500'}`}><Trash2 size={12}/></button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -729,7 +736,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                     <h4 className="text-xs font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 flex items-center gap-2">
                                         <Tag size={14} /> Sub-Categories
                                     </h4>
-                                    <button onClick={() => handleOpenModal(undefined, 'SUB_CATEGORY')} className="p-1.5 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-lg hover:bg-rose-200"><Plus size={14} /></button>
+                                    <button type="button" onClick={() => handleOpenModal(undefined, 'SUB_CATEGORY')} className="p-1.5 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-lg hover:bg-rose-200"><Plus size={14} /></button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
                                     {safeOptions.filter(o => o.type === 'SUB_CATEGORY' && (o.parentIds?.includes(selectedParentId) || o.parentId === selectedParentId)).sort((a,b) => a.value.localeCompare(b.value)).map(sub => (
@@ -740,8 +747,8 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                             <div className="flex justify-between items-center">
                                                 <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{sub.value}</span>
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => handleOpenModal(sub)} className="p-1 hover:text-blue-500"><Edit2 size={12}/></button>
-                                                    <button onClick={() => handleDelete(sub.id)} className="p-1 hover:text-red-500"><Trash2 size={12}/></button>
+                                                    <button type="button" onClick={() => handleOpenModal(sub)} className="p-1 hover:text-blue-500"><Edit2 size={12}/></button>
+                                                    <button type="button" onClick={() => handleDelete(sub.id)} className="p-1 hover:text-red-500"><Trash2 size={12}/></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -768,6 +775,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                 />
                             </div>
                             <button
+                                type="button"
                                 onClick={() => handleOpenModal()}
                                 className="w-full md:w-auto flex items-center justify-center space-x-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl transition-all shadow-lg shadow-blue-500/30 font-black uppercase text-xs tracking-widest active:scale-95"
                             >
@@ -802,8 +810,8 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                 </td>
                                                 <td className="px-8 py-5 text-right">
                                                     <div className="flex justify-end gap-2">
-                                                        <button onClick={() => handleOpenModal(opt)} className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-xl text-blue-600 transition-all"><Edit2 size={16} /></button>
-                                                        <button onClick={() => handleDelete(opt.id)} className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl text-red-600 transition-all"><Trash2 size={16} /></button>
+                                                        <button type="button" onClick={() => handleOpenModal(opt)} className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-xl text-blue-600 transition-all"><Edit2 size={16} /></button>
+                                                        <button type="button" onClick={() => handleDelete(opt.id)} className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl text-red-600 transition-all"><Trash2 size={16} /></button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -832,12 +840,12 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 pointer-events-auto">
-                                <button title="Expand All" onClick={() => setExpandedNodeIds(options.map(o => o.id))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-emerald-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-emerald-600 dark:text-emerald-400 transition-all shadow-md"><ChevronsDown size={16}/></button>
-                                <button title="Collapse All" onClick={() => setExpandedNodeIds([])} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-rose-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-rose-600 dark:text-rose-400 transition-all shadow-md"><ChevronsUp size={16}/></button>
+                                <button type="button" title="Expand All" onClick={() => setExpandedNodeIds(options.map(o => o.id))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-emerald-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-emerald-600 dark:text-emerald-400 transition-all shadow-md"><ChevronsDown size={16}/></button>
+                                <button type="button" title="Collapse All" onClick={() => setExpandedNodeIds([])} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-rose-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-rose-600 dark:text-rose-400 transition-all shadow-md"><ChevronsUp size={16}/></button>
                                 <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-1"></div>
-                                <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><Plus size={16}/></button>
-                                <button onClick={() => setScale(s => Math.max(s - 0.1, 0.4))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><Minimize2 size={16}/></button>
-                                <button onClick={() => { setScale(0.8); setOffset({x: 50, y: 150}); }} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><ArrowRightLeft size={16} className="rotate-90"/></button>
+                                <button type="button" onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><Plus size={16}/></button>
+                                <button type="button" onClick={() => setScale(s => Math.max(s - 0.1, 0.4))} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><Minimize2 size={16}/></button>
+                                <button type="button" onClick={() => { setScale(0.8); setOffset({x: 50, y: 150}); }} className="p-2 bg-white/80 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-white/20 backdrop-blur-xl rounded-lg text-blue-600 dark:text-white transition-all shadow-md"><ArrowRightLeft size={16} className="rotate-90"/></button>
                             </div>
                         </div>
 
@@ -917,7 +925,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                             fill={node.type === 'ROOT' ? 'white' : 'currentColor'}
                                             className={`font-black tracking-tight ${node.type === 'ROOT' ? 'text-lg' : node.type === 'CATEGORY' ? 'text-sm' : 'text-xs'} dark:text-white`}
                                         >
-                                            {node.label || node.value}
+                                            {node.label}
                                         </text>
 
                                         {/* Sub-label (Item Count/Value) */}
@@ -975,7 +983,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Classification Engine</p>
                                 </div>
                             </div>
-                            <button onClick={() => setIsModalOpen(false)} className="p-3 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-2xl transition-all">
+                            <button type="button" onClick={() => setIsModalOpen(false)} className="p-3 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-2xl transition-all">
                                 <X size={24} />
                             </button>
                         </div>
@@ -984,6 +992,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                         {!editingOption && selectedType !== 'POOL' && (
                             <div className="flex border-b border-gray-100 dark:border-gray-800 px-10 pt-4 gap-4 bg-gray-50/50 dark:bg-gray-800/20 flex-shrink-0">
                                 <button
+                                    type="button"
                                     onClick={() => { setValue(''); setSelectedChildIds([]); }} 
                                     className={`pb-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${
                                         !value && selectedChildIds.length > 0 ? 'border-transparent text-gray-400 hover:text-gray-600' : 'border-blue-600 text-blue-600'
@@ -992,6 +1001,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                     Create New
                                 </button>
                                 <button
+                                     type="button"
                                      onClick={() => { setValue(''); /* Logic to switch to Link Existing focus if needed */ }}
                                      className={`pb-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${
                                         selectedChildIds.length > 0 ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1009,6 +1019,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                             <div className="grid grid-cols-5 gap-2">
                                 {(['POOL', 'CATALOG', 'TYPE', 'CATEGORY', 'SUB_CATEGORY'] as AttributeType[]).map(t => (
                                     <button 
+                                        type="button"
                                         key={t}
                                         onClick={() => setSelectedType(t)}
                                         className={`flex flex-col items-center justify-center gap-1 p-2 rounded-xl border transition-all font-bold text-[9px] uppercase tracking-widest ${
@@ -1087,6 +1098,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                                       selectedType === 'SUB_CATEGORY' ? allSubCategories : 
                                                       []).map(child => (
                                                         <button
+                                                            type="button"
                                                             key={child.id}
                                                             onClick={() => toggleChildSelection(child.id)}
                                                             className={`flex items-center gap-2 p-2.5 rounded-xl text-[11px] font-bold text-left transition-all border ${
@@ -1132,6 +1144,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                                             selectedType === 'CATEGORY' ? allTypes : 
                                             allCategories).map(parent => (
                                             <button
+                                                type="button"
                                                 key={parent.id}
                                                 onClick={() => toggleParentSelection(parent.id)}
                                                 className={`flex items-center gap-3 p-3 rounded-2xl text-[11px] font-bold text-left transition-all border ${
@@ -1160,12 +1173,14 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                         {/* Modal Footer */}
                         <div className="px-10 py-6 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-4 bg-gray-50/50 dark:bg-gray-800/20 flex-shrink-0">
                             <button
+                                type="button"
                                 onClick={() => setIsModalOpen(false)}
                                 className="px-8 py-4 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
                             >
                                 Discard
                             </button>
                             <button
+                                type="button"
                                 onClick={handleSave}
                                 disabled={isSaving || (!value.trim() && selectedChildIds.length === 0)}
                                 className={`flex items-center gap-3 px-10 py-4 text-xs font-black uppercase tracking-widest text-white rounded-2xl transition-all shadow-2xl disabled:opacity-50 active:scale-95 group/btn ${

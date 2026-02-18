@@ -1,5 +1,5 @@
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.1'
+import { createClient } from "@supabase/supabase-js"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -56,7 +56,15 @@ Deno.serve(async (req) => {
     )
 
     // Parse Body
-    const body = await req.json();
+    interface InviteRequest {
+      email: string;
+      from_email?: string;
+      site_id?: string;
+      invited_by_name?: string;
+      subject?: string;
+      html?: string;
+    }
+    const body: InviteRequest = await req.json();
     const { email, from_email, site_id, invited_by_name, subject, html } = body;
 
     if (!email) throw new Error("Target email is required");
@@ -125,7 +133,8 @@ Deno.serve(async (req) => {
         console.log(`[v${VERSION}] Using DB-configured sender: ${dbSender}`);
       }
     } catch (e) {
-      console.warn(`[v${VERSION}] Failed to fetch DB sender, using env fallback:`, e.message);
+      const err = e as Error;
+      console.warn(`[v${VERSION}] Failed to fetch DB sender, using env fallback:`, err.message);
     }
 
     const senderToUse = dbSender || envSender || from_email;
@@ -212,8 +221,9 @@ Deno.serve(async (req) => {
     })
 
   } catch (error) {
-    console.error(`[v${VERSION}] Fatal:`, error.message);
-    return new Response(JSON.stringify({ error: error.message, version: VERSION }), {
+    const err = error as Error;
+    console.error(`[v${VERSION}] Fatal:`, err.message);
+    return new Response(JSON.stringify({ error: err.message, version: VERSION }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
     })

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { DeliveryHeader, DeliveryLineItem, PORequest, User } from '../types';
-import { X, AlertTriangle, Info, CheckSquare, Square } from 'lucide-react';
+import { DeliveryHeader, DeliveryLineItem, PORequest, User } from '../types.ts';
+import { X, AlertTriangle, CheckSquare, Square } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 interface Props {
@@ -11,7 +11,7 @@ interface Props {
     onSubmit: (delivery: DeliveryHeader, closedLineIds: string[]) => void;
 }
 
-const DeliveryModal: React.FC<Props> = ({ po, currentUser, onClose, onSubmit }) => {
+const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
     const [docketNumber, setDocketNumber] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [receipts, setReceipts] = useState<Record<string, number>>({});
@@ -100,7 +100,13 @@ const DeliveryModal: React.FC<Props> = ({ po, currentUser, onClose, onSubmit }) 
                         </h2>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Ref: {po.lines[0]?.concurPoNumber || po.displayId || po.id}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors"><X size={20}/></button>
+                    <button 
+                        type="button"
+                        onClick={onClose} 
+                        className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors"
+                    >
+                        <X size={20}/>
+                    </button>
                 </div>
                 
                 <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col">

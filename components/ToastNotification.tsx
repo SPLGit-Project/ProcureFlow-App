@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -11,11 +11,12 @@ export interface Toast {
 }
 
 interface ToastNotificationProps {
+  key?: string;
   toast: Toast;
   onDismiss: (id: string) => void;
 }
 
-const ToastNotification: React.FC<ToastNotificationProps> = ({ toast, onDismiss }) => {
+function ToastNotification({ toast, onDismiss }: ToastNotificationProps) {
   useEffect(() => {
     const duration = toast.duration || 5000;
     const timer = setTimeout(() => {
@@ -48,6 +49,7 @@ const ToastNotification: React.FC<ToastNotificationProps> = ({ toast, onDismiss 
         {toast.message}
       </p>
       <button
+        type="button"
         onClick={() => onDismiss(toast.id)}
         className="shrink-0 hover:opacity-70 transition-opacity"
       >
@@ -62,7 +64,7 @@ interface ToastContainerProps {
   onDismiss: (id: string) => void;
 }
 
-export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismiss }) => {
+export const ToastContainer = ({ toasts, onDismiss }: ToastContainerProps) => {
   return (
     <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 max-w-md">
       {toasts.map(toast => (

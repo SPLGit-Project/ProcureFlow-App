@@ -1,4 +1,4 @@
-import React from 'react';
+// ConfirmDialog components using modern React practices without React.FC
 import { AlertTriangle, X } from 'lucide-react';
 
 interface ConfirmDialogProps {
@@ -12,7 +12,7 @@ interface ConfirmDialogProps {
     onCancel: () => void;
 }
 
-export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+export const ConfirmDialog = ({
     isOpen,
     title,
     message,
@@ -21,7 +21,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     variant = 'danger',
     onConfirm,
     onCancel
-}) => {
+}: ConfirmDialogProps) => {
     if (!isOpen) return null;
 
     const getVariantStyles = () => {
@@ -75,6 +75,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                             </p>
                         </div>
                         <button 
+                            type="button"
                             onClick={onCancel}
                             className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors"
                         >

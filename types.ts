@@ -1,5 +1,5 @@
 
-import { DirectoryService } from './services/graphService';
+
 
 export type UserRole = string; // Was union, now string to support dynamic roles
 
@@ -63,6 +63,7 @@ export interface User {
   invitedAt?: string;
   invitationExpiresAt?: string;
   preferences?: UserPreferences;
+  pwaInstallPromptHidden?: boolean;
 }
 
 export interface EmailTemplate {
@@ -241,7 +242,7 @@ export interface SupplierProductMap {
   updatedAt: string;
   
   // v2 Fields
-  mappingJustification?: any; // JSONB
+  mappingJustification?: Record<string, unknown>; // JSONB
   manualOverride?: boolean;
   
   // Joins (optional for UI)
@@ -418,8 +419,8 @@ export interface SystemAuditLog {
     actionType: string; // e.g., 'ITEM_IMPORT', 'ITEM_EXPORT'
     performedBy: string; // User ID
     performedByName?: string; // Joined User Name
-    summary: any; // JSONB
-    details: any; // JSONB
+    summary: Record<string, unknown>; // JSONB
+    details: Record<string, unknown>; // JSONB
     createdAt: string;
 }
 

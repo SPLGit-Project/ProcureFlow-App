@@ -1,13 +1,9 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, AuthConfig, SupplierProductMap, ProductAvailability, MappingStatus, NotificationEventType, AppNotification, AttributeOption, SystemAuditLog } from '../types';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog } from '../types';
 import { db } from '../services/db';
 import { supabase } from '../lib/supabaseClient';
-import { DirectoryService } from '../services/graphService'; // Refactored to DirectoryService
-
-const REQUIRED_ADMIN_ROLE = 'ADMIN';
-const USE_GRAPH_DELEGATED = import.meta.env.VITE_PROCUREFLOW_GRAPH_DELEGATED === 'true';
+import { DirectoryService } from '../services/graphService';
 
 // Helper to get raw site filter from localStorage or user defaults
 const getInitialSiteIds = (): string[] => {
@@ -40,6 +36,7 @@ interface AppContextType {
 
   // User Management
   users: User[];
+  roles: RoleDefinition[];
   updateUserRole: (userId: string, role: UserRole) => void;
   updateUserAccess: (userId: string, role: UserRole, siteIds: string[]) => Promise<void>;
   addUser: (user: User, shouldSendInvite?: boolean) => Promise<void>;
@@ -63,6 +60,7 @@ interface AppContextType {
   updateBranding: (branding: AppBranding) => Promise<void>;
 
   pos: PORequest[];
+  allPos: PORequest[];
   suppliers: Supplier[];
   items: Item[];
   sites: Site[];
@@ -73,7 +71,7 @@ interface AppContextType {
   // Master Product / Mapping / Availability
   mappings: SupplierProductMap[];
   availability: ProductAvailability[];
-  importMasterProducts: (items: Item[]) => Promise<void>;
+  importMasterProducts: (newItems: Partial<Item>[], archiveMissing?: boolean) => Promise<{ created: number; updated: number; deactivated: number; skipped: number }>;
   generateMappings: () => Promise<void>;
   updateMapping: (map: SupplierProductMap) => Promise<void>;
   refreshAvailability: () => Promise<void>;
@@ -106,7 +104,7 @@ interface AppContextType {
   addSnapshot: (snapshot: SupplierStockSnapshot) => void;
   importStockSnapshot: (supplierId: string, date: string, snapshots: SupplierStockSnapshot[]) => Promise<void>;
   updateCatalogItem: (item: SupplierCatalogItem) => Promise<void>;
-  upsertProductMaster: (items: Partial<Item>[], archiveMissing?: boolean) => Promise<any>;
+  upsertProductMaster: (items: Partial<Item>[], archiveMissing?: boolean) => Promise<{ created: number; updated: number; deactivated: number; skipped: number }>;
   
   // Catalog Management
   attributeOptions: AttributeOption[];
@@ -128,10 +126,10 @@ interface AppContextType {
   deleteMapping: (id: string) => Promise<void>;
   syncItemsFromSnapshots: (supplierId: string) => Promise<{ updated: number }>;
   getAuditLogs: () => Promise<SystemAuditLog[]>;
-  searchDirectory: (query: string) => Promise<any[]>;
+  searchDirectory: (query: string, siteIdOverride?: string) => Promise<any[]>;
 
   // Misc
-  getEffectiveStock: (itemId: string) => number;
+  getEffectiveStock: (itemId: string, supplierId: string) => number;
 
   // Item Master CRUD
   addItem: (item: Item) => Promise<void>;
@@ -429,7 +427,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         if (urlError && mounted) {
             console.error("Auth: URL contains error:", urlError, urlErrorDesc);
             alert(`Sign-in Error: ${urlErrorDesc || urlError}`);
-            window.history.replaceState({}, document.title, window.location.pathname);
+            globalThis.history.replaceState({}, document.title, globalThis.location.pathname);
             setIsLoadingAuth(false);
             return;
         }
@@ -523,7 +521,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 }
 
                 if (session && mounted) {
-                    if (manualRecoveryTimeout) clearTimeout(manualRecoveryTimeout);
+                    if (manualRecoveryTimeout) clearTimeout(manualRecoveryTimeout as unknown as number);
                     console.log("Auth: Manual getSession found session", session.user.id);
                     handleUserAuth(session);
                 } else if (mounted && !hash) {
@@ -1628,7 +1626,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // --- Master & Mapping Logic --
   const runDataBackfill = async () => {
-      if (!window.confirm('This will re-calculate and overwrite normalization fields for ALL Items and Snapshots. Continue?')) return;
+      if (!globalThis.confirm('This will re-calculate and overwrite normalization fields for ALL Items and Snapshots. Continue?')) return;
       try {
           setIsLoadingData(true);
           const res = await db.backfillNormalization();
@@ -1916,7 +1914,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     mappings, availability, attributeOptions,
     
     // Methods
-    importMasterProducts, generateMappings, updateMapping: upsertMapping, upsertMapping, refreshAvailability, runDataBackfill,
+    importMasterProducts, generateMappings, updateMapping: upsertMapping, refreshAvailability, runDataBackfill,
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep,
     notificationRules, upsertNotificationRule, deleteNotificationRule,
     theme, setTheme, branding, updateBranding,
