@@ -104,14 +104,30 @@ Deno.serve(async (req) => {
       // We continue even if invite tracking fails, but log it
     }
 
-    // 4. Microsoft Graph Integration
+    // 4. Microsoft Graph Integration & Dynamically determined Sender
     const tenantId = Deno.env.get('AZURE_TENANT_ID')
     const clientId = Deno.env.get('AZURE_CLIENT_ID')
     const clientSecret = Deno.env.get('AZURE_CLIENT_SECRET')
-    const systemSender = Deno.env.get('SYSTEM_SENDER_EMAIL')
+    const envSender = Deno.env.get('SYSTEM_SENDER_EMAIL')
 
-    // SEAMLESS REFINEMENT: Prioritize system sender for delivery reliability
-    const senderToUse = systemSender || from_email;
+    // DYNAMIC SENDER LOOKUP: Check if DB has a configured sender in branding
+    let dbSender = null;
+    try {
+      const { data: brandingData } = await supabaseClient
+        .from('app_config')
+        .select('value')
+        .eq('key', 'branding')
+        .maybeSingle();
+      
+      if (brandingData?.value?.emailTemplate?.fromEmail) {
+        dbSender = brandingData.value.emailTemplate.fromEmail;
+        console.log(`[v${VERSION}] Using DB-configured sender: ${dbSender}`);
+      }
+    } catch (e) {
+      console.warn(`[v${VERSION}] Failed to fetch DB sender, using env fallback:`, e.message);
+    }
+
+    const senderToUse = dbSender || envSender || from_email;
 
     if (!tenantId || !clientId || !clientSecret || !senderToUse) {
       throw new Error("Email service misconfigured: Missing Azure secrets or sender email.");

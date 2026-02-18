@@ -169,7 +169,8 @@ const Settings = () => {
   }, [currentUser, activeTab, hasPermission]);
 
   // --- Email Templates State ---
-  const [emailSubject, setEmailSubject] = useState(branding.emailTemplate?.subject || `Welcome to ${branding.appName}`);
+   const [senderEmail, setSenderEmail] = useState(branding.emailTemplate?.fromEmail || '');
+   const [emailSubject, setEmailSubject] = useState(branding.emailTemplate?.subject || `Welcome to ${branding.appName}`);
   const [emailBody, setEmailBody] = useState(branding.emailTemplate?.body || `
 <p>Hi {name},</p>
 <p>You have been invited to join <strong>{app_name}</strong>.</p>
@@ -183,7 +184,8 @@ const Settings = () => {
             ...branding,
             emailTemplate: {
                 subject: emailSubject,
-                body: emailBody
+                body: emailBody,
+                fromEmail: senderEmail
             }
         };
         await updateBranding(newBranding);
@@ -3323,6 +3325,21 @@ if __name__ == "__main__":
                                 </div>
                             </div>
 
+                           <div>
+                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                    <Mail size={16} className="text-gray-400"/> System Sender (From)
+                                </label>
+                                <input 
+                                   className="input-field w-full font-medium"
+                                   value={senderEmail}
+                                   onChange={(e) => setSenderEmail(e.target.value)}
+                                   placeholder="aaron.bell@splservices.com.au"
+                                />
+                                <p className="text-xs text-gray-500 mt-2 flex items-start gap-1">
+                                    <AlertCircle size={12} className="mt-0.5 shrink-0"/>
+                                    <span>This email must be a valid mailbox in your Azure tenant with <code>Mail.Send</code> permissions.</span>
+                                </p>
+                            </div>
                            <div>
                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Email Subject</label>
                                <input 
