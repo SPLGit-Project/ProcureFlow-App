@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 }
 
-const VERSION = "1.0.6";
+const VERSION = "1.0.7";
 
 console.log(`send-invite-email function v${VERSION} initialized.`);
 
