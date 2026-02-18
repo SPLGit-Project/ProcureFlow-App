@@ -2558,10 +2558,135 @@ if __name__ == "__main__":
                    </div>
                </div>
 
-              {/* Pending Invitations Panel — only shown when there are pending users */}
+              {/* Pending Invitations Panel — only shown when there are non-active users */}
               {(() => {
-                  const pendingUsers = users.filter(u => u.status === 'PENDING' && u.status !== 'ARCHIVED');
-                  if (pendingUsers.length === 0) return null;
+                  // Users who are in the system but haven't become active members yet
+                  const notActiveUsers = users.filter(u => u.status === 'PENDING_APPROVAL' && u.status !== 'ARCHIVED');
+                  if (notActiveUsers.length === 0) return null;
+
+                  // Split into two groups:
+                  // 1. Invited — invite email was sent, awaiting acceptance
+                  const invitedPending = notActiveUsers.filter(u => !!u.invitedAt);
+                  // 2. Not invited — added to system but no invite ever sent
+                  const neverInvited = notActiveUsers.filter(u => !u.invitedAt);
+
+                  const totalCount = notActiveUsers.length;
+
+                  const renderUserRow = (user: typeof users[0], isNeverInvited: boolean) => {
+                      const expiryInfo = user.invitationExpiresAt ? getTimeUntilExpiry(user.invitationExpiresAt) : null;
+                      const isResending = resendingUserId === user.id;
+                      const accentColor = isNeverInvited ? 'indigo' : 'amber';
+
+                      return (
+                          <div key={user.id} className={`flex items-center gap-4 px-6 py-4 hover:bg-${accentColor}-50/30 dark:hover:bg-${accentColor}-900/10 transition-all`}>
+                              {/* Avatar */}
+                              <div className="relative shrink-0">
+                                  <div className={`w-10 h-10 rounded-xl overflow-hidden border-2 ${isNeverInvited ? 'border-indigo-200 dark:border-indigo-800/50' : 'border-amber-200 dark:border-amber-800/50'} shadow-sm`}>
+                                      <img src={user.avatar} className="w-full h-full object-cover bg-gray-100 dark:bg-gray-800" alt={user.name} />
+                                  </div>
+                                  <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-[#1e2029] ${isNeverInvited ? 'bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.6)]' : 'bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.6)]'}`} />
+                              </div>
+
+                              {/* Info */}
+                              <div className="flex-1 min-w-0">
+                                  <div className="font-black text-sm text-gray-900 dark:text-white uppercase tracking-tight leading-none">
+                                      {user.name || user.email?.split('@')[0] || 'Unknown'}
+                                  </div>
+                                  <div className="text-xs text-gray-500 font-medium mt-0.5">{user.email}</div>
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                      {/* Status badge */}
+                                      {isNeverInvited ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tight border bg-indigo-50 dark:bg-indigo-900/10 border-indigo-200 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400">
+                                              <MinusCircle size={9} /> Not Invited
+                                          </span>
+                                      ) : (
+                                          expiryInfo ? (
+                                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tight border ${
+                                                  expiryInfo.isExpired
+                                                      ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50 text-red-600'
+                                                      : expiryInfo.isExpiringSoon
+                                                      ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/50 text-amber-600 animate-pulse'
+                                                      : 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/50 text-amber-600'
+                                              }`}>
+                                                  <Clock size={9} />
+                                                  {expiryInfo.displayText}
+                                              </span>
+                                          ) : (
+                                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tight border bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/50 text-amber-600">
+                                                  <Clock size={9} /> Awaiting Acceptance
+                                              </span>
+                                          )
+                                      )}
+                                      {/* Role */}
+                                      <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+                                          {user.role}
+                                      </span>
+                                      {/* Sites */}
+                                      {user.siteIds?.map(sid => {
+                                          const s = sites.find(x => x.id === sid);
+                                          return s ? (
+                                              <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-500 uppercase">
+                                                  {s.name}
+                                              </span>
+                                          ) : null;
+                                      })}
+                                  </div>
+                              </div>
+
+                              {/* Actions */}
+                              <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                      onClick={async () => {
+                                          const action = isNeverInvited ? 'Send invitation' : 'Resend invitation';
+                                          if (!confirm(`${action} to ${user.name || user.email}?\n\nThis will generate an invitation link valid for 48 hours.`)) return;
+                                          setResendingUserId(user.id);
+                                          try {
+                                              const result = await resendWelcomeEmail(user.email, user.name, user.siteIds?.[0]);
+                                              if (result) {
+                                                  success(`Invitation sent to ${user.name || user.email}`, 4000);
+                                                  await reloadData();
+                                              } else {
+                                                  error('Failed to send invitation. Please try again.', 5000);
+                                              }
+                                          } catch (err) {
+                                              error('An error occurred while sending the invitation.', 5000);
+                                              console.error('Invite error:', err);
+                                          } finally {
+                                              setResendingUserId(null);
+                                          }
+                                      }}
+                                      disabled={isResending}
+                                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm ${
+                                          isNeverInvited
+                                              ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-800/40 border-indigo-200 dark:border-indigo-700/50'
+                                              : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-800/40 border-amber-200 dark:border-amber-700/50'
+                                      }`}
+                                      title={isNeverInvited ? 'Send invitation email' : 'Resend invitation email'}
+                                  >
+                                      {isResending ? (
+                                          <><Loader2 size={13} className="animate-spin" /> Sending...</>
+                                      ) : isNeverInvited ? (
+                                          <><Mail size={13} /> Send Invite</>
+                                      ) : (
+                                          <><Mail size={13} /> Resend Invite</>
+                                      )}
+                                  </button>
+                                  <button
+                                      onClick={() => {
+                                          if (window.confirm(`Archive ${user.name || user.email}? This will remove them from the pending list.`)) {
+                                              archiveUser(user.id);
+                                          }
+                                      }}
+                                      className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-200 dark:hover:border-red-800"
+                                      title="Archive"
+                                  >
+                                      <Archive size={15} />
+                                  </button>
+                              </div>
+                          </div>
+                      );
+                  };
+
                   return (
                       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 overflow-hidden">
                           {/* Panel Header */}
@@ -2571,115 +2696,58 @@ if __name__ == "__main__":
                                       <Clock size={18} />
                                   </div>
                                   <div>
-                                      <h3 className="text-xs font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest">Pending Invitations</h3>
+                                      <h3 className="text-xs font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest">Pending Access</h3>
                                       <p className="text-[11px] text-amber-600/70 dark:text-amber-500/70 mt-0.5">
-                                          {pendingUsers.length} user{pendingUsers.length !== 1 ? 's' : ''} invited but not yet active
+                                          {totalCount} user{totalCount !== 1 ? 's' : ''} not yet active
+                                          {neverInvited.length > 0 && ` · ${neverInvited.length} never invited`}
                                       </p>
                                   </div>
                               </div>
-                              <span className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs font-black">
-                                  {pendingUsers.length} pending
-                              </span>
+                              <div className="flex items-center gap-2">
+                                  {neverInvited.length > 0 && (
+                                      <span className="px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 text-xs font-black">
+                                          {neverInvited.length} not invited
+                                      </span>
+                                  )}
+                                  {invitedPending.length > 0 && (
+                                      <span className="px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs font-black">
+                                          {invitedPending.length} awaiting
+                                      </span>
+                                  )}
+                              </div>
                           </div>
 
-                          {/* Pending Users List */}
-                          <div className="divide-y divide-amber-50 dark:divide-amber-900/20">
-                              {pendingUsers.map(user => {
-                                  const expiryInfo = user.invitationExpiresAt ? getTimeUntilExpiry(user.invitationExpiresAt) : null;
-                                  const isResending = resendingUserId === user.id;
-                                  return (
-                                      <div key={user.id} className="flex items-center gap-4 px-6 py-4 hover:bg-amber-50/40 dark:hover:bg-amber-900/10 transition-all group">
-                                          {/* Avatar */}
-                                          <div className="relative shrink-0">
-                                              <div className="w-10 h-10 rounded-xl overflow-hidden border-2 border-amber-200 dark:border-amber-800/50 shadow-sm">
-                                                  <img src={user.avatar} className="w-full h-full object-cover bg-gray-100 dark:bg-gray-800" alt={user.name} />
-                                              </div>
-                                              <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white dark:border-[#1e2029] shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
-                                          </div>
+                          {/* Not Invited section */}
+                          {neverInvited.length > 0 && (
+                              <>
+                                  <div className="px-6 py-2 bg-indigo-50/50 dark:bg-indigo-900/10 border-b border-indigo-100 dark:border-indigo-800/30">
+                                      <span className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">
+                                          Added to system — invite not yet sent
+                                      </span>
+                                  </div>
+                                  <div className="divide-y divide-indigo-50 dark:divide-indigo-900/20">
+                                      {neverInvited.map(u => renderUserRow(u, true))}
+                                  </div>
+                              </>
+                          )}
 
-                                          {/* Info */}
-                                          <div className="flex-1 min-w-0">
-                                              <div className="font-black text-sm text-gray-900 dark:text-white uppercase tracking-tight leading-none">
-                                                  {user.name || user.email?.split('@')[0] || 'Unknown'}
-                                              </div>
-                                              <div className="text-xs text-gray-500 font-medium mt-0.5">{user.email}</div>
-                                              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                                                  <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
-                                                      {user.role}
-                                                  </span>
-                                                  {user.siteIds?.map(sid => {
-                                                      const s = sites.find(x => x.id === sid);
-                                                      return s ? (
-                                                          <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-500 uppercase">
-                                                              {s.name}
-                                                          </span>
-                                                      ) : null;
-                                                  })}
-                                                  {expiryInfo && (
-                                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tight border ${
-                                                          expiryInfo.isExpired
-                                                              ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50 text-red-600'
-                                                              : expiryInfo.isExpiringSoon
-                                                              ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/50 text-amber-600 animate-pulse'
-                                                              : 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/50 text-blue-600'
-                                                      }`}>
-                                                          <Clock size={9} />
-                                                          {expiryInfo.displayText}
-                                                      </span>
-                                                  )}
-                                              </div>
-                                          </div>
-
-                                          {/* Actions */}
-                                          <div className="flex items-center gap-2 shrink-0">
-                                              <button
-                                                  onClick={async () => {
-                                                      if (!confirm(`Resend invitation to ${user.name || user.email}?\n\nThis will generate a new invitation link valid for 48 hours.`)) return;
-                                                      setResendingUserId(user.id);
-                                                      try {
-                                                          const result = await resendWelcomeEmail(user.email, user.name, user.siteIds?.[0]);
-                                                          if (result) {
-                                                              success(`Invitation resent to ${user.name || user.email}`, 4000);
-                                                              await reloadData();
-                                                          } else {
-                                                              error('Failed to resend invitation. Please try again.', 5000);
-                                                          }
-                                                      } catch (err) {
-                                                          error('An error occurred while sending the invitation.', 5000);
-                                                          console.error('Resend error:', err);
-                                                      } finally {
-                                                          setResendingUserId(null);
-                                                      }
-                                                  }}
-                                                  disabled={isResending}
-                                                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-800/40 border border-amber-200 dark:border-amber-700/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                                                  title="Resend invitation email"
-                                              >
-                                                  {isResending ? (
-                                                      <><Loader2 size={13} className="animate-spin" /> Sending...</>
-                                                  ) : (
-                                                      <><Mail size={13} /> Resend Invite</>
-                                                  )}
-                                              </button>
-                                              <button
-                                                  onClick={() => {
-                                                      if (window.confirm(`Archive ${user.name || user.email}? This will cancel their pending invitation.`)) {
-                                                          archiveUser(user.id);
-                                                      }
-                                                  }}
-                                                  className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-200 dark:hover:border-red-800"
-                                                  title="Cancel & archive invitation"
-                                              >
-                                                  <Archive size={15} />
-                                              </button>
-                                          </div>
-                                      </div>
-                                  );
-                              })}
-                          </div>
+                          {/* Invited but pending section */}
+                          {invitedPending.length > 0 && (
+                              <>
+                                  <div className={`px-6 py-2 bg-amber-50/50 dark:bg-amber-900/10 border-b border-amber-100 dark:border-amber-800/30 ${neverInvited.length > 0 ? 'border-t border-amber-100 dark:border-amber-800/30' : ''}`}>
+                                      <span className="text-[10px] font-black text-amber-500 dark:text-amber-400 uppercase tracking-widest">
+                                          Invited — awaiting acceptance
+                                      </span>
+                                  </div>
+                                  <div className="divide-y divide-amber-50 dark:divide-amber-900/20">
+                                      {invitedPending.map(u => renderUserRow(u, false))}
+                                  </div>
+                              </>
+                          )}
                       </div>
                   );
               })()}
+
 
               {/* Global Directory */}
               <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
