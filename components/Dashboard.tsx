@@ -1,15 +1,15 @@
 
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/AppContext.tsx';
 import { 
   BarChart, Bar, Cell, ResponsiveContainer
 } from 'recharts';
 import { 
-  TrendingUp, Clock, AlertCircle, CheckCircle2, 
-  ArrowRight, Truck, Database, FileText, ChevronRight, MapPin
+  TrendingUp, Clock, AlertCircle, 
+  ArrowRight, Truck, FileText, ChevronRight
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import CostImpactModal from './CostImpactModal';
+import CostImpactModal from './CostImpactModal.tsx';
 
 const Dashboard = () => {
   const { pos, currentUser, hasPermission, isLoadingData, activeSiteIds, siteName } = useApp();
@@ -104,7 +104,7 @@ const Dashboard = () => {
         // Heuristic: Sorted by date, first is submit, last is approve? 
         // Or look for specific actions.
         const submitted = po.approvalHistory.find(h => h.action === 'SUBMITTED');
-        const approved = po.approvalHistory.find(h => h.action === 'APPROVED'); // First approval usually enough for metric? Or final?
+
         // Let's take the last approval for full cycle
         const lastApproved = [...po.approvalHistory].reverse().find(h => h.action === 'APPROVED');
         
@@ -135,7 +135,15 @@ const Dashboard = () => {
       );
   }
 
-  const StatCard = ({ title, value, icon: Icon, color, onClick }: any) => (
+  interface StatCardProps {
+      title: string;
+      value: string | number;
+      icon: React.ElementType;
+      color: string;
+      onClick?: () => void;
+  }
+
+  const StatCard = ({ title, value, icon: Icon, color, onClick }: StatCardProps) => (
       <div 
         onClick={onClick}
         className={`group bg-surface border border-default elevation-1 hover:elevation-2 transition-elevation p-5 rounded-2xl relative overflow-hidden cursor-pointer`}
@@ -169,7 +177,7 @@ const Dashboard = () => {
          </div>
          
          <div className="flex gap-3 w-full md:w-auto">
-             <button onClick={() => navigate('/create')} className="whitespace-nowrap bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-semibold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">
+             <button type="button" onClick={() => navigate('/create')} className="whitespace-nowrap bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-semibold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">
                  <FileText size={18} /> New Request
              </button>
          </div>
@@ -210,7 +218,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:col-span-3 gap-6">
           
           {/* Depletion/Replacement Analysis */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-3 space-y-6">
               {/* Cost Impact Breakdown */}
               <div className="bg-elevated rounded-2xl p-6 border border-strong elevation-2 flex flex-col md:flex-row items-center gap-6">
                   <div className="flex-1">
@@ -220,6 +228,7 @@ const Dashboard = () => {
                             <p className="text-sm text-secondary dark:text-gray-500 mb-6">Financial impact of replacements (Depletion) vs Contract inclusions.</p>
                           </div>
                           <button 
+                            type="button"
                             onClick={() => setIsCostModalOpen(true)}
                             className="group relative overflow-hidden flex items-center gap-2 bg-gradient-to-br from-[var(--color-brand)] to-blue-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-95 transition-all outline-none border border-white/10"
                           >
@@ -278,7 +287,7 @@ const Dashboard = () => {
                <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 flex-1">
                   <div className="flex items-center justify-between mb-4">
                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Highest Depletion Items</h3>
-                       <button onClick={() => navigate('/reports')} className="text-xs text-[var(--color-brand)] font-medium hover:underline">Full Report</button>
+                       <button type="button" onClick={() => navigate('/reports')} className="text-xs text-[var(--color-brand)] font-medium hover:underline">Full Report</button>
                   </div>
                   
                   <div className="space-y-3">
@@ -307,22 +316,7 @@ const Dashboard = () => {
                </div>
           </div>
 
-                {/* Action Shortcuts (Reduced) */}
-                <div className="bg-gradient-to-br from-indigo-500/5 to-purple-500/5 dark:from-indigo-500/10 dark:to-purple-500/10 rounded-3xl p-6 border border-indigo-500/10 dark:border-indigo-500/20 flex-1 flex flex-col justify-center items-center text-center group">
-                    <div className="w-16 h-16 rounded-2xl bg-white dark:bg-white/5 shadow-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500 border border-default">
-                        <TrendingUp className="text-indigo-500" size={32} />
-                    </div>
-                    <h3 className="text-lg font-black text-primary dark:text-white mb-2 tracking-tight">Strategy Insights</h3>
-                    <p className="text-xs text-secondary dark:text-gray-400 font-medium mb-6 leading-relaxed max-w-[200px]">
-                        Review your procurement strategy and supplier performance metrics.
-                    </p>
-                    <button 
-                        onClick={() => navigate('/reports')}
-                        className="w-full py-3 bg-white dark:bg-white/5 border border-default rounded-xl text-xs font-bold text-primary dark:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all active:scale-95"
-                    >
-                        Review Reports
-                    </button>
-                </div>
+
       </div>
 
       {/* Modals */}
