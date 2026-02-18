@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building } from 'lucide-react';
-import { DeliveryHeader, POStatus } from '../types';
-import DeliveryModal from './DeliveryModal';
-import ConcurExportModal from './ConcurExportModal';
-import { db } from '../services/db';
-import { supabase } from '../lib/supabaseClient';
+import { useApp } from '../context/AppContext.tsx';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon } from 'lucide-react';
+import { DeliveryHeader, POStatus } from '../types.ts';
+import DeliveryModal from './DeliveryModal.tsx';
+import ConcurExportModal from './ConcurExportModal.tsx';
+import { db } from '../services/db.ts';
+import { supabase } from '../lib/supabaseClient.ts';
 import { v4 as uuidv4 } from 'uuid';
 
 
@@ -30,7 +30,7 @@ const PODetail = () => {
 
   const po = pos.find(p => p.id === id);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const supplier = po ? suppliers.find(s => s.id === po.supplierId) : undefined;
+  const _supplier = po ? suppliers.find(s => s.id === po.supplierId) : undefined;
 
   const timelineEvents = useMemo(() => {
     if (!po) return [];
@@ -42,7 +42,7 @@ const PODetail = () => {
       title: string;
       subtitle: string;
       description?: string;
-      icon: any;
+      icon: LucideIcon;
       colorClass: string;
     }> = [];
 
@@ -50,7 +50,7 @@ const PODetail = () => {
     po.approvalHistory.forEach((h, idx) => {
       let icon = FileText;
       let colorClass = 'bg-gray-100 text-secondary border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
-      let title = h.action;
+      let title: string = h.action;
 
       if (h.action === 'SUBMITTED') {
         icon = FileText;
@@ -173,7 +173,7 @@ const PODetail = () => {
   };
 
   const handleCompletePO = async () => {
-      if (!window.confirm('Are you sure you want to mark this order as complete? This will finalize all lines and move it to history.')) return;
+      if (!globalThis.confirm('Are you sure you want to mark this order as complete? This will finalize all lines and move it to history.')) return;
       
       await updatePOStatus(po.id, 'CLOSED', {
           id: uuidv4(),
@@ -212,31 +212,32 @@ const PODetail = () => {
             }
 
             setIsEditing(false);
-            reloadData(true);
-       } catch (err: any) {
+            setIsEditing(false);
+            reloadData();
+       } catch (err: unknown) {
            console.error(err);
-           alert('Failed to save changes: ' + err.message);
+           alert('Failed to save changes: ' + (err as Error).message);
        }
   };
 
   const handleUpdateDeliveryHeader = async (delId: string, field: string, val: string) => {
       try {
-          const updates: any = {};
+          const updates: Partial<DeliveryHeader> = {};
           if (field === 'docket') updates.docketNumber = val;
           if (field === 'date') updates.date = val;
           if (field === 'receivedBy') updates.receivedBy = val;
           
           await db.updateDeliveryHeader(delId, updates);
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error(e);
-          alert("Failed to update delivery: " + e.message);
+          alert("Failed to update delivery: " + (e as Error).message);
       }
   };
   
   const handleUpdateInvoice = async (lineId: string, val: string) => {
       try {
            await db.updateDeliveryLineFinanceInfo(lineId, { invoiceNumber: val });
-      } catch (e: any) {
+      } catch (e: unknown) {
            console.error(e);
       }
   };
@@ -251,9 +252,9 @@ const PODetail = () => {
               totalPrice: newQty * unitPrice
           });
           reloadData(true);
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error(e);
-          alert("Failed to update line quantity: " + e.message);
+          alert("Failed to update line quantity: " + (e as Error).message);
       }
   };
 
@@ -267,9 +268,9 @@ const PODetail = () => {
               totalPrice: newPrice * quantity
           });
           reloadData(true);
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error(e);
-          alert("Failed to update unit price: " + e.message);
+          alert("Failed to update unit price: " + (e as Error).message);
       }
   };
 
@@ -331,28 +332,28 @@ const PODetail = () => {
             });
             setIsStatusModalOpen(false);
             // updatePOStatus triggers context reload, but slight delay might be needed or just let UI react
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error(e);
-          alert("Failed to update status: " + e.message);
+          alert("Failed to update status: " + (e as Error).message);
       }
   };
 
   const handleDeletePO = async () => {
       if (!po) return;
-      if (!window.confirm(`ARE YOU SURE? \n\nThis will permanently delete PO ${po.displayId || po.id} and all associated data (lines, deliveries, approvals). This action cannot be undone.`)) return;
+      if (!globalThis.confirm(`ARE YOU SURE? \n\nThis will permanently delete PO ${po.displayId || po.id} and all associated data (lines, deliveries, approvals). This action cannot be undone.`)) return;
       
       try {
           await deletePO(po.id);
           navigate('/');
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error(e);
-          alert("Failed to delete PO: " + e.message);
+          alert("Failed to delete PO: " + (e as Error).message);
       }
   };
 
   return (
     <div className="max-w-6xl mx-auto pb-20">
-      <button onClick={() => navigate(-1)} className="flex items-center text-secondary hover:text-primary dark:hover:text-white mb-6 transition-colors font-medium text-sm">
+      <button type="button" onClick={() => navigate(-1)} className="flex items-center text-secondary hover:text-primary dark:hover:text-white mb-6 transition-colors font-medium text-sm">
         <ArrowLeft size={16} className="mr-1" /> Back to List
       </button>
 
@@ -381,42 +382,42 @@ const PODetail = () => {
                {/* Admin Edit Toggle */}
                {currentUser?.role === 'ADMIN' && (
                    !isEditing ? (
-                       <button onClick={handleStartEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors">
+                       <button type="button" onClick={handleStartEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors">
                            <Edit2 size={18} />
                        </button>
                    ) : (
-                       <button onClick={handleSaveHeader} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm">
+                       <button type="button" onClick={handleSaveHeader} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm">
                            <Save size={18} />
                        </button>
                    )
                )}
                {currentUser?.role === 'ADMIN' && (
-                    <button onClick={() => setIsStatusModalOpen(true)} className="p-2.5 text-amber-600 hover:text-amber-700 border border-amber-200 rounded-xl hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Admin: Force Status">
+                    <button type="button" onClick={() => setIsStatusModalOpen(true)} className="p-2.5 text-amber-600 hover:text-amber-700 border border-amber-200 rounded-xl hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Admin: Force Status">
                         <Shield size={18} />
                     </button>
                )}
               {canApprove && (
                   <>
-                    <button onClick={() => handleApproval(false)} className="flex-1 lg:flex-none justify-center px-4 py-2.5 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-2 font-medium">
+                    <button type="button" onClick={() => handleApproval(false)} className="flex-1 lg:flex-none justify-center px-4 py-2.5 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-2 font-medium">
                         <XCircle size={18} /> Reject
                     </button>
-                    <button onClick={() => handleApproval(true)} className="flex-1 lg:flex-none justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium">
+                    <button type="button" onClick={() => handleApproval(true)} className="flex-1 lg:flex-none justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium">
                         <CheckCircle size={18} /> Approve
                     </button>
                   </>
               )}
                {po.status === 'APPROVED_PENDING_CONCUR' && (
-                   <button onClick={() => setIsExportModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-white dark:bg-white/10 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-white rounded-xl hover:bg-gray-50 dark:hover:bg-white/20 flex items-center gap-2 font-medium shadow-sm transition-all">
+                   <button type="button" onClick={() => setIsExportModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-white dark:bg-white/10 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-white rounded-xl hover:bg-gray-50 dark:hover:bg-white/20 flex items-center gap-2 font-medium shadow-sm transition-all">
                        <FileText size={18} /> Details for Concur
                    </button>
                )}
               {canLinkConcur && (
-                   <button onClick={() => setIsConcurModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium">
+                   <button type="button" onClick={() => setIsConcurModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium">
                       <LinkIcon size={18} /> Link Concur PO
                    </button>
               )}
               {canReceive && (
-                  <button onClick={() => setIsDeliveryModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 rounded-xl flex items-center gap-2 font-medium shadow-lg transition-all ${
+                  <button type="button" onClick={() => setIsDeliveryModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 rounded-xl flex items-center gap-2 font-medium shadow-lg transition-all ${
                       po.status === 'RECEIVED' 
                         ? 'bg-gray-600 text-white hover:bg-gray-700 shadow-gray-600/20' 
                         : 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-600/20'
@@ -425,13 +426,13 @@ const PODetail = () => {
                   </button>
               )}
               {canClose && (
-                  <button onClick={handleCompletePO} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium">
+                  <button type="button" onClick={handleCompletePO} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium">
                       <CheckCircle size={18} /> Complete Order
                   </button>
               )}
 
               {po.status === 'VARIANCE_PENDING' && hasPermission('approve_requests') && (
-                   <button onClick={() => updatePOStatus(po.id, 'RECEIVED', {
+                   <button type="button" onClick={() => updatePOStatus(po.id, 'RECEIVED', {
                        id: `ev-${Date.now()}`,
                        action: 'APPROVED',
                        approverName: currentUser?.name || 'Admin',
@@ -530,7 +531,7 @@ const PODetail = () => {
                 <div className="flex items-center justify-between relative min-w-[500px] md:min-w-0">
                      <div className="absolute top-[14px] left-0 w-full h-[2px] bg-gray-100 dark:bg-gray-800 -z-10"></div>
                      
-                     {steps.map((step, idx) => {
+                     {steps.map((step) => {
                          const status = getStepStatus(step.num);
                          return (
                              <div key={step.num} className="flex flex-col items-center px-4 bg-white dark:bg-[#1e2029]">
@@ -554,9 +555,9 @@ const PODetail = () => {
 
       {/* Tabs and Tables */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-6 overflow-x-auto scrollbar-hide">
-          <button onClick={() => setActiveTab('LINES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'LINES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Order Lines</button>
-          <button onClick={() => setActiveTab('DELIVERIES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'DELIVERIES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Deliveries ({po.deliveries.length})</button>
-          <button onClick={() => setActiveTab('HISTORY')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'HISTORY' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>History</button>
+          <button type="button" onClick={() => setActiveTab('LINES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'LINES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Order Lines</button>
+          <button type="button" onClick={() => setActiveTab('DELIVERIES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'DELIVERIES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Deliveries ({po.deliveries.length})</button>
+          <button type="button" onClick={() => setActiveTab('HISTORY')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'HISTORY' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>History</button>
       </div>
       
       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[300px]">
@@ -735,7 +736,7 @@ const PODetail = () => {
           {activeTab === 'HISTORY' && (
               <div className="p-6">
                    <div className="relative border-l-2 border-gray-100 dark:border-gray-800 ml-4 space-y-8 my-4">
-                    {timelineEvents.map((event, idx) => (
+                    {timelineEvents.map((event) => (
                         <div key={event.id} className="relative pl-8 group">
                             {/* Icon Marker */}
                             <div className={`absolute -left-[20px] top-0 p-2 rounded-full border-4 border-white dark:border-[#1e2029] ${event.colorClass} shadow-sm z-10`}>
@@ -792,8 +793,8 @@ const PODetail = () => {
                     onChange={e => setConcurInput(e.target.value)}
                 />
                 <div className="flex justify-end gap-3">
-                    <button onClick={() => setIsConcurModalOpen(false)} className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg font-medium">Cancel</button>
-                    <button onClick={handleConcurLink} disabled={!concurInput} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 font-bold shadow-lg shadow-indigo-500/20">Sync & Activate</button>
+                    <button type="button" onClick={() => setIsConcurModalOpen(false)} className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg font-medium">Cancel</button>
+                    <button type="button" onClick={handleConcurLink} disabled={!concurInput} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 font-bold shadow-lg shadow-indigo-500/20">Sync & Activate</button>
                 </div>
             </div>
         </div>
@@ -818,6 +819,7 @@ const PODetail = () => {
                 <div className="space-y-2 mb-6">
                     {['PENDING_APPROVAL', 'APPROVED_PENDING_CONCUR', 'ACTIVE', 'RECEIVED', 'CLOSED', 'REJECTED'].map(s => (
                         <button 
+                            type="button"
                             key={s}
                             onClick={() => handleForceStatusUpdate(s)}
                             className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors
@@ -830,6 +832,7 @@ const PODetail = () => {
                     
                     <div className="pt-4 mt-4 border-t border-gray-100 dark:border-gray-800">
                         <button 
+                            type="button"
                             onClick={handleDeletePO}
                             className="w-full text-left px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800"
                         >
@@ -839,7 +842,7 @@ const PODetail = () => {
                 </div>
 
                 <div className="flex justify-end">
-                    <button onClick={() => setIsStatusModalOpen(false)} className="px-4 py-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-lg font-medium text-sm">Cancel</button>
+                    <button type="button" onClick={() => setIsStatusModalOpen(false)} className="px-4 py-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-lg font-medium text-sm">Cancel</button>
                 </div>
             </div>
         </div>

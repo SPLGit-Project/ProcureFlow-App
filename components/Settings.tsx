@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/AppContext.tsx';
 
 import {
     Users, Shield, Globe, ShoppingBag, Truck, Layout, Bell, Database,
@@ -11,18 +11,18 @@ import {
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
     Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap
 } from 'lucide-react';
-import { useToast, ToastContainer } from './ToastNotification';
-import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers';
-import { supabase } from '../lib/supabaseClient';
-import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog } from '../types';
-import { normalizeItemCode } from '../utils/normalization';
+import { useToast, ToastContainer } from './ToastNotification.tsx';
+import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
+import { supabase } from '../lib/supabaseClient.ts';
+import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog } from '../types.ts';
+import { normalizeItemCode } from '../utils/normalization.ts';
 import { useLocation } from 'react-router-dom';
 // AdminAccessHub removed — access approvals no longer used
-import AdminMigration from './AdminMigration';
+import AdminMigration from './AdminMigration.tsx';
 
-import StockMappingConfirmation from './StockMappingConfirmation';
-import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser';
-import { ConfirmDialog } from './ConfirmDialog';
+import StockMappingConfirmation from './StockMappingConfirmation.tsx';
+import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser.ts';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { AuditLogViewer } from './AuditLogViewer';
 import * as XLSX from 'xlsx';
 import CatalogManagement from './CatalogManagement'; // Import CatalogManagement
@@ -624,7 +624,7 @@ const Settings = () => {
 
   // --- Invite Wizard State ---
   const [inviteStep, setInviteStep] = useState<1 | 2>(1);
-  const [inviteTab, setInviteTab] = useState<'SEARCH' | 'MANUAL'>('SEARCH');
+  const [inviteTab, setInviteTab] = useState<'SEARCH' | 'MANUAL' | 'MEMBERS'>('SEARCH');
   const [inviteForm, setInviteForm] = useState({
       id: '', name: '', email: '', jobTitle: '', role: 'SITE_USER', siteIds: [] as string[]
   });
@@ -2611,7 +2611,7 @@ if __name__ == "__main__":
               {/* Pending Invitations Panel — only shown when there are non-active users */}
               {(() => {
                   // Users who are in the system but haven't become active members yet
-                  const notActiveUsers = users.filter(u => u.status === 'PENDING_APPROVAL' && u.status !== 'ARCHIVED');
+                  const notActiveUsers = users.filter(u => u.status === 'PENDING_APPROVAL');
                   if (notActiveUsers.length === 0) return null;
 
                   // Split into two groups:
@@ -2953,8 +2953,9 @@ if __name__ == "__main__":
 
                                                   {currentUser?.id !== user.id && (
                                                       <div className="flex items-center gap-1">
-                                                        {user.status === 'PENDING' && (
+                                                        {user.status === 'PENDING_APPROVAL' && (
                                                             <button 
+                                                                type="button"
                                                                 onClick={async () => {
                                                                     if (!confirm(`Resend invitation to ${user.name} (${user.email})?\\n\\nThis will generate a new invitation link valid for 48 hours.`)) {
                                                                         return;
@@ -4144,7 +4145,7 @@ if __name__ == "__main__":
                                                                        onClick={(e) => {
                                                                            e.stopPropagation();
                                                                            if(confirm(`Resend invitation to ${u.name}?`)) {
-                                                                                resendWelcomeEmail(u.email, u.name, u.site_id).then(ok => ok && alert('Invitation sent successfully!'));
+                                                                                resendWelcomeEmail(u.email, u.name, u.siteIds?.[0])?.then(ok => ok && alert('Invitation sent successfully!'));
                                                                            }
                                                                        }}
                                                                        className="text-[10px] font-bold text-gray-400 hover:text-[var(--color-brand)] flex items-center gap-1 hover:bg-gray-100 dark:hover:bg-white/5 py-1 px-1.5 rounded"

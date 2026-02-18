@@ -78,7 +78,7 @@ export interface AppBranding {
   primaryColor: string; // Hex code
   secondaryColor: string; // Hex code
   fontFamily: 'sans' | 'serif' | 'mono';
-  sidebarTheme?: 'light' | 'dark' | 'system';
+  sidebarTheme?: 'light' | 'dark' | 'system' | 'brand';
   
   // Menu Configuration
   menuConfig?: MenuItemConfig[];
@@ -90,6 +90,10 @@ export interface MenuItemConfig {
     order: number;
     isVisible: boolean;
     customLabel?: string;
+    label?: string; // Display label
+    iconName?: string; // Icon name reference
+    isSystem?: boolean; // System-protected items
+    path?: string; // Navigation path
 }
 
 export interface AuthConfig {
@@ -130,6 +134,8 @@ export interface Item {
   upq?: number; // Unit per Quantity
   category: string;
   subCategory?: string; // New field for hierarchy
+  categoryId?: string; // Foreign key for category
+  status?: string; // E.g. 'ACTIVE', 'INACTIVE'
   stockLevel: number; // Deprecated
   supplierId: string; // Deprecated
   
@@ -228,6 +234,16 @@ export interface SupplierStockSnapshot {
 export type MappingStatus = 'PROPOSED' | 'CONFIRMED' | 'REJECTED';
 export type MappingMethod = 'MANUAL' | 'IMPORT' | 'AUTO' | 'LEGACY' | 'AUTO_NORM' | 'AUTO_ALT' | 'AUTO_LEGACY' | 'AUTO_FUZZY';
 
+export interface MappingComponent {
+    type: string;
+    detail: string;
+    score: number;
+}
+
+export interface MappingJustification {
+    components: MappingComponent[];
+}
+
 export interface SupplierProductMap {
   id: string;
   supplierId: string;
@@ -242,7 +258,7 @@ export interface SupplierProductMap {
   updatedAt: string;
   
   // v2 Fields
-  mappingJustification?: Record<string, unknown>; // JSONB
+  mappingJustification?: MappingJustification; // JSONB
   manualOverride?: boolean;
   
   // Joins (optional for UI)
@@ -374,7 +390,7 @@ export type NotificationEventType = 'PO_CREATED' | 'PO_APPROVED' | 'PO_REJECTED'
 export interface NotificationRecipient {
     id: string; // Role ID, User ID, "requester", or email address
     type: 'ROLE' | 'USER' | 'EMAIL' | 'REQUESTER';
-    label: string; // Display name
+    label?: string; // Display name
     channels: {
         email: boolean;
         inApp: boolean;

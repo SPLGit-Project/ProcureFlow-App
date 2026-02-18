@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
-import { Search, Link as LinkIcon, CheckCircle, Activity, Filter, List, MapPin } from 'lucide-react';
-import { PORequest } from '../types';
+import { Search, Link as LinkIcon, CheckCircle, Activity, Filter as _Filter, List, MapPin } from 'lucide-react';
+import { PORequest } from '../types.ts';
 
 const ActiveRequestsView = () => {
-    const { pos, isLoading, linkConcurPO, currentUser } = useApp();
+    const { pos, isLoadingData, linkConcurPO, currentUser: _currentUser } = useApp();
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMode, setFilterMode] = useState<'PENDING' | 'ACTIVE' | 'ALL'>('ALL'); // Improved filter state
@@ -54,7 +54,7 @@ const ActiveRequestsView = () => {
         }
     };
 
-    if (isLoading) {
+    if (isLoadingData) {
         return <div className="p-8 text-center">Loading...</div>;
     }
 
@@ -71,18 +71,21 @@ const ActiveRequestsView = () => {
                 
                 <div className="flex items-center gap-1 bg-white dark:bg-[#1e2029] p-1 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
                     <button 
+                        type="button"
                         onClick={() => setFilterMode('PENDING')}
                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${filterMode === 'PENDING' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                     >
                         <LinkIcon size={14} /> Pending Entry
                     </button>
                     <button 
+                         type="button"
                          onClick={() => setFilterMode('ACTIVE')}
                          className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${filterMode === 'ACTIVE' ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                     >
                         <CheckCircle size={14} /> Active Linked
                     </button>
                     <button 
+                         type="button"
                          onClick={() => setFilterMode('ALL')}
                          className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${filterMode === 'ALL' ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                     >

@@ -514,7 +514,7 @@ const AdminMigration = () => {
         const DEFAULT_REQUESTER_ID = 'a6e2810c-2b85-4ee1-81cb-a6fe3cc71378'; // Aaron Bell
         const DEFAULT_SITE_ID = sites[0]?.id || '33333333-3333-4333-8333-333333333333';
         // Fallback category for new items (Use first available or a known ID)
-        const DEFAULT_CATEGORY_ID = items[0]?.categoryId || '33333333-3333-4333-8333-333333333333'; 
+        const DEFAULT_CATEGORY_ID = items[0]?.category || '33333333-3333-4333-8333-333333333333'; 
 
         const createdItemCache: Record<string, string> = {}; // SKU -> UUID
         let successCount = 0;

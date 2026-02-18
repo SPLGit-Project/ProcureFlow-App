@@ -1,9 +1,10 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog } from '../types';
-import { db } from '../services/db';
-import { supabase } from '../lib/supabaseClient';
-import { DirectoryService } from '../services/graphService';
+import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog } from '../types.ts';
+import { db } from '../services/db.ts';
+import { supabase } from '../lib/supabaseClient.ts';
+import { Session } from '@supabase/supabase-js';
+import { DirectoryService } from '../services/graphService.ts';
 
 // Helper to get raw site filter from localStorage or user defaults
 const getInitialSiteIds = (): string[] => {
@@ -43,15 +44,15 @@ interface AppContextType {
   archiveUser: (userId: string) => Promise<void>;
   permissions: Permission[];
   hasPermission: (permissionId: PermissionId) => boolean;
-  createRole: (role: RoleDefinition) => void;
-  updateRole: (role: RoleDefinition) => void;
-  deleteRole: (roleId: string) => void;
+  createRole: (role: RoleDefinition) => Promise<void>;
+  updateRole: (role: RoleDefinition) => Promise<void>;
+  deleteRole: (roleId: string) => Promise<void>;
   
   // Teams Integration
   teamsWebhookUrl: string;
   updateTeamsWebhook: (url: string) => Promise<void>;
 
-  reloadData: () => Promise<void>;
+  reloadData: (silent?: boolean) => Promise<void>;
 
   // Theme & Branding
   theme: 'light' | 'dark';
@@ -113,7 +114,7 @@ interface AppContextType {
   deleteAttributeOption: (id: string) => Promise<void>;
 
   // New Admin Capabilities
-  getItemFieldRegistry: () => Promise<any[]>;
+  getItemFieldRegistry: () => Promise<unknown[]>;
   sendWelcomeEmail: (toEmail: string, name: string, siteIdOverride?: string) => Promise<boolean>;
   resendWelcomeEmail: (email: string, name: string, siteId?: string) => Promise<boolean>;
   getDirectoryService: () => Promise<DirectoryService | null>;
@@ -124,9 +125,9 @@ interface AppContextType {
   getMappingQueue: (supplierId?: string) => Promise<SupplierProductMap[]>;
   getMappingMemory: (supplierId?: string) => Promise<SupplierProductMap[]>;
   deleteMapping: (id: string) => Promise<void>;
-  syncItemsFromSnapshots: (supplierId: string) => Promise<{ updated: number }>;
+  syncItemsFromSnapshots: (supplierId?: string) => Promise<{ updated: number }>;
   getAuditLogs: () => Promise<SystemAuditLog[]>;
-  searchDirectory: (query: string, siteIdOverride?: string) => Promise<any[]>;
+  searchDirectory: (query: string, siteIdOverride?: string) => Promise<unknown[]>;
 
   // Misc
   getEffectiveStock: (itemId: string, supplierId: string) => number;
@@ -400,7 +401,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
     }, 30000); // 30 seconds
 
-    const initializeAuth = async () => {
+    const initializeAuth = () => {
         setIsLoadingAuth(true);
         console.log("Auth: Initializing (Smart-Robust Mode)...");
 
@@ -419,8 +420,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
 
         // 1. Check for tokens in URL
-        const hash = window.location.hash;
-        const searchParams = new URLSearchParams(window.location.search);
+        const hash = globalThis.location.hash;
+        const searchParams = new URLSearchParams(globalThis.location.search);
         const urlError = searchParams.get('error');
         const urlErrorDesc = searchParams.get('error_description');
 
@@ -432,7 +433,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             return;
         }
 
-        let manualRecoveryTimeout: NodeJS.Timeout;
+        let manualRecoveryTimeout: ReturnType<typeof setTimeout> | undefined;
 
         // 2. Setup Listener IMMEDIATELY
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -451,7 +452,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 } else if (eventType === 'INITIAL_SESSION') {
                      console.log("Auth: INITIAL_SESSION - No session");
                      // Check if we have a hash that wasn't processed
-                     if (window.location.hash && window.location.hash.includes('access_token')) {
+                     if (globalThis.location.hash && globalThis.location.hash.includes('access_token')) {
                          console.warn("Auth: INITIAL_SESSION fired but hash exists. Supabase missed it?");
                          // Let the manual recovery handle it below
                      } else {
@@ -471,7 +472,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         // If Supabase doesn't fire SIGNED_IN within 2s and we have a token, force it.
         if (hash && hash.includes('access_token=')) {
             console.log("Auth: OAuth fragment detected. Arming manual recovery...");
-            manualRecoveryTimeout = setTimeout(async () => {
+            manualRecoveryTimeout = globalThis.setTimeout(async () => {
                 if (!mounted || isAuthenticated) return;
                 
                 console.warn("Auth: Supabase auto-detection timed out. Attempting MANUAL RECOVERY.");
@@ -480,8 +481,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 const params = new URLSearchParams(hash.substring(1)); // remove #
                 const access_token = params.get('access_token');
                 const refresh_token = params.get('refresh_token');
-                const expires_in = params.get('expires_in');
-                const type = params.get('token_type');
 
                 if (access_token) {
                     try {
@@ -496,7 +495,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                             console.log("Auth: Manual recovery SUCCESS!", session.user.email);
                             await handleUserAuth(session);
                             // Clean URL
-                            window.history.replaceState({}, document.title, window.location.pathname);
+                            globalThis.history.replaceState({}, document.title, globalThis.location.pathname);
                         }
                     } catch (e) {
                          console.error("Auth: Manual recovery failed:", e);
@@ -521,7 +520,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 }
 
                 if (session && mounted) {
-                    if (manualRecoveryTimeout) clearTimeout(manualRecoveryTimeout as unknown as number);
+                    if (manualRecoveryTimeout) clearTimeout(manualRecoveryTimeout);
                     console.log("Auth: Manual getSession found session", session.user.id);
                     handleUserAuth(session);
                 } else if (mounted && !hash) {
@@ -540,7 +539,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         };
     };
 
-    const handleUserAuth = async (session: any, silent = false) => {
+    const handleUserAuth = async (session: Session, silent = false) => {
         if (!mounted) return;
         
         // Prevent concurrent processing
@@ -566,7 +565,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             // 2. Azure AD Graph Sync (Auto-fetch Job/Dept) - DEPRECATED / REMOVED
             // We now rely on the 'sync-directory' Edge Function or DirectoryService if needed.
             // For now, we skip the direct Graph call to avoid 'provider_token' dependency.
-            let adProfile = { jobTitle: '', department: '', officeLocation: '' };
+            const adProfile = { jobTitle: '', department: '', officeLocation: '' };
 
 
             // 3. Fetch user from our DB
@@ -834,7 +833,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 }
 
                 console.log("Auth: App focused/visible, checking session...");
-                const { data: { session }, error } = await supabase.auth.getSession();
+                const { data: { session } } = await supabase.auth.getSession();
                 
                 if (session) {
                      if (!currentUser || session.user.email !== currentUser.email) {
@@ -854,7 +853,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
+    globalThis.addEventListener('focus', handleVisibilityChange);
     
     // Passive Keep-Alive Ping (Every 9 minutes)
     const keepAliveInterval = setInterval(async () => {
@@ -869,15 +868,15 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         clearTimeout(safetyTimeout);
         clearInterval(keepAliveInterval);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
-        window.removeEventListener('focus', handleVisibilityChange);
-        authPromise.then(cleanup => cleanup && cleanup());
+        globalThis.removeEventListener('focus', handleVisibilityChange);
+        if (typeof authPromise === 'function') authPromise();
     };
   }, []); // Eslint might warn about reloadData dependency, but we want this to run once on mount.
 
   // Apply Theme & Branding to DOM
   useEffect(() => {
     localStorage.setItem('app-theme', theme);
-    const root = window.document.documentElement;
+    const root = globalThis.document.documentElement;
     if (theme === 'dark') {
         root.classList.add('dark');
     } else {
@@ -886,7 +885,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   }, [theme]);
 
   useEffect(() => {
-      const root = window.document.documentElement;
+      const root = globalThis.document.documentElement;
       
       // Font Handling
       if (branding.fontFamily === 'serif') root.style.setProperty('--font-family', 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif');
@@ -961,7 +960,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // Helper to get RGB string for opacity support
   function hexToRgb(hex: string) {
-    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '37, 99, 235';
   }
 
@@ -980,7 +979,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           provider: 'azure',
           options: {
               scopes: 'openid profile email User.Read User.ReadBasic.All Mail.Send offline_access',
-              redirectTo: window.location.origin
+              redirectTo: globalThis.location.origin
           }
       });
       if (error) {
@@ -1015,7 +1014,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               siteId,
               invitedByName
           });
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error("Failed to send welcome email", e);
           return false;
       }
@@ -1269,7 +1268,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
   
-    const sendNotification = async (event: NotificationEventType, data: any) => {
+    const sendNotification = async (event: NotificationEventType, data: unknown) => {
         // 1. Get Matching Rules
         const rules = notificationRules.filter(r => r.eventType === event && r.isActive);
         if (rules.length === 0) return;
@@ -1285,10 +1284,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             teams: boolean 
         }>();
 
-        const mergeTarget = (key: string, userData: any, channels: any) => {
-            const existing = targets.get(key) || { ...userData, email: false, inApp: false, teams: false };
+        const mergeTarget = (key: string, userData: Record<string, unknown>, channels: { email: boolean; inApp: boolean; teams: boolean }) => {
+            const existing = targets.get(key) || { userId: userData.userId as string | undefined, emailAddress: userData.emailAddress as string | undefined, email: false, inApp: false, teams: false };
             targets.set(key, {
-                ...existing,
+                userId: existing.userId,
+                emailAddress: existing.emailAddress,
                 email: existing.email || channels.email,
                 inApp: existing.inApp || channels.inApp,
                 teams: existing.teams || channels.teams
@@ -1296,7 +1296,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         };
 
         for (const rule of rules) {
-            const title = rule.label || event;
             for (const recipient of rule.recipients) {
                 if (recipient.type === 'USER') {
                      mergeTarget(recipient.id, { userId: recipient.id }, recipient.channels);
@@ -1304,8 +1303,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                      const roleUsers = users.filter(u => u.role === recipient.id || u.realRole === recipient.id);
                      roleUsers.forEach(u => mergeTarget(u.id, { userId: u.id, emailAddress: u.email }, recipient.channels));
                 } else if (recipient.type === 'REQUESTER') {
-                     if (data.requesterId) {
-                        const reqUser = users.find(u => u.id === data.requesterId);
+                     if ((data as { requesterId?: string }).requesterId) {
+                        const reqUser = users.find(u => u.id === (data as { requesterId: string }).requesterId);
                         if (reqUser) mergeTarget(reqUser.id, { userId: reqUser.id, emailAddress: reqUser.email }, recipient.channels);
                      }
                 } else if (recipient.type === 'EMAIL') {
@@ -1329,7 +1328,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
 
         // Individual Targets
-        for (const [key, target] of targets.entries()) {
+        for (const [, target] of targets.entries()) {
             if (target.inApp && target.userId) {
                 try {
                     await db.addNotification({
@@ -1561,9 +1560,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     try {
         await db.addSnapshot(snapshot);
         setStockSnapshots(prev => [...prev, snapshot]);
-    } catch (error) {
-        console.error('Failed to add snapshot:', error);
-        alert('Failed to save stock snapshot.');
+    } catch (e: unknown) {
+      console.error("Failed to add snapshot", e);
+      reloadData();
+      alert('Failed to save stock snapshot.');
     }
   };
 
@@ -1637,9 +1637,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           setItems(i);
           setStockSnapshots(s);
           
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error(e);
-          alert('Backfill Failed: ' + e.message);
+          alert('Backfill Failed: ' + (e as Error).message);
       } finally {
           setIsLoadingData(false);
       }
@@ -1734,7 +1734,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       await refreshAvailability();
   };
 
-  const syncItemsFromSnapshots = async (supplierId: string) => {
+  const syncItemsFromSnapshots = async (supplierId?: string) => {
+      if (!supplierId) {
+          // If no supplier provided, sync for all suppliers that have snapshots
+          const suppliers = await db.getSuppliers();
+          let totalUpdated = 0;
+          for (const s of suppliers) {
+              const res = await db.syncItemsFromSnapshots(s.id);
+              totalUpdated += res.updated;
+          }
+          const freshItems = await db.getItems();
+          setItems(freshItems);
+          return { updated: totalUpdated };
+      }
       const res = await db.syncItemsFromSnapshots(supplierId);
       const freshItems = await db.getItems();
       setItems(freshItems);
@@ -1938,8 +1950,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     resendWelcomeEmail,
     sendWelcomeEmail,
 
-    getDirectoryService: async () => {
-        return new DirectoryService(supabase);
+    getDirectoryService: () => {
+        return Promise.resolve(new DirectoryService(supabase));
     },
 
     searchDirectory: async (query: string, siteIdOverride?: string) => {
