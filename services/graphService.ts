@@ -66,7 +66,50 @@ export class DirectoryService {
 
             console.log(`[DirectoryService] Invite API Success in ${Date.now() - start}ms:`, data);
             return true;
-        } catch (e) {
+        } catch (e: any) {
+            console.error("[DirectoryService] Edge function invoke failed:", e);
+            
+            // FALLBACK: Try direct fetch if library invoke fails (e.g. version mismatch or weird error)
+            try {
+                console.warn("[DirectoryService] Attempting direct fetch fallback...");
+                const sbUrl = (this.supabase as any).supabaseUrl || (this.supabase as any).rest?.url?.replace('/rest/v1', '');
+                const sbKey = (this.supabase as any).supabaseKey || (this.supabase as any).headers?.['apikey'];
+                
+                if (sbUrl && sbKey) {
+                    const funcUrl = `${sbUrl}/functions/v1/send-invite-email`;
+                    const session = await this.supabase.auth.getSession();
+                    const token = session.data.session?.access_token;
+                    
+                    const resp = await fetch(funcUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token || sbKey}`,
+                            'apikey': sbKey
+                        },
+                        body: JSON.stringify({ 
+                            email: params.to,
+                            from_email: params.from,
+                            site_id: params.siteId,
+                            invited_by_name: params.invitedByName,
+                            subject: params.subject,
+                            html: params.html
+                        })
+                    });
+                    
+                    if (!resp.ok) {
+                        const txt = await resp.text();
+                        throw new Error(`Fallback fetch failed: ${resp.status} ${txt}`);
+                    }
+                    
+                    const data = await resp.json();
+                    console.log("[DirectoryService] Fallback success:", data);
+                    return true;
+                }
+            } catch (fallbackError) {
+                console.error("[DirectoryService] Fallback also failed:", fallbackError);
+            }
+
             console.error("[DirectoryService] Fatal Exception during sendMail:", e);
             throw e;
         }
