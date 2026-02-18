@@ -23,7 +23,7 @@ import AdminMigration from './AdminMigration.tsx';
 import StockMappingConfirmation from './StockMappingConfirmation.tsx';
 import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
-import { AuditLogViewer } from './AuditLogViewer';
+import { AuditLogViewer } from './AuditLogViewer.tsx';
 import * as XLSX from 'xlsx';
 import CatalogManagement from './CatalogManagement'; // Import CatalogManagement
 import MenuEditor from './MenuEditor';
@@ -3643,6 +3643,12 @@ if __name__ == "__main__":
                        </div>
                   </div>
               )}
+             {/* System Audit Tab */}
+             {activeTab === 'AUDIT' && (
+                 <div className="animate-fade-in">
+                     <AuditLogViewer />
+                 </div>
+             )}
              {/* WORKFLOW STEP MODAL */}
              {editingStepId && (() => {
                  const step = workflowSteps.find(s => s.id === editingStepId);

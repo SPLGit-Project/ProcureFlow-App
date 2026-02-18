@@ -75,7 +75,7 @@ interface AppContextType {
   importMasterProducts: (newItems: Partial<Item>[], archiveMissing?: boolean) => Promise<{ created: number; updated: number; deactivated: number; skipped: number }>;
   generateMappings: () => Promise<void>;
   updateMapping: (map: SupplierProductMap) => Promise<void>;
-  refreshAvailability: () => Promise<void>;
+  refreshAvailability: (snapshotsOverride?: SupplierStockSnapshot[], mappingsOverride?: SupplierProductMap[]) => Promise<void>;
   runDataBackfill: () => Promise<void>;
   
   // Admin / Workflow / Notifications
@@ -126,7 +126,8 @@ interface AppContextType {
   getMappingMemory: (supplierId?: string) => Promise<SupplierProductMap[]>;
   deleteMapping: (id: string) => Promise<void>;
   syncItemsFromSnapshots: (supplierId?: string) => Promise<{ updated: number }>;
-  getAuditLogs: () => Promise<SystemAuditLog[]>;
+  getAuditLogs: (filters?: { startDate?: string, endDate?: string, userId?: string, actionType?: string }) => Promise<SystemAuditLog[]>;
+  logAction: (actionType: string, summary: Record<string, unknown>, details?: Record<string, unknown>) => Promise<void>;
   searchDirectory: (query: string, siteIdOverride?: string) => Promise<unknown[]>;
 
   // Misc
@@ -465,6 +466,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 setIsAuthenticated(false);
                 setIsPendingApproval(false);
                 setIsLoadingAuth(false);
+                logAction('USER_LOGOUT', { email: session?.user?.email });
             }
         });
 
@@ -559,6 +561,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 console.error("Auth: Unauthorized domain:", email);
                 alert("Access Restricted: Only @splservices.com.au accounts are allowed.");
                 await supabase.auth.signOut();
+                logAction('AUTH_FAILED_DOMAIN_RESTRICTION', { email });
                 return;
             }
 
@@ -662,6 +665,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                         // If merge fails (e.g. FK constraints), we might be stuck. 
                         // But for new invites, it usually works.
                         alert("Account setup error: Could not link invitation. Please contact support.");
+                        logAction('USER_MERGE_FAILED', { oldId: existingByEmail.id, newId: session.user.id, email, error: mergeError.message });
                         return;
                     }
                     
@@ -683,6 +687,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                              approvalReason: mergedUser.approval_reason,
                              preferences: mergedUser.preferences
                         };
+                        logAction('USER_MERGED_INVITATION', { userId: userData.id, email: userData.email, oldId: existingByEmail.id });
                      }
                 } else {
                     // Truly New User
@@ -711,6 +716,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
                         // Delete the placeholder so we can insert the real Auth user
                         await supabase.from('users').delete().eq('id', preUser.id);
+                        logAction('USER_PRE_PROVISIONED_MIGRATED', { oldId: preUser.id, newId: session.user.id, email });
                     }
 
                     const dbUser = {
@@ -735,6 +741,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
                     if (insertError) {
                         console.error("Auth: Registration failed", insertError);
+                        logAction('USER_REGISTRATION_FAILED', { email: dbUser.email, error: insertError.message });
                         throw insertError;
                     }
                     
@@ -753,6 +760,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                         department: dbUser.department,
                         preferences: { theme, activeSiteIds }
                     };
+                    logAction('USER_REGISTERED', { userId: userData.id, email: userData.email, role: userData.role, status: userData.status });
                 }
             }
             else {
@@ -771,6 +779,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                      
                      userData.jobTitle = newJob || userData.jobTitle;
                      userData.department = newDept || userData.department;
+                     logAction('USER_PROFILE_SYNCED', { userId: userData.id, email: userData.email, jobTitle: newJob, department: newDept });
                  }
             }
 
@@ -803,6 +812,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 if (userData.status === 'APPROVED') {
                     // Use silent reload if triggered from silent auth check
                     reloadData(silent);
+                    logAction('USER_LOGIN', { email: userData.email, userId: userData.id });
+                } else {
+                    logAction('USER_LOGIN_PENDING_APPROVAL', { email: userData.email, userId: userData.id });
                 }
             }
         } catch (err) {
@@ -810,6 +822,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             if (mounted) {
                 setIsAuthenticated(false);
                 setCurrentUser(null);
+                logAction('AUTH_FAILED', { email: session.user.email, error: (err as Error).message });
             }
         } finally {
             isAuthProcessingRef.current = false;
@@ -968,6 +981,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setBranding(newBranding);
       try {
           await db.updateBranding(newBranding);
+          logAction('BRANDING_UPDATED', { primaryColor: newBranding.primaryColor, appName: newBranding.appName });
       } catch (e) {
           console.error("Failed to persist branding", e);
       }
@@ -985,6 +999,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       if (error) {
           console.error("Login failed:", error.message);
           alert(`Login failed: ${error.message}`);
+          logAction('LOGIN_INITIATE_FAILED', { error: error.message });
+      } else {
+          logAction('LOGIN_INITIATED', { provider: 'azure' });
       }
   };
 
@@ -992,11 +1009,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
        try {
           const svc = new DirectoryService(supabase);
           
+
           const siteId = siteIdOverride || activeSiteIds[0] || currentUser?.siteIds?.[0] || '';
-          
           const invitedByName = currentUser?.name || 'Admin';
           
-          return await svc.sendMail({
+          const emailSent = await svc.sendMail({
               to: toEmail,
               from: branding.emailTemplate?.fromEmail || currentUser?.email || '',
               subject: branding.emailTemplate?.subject ? 
@@ -1014,8 +1031,18 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               siteId,
               invitedByName
           });
+          if (emailSent) {
+              logAction('WELCOME_EMAIL_SENT', { toEmail, name, siteId });
+          } else {
+              logAction('WELCOME_EMAIL_FAILED', { toEmail, name, siteId, reason: 'Service returned false' });
+          }
+          return emailSent;
       } catch (e: unknown) {
           console.error("Failed to send welcome email", e);
+          // siteId might not be defined if error happened before it was set, but we can try to recalculate or define it outside
+          // To be safe, let's use a safe fallback or define it outside try block.
+          // Ideally we lift definition out. 
+           logAction('WELCOME_EMAIL_FAILED', { toEmail, name, error: (e as Error).message });
           return false;
       }
   };
@@ -1039,9 +1066,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     setRoles(prev => [...prev, role]);
     try {
         await db.upsertRole(role);
+        logAction('ROLE_CREATED', { roleId: role.id, roleName: role.name });
     } catch (e) {
         console.error("Failed to create role", e);
         reloadData();
+        logAction('ROLE_CREATE_FAILED', { roleId: role.id, error: (e as Error).message });
     }
   };
 
@@ -1049,9 +1078,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     setRoles(prev => prev.map(r => r.id === role.id ? role : r));
     try {
         await db.upsertRole(role);
+        logAction('ROLE_UPDATED', { roleId: role.id, roleName: role.name });
     } catch (e) {
         console.error("Failed to update role", e);
         reloadData();
+        logAction('ROLE_UPDATE_FAILED', { roleId: role.id, error: (e as Error).message });
     }
   };
 
@@ -1061,9 +1092,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setRoles(prev => prev.filter(r => r.id !== roleId));
       try {
           await db.deleteRole(roleId);
+          logAction('ROLE_DELETED', { roleId });
       } catch (e) {
           console.error("Failed to delete role", e);
           reloadData();
+          logAction('ROLE_DELETE_FAILED', { roleId, error: (e as Error).message });
       }
   };
   
@@ -1071,9 +1104,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setTeamsWebhookUrl(url);
       try {
           await db.updateTeamsConfig(url);
+          logAction('TEAMS_WEBHOOK_UPDATED', { url: url ? 'configured' : 'removed' });
       } catch (e) {
           console.error("Failed to update teams config", e);
           reloadData();
+          logAction('TEAMS_WEBHOOK_UPDATE_FAILED', { error: (e as Error).message });
       }
   };
 
@@ -1095,8 +1130,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
           setCurrentUser(prev => prev ? ({ ...prev, ...updates }) : null);
           setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, ...updates } : u));
+          logAction('USER_PROFILE_UPDATED', { userId: currentUser.id, email: currentUser.email, updates: Object.keys(updates) });
       } catch (e) {
           console.error("Failed to update profile:", e);
+          logAction('USER_PROFILE_UPDATE_FAILED', { userId: currentUser.id, email: currentUser.email, error: (e as Error).message });
           throw e;
       }
   };
@@ -1105,6 +1142,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       if (!currentUser) return;
       // Note: This is a session switch if they have the right realRole
       setCurrentUser(prev => prev ? ({ ...prev, role: roleId }) : null);
+      logAction('USER_ROLE_SWITCHED', { userId: currentUser.id, email: currentUser.email, newRole: roleId, oldRole: currentUser.role });
   };
 
   const updateUserRole = (userId: string, role: UserRole) => {
@@ -1113,6 +1151,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           setCurrentUser(prev => prev ? ({ ...prev, role }) : null);
       }
       // Persistence handled by updateUserAccess for full updates
+      const user = users.find(u => u.id === userId);
+      if (user && user.role !== role) {
+          logAction('USER_ROLE_UPDATED', { userId, email: user.email, oldRole: user.role, newRole: role });
+      }
   };
 
   const updateUserAccess = async (userId: string, role: UserRole, siteIds: string[]) => {
@@ -1128,9 +1170,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       try {
           await db.upsertUser(updatedUser);
+          logAction('USER_ACCESS_UPDATED', { userId, email: user.email, role, siteIds });
       } catch (e) {
           console.error("Failed to update user access", e);
           reloadData();
+          logAction('USER_ACCESS_UPDATE_FAILED', { userId, email: user.email, error: (e as Error).message });
       }
   };
 
@@ -1161,9 +1205,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           setUsers(prev => prev.map(u => u.id === existingUser.id ? updatedUser : u));
           try {
               await db.createOrUpdateUserByEmail(updatedUser);
+              logAction('USER_UPDATED_VIA_ADD', { userId: updatedUser.id, email: updatedUser.email, role: updatedUser.role, status: updatedUser.status });
           } catch (e) {
               console.error("Failed to update existing user", e);
               reloadData();
+              logAction('USER_UPDATE_VIA_ADD_FAILED', { userId: updatedUser.id, email: updatedUser.email, error: (e as Error).message });
               throw e;
           }
       } else {
@@ -1171,9 +1217,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           setUsers(prev => [...prev, userWithExpiry]);
           try {
               await db.createOrUpdateUserByEmail(userWithExpiry);
+              logAction('USER_CREATED', { userId: userWithExpiry.id, email: userWithExpiry.email, role: userWithExpiry.role, siteIds: userWithExpiry.siteIds });
           } catch (e) {
               console.error("Failed to add user", e);
               reloadData();
+              logAction('USER_CREATE_FAILED', { email: userWithExpiry.email, error: (e as Error).message });
               throw e;
           }
       }
@@ -1188,10 +1236,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       if (success) {
           // Reload all data to refresh invitation status and expiry
           await reloadData();
+          logAction('WELCOME_EMAIL_RESENT', { toEmail: email, name, siteId });
       }
       return success;
     } catch (e) {
       console.error("Resend failed", e);
+      logAction('WELCOME_EMAIL_RESEND_FAILED', { toEmail: email, name, siteId, error: (e as Error).message });
       return false;
     } finally {
       setIsLoadingData(false);
@@ -1203,9 +1253,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'ARCHIVED' } : u));
       try {
           await db.updateUserStatus(userId, 'ARCHIVED');
+          logAction('USER_ARCHIVED', { userId });
       } catch (e) {
           console.error("Failed to archive user", e);
           reloadData();
+          logAction('USER_ARCHIVE_FAILED', { userId, error: (e as Error).message });
       }
   };
 
@@ -1217,9 +1269,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setWorkflowSteps(prev => prev.map(s => s.id === step.id ? step : s));
       try {
           await db.upsertWorkflowStep(step);
+          logAction('WORKFLOW_STEP_UPDATED', { stepId: step.id, name: step.stepName });
       } catch (e) {
           console.error("Failed to update workflow step", e);
           reloadData(); // Revert
+          logAction('WORKFLOW_STEP_UPDATE_FAILED', { stepId: step.id, error: (e as Error).message });
       }
   };
 
@@ -1227,9 +1281,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setWorkflowSteps(prev => [...prev, step]);
       try {
           await db.upsertWorkflowStep(step);
+          logAction('WORKFLOW_STEP_ADDED', { stepId: step.id, name: step.stepName });
       } catch (e) {
           console.error("Failed to add workflow step", e);
           reloadData();
+          logAction('WORKFLOW_STEP_ADD_FAILED', { stepId: step.id, error: (e as Error).message });
       }
   };
 
@@ -1237,9 +1293,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setWorkflowSteps(prev => prev.filter(s => s.id !== id));
       try {
           await db.deleteWorkflowStep(id);
+          logAction('WORKFLOW_STEP_DELETED', { stepId: id });
       } catch (e) {
          console.error("Failed to delete workflow step", e);
          reloadData();
+         logAction('WORKFLOW_STEP_DELETE_FAILED', { stepId: id, error: (e as Error).message });
       }
   };
 
@@ -1252,9 +1310,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       });
       try {
           await db.upsertNotificationRule(rule);
+          logAction('NOTIFICATION_RULE_UPSERTED', { ruleId: rule.id, eventType: rule.eventType, isActive: rule.isActive });
       } catch (e) {
           console.error("Failed to upsert notification rule", e);
           reloadData();
+          logAction('NOTIFICATION_RULE_UPSERT_FAILED', { ruleId: rule.id, error: (e as Error).message });
       }
   };
 
@@ -1262,9 +1322,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setNotificationRules(prev => prev.filter(n => n.id !== id));
       try {
           await db.deleteNotificationRule(id);
+          logAction('NOTIFICATION_RULE_DELETED', { ruleId: id });
       } catch (e) {
            console.error("Failed to delete notification rule", e);
            reloadData();
+           logAction('NOTIFICATION_RULE_DELETE_FAILED', { ruleId: id, error: (e as Error).message });
       }
   };
   
@@ -1322,8 +1384,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
              const message = `**ProcureFlow Notification**\n\nEvent: ${event}\nData: ${JSON.stringify(data, null, 2)}`;
              try {
                 await fetch(teamsWebhookUrl, { method: 'POST', body: JSON.stringify({ text: message }) });
+                logAction('NOTIFICATION_SENT_TEAMS', { event, data });
              } catch (e) {
                  console.error("Failed to send Teams webhook", e);
+                 logAction('NOTIFICATION_TEAMS_FAILED', { event, data, error: (e as Error).message });
              }
         }
 
@@ -1337,7 +1401,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                         message: JSON.stringify(data),
                         link: ''
                     });
-                } catch (e) { console.error("Failed to add in-app notification", e); }
+                    logAction('NOTIFICATION_SENT_INAPP', { event, userId: target.userId, data });
+                } catch (e) { 
+                    console.error("Failed to add in-app notification", e); 
+                    logAction('NOTIFICATION_INAPP_FAILED', { event, userId: target.userId, error: (e as Error).message });
+                }
             }
             
             if (target.email && target.emailAddress) {
@@ -1354,8 +1422,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                          siteId,
                          invitedByName: 'System Notification'
                      });
+                     logAction('NOTIFICATION_SENT_EMAIL', { event, toEmail: target.emailAddress, data });
                  } catch (e) {
                      console.error("Failed to send notification email", e);
+                     logAction('NOTIFICATION_EMAIL_FAILED', { event, toEmail: target.emailAddress, error: (e as Error).message });
                  }
                  // Removed USE_GRAPH_DELEGATED check as we use System Sender now
 
@@ -1368,10 +1438,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         const displayId = await db.createPO(po);
         // NOTIFICATION TRIGGER
         sendNotification('PO_CREATED', { poId: displayId, requesterId: po.requesterId, amount: po.totalAmount });
+        logAction('PO_CREATED', { id: displayId, amount: po.totalAmount }, { requester: po.requesterName });
         setPos(prev => [{ ...po, displayId }, ...prev]);
     } catch (error) {
         console.error('Failed to create PO:', error);
         alert('Failed to create PO order.');
+        logAction('PO_CREATE_FAILED', { requesterId: po.requesterId, error: (error as Error).message });
     }
   };
 
@@ -1387,14 +1459,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         if (status === 'APPROVED_PENDING_CONCUR') {
             const po = pos.find(p => p.id === poId);
             if (po) sendNotification('PO_APPROVED', { poId: po.displayId || po.id, approver: event.approverName });
+            logAction('PO_APPROVED', { id: poId, status });
         } else if (status === 'REJECTED') {
             const po = pos.find(p => p.id === poId);
             if (po) sendNotification('PO_REJECTED', { poId: po.displayId || po.id, rejector: event.approverName });
+            logAction('PO_REJECTED', { id: poId, status });
+        } else {
+             logAction('PO_STATUS_CHANGE', { id: poId, status });
         }
         
     } catch (e) {
         console.error("Failed to update status", e);
         reloadData();
+        logAction('PO_STATUS_UPDATE_FAILED', { poId, status, error: (e as Error).message });
     }
   };
 
@@ -1404,11 +1481,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           setPos(prev => prev.filter(p => p.id !== id));
           
           await db.deletePO(id);
+          logAction('PO_DELETED', { id });
           // sendNotification('SYSTEM', { message: `PO ${id} deleted by admin` });
       } catch (e) {
           console.error("Failed to delete PO", e);
           alert("Failed to delete PO");
           reloadData(); // Revert
+          logAction('PO_DELETE_FAILED', { id, error: (e as Error).message });
       }
   };
 
@@ -1448,11 +1527,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           await db.updatePOStatus(poId, 'ACTIVE'); 
           
           console.log(`Successfully linked Concur PO ${concurPoNumber} to PO ${poId}`);
+          logAction('PO_CONCUR_LINKED', { poId, concurPoNumber });
       } catch (e) {
           console.error("Failed to link Concur PO:", e);
           alert(`Failed to link Concur PO: ${e instanceof Error ? e.message : 'Unknown error'}`);
           // Revert state
           reloadData();
+          logAction('PO_CONCUR_LINK_FAILED', { poId, concurPoNumber, error: (e as Error).message });
       }
   };
 
@@ -1526,10 +1607,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
         // NOTIFICATION TRIGGER
         sendNotification('DELIVERY_RECEIVED', { poId: poId, deliveryId: delivery.id, receivedBy: delivery.receivedBy });
+        logAction('DELIVERY_ADDED', { poId, deliveryId: delivery.id, receivedBy: delivery.receivedBy, newStatus });
 
     } catch (e) {
         console.error("Failed to add delivery", e);
         reloadData();
+        logAction('DELIVERY_ADD_FAILED', { poId, deliveryId: delivery.id, error: (e as Error).message });
         throw e;
     }
   };
@@ -1549,10 +1632,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       // Persistence
       try {
           await db.updateDeliveryLineFinanceInfo(lineId, updates);
+          logAction('DELIVERY_FINANCE_INFO_UPDATED', { poId, deliveryId, lineId, updates: Object.keys(updates) });
       } catch (error) {
           console.error('Failed to persist finance info:', error);
           alert('Failed to save changes. Please try again.');
           reloadData(); // Revert
+          logAction('DELIVERY_FINANCE_INFO_UPDATE_FAILED', { poId, deliveryId, lineId, error: (error as Error).message });
       }
   };
 
@@ -1560,10 +1645,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     try {
         await db.addSnapshot(snapshot);
         setStockSnapshots(prev => [...prev, snapshot]);
+        logAction('STOCK_SNAPSHOT_ADDED', { supplierId: snapshot.supplierId, snapshotDate: snapshot.snapshotDate });
     } catch (e: unknown) {
       console.error("Failed to add snapshot", e);
       reloadData();
       alert('Failed to save stock snapshot.');
+      logAction('STOCK_SNAPSHOT_ADD_FAILED', { supplierId: snapshot.supplierId, error: (e as Error).message });
     }
   };
 
@@ -1581,8 +1668,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           setItems(refreshedItems);
           // 3. Update availability
           await refreshAvailability(refreshedSnapshots);
+          logAction('STOCK_SNAPSHOT_IMPORTED', { supplierId, date, count: snapshots.length });
       } catch (error) {
           console.error('Failed to import stock:', error);
+          logAction('STOCK_SNAPSHOT_IMPORT_FAILED', { supplierId, date, error: (error as Error).message });
           throw error;
       }
   };
@@ -1594,9 +1683,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             const exists = prev.find(c => c.id === newItem.id);
             return exists ? prev.map(c => c.id === newItem.id ? newItem : c) : [...prev, newItem];
         });
+        logAction('CATALOG_ITEM_UPDATED', { itemId: newItem.id, supplierId: newItem.supplierId });
     } catch (error) {
         console.error('Failed to update catalog:', error);
         alert('Failed to update catalog item.');
+        logAction('CATALOG_ITEM_UPDATE_FAILED', { itemId: newItem.id, error: (error as Error).message });
     }
   };
 
@@ -1636,10 +1727,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           const [i, s] = await Promise.all([db.getItems(), db.getStockSnapshots()]);
           setItems(i);
           setStockSnapshots(s);
-          
+          logAction('DATA_BACKFILL_COMPLETED', { itemsBackfilled: res.items, snapshotsBackfilled: res.snapshots });
       } catch (e: unknown) {
           console.error(e);
           alert('Backfill Failed: ' + (e as Error).message);
+          logAction('DATA_BACKFILL_FAILED', { error: (e as Error).message });
       } finally {
           setIsLoadingData(false);
       }
@@ -1694,8 +1786,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
         await db.upsertProductAvailability(finalPayload);
         setAvailability(finalPayload); // Ideal: Refetch from DB to get canonical IDs
+        logAction('PRODUCT_AVAILABILITY_REFRESHED', { count: finalPayload.length });
     } catch (e) {
         console.error('Failed to refresh availability', e);
+        logAction('PRODUCT_AVAILABILITY_REFRESH_FAILED', { error: (e as Error).message });
     }
   };
 
@@ -1703,6 +1797,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const result = await db.upsertMasterItemsBulk(newItems, archiveMissing, currentUser?.id);
       const fresh = await db.getItems();
       setItems(fresh);
+      logAction('MASTER_PRODUCTS_IMPORTED', { newItemsCount: newItems.length, archivedMissing: archiveMissing, result });
       return result;
   };
 
@@ -1721,6 +1816,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const freshItems = await db.getItems();
       setItems(freshItems);
       await refreshAvailability();
+      logAction('AUTO_MAPPING_RUN', { supplierId, result });
       return result;
   };
 
@@ -1732,6 +1828,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       await db.deleteMapping(id);
       setMappings(prev => prev.filter(m => m.id !== id));
       await refreshAvailability();
+      logAction('MAPPING_DELETED', { mappingId: id });
   };
 
   const syncItemsFromSnapshots = async (supplierId?: string) => {
@@ -1745,16 +1842,33 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           }
           const freshItems = await db.getItems();
           setItems(freshItems);
+          logAction('ITEMS_SYNCED_FROM_SNAPSHOTS_ALL', { totalUpdated });
           return { updated: totalUpdated };
       }
       const res = await db.syncItemsFromSnapshots(supplierId);
       const freshItems = await db.getItems();
       setItems(freshItems);
+      logAction('ITEMS_SYNCED_FROM_SNAPSHOTS', { supplierId, updated: res.updated });
       return res;
   };
 
-  const getAuditLogs = async () => {
-    return await db.getAuditLogs();
+  const getAuditLogs = async (filters?: { startDate?: string, endDate?: string, userId?: string, actionType?: string }) => {
+    return await db.getAuditLogs(filters);
+  };
+
+  const logAction = async (actionType: string, summary: Record<string, unknown>, details: Record<string, unknown> = {}) => {
+      if (!currentUser) return;
+      try {
+          await db.createAuditLog({
+              actionType,
+              performedBy: currentUser.id,
+              summary,
+              details
+          });
+      } catch (e) {
+          console.error("Failed to log action", e);
+          // Non-blocking
+      }
   };
 
 
@@ -1766,6 +1880,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
            await db.runAutoMapping(sup.id);
        }
        await refreshAvailability();
+       logAction('GENERATE_MAPPINGS_DEPRECATED_CALL', { message: 'Called deprecated function' });
   };
 
   const upsertMapping = async (mapping: SupplierProductMap) => {
@@ -1776,15 +1891,18 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
              return exists ? prev.map(m => m.id === mapping.id ? mapping : m) : [...prev, mapping];
         });
         await refreshAvailability(undefined, [...mappings.filter(m => m.id !== mapping.id), mapping]);
+        logAction('MAPPING_UPSERTED', { mappingId: mapping.id, productId: mapping.productId, supplierId: mapping.supplierId, status: mapping.mappingStatus });
   };
 
   const addItem = async (item: Item) => {
         try {
             await db.addItem(item);
             setItems(prev => [...prev, item]);
+            logAction('ITEM_ADDED', { itemId: item.id, name: item.name });
         } catch (e) {
             console.error("AppContext: Failed to add item", e);
             alert("Failed to add item. Check console for details.");
+            logAction('ITEM_ADD_FAILED', { name: item.name, error: (e as Error).message });
             throw e;
         }
   };
@@ -1792,9 +1910,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         try {
             await db.updateItem(item);
             setItems(prev => prev.map(i => i.id === item.id ? item : i));
+            logAction('ITEM_UPDATED', { itemId: item.id, name: item.name });
         } catch (e) {
              console.error("AppContext: Failed to update item", e);
              alert("Failed to update item. Check console for details.");
+             logAction('ITEM_UPDATE_FAILED', { itemId: item.id, error: (e as Error).message });
              throw e;
         }
   };
@@ -1947,6 +2067,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     deleteMapping,
     syncItemsFromSnapshots,
     getAuditLogs,
+    logAction,
     resendWelcomeEmail,
     sendWelcomeEmail,
 

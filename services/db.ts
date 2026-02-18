@@ -1491,16 +1491,37 @@ export const db = {
         if (error) throw error;
     },
 
-    getAuditLogs: async (): Promise<SystemAuditLog[]> => {
-        const { data, error } = await supabase
+    getAuditLogs: async (filters?: { startDate?: string, endDate?: string, userId?: string, actionType?: string }): Promise<SystemAuditLog[]> => {
+        let query = supabase
             .from('system_audit_logs')
             .select(`
                 *,
                 performer:users(name)
             `)
             .order('created_at', { ascending: false })
-            .limit(50);
+            .limit(100);
+
+        if (filters?.startDate) {
+            query = query.gte('created_at', filters.startDate);
+        }
+        if (filters?.endDate) {
+            // Add 1 day to include the end date fully
+            const end = new Date(filters.endDate);
+            end.setDate(end.getDate() + 1);
+            query = query.lt('created_at', end.toISOString());
+        }
+        if (filters?.userId) {
+            // Search by name needs a join filter, but easiest is to filter by ID if we have it.
+            // If the UI is filtering by text name, we might need a different approach or client-side filtering.
+            // For now, let's assume strict ID filtering if provided, or we can rely on client-side text search.
+             query = query.eq('performed_by', filters.userId);
+        }
+        if (filters?.actionType) {
+            query = query.ilike('action_type', `%${filters.actionType}%`);
+        }
             
+        const { data, error } = await query;
+        
         if (error) throw error;
         
         return data.map((l: any) => ({
