@@ -116,6 +116,7 @@ interface AppContextType {
 
   // New Admin Capabilities
   getItemFieldRegistry: () => Promise<any[]>;
+  sendWelcomeEmail: (toEmail: string, name: string, siteIdOverride?: string) => Promise<boolean>;
   resendWelcomeEmail: (email: string, name: string, siteId?: string) => Promise<boolean>;
   getDirectoryService: () => Promise<DirectoryService | null>;
 
@@ -1937,6 +1938,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     syncItemsFromSnapshots,
     getAuditLogs,
     resendWelcomeEmail,
+    sendWelcomeEmail,
 
     getDirectoryService: async () => {
         return new DirectoryService(supabase);
