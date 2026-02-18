@@ -2538,11 +2538,7 @@ if __name__ == "__main__":
           </div>
       )}
 
-      {activeTab === 'AUDIT' && (
-          <div className="animate-fade-in max-w-5xl">
-              <AuditLogViewer />
-          </div>
-      )}
+
 
       {activeTab === 'USERS' && (
           <div className="animate-fade-in space-y-6">
