@@ -4,9 +4,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.1'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 }
 
-const VERSION = "1.0.4";
+const VERSION = "1.0.6";
 
 console.log(`send-invite-email function v${VERSION} initialized.`);
 
@@ -34,12 +35,6 @@ Deno.serve(async (req) => {
     console.log(`[v${VERSION}] Processing ${req.method} request`);
     
     const authHeader = req.headers.get('Authorization')
-    
-    // Allow GET without auth for diagnostics (or valid checking)
-    if (req.method === 'GET') {
-      // Check auth if present, but don't fail if not? No, let's keep it simple for now. 
-      // Just return status.
-    }
 
     if (req.method !== 'GET' && !authHeader) {
       return new Response(JSON.stringify({ error: 'Missing Authorization header' }), { 
