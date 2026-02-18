@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { AttributeOption, AttributeType, Item } from '../types.ts';
+import { AttributeOption, AttributeType, Item } from '../types';
 import { 
     Plus, Edit2, Trash2, FolderTree, Tag, Layers, 
     BookOpen, Save, X, 
@@ -8,7 +8,7 @@ import {
     Search, ArrowRightLeft, Maximize2, Minimize2,
     ChevronsUp, ChevronsDown, MousePointer2 as _MousePointer2
 } from 'lucide-react';
-import { useToast } from './ToastNotification.tsx';
+import { useToast } from './ToastNotification';
 
 interface CatalogManagementProps {
     options: AttributeOption[];
