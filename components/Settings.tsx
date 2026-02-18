@@ -179,6 +179,15 @@ const Settings = () => {
 <p>Best regards,<br/>The Admin Team</p>
 `);
 
+   // Auto-fill form when branding loads
+   useEffect(() => {
+       if (branding.emailTemplate) {
+           if (branding.emailTemplate.fromEmail) setSenderEmail(branding.emailTemplate.fromEmail);
+           if (branding.emailTemplate.subject) setEmailSubject(branding.emailTemplate.subject);
+           if (branding.emailTemplate.body) setEmailBody(branding.emailTemplate.body);
+       }
+   }, [branding]);
+
    const handleSaveEmailTemplate = async () => {
         const newBranding = {
             ...branding,
@@ -3313,17 +3322,7 @@ if __name__ == "__main__":
                       </div>
 
                       <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 space-y-6">
-                            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800 rounded-xl p-4 mb-6">
-                                <div className="flex gap-3">
-                                    <Info className="text-amber-600 shrink-0" size={18} />
-                                    <div className="space-y-1">
-                                        <h4 className="text-sm font-bold text-amber-900 dark:text-amber-400">Email Delivery Logic</h4>
-                                        <p className="text-xs text-amber-800/80 dark:text-amber-500/80 leading-relaxed">
-                                            Emails are sent via the <strong>Microsoft Graph API</strong>. For maximum reliability, ensure the <code>SYSTEM_SENDER_EMAIL</code> secret is configured in Supabase to a valid mailbox that the Azure App Registration has <code>Mail.Send</code> permissions for.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
+
 
                            <div>
                                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
