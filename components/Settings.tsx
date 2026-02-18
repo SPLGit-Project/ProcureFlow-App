@@ -169,7 +169,6 @@ const Settings = () => {
   }, [currentUser, activeTab, hasPermission]);
 
   // --- Email Templates State ---
-  const [senderEmail, setSenderEmail] = useState(branding.emailTemplate?.fromEmail || '');
   const [emailSubject, setEmailSubject] = useState(branding.emailTemplate?.subject || `Welcome to ${branding.appName}`);
   const [emailBody, setEmailBody] = useState(branding.emailTemplate?.body || `
 <p>Hi {name},</p>
@@ -179,51 +178,17 @@ const Settings = () => {
 <p>Best regards,<br/>The Admin Team</p>
 `);
 
-  const handleSaveEmailTemplate = async () => {
-       const newBranding = {
-           ...branding,
-           emailTemplate: {
-               subject: emailSubject,
-               body: emailBody,
-               fromEmail: senderEmail
-           }
-       };
-       await updateBranding(newBranding);
-       alert("Email template saved!");
-  };
-
-    const handleCheckAzureConnection = async () => {
-        success("Checking Azure App Registration permissions...");
-        try {
-            const { data, error: funcError } = await supabase.functions.invoke('check-azure-perms');
-            if (funcError) throw funcError;
-
-            if (data.success) {
-                const report = data.report;
-                const permissions = report.permissions_detected;
-                const mailbox = report.mailbox_validation;
-
-                if (report.verdict.startsWith("ALL CLEAR")) {
-                    success(`Azure Connection Verified! Sender ${report.configuration.systemSender} is ready.`);
-                } else {
-                    if (!permissions.can_send_mail) {
-                        error("Missing Mail.Send permission in Azure App Registration.");
-                    }
-                    if (mailbox.status.includes("ERROR")) {
-                        error(`Mailbox Error: ${mailbox.status}`);
-                    } else {
-                        warning(report.verdict);
-                    }
-                    console.warn("Azure Diagnostic Report:", report);
-                }
-            } else {
-                error(`Diagnostic failed: ${data.error || 'Unknown error'}`);
+   const handleSaveEmailTemplate = async () => {
+        const newBranding = {
+            ...branding,
+            emailTemplate: {
+                subject: emailSubject,
+                body: emailBody
             }
-        } catch (e: any) {
-            console.error("Azure check failed:", e);
-            error(`Connection check failed: ${e.message || 'Check Supabase logs'}`);
-        }
-    };
+        };
+        await updateBranding(newBranding);
+        alert("Email template saved!");
+   };
 
     const handleTestEmail = async () => {
        const email = prompt("Enter email to send test to:", currentUser?.email);
@@ -3336,9 +3301,6 @@ if __name__ == "__main__":
                               <p className="text-sm text-gray-500">Customize the welcome email sent to new users.</p>
                           </div>
                            <div className="flex gap-3">
-                               <button onClick={handleCheckAzureConnection} className="px-4 py-2 bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 font-medium transition-colors flex items-center gap-2">
-                                   <Zap size={18} /> Check Azure Connection
-                               </button>
                                <button onClick={handleTestEmail} className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 font-medium transition-colors">
                                    Send Test Email
                                </button>
@@ -3361,21 +3323,6 @@ if __name__ == "__main__":
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
-                                    <Mail size={16} className="text-gray-400"/> Sender Email (From)
-                                </label>
-                                <input 
-                                   className="input-field w-full font-medium"
-                                   value={senderEmail}
-                                   onChange={(e) => setSenderEmail(e.target.value)}
-                                   placeholder="admin@splservices.com.au"
-                                />
-                                <p className="text-xs text-gray-500 mt-2 flex items-start gap-1">
-                                    <AlertCircle size={12} className="mt-0.5 shrink-0"/>
-                                    <span>If blank, the system will attempt to use the <code>SYSTEM_SENDER_EMAIL</code> environment secret. Ensure this email has an active M365 license.</span>
-                                </p>
-                            </div>
                            <div>
                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Email Subject</label>
                                <input 
