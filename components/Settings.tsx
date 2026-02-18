@@ -701,6 +701,8 @@ const Settings = () => {
   // --- User Management State ---
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState('');
+  const [roleSaveStatus, setRoleSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   useEffect(() => { setTeamsUrlForm(teamsWebhookUrl); }, [teamsWebhookUrl]);
 
@@ -2545,18 +2547,66 @@ if __name__ == "__main__":
       {activeTab === 'USERS' && (
           <div className="animate-fade-in space-y-6">
               {/* User Dashboard Header */}
-               {/* User Stats */}
-               <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-[var(--color-brand)] transition-all">
-                   <div className="w-12 h-12 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center group-hover:scale-110 transition-transform">
-                       <Users size={24}/>
-                   </div>
-                   <div>
-                       <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Total Members</div>
-                       <div className="text-2xl font-black text-gray-900 dark:text-white line-height-1">
-                           {users.filter(u => u.status !== 'ARCHIVED').length}
+               {/* User Stats Dashboard */}
+               {(() => {
+                   const nonArchived = users.filter(u => u.status !== 'ARCHIVED');
+                   const activeUsers = users.filter(u => u.status === 'APPROVED');
+                   const pendingUsers = users.filter(u => u.status === 'PENDING_APPROVAL');
+                   const invitedPendingCount = pendingUsers.filter(u => u.invitedAt).length;
+                   const neverInvitedCount = pendingUsers.filter(u => !u.invitedAt).length;
+                   const archivedUsers = users.filter(u => u.status === 'ARCHIVED');
+
+                   return (
+                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                           {/* Total */}
+                           <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-[var(--color-brand)] transition-all">
+                               <div className="w-12 h-12 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center group-hover:scale-110 transition-transform">
+                                   <Users size={24}/>
+                               </div>
+                               <div>
+                                   <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Total Members</div>
+                                   <div className="text-2xl font-black text-gray-900 dark:text-white">{nonArchived.length}</div>
+                               </div>
+                           </div>
+                           {/* Active */}
+                           <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-green-200 dark:border-green-800/50 flex items-center gap-4 group hover:border-green-400 transition-all">
+                               <div className="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 text-green-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                   <CheckCircle size={24}/>
+                               </div>
+                               <div>
+                                   <div className="text-[11px] font-bold text-green-500 uppercase tracking-wider">Active</div>
+                                   <div className="text-2xl font-black text-gray-900 dark:text-white">{activeUsers.length}</div>
+                               </div>
+                           </div>
+                           {/* Pending */}
+                           <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 flex items-center gap-4 group hover:border-amber-400 transition-all">
+                               <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                   <Clock size={24}/>
+                               </div>
+                               <div>
+                                   <div className="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Pending</div>
+                                   <div className="text-2xl font-black text-gray-900 dark:text-white">{pendingUsers.length}</div>
+                                   {pendingUsers.length > 0 && (
+                                       <div className="flex items-center gap-2 mt-1">
+                                           {invitedPendingCount > 0 && <span className="text-[9px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">{invitedPendingCount} invited</span>}
+                                           {neverInvitedCount > 0 && <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded">{neverInvitedCount} not invited</span>}
+                                       </div>
+                                   )}
+                               </div>
+                           </div>
+                           {/* Archived */}
+                           <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-gray-400 transition-all">
+                               <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                   <Archive size={24}/>
+                               </div>
+                               <div>
+                                   <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Archived</div>
+                                   <div className="text-2xl font-black text-gray-900 dark:text-white">{archivedUsers.length}</div>
+                               </div>
+                           </div>
                        </div>
-                   </div>
-               </div>
+                   );
+               })()}
 
               {/* Pending Invitations Panel — only shown when there are non-active users */}
               {(() => {
@@ -2780,6 +2830,17 @@ if __name__ == "__main__":
                               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
                           </div>
 
+                          <div className="relative w-44">
+                              <select value={userStatusFilter} onChange={e => setUserStatusFilter(e.target.value)} className="w-full pl-3 pr-8 py-2 bg-gray-50 dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl text-xs outline-none focus:ring-4 focus:ring-[var(--color-brand)]/10 appearance-none cursor-pointer text-gray-600 dark:text-gray-300 font-medium">
+                                  <option value="">All Statuses</option>
+                                  <option value="APPROVED">✅ Active</option>
+                                  <option value="PENDING_INVITED">🟡 Pending (Invited)</option>
+                                  <option value="PENDING_NOT_INVITED">🟣 Pending (Not Invited)</option>
+                                  <option value="ARCHIVED">📦 Archived</option>
+                              </select>
+                              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+                          </div>
+
                           <button onClick={() => { 
                               setInviteForm(prev => ({ 
                                 ...prev, 
@@ -2809,8 +2870,9 @@ if __name__ == "__main__":
                                           (u.name || '').toLowerCase().includes(userSearch.toLowerCase()) || 
                                           (u.email || '').toLowerCase().includes(userSearch.toLowerCase());
                                       const matchesRole = !userRoleFilter || u.role === userRoleFilter;
-                                      const notArchived = u.status !== 'ARCHIVED';
-                                      return matchesSearch && matchesRole && notArchived;
+                                      const matchesStatus = !userStatusFilter || (userStatusFilter === 'APPROVED' ? u.status === 'APPROVED' : userStatusFilter === 'PENDING_INVITED' ? (u.status === 'PENDING_APPROVAL' && u.invitedAt) : userStatusFilter === 'PENDING_NOT_INVITED' ? (u.status === 'PENDING_APPROVAL' && !u.invitedAt) : userStatusFilter === 'ARCHIVED' ? u.status === 'ARCHIVED' : true);
+                                      const notArchived = userStatusFilter === 'ARCHIVED' ? true : u.status !== 'ARCHIVED';
+                                      return matchesSearch && matchesRole && matchesStatus && notArchived;
                                   });
 
                                   // 2. Safety Deduplication by email (case-insensitive)
@@ -2837,7 +2899,7 @@ if __name__ == "__main__":
                                                       <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white dark:border-[#1e2029] shadow-md group-hover:scale-105 transition-transform">
                                                         <img src={user.avatar} className="w-full h-full object-cover bg-gray-100 dark:bg-gray-800" alt={user.name}/>
                                                       </div>
-                                                      <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-white dark:border-[#1e2029] ${user.status === 'APPROVED' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'}`}></div>
+                                                      <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-white dark:border-[#1e2029] ${user.status === 'APPROVED' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : user.status === 'PENDING_APPROVAL' && user.invitedAt ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]'}`}></div>
                                                   </div>
                                                   <div className="flex-1 min-w-0">
                                                      <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight leading-none mb-1">{user.name || (user.email ? user.email.split('@')[0] : 'Unknown User')}</div>
@@ -2848,7 +2910,7 @@ if __name__ == "__main__":
                                                             const s = sites.find(x => x.id === sid);
                                                             return s ? <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-500 uppercase">{s.name}</span> : null;
                                                         })}
-                                                        {user.status === 'PENDING' && user.invitationExpiresAt && (() => {
+                                                        {user.status === 'PENDING_APPROVAL' && user.invitationExpiresAt && (() => {
                                                             const expiryInfo = getTimeUntilExpiry(user.invitationExpiresAt);
                                                             return (
                                                                 <div className={`inline-flex items-center gap-1.5 border rounded-lg px-2 py-0.5 ${
@@ -3050,7 +3112,19 @@ if __name__ == "__main__":
                                           <div className="bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
                                               <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-white dark:bg-[#1e2029]">
                                                   <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><Lock size={14}/> Role Permissions</h3>
-                                                  <span className="px-2 py-1 rounded bg-[var(--color-brand)]/10 text-[var(--color-brand)] text-[10px] font-bold">{activeRole.permissions.length} Active Rules</span>
+                                                  <div className="flex items-center gap-2">
+                                                      {roleSaveStatus === 'saved' && (
+                                                          <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold animate-fade-in">
+                                                              <CheckCircle size={12} /> Saved
+                                                          </span>
+                                                      )}
+                                                      {roleSaveStatus === 'saving' && (
+                                                          <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold">
+                                                              <Loader2 size={12} className="animate-spin" /> Saving...
+                                                          </span>
+                                                      )}
+                                                      <span className="px-2 py-1 rounded bg-[var(--color-brand)]/10 text-[var(--color-brand)] text-[10px] font-bold">{activeRole.permissions.length} Active Rules</span>
+                                                  </div>
                                               </div>
                                               <div className="p-6">
                                                   <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-8">
@@ -3072,7 +3146,8 @@ if __name__ == "__main__":
                                                                                    newPerms = Array.from(new Set([...activeRole.permissions, ...allCategoryIds]));
                                                                                }
                                                                                const updatedRole = { ...activeRole, permissions: newPerms };
-                                                                               updateRole(updatedRole);
+                                                                               setRoleSaveStatus('saving');
+                                                                               updateRole(updatedRole).then(() => { setRoleSaveStatus('saved'); setTimeout(() => setRoleSaveStatus('idle'), 3000); });
                                                                                setActiveRole(updatedRole);
                                                                            }}
                                                                            className="text-[9px] font-bold text-[var(--color-brand)] hover:underline uppercase tracking-tighter"
@@ -3095,7 +3170,8 @@ if __name__ == "__main__":
                                                                                                ? activeRole.permissions.filter(p => p !== perm.id)
                                                                                                : [...activeRole.permissions, perm.id];
                                                                                            const updatedRole = { ...activeRole, permissions: newPerms };
-                                                                                           updateRole(updatedRole);
+                                                                                           setRoleSaveStatus('saving');
+                                                                                           updateRole(updatedRole).then(() => { setRoleSaveStatus('saved'); setTimeout(() => setRoleSaveStatus('idle'), 3000); });
                                                                                            setActiveRole(updatedRole);
                                                                                        }}
                                                                                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 ${isEnabled ? 'bg-[var(--color-brand)]' : 'bg-gray-200 dark:bg-gray-700'}`}

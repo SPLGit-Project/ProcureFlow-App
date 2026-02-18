@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { WorkflowConfiguration, WorkflowType, RoleDefinition, User, WorkflowPreviewData } from '../types';
 import { 
     CheckCircle, Bell, Truck, DollarSign, Mail, Save, Eye, Send,
-    ChevronDown, ChevronUp, User as UserIcon, Shield, Zap, X, Plus
+    ChevronDown, ChevronUp, User as UserIcon, Shield, Zap, X, Plus, Check
 } from 'lucide-react';
 
 interface SimpleWorkflowConfigProps {
@@ -66,17 +66,32 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
         workflow: null 
     });
     const [isSaving, setIsSaving] = useState(false);
+    const [isDirty, setIsDirty] = useState(false);
+    const [showSaved, setShowSaved] = useState(false);
+    const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Sync localWorkflows when parent prop changes (e.g. after reload)
+    useEffect(() => {
+        setLocalWorkflows(workflows);
+        setIsDirty(false);
+    }, [workflows]);
 
     const updateWorkflow = (workflowType: WorkflowType, updates: Partial<WorkflowConfiguration>) => {
         setLocalWorkflows(prev => prev.map(wf => 
             wf.workflowType === workflowType ? { ...wf, ...updates } : wf
         ));
+        setIsDirty(true);
+        setShowSaved(false);
     };
 
     const handleSave = async () => {
         setIsSaving(true);
         try {
             await onSave(localWorkflows);
+            setIsDirty(false);
+            setShowSaved(true);
+            if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+            savedTimerRef.current = setTimeout(() => setShowSaved(false), 4000);
         } finally {
             setIsSaving(false);
         }
@@ -166,23 +181,42 @@ const SimpleWorkflowConfig: React.FC<SimpleWorkflowConfigProps> = ({
                     <h2 className="text-2xl font-bold text-primary dark:text-white">Workflow Notifications</h2>
                     <p className="text-secondary dark:text-gray-400 mt-1">Configure automated email and in-app notifications for key events</p>
                 </div>
-                <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {isSaving ? (
-                        <>
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Saving...
-                        </>
-                    ) : (
-                        <>
-                            <Save size={20} />
-                            Save All
-                        </>
+                <div className="flex items-center gap-3">
+                    {/* Saved confirmation badge */}
+                    {showSaved && (
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold animate-fade-in">
+                            <Check size={14} /> All changes saved
+                        </span>
                     )}
-                </button>
+                    {/* Unsaved changes indicator */}
+                    {isDirty && !showSaved && (
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                            Unsaved changes
+                        </span>
+                    )}
+                    <button
+                        onClick={handleSave}
+                        disabled={isSaving || (!isDirty && !isSaving)}
+                        className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-all disabled:cursor-not-allowed ${
+                            isDirty
+                                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-600/30'
+                                : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                        }`}
+                    >
+                        {isSaving ? (
+                            <>
+                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            <>
+                                <Save size={20} />
+                                Save All
+                            </>
+                        )}
+                    </button>
+                </div>
             </div>
 
             {/* Workflow Cards */}
