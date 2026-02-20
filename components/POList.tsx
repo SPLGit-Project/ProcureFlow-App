@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import {
   Activity,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Eye,
   Link2,
@@ -24,6 +25,14 @@ type QuickFilterOption = {
   label: string;
   statuses: POStatus[];
   icon: LucideIcon;
+};
+
+type SiteFilterOption = {
+  id: string;
+  label: string;
+  count: number;
+  siteId?: string;
+  normalizedSiteName?: string;
 };
 
 const IN_PROGRESS_STATUSES: POStatus[] = ['ACTIVE', 'PARTIALLY_RECEIVED', 'VARIANCE_PENDING'];
@@ -126,13 +135,19 @@ const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
 };
 
 const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
-  const { pos, hasPermission, currentUser } = useApp();
+  const { pos, hasPermission, currentUser, userSites, siteName: resolveSiteName } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const quickFilters = useMemo(() => quickFilterConfigByPage(filter), [filter]);
   const [selectedQuickFilterId, setSelectedQuickFilterId] = useState<string>(quickFilters[0]?.id ?? 'all');
-  const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
+  const [selectedSiteFilterId, setSelectedSiteFilterId] = useState<string>('all-sites');
+  const [hydratedQuickStorageKey, setHydratedQuickStorageKey] = useState<string | null>(null);
+  const [hydratedSiteStorageKey, setHydratedSiteStorageKey] = useState<string | null>(null);
   const quickFilterStorageKey = useMemo(
     () => `pf_requests_last_filter:${currentUser?.id ?? 'anonymous'}:${filter}`,
+    [currentUser?.id, filter]
+  );
+  const siteFilterStorageKey = useMemo(
+    () => `pf_requests_last_site_filter:${currentUser?.id ?? 'anonymous'}:${filter}`,
     [currentUser?.id, filter]
   );
 
@@ -150,12 +165,12 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     }
 
     setSelectedQuickFilterId(nextFilterId);
-    setHydratedStorageKey(quickFilterStorageKey);
+    setHydratedQuickStorageKey(quickFilterStorageKey);
   }, [quickFilters, quickFilterStorageKey]);
 
   useEffect(() => {
     if (!selectedQuickFilterId) return;
-    if (hydratedStorageKey !== quickFilterStorageKey) return;
+    if (hydratedQuickStorageKey !== quickFilterStorageKey) return;
     if (!quickFilters.some((option) => option.id === selectedQuickFilterId)) return;
 
     try {
@@ -163,7 +178,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     } catch (error) {
       console.warn('POList: Unable to persist quick filter preference', error);
     }
-  }, [selectedQuickFilterId, quickFilterStorageKey, hydratedStorageKey, quickFilters]);
+  }, [selectedQuickFilterId, quickFilterStorageKey, hydratedQuickStorageKey, quickFilters]);
 
   const routeScopedPos = useMemo(() => {
     if (filter === 'PENDING') {
@@ -177,13 +192,98 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     return pos;
   }, [pos, filter]);
 
+  const siteFilterOptions = useMemo(() => {
+    const siteOptionsMap = new Map<string, SiteFilterOption>();
+
+    for (const po of routeScopedPos) {
+      const trimmedSiteId = po.siteId?.trim() || '';
+      const normalizedSiteName = (po.site || '').trim().toLowerCase();
+      const key = trimmedSiteId ? `site:${trimmedSiteId}` : normalizedSiteName ? `name:${normalizedSiteName}` : 'unknown';
+
+      if (!siteOptionsMap.has(key)) {
+        const labelFromUserSites = trimmedSiteId ? userSites.find((site) => site.id === trimmedSiteId)?.name : '';
+        const labelFromSiteName = trimmedSiteId ? resolveSiteName(trimmedSiteId) : '';
+        const label = (po.site || '').trim() || labelFromUserSites || labelFromSiteName || 'Unknown Site';
+
+        siteOptionsMap.set(key, {
+          id: key,
+          label,
+          count: 0,
+          siteId: trimmedSiteId || undefined,
+          normalizedSiteName: normalizedSiteName || undefined
+        });
+      }
+
+      const option = siteOptionsMap.get(key);
+      if (option) {
+        option.count += 1;
+      }
+    }
+
+    const sortedSiteOptions = Array.from(siteOptionsMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+    return [{ id: 'all-sites', label: 'All Sites', count: routeScopedPos.length }, ...sortedSiteOptions];
+  }, [routeScopedPos, userSites, resolveSiteName]);
+
+  useEffect(() => {
+    if (siteFilterOptions.length === 0) return;
+    let nextSiteFilterId = siteFilterOptions[0].id;
+
+    try {
+      const storedSiteFilterId = localStorage.getItem(siteFilterStorageKey);
+      if (storedSiteFilterId && siteFilterOptions.some((option) => option.id === storedSiteFilterId)) {
+        nextSiteFilterId = storedSiteFilterId;
+      }
+    } catch (error) {
+      console.warn('POList: Unable to read site filter preference', error);
+    }
+
+    setSelectedSiteFilterId(nextSiteFilterId);
+    setHydratedSiteStorageKey(siteFilterStorageKey);
+  }, [siteFilterOptions, siteFilterStorageKey]);
+
+  useEffect(() => {
+    if (!selectedSiteFilterId) return;
+    if (hydratedSiteStorageKey !== siteFilterStorageKey) return;
+    if (!siteFilterOptions.some((option) => option.id === selectedSiteFilterId)) return;
+
+    try {
+      localStorage.setItem(siteFilterStorageKey, selectedSiteFilterId);
+    } catch (error) {
+      console.warn('POList: Unable to persist site filter preference', error);
+    }
+  }, [selectedSiteFilterId, siteFilterStorageKey, hydratedSiteStorageKey, siteFilterOptions]);
+
+  const selectedSiteFilter = useMemo(
+    () => siteFilterOptions.find((option) => option.id === selectedSiteFilterId) ?? siteFilterOptions[0],
+    [siteFilterOptions, selectedSiteFilterId]
+  );
+
+  const siteScopedPos = useMemo(() => {
+    if (!selectedSiteFilter || selectedSiteFilter.id === 'all-sites') {
+      return routeScopedPos;
+    }
+
+    return routeScopedPos.filter((po) => {
+      if (selectedSiteFilter.siteId) {
+        return po.siteId === selectedSiteFilter.siteId;
+      }
+
+      const normalizedPoSiteName = (po.site || '').trim().toLowerCase();
+      if (selectedSiteFilter.normalizedSiteName) {
+        return normalizedPoSiteName === selectedSiteFilter.normalizedSiteName;
+      }
+
+      return !po.siteId && !normalizedPoSiteName;
+    });
+  }, [routeScopedPos, selectedSiteFilter]);
+
   const quickFilterCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const option of quickFilters) {
-      counts[option.id] = routeScopedPos.filter((po) => option.statuses.includes(po.status)).length;
+      counts[option.id] = siteScopedPos.filter((po) => option.statuses.includes(po.status)).length;
     }
     return counts;
-  }, [quickFilters, routeScopedPos]);
+  }, [quickFilters, siteScopedPos]);
 
   const selectedQuickFilter = useMemo(
     () => quickFilters.find((option) => option.id === selectedQuickFilterId) ?? quickFilters[0],
@@ -194,8 +294,8 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     const searchValue = searchTerm.trim().toLowerCase();
 
     const byStatus = selectedQuickFilter
-      ? routeScopedPos.filter((po) => selectedQuickFilter.statuses.includes(po.status))
-      : routeScopedPos;
+      ? siteScopedPos.filter((po) => selectedQuickFilter.statuses.includes(po.status))
+      : siteScopedPos;
 
     const bySearch = searchValue
       ? byStatus.filter((po) => {
@@ -211,7 +311,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
       : byStatus;
 
     return [...bySearch].sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
-  }, [routeScopedPos, searchTerm, selectedQuickFilter]);
+  }, [siteScopedPos, searchTerm, selectedQuickFilter]);
 
   const StatusBadge = ({ status }: { status: POStatus }) => {
     let colorClass =
@@ -281,7 +381,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
             />
           </div>
 
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
               {quickFilters.map((option) => {
                 const Icon = option.icon;
@@ -313,9 +413,36 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                 );
               })}
             </div>
-            <p className="text-xs text-tertiary dark:text-gray-500 md:text-right">
-              Showing {filteredPos.length} of {routeScopedPos.length} requests
-            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between xl:justify-end">
+              <div className="relative sm:min-w-[220px]">
+                <label htmlFor="requests-site-filter" className="sr-only">
+                  Filter requests by site
+                </label>
+                <MapPin
+                  size={14}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <ChevronDown
+                  size={14}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <select
+                  id="requests-site-filter"
+                  value={selectedSiteFilterId}
+                  onChange={(event) => setSelectedSiteFilterId(event.target.value)}
+                  className="w-full appearance-none pl-9 pr-8 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#15171e] text-sm text-gray-900 dark:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]"
+                >
+                  {siteFilterOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label} ({option.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-tertiary dark:text-gray-500 sm:text-right">
+                Showing {filteredPos.length} of {siteScopedPos.length} requests
+              </p>
+            </div>
           </div>
         </div>
 
@@ -398,23 +525,21 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
         <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-800">
           {filteredPos.map((po) => (
             <Link key={po.id} to={`/requests/${po.id}`} className="block p-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-              <div className="flex justify-between items-start mb-3 gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="font-bold text-gray-900 dark:text-white mb-0.5 truncate">{po.supplierName}</div>
-                  <div className="text-xs text-tertiary dark:text-gray-500 flex items-center gap-2 flex-wrap">
-                    <span className="font-mono">{po.displayId || po.id}</span>
-                    <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">
-                      |
-                    </span>
-                    <span>{new Date(po.requestDate).toLocaleDateString()}</span>
-                    <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">
-                      |
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin size={10} />
-                      {po.site || 'Unknown'}
-                    </span>
-                  </div>
+              <div className="mb-3 space-y-2">
+                <div className="font-bold text-gray-900 dark:text-white truncate">{po.supplierName}</div>
+                <div className="text-xs text-tertiary dark:text-gray-500 flex items-center gap-2 flex-wrap">
+                  <span className="font-mono">{po.displayId || po.id}</span>
+                  <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">
+                    |
+                  </span>
+                  <span>{new Date(po.requestDate).toLocaleDateString()}</span>
+                  <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">
+                    |
+                  </span>
+                  <span className="inline-flex min-w-0 items-center gap-1">
+                    <MapPin size={10} />
+                    <span className="truncate">{po.site || 'Unknown'}</span>
+                  </span>
                 </div>
                 <StatusBadge status={po.status} />
               </div>
