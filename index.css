@@ -86,6 +86,11 @@
 .text-secondary { color: var(--text-secondary); }
 .text-tertiary { color: var(--text-tertiary); }
 
+/* Mobile safe-area helpers (iOS/PWA) */
+.pb-safe { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+.pt-safe { padding-top: max(0.75rem, env(safe-area-inset-top)); }
+.pb-safe-or-4 { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+
 /* ============================================
    ANIMATIONS
    ============================================ */

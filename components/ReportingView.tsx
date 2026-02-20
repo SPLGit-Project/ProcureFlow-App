@@ -107,31 +107,33 @@ const ReportingView = () => {
                 <p className="text-secondary dark:text-gray-400 text-sm mt-1">Generate reports for delivery tracking and financial auditing.</p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
                 {/* valid reports sidebar */}
-                <div className="lg:col-span-1 space-y-2">
+                <div className="xl:col-span-1 space-y-2">
                     <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-2">
-                        <button 
-                            onClick={() => { setActiveReport('OUTSTANDING_DELIVERIES'); setReportData([]); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'OUTSTANDING_DELIVERIES' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                        >
-                            <AlertCircle size={18}/>
-                            Outstanding Deliveries
-                        </button>
-                        <button 
-                            onClick={() => { setActiveReport('FINANCE_SUMMARY'); setReportData([]); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'FINANCE_SUMMARY' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                        >
-                            <TrendingUp size={18}/>
-                            Finance Summary
-                        </button>
-                        <button 
-                            onClick={() => { setActiveReport('PO_STATUS'); setReportData([]); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'PO_STATUS' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                        >
-                            <FileText size={18}/>
-                            PO Status Report
-                        </button>
+                        <div className="flex xl:flex-col gap-2 overflow-x-auto xl:overflow-visible scrollbar-hide">
+                            <button 
+                                onClick={() => { setActiveReport('OUTSTANDING_DELIVERIES'); setReportData([]); }}
+                                className={`shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'OUTSTANDING_DELIVERIES' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                            >
+                                <AlertCircle size={18}/>
+                                Outstanding Deliveries
+                            </button>
+                            <button 
+                                onClick={() => { setActiveReport('FINANCE_SUMMARY'); setReportData([]); }}
+                                className={`shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'FINANCE_SUMMARY' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                            >
+                                <TrendingUp size={18}/>
+                                Finance Summary
+                            </button>
+                            <button 
+                                onClick={() => { setActiveReport('PO_STATUS'); setReportData([]); }}
+                                className={`shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'PO_STATUS' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                            >
+                                <FileText size={18}/>
+                                PO Status Report
+                            </button>
+                        </div>
                     </div>
 
                     <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 rounded-xl p-4">
@@ -145,10 +147,10 @@ const ReportingView = () => {
                 </div>
 
                 {/* Main Content */}
-                <div className="lg:col-span-3">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-[500px] flex flex-col">
-                        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
-                            <div>
+                <div className="xl:col-span-3">
+                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-[420px] md:min-h-[500px] flex flex-col">
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                            <div className="min-w-0">
                                 <h2 className="font-bold text-gray-900 dark:text-white">
                                     {activeReport === 'OUTSTANDING_DELIVERIES' && 'Outstanding Deliveries Report'}
                                     {activeReport === 'FINANCE_SUMMARY' && 'Finance Capitalization Summary'}
@@ -156,12 +158,12 @@ const ReportingView = () => {
                                 </h2>
                                 {lastRun && <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 flex items-center gap-1"><CheckCircle2 size={10}/> Data updated at: {lastRun}</p>}
                             </div>
-                            <div className="flex gap-2">
-                                <button onClick={runReport} disabled={isLoading} className="btn-primary flex items-center gap-2">
+                            <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
+                                <button onClick={runReport} disabled={isLoading} className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto">
                                     {isLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <BarChart3 size={16}/>}
                                     Run Report
                                 </button>
-                                <button onClick={exportCSV} className="btn-secondary flex items-center gap-2" disabled={reportData.length === 0}>
+                                <button onClick={exportCSV} className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto" disabled={reportData.length === 0}>
                                     <Download size={16}/> Export CSV
                                 </button>
                             </div>
@@ -179,7 +181,7 @@ const ReportingView = () => {
                                     </div>
                                 </div>
                             ) : (
-                                <table className="w-full text-sm text-left">
+                                <table className="w-full min-w-[760px] text-sm text-left">
                                     <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0">
                                         <tr>
                                             {activeReport === 'OUTSTANDING_DELIVERIES' && (

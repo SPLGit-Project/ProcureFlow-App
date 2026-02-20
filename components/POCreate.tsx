@@ -329,7 +329,7 @@ const POCreate = () => {
   );
 
   return (
-    <div className="flex flex-col gap-6 pb-24 md:pb-8 max-w-[1600px] mx-auto h-[calc(100vh-6rem)]">
+    <div className="flex flex-col gap-6 pb-24 md:pb-8 max-w-[1600px] mx-auto min-h-0 md:h-[calc(100dvh-6rem)]">
       {/* Top Header */}
       <div className="shrink-0 flex justify-between items-start md:items-center">
         <div>

@@ -145,7 +145,7 @@ const FinanceView = () => {
 
       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
         {/* Filters */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] flex flex-col md:flex-row items-center gap-4">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] flex flex-col md:flex-row items-stretch md:items-center gap-4">
              <div className="relative w-full md:max-w-md">
                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                  <input 
@@ -157,16 +157,16 @@ const FinanceView = () => {
                  />
              </div>
 
-             <div className="flex items-center gap-2">
+             <div className="flex items-center gap-2 w-full md:w-auto">
                 <button 
                   onClick={handleExpandAll}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
+                  className="flex-1 md:flex-none px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
                 >
                   Expand All
                 </button>
                 <button 
                   onClick={handleCollapseAll}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
+                  className="flex-1 md:flex-none px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
                 >
                   Collapse All
                 </button>
@@ -187,41 +187,41 @@ const FinanceView = () => {
                     <div key={po.poId} className="bg-white dark:bg-[#1e2029]">
                         {/* PO Header */}
                         <div 
-                            className="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors"
+                            className="px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center gap-4 md:gap-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors"
                             onClick={() => togglePO(po.poId)}
                         >
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-start md:items-center gap-3 md:gap-4 min-w-0">
                                 {isExpanded ? <ChevronDown size={20} className="text-gray-400"/> : <ChevronRight size={20} className="text-gray-400"/>}
-                                <div>
+                                <div className="min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <span className="font-bold text-gray-900 dark:text-white text-lg">{po.supplier}</span>
-                                        {fullyCapitalised && <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide flex items-center gap-1"><CheckCircle2 size={10}/> Fully Capitalised</span>}
+                                        <span className="font-bold text-gray-900 dark:text-white text-lg truncate">{po.supplier}</span>
+                                        {fullyCapitalised && <span className="shrink-0 text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide flex items-center gap-1"><CheckCircle2 size={10}/> Fully Capitalised</span>}
                                     </div>
-                                    <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 mt-1">
                                         <span className="font-mono bg-gray-100 dark:bg-white/10 px-1.5 py-0.5 rounded">PO: {po.concurPo}</span>
                                         <span>Req: {po.requestDate}</span>
                                         <span>{po.deliveries.length} Deliveries</span>
                                     </div>
                                 </div>
                             </div>
-                            <div className="text-right flex items-center gap-6">
-                                <div className="text-right">
+                            <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 sm:gap-4 md:gap-6">
+                                <div className="text-left sm:text-right">
                                     <div className="font-bold text-gray-900 dark:text-white text-lg">${po.totalAmount.toLocaleString()}</div>
                                     <div className="text-xs text-gray-500">Total PO Value</div>
                                 </div>
-                                <div className="text-right px-4 py-1.5 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                                <div className="text-left sm:text-right px-4 py-1.5 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/30">
                                     <div className="font-bold text-blue-700 dark:text-blue-400 text-lg">${po.totalFreight.toLocaleString()}</div>
                                     <div className="text-xs text-blue-600/70 dark:text-blue-400/70">Total Freight Cost</div>
                                 </div>
                             </div>
-                            <div className="ml-4 pl-4 border-l border-gray-200 dark:border-gray-700">
+                            <div className="w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 md:ml-4 md:pl-4 md:border-l border-gray-200 dark:border-gray-700">
                                 {!fullyCapitalised && (
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleBulkCapitalise(po.poId);
                                         }}
-                                        className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                                        className="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
                                     >
                                         <CheckCircle2 size={14}/>
                                         Mark as Capitalised
@@ -239,11 +239,11 @@ const FinanceView = () => {
 
                         {/* Expandable Content (Deliveries) */}
                         {isExpanded && (
-                            <div className="border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#15171e]/50 pl-4 md:pl-10 pr-4 pb-6 pt-2 space-y-4">
+                            <div className="border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#15171e]/50 px-3 sm:px-4 md:pl-10 md:pr-4 pb-6 pt-2 space-y-4">
                                 {po.deliveries.map(del => (
                                     <div key={del.deliveryId} className="bg-white dark:bg-[#1e2029] rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-                                        <div className="bg-gray-50 dark:bg-white/5 px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                            <div className="flex items-center gap-2">
+                                        <div className="bg-gray-50 dark:bg-white/5 px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                            <div className="flex flex-wrap items-center gap-2">
                                                 <Calendar size={12}/> Delivery: {del.date}
                                                 <span className="w-px h-3 bg-gray-300 dark:bg-gray-600 mx-1"></span>
                                                 <span>Docket: {del.docket}</span>

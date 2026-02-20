@@ -1541,8 +1541,8 @@ if __name__ == "__main__":
                         </div>
                     </div>
                 )}
-                <div className="overflow-auto flex-1 max-h-[calc(100vh-220px)] scrollbar-thin">
-                    <table className="w-full text-left border-collapse relative">
+                <div className="table-shell overflow-auto flex-1 max-h-[calc(100dvh-220px)] scrollbar-thin">
+                    <table className="dense-admin-table text-left border-collapse relative">
                         <thead className="sticky top-0 z-30 bg-gray-50 dark:bg-[#1e2029] shadow-sm">
                             <tr className="border-b border-gray-200 dark:border-gray-700">
                                 {MASTER_ITEM_COLUMNS.map((col, idx) => {
@@ -1801,8 +1801,8 @@ if __name__ == "__main__":
                                   <button onClick={confirmImport} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md">Confirm Overwrite</button>
                               </div>
                           </div>
-                          <div className="max-h-60 overflow-y-auto text-xs border border-blue-100 dark:border-blue-800 rounded bg-white dark:bg-[#15171e]">
-                              <table className="w-full text-left relative">
+                          <div className="max-h-60 table-shell overflow-y-auto text-xs border border-blue-100 dark:border-blue-800 rounded bg-white dark:bg-[#15171e]">
+                              <table className="dense-admin-table min-w-[1200px] relative">
                                   <thead className="bg-gray-50 dark:bg-white/5 font-bold sticky top-0 z-10">
                                       <tr>
                                           <th className="p-2">SKU</th>
@@ -1857,11 +1857,11 @@ if __name__ == "__main__":
                      </div>
                   </div>
 
-                 <div className="overflow-x-auto">
-                     <table className="w-full text-left text-sm text-secondary dark:text-gray-400 min-w-[1200px]">
+                 <div className="table-shell">
+                     <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[1200px]">
                          <thead className="table-header">
                               <tr>
-                                  <th className="px-4 py-4">Status</th>
+                                  <th className="px-4 py-4 table-sticky-left">Status</th>
                                   <th className="px-4 py-4">Cust Code</th>
                                   <th className="px-4 py-4">Product</th>
                                   <th className="px-4 py-4">Details</th>
@@ -1883,7 +1883,7 @@ if __name__ == "__main__":
 
                                  return (
                                  <tr key={snap.id} className="table-row group">
-                                     <td className="px-4 py-4">
+                                     <td className="px-4 py-4 table-sticky-left">
                                          {isMapped ? (
                                              <div className="flex flex-col">
                                                  <span className="badge bg-green-100 text-green-800 border-green-200 w-fit">Mapped</span>
@@ -2088,7 +2088,7 @@ if __name__ == "__main__":
                   </button>
               </div>
 
-              <div className="overflow-x-auto bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
+              <div className="table-shell bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
                   {mappingSubTab === 'MEMORY' ? (
                       <div className="p-0">
                           <div className="p-4 bg-purple-50 dark:bg-purple-900/10 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center">
@@ -2116,20 +2116,22 @@ if __name__ == "__main__":
                                   Sync Item Prices
                               </button>
                           </div>
-                          <table className="w-full text-left text-sm text-secondary dark:text-gray-400 min-w-[900px]">
+                          <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[900px]">
                               <thead className="table-header"><tr>
-                                  <th className="px-6 py-4">Supplier</th>
+                                  <th className="px-6 py-4 table-sticky-left">Supplier</th>
                                   <th className="px-6 py-4">Supplier SKU</th>
                                   <th className="px-6 py-4">Conf. Item</th>
                                   <th className="px-6 py-4">Method</th>
                                   <th className="px-6 py-4">Created</th>
-                                  <th className="px-6 py-4 text-center">Action</th>
+                                  <th className="px-6 py-4 text-center table-sticky-right">Action</th>
                               </tr></thead>
                               <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                                   {mappingMemory.map(mem => (
                                       <tr key={mem.id} className="table-row">
-                                          <td className="px-6 py-4 flex items-center gap-3">
-                                              <div className="font-bold text-gray-900 dark:text-white uppercase tracking-tight">{mem.supplier_name}</div>
+                                          <td className="px-6 py-4 table-sticky-left">
+                                              <div className="flex items-center gap-3">
+                                                <div className="font-bold text-gray-900 dark:text-white uppercase tracking-tight">{mem.supplier_name}</div>
+                                              </div>
                                           </td>
                                           <td className="px-6 py-4">
                                               <div className="font-mono text-xs">{mem.supplier_sku}</div>
@@ -2145,7 +2147,7 @@ if __name__ == "__main__":
                                           <td className="px-6 py-4 text-xs font-mono">
                                               {new Date(mem.created_at).toLocaleDateString()}
                                           </td>
-                                          <td className="px-6 py-4 text-center">
+                                          <td className="px-6 py-4 text-center table-sticky-right">
                                               <button 
                                                 onClick={async () => {
                                                     if (!window.confirm('Forget this mapping decision? Future uploads will need re-mapping.')) return;
@@ -2166,16 +2168,16 @@ if __name__ == "__main__":
                           </table>
                       </div>
                   ) : (
-                      <table className="w-full text-left text-sm text-secondary dark:text-gray-400 min-w-[900px]">
+                      <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[900px]">
                           <thead className="table-header"><tr>
-                              <th className="px-6 py-4">Status</th>
+                              <th className="px-6 py-4 table-sticky-left">Status</th>
                               <th className="px-6 py-4">Internal Master Item</th>
                               <th className="px-6 py-4">Supplier Product</th>
                               <th className="px-6 py-4">Details</th>
                               <th className="px-6 py-4 text-right">Price (Sell)</th>
                               <th className="px-6 py-4 text-right">Stock (SOH)</th>
                               <th className="px-6 py-4 text-center">Confidence</th>
-                              <th className="px-6 py-4 text-center">Action</th>
+                              <th className="px-6 py-4 text-center table-sticky-right">Action</th>
                           </tr></thead>
                           <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                               {mappings.filter(m => m.mappingStatus === mappingSubTab).map(map => {
@@ -2185,7 +2187,7 @@ if __name__ == "__main__":
 
                                   return (
                                       <tr key={map.id} className="table-row">
-                                          <td className="px-6 py-4">
+                                          <td className="px-6 py-4 table-sticky-left">
                                               <span className={`badge ${map.mappingStatus === 'PROPOSED' ? 'bg-yellow-100 text-yellow-800' : map.mappingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{map.mappingStatus}</span>
                                               <div className="flex items-center gap-1.5 mt-1">
                                                   <div className="text-[10px] uppercase font-bold text-gray-400">{map.mappingMethod}</div>
@@ -2304,7 +2306,7 @@ if __name__ == "__main__":
                                                 )}
                                               </div>
                                           </td>
-                                          <td className="px-6 py-4 text-center">
+                                          <td className="px-6 py-4 text-center table-sticky-right">
                                               <div className="flex justify-center gap-2">
                                                   {map.mappingStatus === 'PROPOSED' && (
                                                       <>
@@ -2334,16 +2336,16 @@ if __name__ == "__main__":
         <div className="space-y-6 animate-fade-in">
              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
                  <div className="flex justify-end mb-4"><button onClick={() => openSupplierForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Supplier</button></div>
-                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-secondary dark:text-gray-400 min-w-[700px]">
-                        <thead className="table-header"><tr><th className="px-6 py-4">Supplier</th><th className="px-6 py-4">Key Contact</th><th className="px-6 py-4">Categories</th><th className="px-6 py-4 text-center">Action</th></tr></thead>
+                 <div className="table-shell">
+                    <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[700px]">
+                        <thead className="table-header"><tr><th className="px-6 py-4 table-sticky-left">Supplier</th><th className="px-6 py-4">Key Contact</th><th className="px-6 py-4">Categories</th><th className="px-6 py-4 text-center table-sticky-right">Action</th></tr></thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                             {suppliers.map(s => (
                                 <tr key={s.id} className="table-row">
-                                    <td className="px-6 py-4"><div className="font-bold text-gray-900 dark:text-white">{s.name}</div><div className="text-xs">{s.address}</div></td>
+                                    <td className="px-6 py-4 table-sticky-left"><div className="font-bold text-gray-900 dark:text-white">{s.name}</div><div className="text-xs">{s.address}</div></td>
                                     <td className="px-6 py-4"><div className="font-medium text-gray-900 dark:text-white">{s.keyContact}</div><div className="text-xs text-[var(--color-brand)]">{s.contactEmail}</div><div className="text-xs">{s.phone}</div></td>
                                     <td className="px-6 py-4">{s.categories.map(c => <span key={c} className="badge mr-1">{c}</span>)}</td>
-                                    <td className="px-6 py-4 text-center flex justify-center gap-2"><button onClick={() => openSupplierForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button onClick={() => deleteSupplier(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></td>
+                                    <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button onClick={() => openSupplierForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button onClick={() => deleteSupplier(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -2393,18 +2395,18 @@ if __name__ == "__main__":
         <div className="space-y-6 animate-fade-in">
              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
                  <div className="flex justify-end mb-4"><button onClick={() => openSiteForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Site</button></div>
-                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-secondary dark:text-gray-400 min-w-[700px]">
-                        <thead className="table-header"><tr><th className="px-6 py-4">Site Name</th><th className="px-6 py-4">Suburb</th><th className="px-6 py-4">Address</th><th className="px-6 py-4">State</th><th className="px-6 py-4">Contact</th><th className="px-6 py-4 text-center">Action</th></tr></thead>
+                 <div className="table-shell">
+                    <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[700px]">
+                        <thead className="table-header"><tr><th className="px-6 py-4 table-sticky-left">Site Name</th><th className="px-6 py-4">Suburb</th><th className="px-6 py-4">Address</th><th className="px-6 py-4">State</th><th className="px-6 py-4">Contact</th><th className="px-6 py-4 text-center table-sticky-right">Action</th></tr></thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                             {sites.map(s => (
                                 <tr key={s.id} className="table-row">
-                                    <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{s.name}</td>
+                                    <td className="px-6 py-4 font-bold text-gray-900 dark:text-white table-sticky-left">{s.name}</td>
                                     <td className="px-6 py-4">{s.suburb}</td>
                                     <td className="px-6 py-4">{s.address}</td>
                                     <td className="px-6 py-4"><span className="badge">{s.state}</span> <span className="text-xs text-gray-400">{s.zip}</span></td>
                                     <td className="px-6 py-4">{s.contactPerson}</td>
-                                    <td className="px-6 py-4 text-center flex justify-center gap-2"><button onClick={() => openSiteForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button onClick={() => deleteSite(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></td>
+                                    <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button onClick={() => openSiteForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button onClick={() => deleteSite(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -2859,12 +2861,12 @@ if __name__ == "__main__":
                       </div>
                   </div>
 
-                  <div className="overflow-x-auto">
-                      <table className="w-full text-left">
+                  <div className="table-shell">
+                      <table className="dense-admin-table text-left min-w-[760px]">
                           <thead>
                               <tr className="bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
-                                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">User Profile</th>
-                                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest table-sticky-left">User Profile</th>
+                                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right table-sticky-right">Actions</th>
                               </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
@@ -2898,7 +2900,7 @@ if __name__ == "__main__":
 
                                   return displayUsers.map(user => (
                                       <tr key={user.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
-                                          <td className="px-6 py-4">
+                                          <td className="px-6 py-4 table-sticky-left">
                                                <div className="flex items-center gap-4">
                                                   <div className="relative shrink-0">
                                                       <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white dark:border-[#1e2029] shadow-md group-hover:scale-105 transition-transform">
@@ -2936,8 +2938,8 @@ if __name__ == "__main__":
                                                   </div>
                                                </div>
                                           </td>
-                                          <td className="px-6 py-4 text-right">
-                                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <td className="px-6 py-4 text-right table-sticky-right">
+                                              <div className="flex items-center justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                                   <button 
                                                     onClick={() => {
                                                         setInviteForm({
@@ -3231,20 +3233,20 @@ if __name__ == "__main__":
                    </button>
               </div>
 
-              <div className="overflow-x-auto bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
-                  <table className="w-full text-left text-sm text-gray-500 dark:text-gray-400 min-w-[900px]">
+              <div className="table-shell bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
+                  <table className="dense-admin-table text-gray-500 dark:text-gray-400 min-w-[900px]">
                       <thead className="table-header">
                           <tr>
-                              <th className="px-6 py-4 w-1/4">Event</th>
+                              <th className="px-6 py-4 w-1/4 table-sticky-left">Event</th>
                               <th className="px-6 py-4">Recipients</th>
                               <th className="px-6 py-4 text-center">Status</th>
-                              <th className="px-6 py-4 text-right">Actions</th>
+                              <th className="px-6 py-4 text-right table-sticky-right">Actions</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                           {notificationRules.map(rule => (
                               <tr key={rule.id} className="table-row">
-                                  <td className="px-6 py-4">
+                                  <td className="px-6 py-4 table-sticky-left">
                                       <div className="flex items-center gap-3">
                                           <div className={`p-2 rounded-lg ${rule.isActive ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-gray-100 text-gray-400 dark:bg-white/5'}`}>
                                               <Bell size={18}/>
@@ -3287,7 +3289,7 @@ if __name__ == "__main__":
                                           {rule.isActive ? 'Active' : 'Disabled'}
                                       </button>
                                   </td>
-                                  <td className="px-6 py-4 text-right">
+                                  <td className="px-6 py-4 text-right table-sticky-right">
                                       <button onClick={() => openRuleConfig(rule)} className="text-sm font-bold text-[var(--color-brand)] hover:underline">Configure</button>
                                   </td>
                               </tr>
@@ -3503,11 +3505,18 @@ if __name__ == "__main__":
         .input-field { @apply w-full bg-white dark:bg-[#15171e] border border-gray-300 dark:border-gray-700 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none transition-all; }
         .btn-primary { @apply bg-[var(--color-brand)] text-white px-4 py-2.5 rounded-xl hover:opacity-90 transition-opacity font-bold shadow-lg shadow-[var(--color-brand)]/20 active:scale-95; }
         .btn-secondary { @apply px-4 py-2.5 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors; }
+        .table-shell { @apply overflow-x-auto relative; }
+        .dense-admin-table { @apply w-full text-left text-xs md:text-sm; }
         .table-header { @apply bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800; }
         .table-row { @apply hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors border-b border-100 dark:border-gray-800 last:border-0; }
         .badge { @apply inline-block bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300 text-xs px-2.5 py-1 rounded-full font-medium border border-gray-200 dark:border-gray-700; }
         .icon-btn-blue { @apply p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors; }
         .icon-btn-red { @apply p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors; }
+        .table-sticky-right { position: sticky; right: 0; z-index: 15; background: #ffffff; box-shadow: -12px 0 12px -12px rgba(15, 23, 42, 0.35); }
+        .table-sticky-left { position: sticky; left: 0; z-index: 15; background: #ffffff; box-shadow: 12px 0 12px -12px rgba(15, 23, 42, 0.3); }
+        .dark .table-sticky-right, .dark .table-sticky-left { background: #1e2029; }
+        thead .table-sticky-right, thead .table-sticky-left { background: #f9fafb; }
+        .dark thead .table-sticky-right, .dark thead .table-sticky-left { background: #15171e; }
       `}</style>
                  {/* Manual Mapping Modal */}
              {isManualMapOpen && mappingSource && (

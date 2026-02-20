@@ -431,10 +431,10 @@ const CatalogManagement = ({
     };
 
     return (
-        <div className="space-y-6 h-full flex flex-col">
+        <div className="space-y-6 h-full min-h-0 flex flex-col">
             {/* Header & Main Nav */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-2">
-                <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar">
+                <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar pb-1">
                     {GROUPED_TABS.map(tab => {
                         const Icon = tab.icon;
                         const isActive = activeTabId === tab.id;
@@ -447,7 +447,7 @@ const CatalogManagement = ({
                                     if (tab.id === 'TAXONOMY') setViewMode('TAXONOMY');
                                     else setViewMode('LIST');
                                 }}
-                                className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl transition-all duration-300 font-bold text-sm ${
+                                className={`shrink-0 flex items-center space-x-2 px-4 md:px-5 py-2.5 rounded-xl transition-all duration-300 font-bold text-sm ${
                                     isActive
                                         ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 -translate-y-0.5'
                                         : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800/50'
@@ -460,11 +460,11 @@ const CatalogManagement = ({
                     })}
                 </div>
 
-                <div className="flex items-center bg-gray-100 dark:bg-gray-800/50 p-1.5 rounded-2xl border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center bg-gray-100 dark:bg-gray-800/50 p-1.5 rounded-2xl border border-gray-200 dark:border-gray-700 w-full sm:w-auto overflow-x-auto no-scrollbar">
                     <button 
                         type="button"
                         onClick={() => setViewMode(activeTabId === 'TAXONOMY' ? 'TAXONOMY' : 'LIST')}
-                        className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                        className={`shrink-0 whitespace-nowrap flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                             viewMode !== 'MIND_MAP' 
                                 ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xl' 
                                 : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-100'
@@ -476,7 +476,7 @@ const CatalogManagement = ({
                     <button 
                         type="button"
                         onClick={() => setViewMode('MIND_MAP')}
-                        className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                        className={`shrink-0 whitespace-nowrap flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                             viewMode === 'MIND_MAP' 
                                 ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xl' 
                                 : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-100'
@@ -489,12 +489,12 @@ const CatalogManagement = ({
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-1 min-h-[600px] flex flex-col">
+            <div className="flex-1 min-h-[420px] md:min-h-[600px] flex flex-col">
                 {viewMode === 'TAXONOMY' ? (
                     /* 5-LEVEL HIERARCHY TAXONOMY VIEW */
-                    <div ref={scrollContainerRef} className="flex-1 flex gap-4 overflow-x-auto p-4 custom-scrollbar scroll-smooth">
+                    <div ref={scrollContainerRef} className="flex-1 flex gap-3 md:gap-4 overflow-x-auto p-2 sm:p-3 md:p-4 custom-scrollbar scroll-smooth">
                         {/* 1. POOLS */}
-                        <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden ${minimizedColumns['POOL'] ? 'min-w-[80px] w-[80px]' : 'min-w-[280px] w-[280px]'}`}>
+                        <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden ${minimizedColumns['POOL'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
                             <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
                                 {!minimizedColumns['POOL'] && (
                                     <h4 className="text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
@@ -557,7 +557,7 @@ const CatalogManagement = ({
 
                         {/* 2. CATALOGS */}
                         {selectedPoolId && (
-                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['CATALOG'] ? 'min-w-[80px] w-[80px]' : 'min-w-[280px] w-[280px]'}`}>
+                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['CATALOG'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
                                     {!minimizedColumns['CATALOG'] && (
                                         <h4 className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
@@ -616,7 +616,7 @@ const CatalogManagement = ({
 
                         {/* 3. TYPES */}
                         {selectedCatalogId && (
-                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['TYPE'] ? 'min-w-[80px] w-[80px]' : 'min-w-[280px] w-[280px]'}`}>
+                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['TYPE'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
                                     {!minimizedColumns['TYPE'] && (
                                         <h4 className="text-xs font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center gap-2">
@@ -674,7 +674,7 @@ const CatalogManagement = ({
 
                         {/* 4. CATEGORIES */}
                         {selectedTypeId && (
-                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['CATEGORY'] ? 'min-w-[80px] w-[80px]' : 'min-w-[280px] w-[280px]'}`}>
+                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['CATEGORY'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
                                     {!minimizedColumns['CATEGORY'] && (
                                         <h4 className="text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-2">
@@ -731,7 +731,7 @@ const CatalogManagement = ({
 
                         {/* 5. SUB-CATEGORIES */}
                         {selectedParentId && (
-                            <div className="min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+                            <div className="min-w-[220px] sm:min-w-[260px] md:min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
                                     <h4 className="text-xs font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 flex items-center gap-2">
                                         <Tag size={14} /> Sub-Categories
@@ -764,7 +764,7 @@ const CatalogManagement = ({
                     /* TRADITIONAL LIST VIEW (For non-taxonomy types) */
                     <div className="flex-1 bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden flex flex-col">
                         <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-6 bg-gray-50/50 dark:bg-gray-800/30">
-                            <div className="relative w-full md:w-96">
+                            <div className="relative w-full md:w-80 lg:w-96">
                                 <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                                 <input 
                                     type="text"
@@ -777,7 +777,7 @@ const CatalogManagement = ({
                             <button
                                 type="button"
                                 onClick={() => handleOpenModal()}
-                                className="w-full md:w-auto flex items-center justify-center space-x-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl transition-all shadow-lg shadow-blue-500/30 font-black uppercase text-xs tracking-widest active:scale-95"
+                                className="w-full md:w-auto flex items-center justify-center space-x-2 px-6 md:px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl transition-all shadow-lg shadow-blue-500/30 font-black uppercase text-xs tracking-widest active:scale-95"
                             >
                                 <Plus size={18} />
                                 <span>Add New</span>
@@ -969,28 +969,28 @@ const CatalogManagement = ({
             {isModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-gray-950/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={() => setIsModalOpen(false)} />
-                    <div className="relative bg-white dark:bg-[#1e2029] rounded-[40px] shadow-[0_35px_80px_-15px_rgba(0,0,0,0.8)] w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-800 animate-in slide-in-from-bottom-12 duration-500 flex flex-col max-h-[90vh]">
+                    <div className="relative bg-white dark:bg-[#1e2029] rounded-3xl md:rounded-[40px] shadow-[0_35px_80px_-15px_rgba(0,0,0,0.8)] w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-800 animate-in slide-in-from-bottom-12 duration-500 flex flex-col max-h-[92dvh]">
                         {/* Modal Header */}
-                        <div className="px-10 py-8 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gradient-to-br from-gray-50 to-white dark:from-[#1e2029] dark:to-[#181a21] flex-shrink-0">
-                            <div className="flex items-center gap-6">
-                                <div className={`p-4 rounded-3xl text-white shadow-2xl ${selectedType === 'CATEGORY' ? 'bg-blue-600 shadow-blue-500/20' : 'bg-emerald-600 shadow-emerald-500/20'}`}>
-                                    {editingOption ? <Edit2 size={24} /> : <Plus size={24} />}
+                        <div className="px-4 sm:px-6 md:px-10 py-5 sm:py-6 md:py-8 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gradient-to-br from-gray-50 to-white dark:from-[#1e2029] dark:to-[#181a21] flex-shrink-0">
+                            <div className="flex items-center gap-4 sm:gap-6">
+                                <div className={`p-3 sm:p-4 rounded-3xl text-white shadow-2xl ${selectedType === 'CATEGORY' ? 'bg-blue-600 shadow-blue-500/20' : 'bg-emerald-600 shadow-emerald-500/20'}`}>
+                                    {editingOption ? <Edit2 size={22} /> : <Plus size={22} />}
                                 </div>
                                 <div>
-                                    <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tighter">
+                                    <h3 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white tracking-tighter">
                                         {editingOption ? 'Edit Attribute' : 'Manage Links'}
                                     </h3>
                                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Classification Engine</p>
                                 </div>
                             </div>
-                            <button type="button" onClick={() => setIsModalOpen(false)} className="p-3 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-2xl transition-all">
-                                <X size={24} />
+                            <button type="button" onClick={() => setIsModalOpen(false)} className="p-2.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-2xl transition-all">
+                                <X size={22} />
                             </button>
                         </div>
                         
                         {/* Mode Tabs (Only for Create/Link context) */}
                         {!editingOption && selectedType !== 'POOL' && (
-                            <div className="flex border-b border-gray-100 dark:border-gray-800 px-10 pt-4 gap-4 bg-gray-50/50 dark:bg-gray-800/20 flex-shrink-0">
+                            <div className="flex border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 md:px-10 pt-4 gap-4 bg-gray-50/50 dark:bg-gray-800/20 flex-shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => { setValue(''); setSelectedChildIds([]); }} 
@@ -1013,10 +1013,10 @@ const CatalogManagement = ({
                         )}
 
                         {/* Modal Body */}
-                        <div className="p-10 space-y-8 overflow-y-auto custom-scrollbar flex-1">
+                        <div className="p-4 sm:p-6 md:p-10 space-y-6 md:space-y-8 overflow-y-auto custom-scrollbar flex-1">
                             
                             {/* Type Selector  */}
-                            <div className="grid grid-cols-5 gap-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                                 {(['POOL', 'CATALOG', 'TYPE', 'CATEGORY', 'SUB_CATEGORY'] as AttributeType[]).map(t => (
                                     <button 
                                         type="button"
@@ -1091,7 +1091,7 @@ const CatalogManagement = ({
                                                         placeholder={`Search existing ${selectedType.toLowerCase().replace('_', ' ')}s...`}
                                                     />
                                                 </div>
-                                                <div className="p-3 overflow-y-auto custom-scrollbar grid grid-cols-2 md:grid-cols-3 gap-2">
+                                                <div className="p-3 overflow-y-auto custom-scrollbar grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                                                     {(selectedType === 'CATALOG' ? allCatalogs : 
                                                       selectedType === 'TYPE' ? allTypes : 
                                                       selectedType === 'CATEGORY' ? allCategories : 
@@ -1138,7 +1138,7 @@ const CatalogManagement = ({
                                         </span>
                                     </div>
 
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[160px] overflow-y-auto p-4 bg-blue-50/20 dark:bg-blue-900/5 rounded-3xl border border-blue-100/50 dark:border-blue-900/10 custom-scrollbar">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[160px] overflow-y-auto p-4 bg-blue-50/20 dark:bg-blue-900/5 rounded-3xl border border-blue-100/50 dark:border-blue-900/10 custom-scrollbar">
                                         {(selectedType === 'CATALOG' ? allPools : 
                                             selectedType === 'TYPE' ? allCatalogs : 
                                             selectedType === 'CATEGORY' ? allTypes : 
@@ -1171,11 +1171,11 @@ const CatalogManagement = ({
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="px-10 py-6 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-4 bg-gray-50/50 dark:bg-gray-800/20 flex-shrink-0">
+                        <div className="px-4 sm:px-6 md:px-10 py-4 sm:py-5 md:py-6 border-t border-gray-100 dark:border-gray-800 flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 bg-gray-50/50 dark:bg-gray-800/20 flex-shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setIsModalOpen(false)}
-                                className="px-8 py-4 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
+                                className="w-full sm:w-auto px-8 py-4 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
                             >
                                 Discard
                             </button>
@@ -1183,7 +1183,7 @@ const CatalogManagement = ({
                                 type="button"
                                 onClick={handleSave}
                                 disabled={isSaving || (!value.trim() && selectedChildIds.length === 0)}
-                                className={`flex items-center gap-3 px-10 py-4 text-xs font-black uppercase tracking-widest text-white rounded-2xl transition-all shadow-2xl disabled:opacity-50 active:scale-95 group/btn ${
+                                className={`w-full sm:w-auto flex items-center justify-center gap-3 px-8 md:px-10 py-4 text-xs font-black uppercase tracking-widest text-white rounded-2xl transition-all shadow-2xl disabled:opacity-50 active:scale-95 group/btn ${
                                     value ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/40' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/40'
                                 }`}
                             >
