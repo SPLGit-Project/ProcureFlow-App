@@ -766,6 +766,11 @@ const Settings = () => {
       { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'manage_settings' }
   ];
 
+  const visibleTabs: { id: AdminTab, icon: any, label: string }[] = [
+      { id: 'PROFILE', icon: User, label: 'My Profile' },
+      ...allTabs.filter(tab => !tab.permission || hasPermission(tab.permission))
+  ];
+
   // --- Helper Functions ---
   const handleSaveCatalog = (catId: string) => {
       const original = catalog.find(c => c.id === catId);
@@ -1263,33 +1268,37 @@ if __name__ == "__main__":
          </div>
       </div>
 
-      <div className="sticky top-0 z-30 bg-gray-50 dark:bg-[#15171e] -mx-4 px-4 md:mx-0 md:px-0">
-          <div className="flex border-b border-gray-200 dark:border-gray-800 overflow-x-auto gap-6 pb-2">
-             <button
-                onClick={() => setActiveTab('PROFILE')}
-                className={`pb-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
-                    activeTab === 'PROFILE'
-                        ? 'border-[var(--color-brand)] text-[var(--color-brand)]'
-                        : 'border-transparent text-secondary hover:text-primary dark:text-gray-500 dark:hover:text-gray-300'
-                }`}
-            >
-                <User size={16} />
-                My Profile
-            </button>
-             {allTabs.filter(tab => !tab.permission || hasPermission(tab.permission)).map(tab => (
-                 <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={`pb-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
-                        activeTab === tab.id
-                            ? 'border-[var(--color-brand)] text-[var(--color-brand)]'
-                            : 'border-transparent text-secondary hover:text-primary dark:text-gray-500 dark:hover:text-gray-300'
-                    }`}
-                >
-                    <tab.icon size={16} />
-                    {tab.label}
-                </button>
-             ))}
+      <div className="sticky top-0 z-30 -mx-4 px-4 md:mx-0 md:px-0">
+          <div className="rounded-2xl border border-gray-200/80 bg-white/75 p-2 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-[#15171e]/90">
+              <div className="flex items-center gap-2 overflow-x-auto">
+                  {visibleTabs.map(tab => {
+                      const isActive = activeTab === tab.id;
+                      const TabIcon = tab.icon;
+                      return (
+                          <button
+                              key={tab.id}
+                              onClick={() => setActiveTab(tab.id)}
+                              aria-current={isActive ? 'page' : undefined}
+                              aria-label={tab.label}
+                              title={tab.label}
+                              className={`group flex h-10 shrink-0 items-center rounded-full border transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/40 ${
+                                  isActive
+                                      ? 'bg-[var(--color-brand)]/10 border-[var(--color-brand)]/30 text-[var(--color-brand)] pl-3 pr-4 shadow-sm'
+                                      : 'border-transparent pl-3 pr-3 text-secondary hover:bg-gray-100 hover:text-primary dark:text-gray-500 dark:hover:bg-white/5 dark:hover:text-gray-200'
+                              }`}
+                          >
+                              <TabIcon size={16} className={`transition-transform duration-300 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`} />
+                              <span
+                                  className={`overflow-hidden whitespace-nowrap text-sm font-semibold transition-all duration-300 ${
+                                      isActive ? 'ml-2 max-w-[11rem] opacity-100' : 'ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[11rem] group-hover:opacity-100'
+                                  }`}
+                              >
+                                  {tab.label}
+                              </span>
+                          </button>
+                      );
+                  })}
+              </div>
           </div>
       </div>
 
