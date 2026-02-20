@@ -869,6 +869,26 @@ export const db = {
     },
 
     upsertAttributeOption: async (option: Partial<AttributeOption>): Promise<void> => {
+        // If we're updating value/type, check if we might clash with an existing inactive record
+        if (option.value && option.type) {
+            const { data: existing } = await supabase
+                .from('attribute_options')
+                .select('id, active_flag')
+                .eq('type', option.type)
+                .eq('value', option.value)
+                .maybeSingle();
+
+            if (existing && existing.id !== option.id) {
+                if (!existing.active_flag) {
+                    // Conflict with inactive record - delete the inactive one to allow the update/insert to proceed
+                    await supabase.from('attribute_options').delete().eq('id', existing.id);
+                } else {
+                    // Conflict with an ACTIVE record - this is a legitimate naming clash
+                    throw new Error(`A ${option.type.toLowerCase()} with the name "${option.value}" already exists.`);
+                }
+            }
+        }
+
         const { error } = await supabase.from('attribute_options').upsert({
              id: option.id,
              type: option.type,

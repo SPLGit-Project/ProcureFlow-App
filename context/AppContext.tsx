@@ -2017,8 +2017,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             const updated = await db.getAttributeOptions();
             setAttributeOptions(updated);
         } catch (e) {
-            console.error(e);
-            alert("Failed to save attribute option");
+            console.error('Failed to save attribute option:', e);
+            throw e; // Re-throw so the UI can show a specific error
         }
     };
 
