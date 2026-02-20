@@ -111,24 +111,24 @@ const ReportingView = () => {
                 {/* valid reports sidebar */}
                 <div className="xl:col-span-1 space-y-2">
                     <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-2">
-                        <div className="flex xl:flex-col gap-2 overflow-x-auto xl:overflow-visible scrollbar-hide">
+                        <div className="flex flex-col sm:flex-row xl:flex-col gap-2">
                             <button 
                                 onClick={() => { setActiveReport('OUTSTANDING_DELIVERIES'); setReportData([]); }}
-                                className={`shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'OUTSTANDING_DELIVERIES' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                                className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'OUTSTANDING_DELIVERIES' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
                                 <AlertCircle size={18}/>
                                 Outstanding Deliveries
                             </button>
                             <button 
                                 onClick={() => { setActiveReport('FINANCE_SUMMARY'); setReportData([]); }}
-                                className={`shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'FINANCE_SUMMARY' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                                className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'FINANCE_SUMMARY' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
                                 <TrendingUp size={18}/>
                                 Finance Summary
                             </button>
                             <button 
                                 onClick={() => { setActiveReport('PO_STATUS'); setReportData([]); }}
-                                className={`shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'PO_STATUS' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                                className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'PO_STATUS' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
                                 <FileText size={18}/>
                                 PO Status Report

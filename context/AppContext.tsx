@@ -5,6 +5,18 @@ import { db } from '../services/db.ts';
 import { supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
 import { DirectoryService } from '../services/graphService.ts';
+import {
+    MOCK_USERS,
+    MOCK_ROLES,
+    MOCK_SITES,
+    MOCK_SUPPLIERS,
+    MOCK_ITEMS,
+    MOCK_CATALOG,
+    MOCK_SNAPSHOTS,
+    MOCK_POS,
+    MOCK_WORKFLOW_STEPS,
+    MOCK_NOTIFICATIONS
+} from '../services/mockData.ts';
 
 // Helper to get raw site filter from localStorage or user defaults
 const getInitialSiteIds = (): string[] => {
@@ -21,6 +33,21 @@ const getInitialSiteIds = (): string[] => {
     } catch {
         return [];
     }
+};
+
+const isLocalQaMode = (): boolean => {
+    if (typeof globalThis.window === 'undefined') return false;
+    const host = globalThis.location.hostname;
+    const isLocalhost = host === 'localhost' || host === '127.0.0.1';
+    if (!isLocalhost) return false;
+
+    const params = new URLSearchParams(globalThis.location.search);
+    if (params.get('qa') === '1') {
+        localStorage.setItem('pf_qa_mode', '1');
+        return true;
+    }
+
+    return localStorage.getItem('pf_qa_mode') === '1';
 };
 
 interface AppContextType {
@@ -153,18 +180,43 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children?: ReactNode }) => {
-  const [users, setUsers] = useState<User[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const qaMode = isLocalQaMode();
+  const qaUser = React.useMemo<User>(() => ({
+      ...(MOCK_USERS.find(u => u.role === 'ADMIN') || MOCK_USERS[0]),
+      id: 'qa-admin',
+      name: 'QA Admin',
+      email: 'qa.admin@splservices.com.au',
+      role: 'ADMIN',
+      realRole: 'ADMIN',
+      status: 'APPROVED',
+      siteIds: MOCK_SITES.map(s => s.id)
+  }), []);
+
+  const mockPosWithSiteIds = React.useMemo(() => {
+      return MOCK_POS.map((po, idx) => {
+          const fallbackSite = MOCK_SITES[idx % MOCK_SITES.length];
+          const siteId = (po as unknown as { siteId?: string }).siteId || fallbackSite.id;
+          const site = (po as unknown as { site?: string }).site || fallbackSite.name;
+          return {
+              ...po,
+              siteId,
+              site
+          };
+      }) as PORequest[];
+  }, []);
+
+  const [users, setUsers] = useState<User[]>(() => qaMode ? [...MOCK_USERS] : []);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => qaMode ? qaUser : null);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => qaMode);
   
   // Updated Multi-Site State
   const [activeSiteIds, _setActiveSiteIds] = useState<string[]>(getInitialSiteIds());
   
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(() => !qaMode);
   const [isPendingApproval, setIsPendingApproval] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [isLoadingData, setIsLoadingData] = useState(() => !qaMode);
   
-  const [roles, setRoles] = useState<RoleDefinition[]>([]);
+  const [roles, setRoles] = useState<RoleDefinition[]>(() => qaMode ? [...MOCK_ROLES] : []);
   
 
   
@@ -228,12 +280,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   });
 
   // Data State
-  const [pos, setPos] = useState<PORequest[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [items, setItems] = useState<Item[]>([]);
-  const [sites, setSites] = useState<Site[]>([]);
-  const [catalog, setCatalog] = useState<SupplierCatalogItem[]>([]);
-  const [stockSnapshots, setStockSnapshots] = useState<SupplierStockSnapshot[]>([]);
+  const [pos, setPos] = useState<PORequest[]>(() => qaMode ? mockPosWithSiteIds : []);
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => qaMode ? [...MOCK_SUPPLIERS] : []);
+  const [items, setItems] = useState<Item[]>(() => qaMode ? [...MOCK_ITEMS] : []);
+  const [sites, setSites] = useState<Site[]>(() => qaMode ? [...MOCK_SITES] : []);
+  const [catalog, setCatalog] = useState<SupplierCatalogItem[]>(() => qaMode ? [...MOCK_CATALOG] : []);
+  const [stockSnapshots, setStockSnapshots] = useState<SupplierStockSnapshot[]>(() => qaMode ? [...MOCK_SNAPSHOTS] : []);
   
   // New State
   const [mappings, setMappings] = useState<SupplierProductMap[]>([]);
@@ -241,11 +293,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [attributeOptions, setAttributeOptions] = useState<AttributeOption[]>([]);
 
   // Admin Data State
-  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
-  const [notificationRules, setNotificationRules] = useState<NotificationRule[]>([]);
+  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>(() => qaMode ? [...MOCK_WORKFLOW_STEPS] : []);
+  const [notificationRules, setNotificationRules] = useState<NotificationRule[]>(() => qaMode ? [...MOCK_NOTIFICATIONS] : []);
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
 
-    // --- Active Site Logic (Multi) ---
+  // --- Active Site Logic (Multi) ---
     const setActiveSiteIds = (ids: string[]) => {
         // SECURITY: Validate that non-admin users can only select sites they have access to
         let validatedIds = ids;
@@ -264,6 +316,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         // Persist to DB
         savePreferences({ activeSiteIds: validatedIds });
     };
+
+    useEffect(() => {
+        if (!qaMode) return;
+        if (activeSiteIds.length > 0) return;
+        const defaults = MOCK_SITES.slice(0, 3).map(s => s.id);
+        _setActiveSiteIds(defaults);
+        localStorage.setItem('activeSiteIds', JSON.stringify(defaults));
+    }, [qaMode, activeSiteIds.length]);
 
     // --- Computed: Sites the current user has access to ---
     const userSites = React.useMemo(() => {
@@ -293,6 +353,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // Data Loading
   const lastFetchTime = React.useRef<number>(0);
   const reloadData = useCallback(async (silent: boolean = false) => {
+        if (qaMode) {
+            setRoles([...MOCK_ROLES]);
+            setUsers([...MOCK_USERS]);
+            setSites([...MOCK_SITES]);
+            setSuppliers([...MOCK_SUPPLIERS]);
+            setItems([...MOCK_ITEMS]);
+            setCatalog([...MOCK_CATALOG]);
+            setStockSnapshots([...MOCK_SNAPSHOTS]);
+            setPos([...mockPosWithSiteIds]);
+            setWorkflowSteps([...MOCK_WORKFLOW_STEPS]);
+            setNotificationRules([...MOCK_NOTIFICATIONS]);
+            setMappings([]);
+            setAvailability([]);
+            setTeamsWebhookUrl('');
+            setAttributeOptions([]);
+            if (!silent) setIsLoadingData(false);
+            return;
+        }
+
         // Smart Sync Check
         const now = Date.now();
         // If silent (smart) sync and data is fresh (< 5 mins), skip
@@ -370,7 +449,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         } finally {
             if (!silent) setIsLoadingData(false);
         }
-    }, [activeSiteIds]);
+    }, [activeSiteIds, qaMode, mockPosWithSiteIds]);
 
     // Trigger reload when active site changes
     useEffect(() => {
@@ -393,6 +472,17 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // Auth Initialization
   useEffect(() => {
     let mounted = true;
+
+    if (qaMode) {
+        setCurrentUser(qaUser);
+        setIsAuthenticated(true);
+        setIsPendingApproval(false);
+        setIsLoadingAuth(false);
+        reloadData(true);
+        return () => {
+            mounted = false;
+        };
+    }
 
     // Safety timeout to ensure we don't get stuck on loading forever
     const safetyTimeout = setTimeout(() => {
@@ -989,6 +1079,15 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // --- Auth Operations ---
   const login = async () => {
+      if (qaMode) {
+          setCurrentUser(qaUser);
+          setIsAuthenticated(true);
+          setIsPendingApproval(false);
+          setIsLoadingAuth(false);
+          reloadData(true);
+          return;
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
           provider: 'azure',
           options: {
@@ -1048,6 +1147,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const logout = async () => {
+      if (qaMode) {
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+          return;
+      }
       await supabase.auth.signOut();
   };
 

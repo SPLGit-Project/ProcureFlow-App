@@ -157,24 +157,25 @@ const FinanceView = () => {
                  />
              </div>
 
-             <div className="flex items-center gap-2 w-full md:w-auto">
+             <div className="grid grid-cols-2 gap-2 w-full md:w-auto">
                 <button 
                   onClick={handleExpandAll}
-                  className="flex-1 md:flex-none px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
                 >
                   Expand All
                 </button>
                 <button 
                   onClick={handleCollapseAll}
-                  className="flex-1 md:flex-none px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
                 >
                   Collapse All
                 </button>
              </div>
 
 
-             <div className="w-full md:w-auto ml-auto text-sm text-gray-500 flex items-center justify-end gap-2 bg-gray-50 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
-                 <Filter size={14}/> {groupedData.length} POs found
+             <div className="w-full md:w-auto md:ml-auto text-sm text-gray-500 flex items-center justify-start gap-2 bg-gray-50 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
+                 <Filter size={14}/>
+                 <span>{groupedData.length} POs found</span>
              </div>
         </div>
         

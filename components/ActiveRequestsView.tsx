@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
-import { Search, Link as LinkIcon, CheckCircle, Activity, Filter as _Filter, List, MapPin } from 'lucide-react';
+import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin } from 'lucide-react';
 import { PORequest } from '../types.ts';
 
 const ActiveRequestsView = () => {
@@ -59,7 +59,7 @@ const ActiveRequestsView = () => {
     }
 
     return (
-        <div className="max-w-7xl mx-auto p-6 pb-24 animate-fade-in">
+        <div className="max-w-7xl mx-auto px-0 sm:px-2 md:px-4 pb-24 animate-fade-in">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
@@ -69,28 +69,30 @@ const ActiveRequestsView = () => {
                     <p className="text-gray-500 dark:text-gray-400">Monitor active Purchase Orders and manage SAP Concur links.</p>
                 </div>
                 
-                <div className="flex items-center gap-1 bg-white dark:bg-[#1e2029] p-1 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
-                    <button 
-                        type="button"
-                        onClick={() => setFilterMode('PENDING')}
-                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${filterMode === 'PENDING' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                    >
-                        <LinkIcon size={14} /> Pending Entry
-                    </button>
-                    <button 
-                         type="button"
-                         onClick={() => setFilterMode('ACTIVE')}
-                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${filterMode === 'ACTIVE' ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                    >
-                        <CheckCircle size={14} /> Active Linked
-                    </button>
-                    <button 
-                         type="button"
-                         onClick={() => setFilterMode('ALL')}
-                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${filterMode === 'ALL' ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                    >
-                        <List size={14} /> View All
-                    </button>
+                <div className="w-full md:w-auto overflow-x-auto pb-1">
+                    <div className="inline-flex min-w-max items-center gap-1 bg-white dark:bg-[#1e2029] p-1 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                        <button 
+                            type="button"
+                            onClick={() => setFilterMode('PENDING')}
+                            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${filterMode === 'PENDING' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                        >
+                            <LinkIcon size={14} /> Pending Entry
+                        </button>
+                        <button 
+                             type="button"
+                             onClick={() => setFilterMode('ACTIVE')}
+                             className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${filterMode === 'ACTIVE' ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                        >
+                            <CheckCircle size={14} /> Active Linked
+                        </button>
+                        <button 
+                             type="button"
+                             onClick={() => setFilterMode('ALL')}
+                             className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${filterMode === 'ALL' ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 shadow-sm' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                        >
+                            <List size={14} /> View All
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -110,6 +112,7 @@ const ActiveRequestsView = () => {
 
             {/* List */}
              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+                <div className="hidden md:block overflow-x-auto">
                 <table className="w-full">
                     <thead className="bg-gray-50 dark:bg-[#15171e] text-left">
                         <tr>
@@ -202,6 +205,99 @@ const ActiveRequestsView = () => {
                         )}
                     </tbody>
                 </table>
+                </div>
+
+                <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-800">
+                    {filteredPOs.length === 0 ? (
+                        <div className="px-4 py-12 text-center text-sm text-gray-500">
+                            No purchase orders found requiring Concur entry.
+                        </div>
+                    ) : (
+                        filteredPOs.map((po) => {
+                            const concurPoNum = po.lines.find(l => !!l.concurPoNumber)?.concurPoNumber;
+                            const isPendingEntry = po.status === 'APPROVED_PENDING_CONCUR';
+
+                            return (
+                                <article
+                                    key={po.id}
+                                    onClick={() => navigate(`/requests/${po.id}`)}
+                                    className="p-4 space-y-3 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                                >
+                                    <div className="space-y-2">
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                                                {po.displayId || po.id}
+                                            </p>
+                                            <p className="text-xs text-gray-500 mt-0.5 truncate">{po.supplierName}</p>
+                                        </div>
+                                        <span
+                                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                                                isPendingEntry
+                                                    ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/30'
+                                                    : 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-900/30'
+                                            }`}
+                                        >
+                                            {isPendingEntry ? 'Pending Entry' : 'Active Linked'}
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 text-xs text-gray-500">
+                                        <div className="space-y-1">
+                                            <p className="uppercase tracking-wide text-[10px] font-bold text-gray-400">Date</p>
+                                            <p className="text-gray-700 dark:text-gray-300">
+                                                {new Date(po.requestDate).toLocaleDateString()}
+                                            </p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="uppercase tracking-wide text-[10px] font-bold text-gray-400">Site</p>
+                                            <p className="text-gray-700 dark:text-gray-300 inline-flex items-center gap-1 min-w-0">
+                                                <MapPin size={11} />
+                                                <span className="truncate">{po.site || 'Unknown'}</span>
+                                            </p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="uppercase tracking-wide text-[10px] font-bold text-gray-400">Requester</p>
+                                            <p className="text-gray-700 dark:text-gray-300 truncate">{po.requesterName}</p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="uppercase tracking-wide text-[10px] font-bold text-gray-400">Amount</p>
+                                            <p className="text-sm font-bold text-gray-900 dark:text-white">
+                                                ${po.totalAmount.toLocaleString()}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-1 space-y-2">
+                                        <div className="min-w-0">
+                                            {concurPoNum ? (
+                                                <span className="inline-flex max-w-full truncate bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded text-[10px] font-mono">
+                                                    {concurPoNum}
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] text-gray-400">No Concur reference</span>
+                                            )}
+                                        </div>
+                                        {isPendingEntry ? (
+                                            <button
+                                                type="button"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleOpenConcurModal(po);
+                                                }}
+                                                className="w-full px-3 py-1.5 bg-[var(--color-brand)] text-white text-xs font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-sm flex items-center justify-center gap-1"
+                                            >
+                                                <LinkIcon size={13} />
+                                                Link ID
+                                            </button>
+                                        ) : (
+                                            <span className="text-[11px] font-semibold text-gray-500">Open details</span>
+                                        )}
+                                    </div>
+                                </article>
+                            );
+                        })
+                    )}
+                </div>
              </div>
 
              {/* Modal */}

@@ -768,23 +768,29 @@ const POCreate = () => {
       )}
 
       {/* Mobile Sticky Bottom Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1e2029] border-t border-gray-200 dark:border-gray-800 p-4 md:hidden z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.1)] pb-safe">
-          <div className="flex items-center justify-between gap-4">
-              <div onClick={() => setIsMobileCartOpen(true)} className="flex-1 cursor-pointer">
-                  <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mb-0.5">
-                      <ShoppingCart size={12}/> {cart.length} items <ChevronUp size={12}/>
-                  </div>
-                  <div className="font-bold text-xl text-gray-900 dark:text-white">
-                      ${cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </div>
+      <div className="fixed inset-x-0 bottom-0 md:hidden z-30">
+          <div className="bg-white dark:bg-[#1e2029] border-t border-gray-200 dark:border-gray-800 shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
+              <div className="mx-auto w-full max-w-screen-sm flex flex-col gap-2 px-3 pt-3 pb-safe">
+                  <button
+                      type="button"
+                      onClick={() => setIsMobileCartOpen(true)}
+                      className="w-full text-left rounded-xl px-2 py-1 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                  >
+                      <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mb-0.5">
+                          <ShoppingCart size={12}/> {cart.length} items <ChevronUp size={12}/>
+                      </div>
+                      <div className="font-bold text-xl text-gray-900 dark:text-white truncate">
+                          ${cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </div>
+                  </button>
+                  <button 
+                      onClick={handleSubmit}
+                      disabled={cart.length === 0}
+                      className="w-full bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none"
+                  >
+                      Review
+                  </button>
               </div>
-              <button 
-                  onClick={handleSubmit}
-                  disabled={cart.length === 0}
-                  className="bg-[var(--color-brand)] text-white px-6 py-3 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none"
-              >
-                  Review
-              </button>
           </div>
       </div>
 

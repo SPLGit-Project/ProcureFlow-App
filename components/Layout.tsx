@@ -279,14 +279,6 @@ const Layout = () => {
             >
               <Menu size={20} />
             </button>
-            <button
-              type="button"
-              onClick={() => setIsSidebarCollapsed(prev => !prev)}
-              className="hidden md:inline-flex p-2 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors"
-              aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {isSidebarCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
-            </button>
             <div className="min-w-0">
               <div className="hidden md:flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-tertiary">Workspace</span>
