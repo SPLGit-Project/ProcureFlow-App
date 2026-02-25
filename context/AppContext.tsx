@@ -1900,8 +1900,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       pos.forEach(po => {
           if (new Date(po.requestDate) > new Date(latestSnapshot.snapshotDate)) {
              if (['PENDING_APPROVAL', 'APPROVED_PENDING_CONCUR', 'ACTIVE', 'PARTIALLY_RECEIVED'].includes(po.status)) {
-                 const line = po.lines.find(l => l.itemId === itemId);
-                 if (line) pendingDemand += line.quantityOrdered;
+                 const demandForItem = po.lines
+                     .filter(l => l.itemId === itemId)
+                     .reduce((sum, line) => sum + (Number(line.quantityOrdered) || 0), 0);
+                 pendingDemand += demandForItem;
              }
           }
       });

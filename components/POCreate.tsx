@@ -25,6 +25,26 @@ import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 
+const PRICE_MATCH_TOLERANCE = 0.0001;
+
+const getPriceOptionMatchKey = (priceOptionId?: string, priceOptionLabel?: string) => {
+  if (priceOptionId && priceOptionId.trim()) return `id:${priceOptionId.trim()}`;
+  if (priceOptionLabel && priceOptionLabel.trim()) return `label:${priceOptionLabel.trim().toLowerCase()}`;
+  return 'manual';
+};
+
+const isSameCartPriceLine = (
+  line: POLineItem,
+  itemId: string,
+  unitPrice: number,
+  priceOptionId?: string,
+  priceOptionLabel?: string
+) => {
+  if (line.itemId !== itemId) return false;
+  if (Math.abs(Number(line.unitPrice || 0) - Number(unitPrice || 0)) > PRICE_MATCH_TOLERANCE) return false;
+  return getPriceOptionMatchKey(line.priceOptionId, line.priceOptionLabel) === getPriceOptionMatchKey(priceOptionId, priceOptionLabel);
+};
+
 const POCreate = () => {
   const { items, suppliers, sites: allSites, userSites, mappings, stockSnapshots, currentUser, createPO, getEffectiveStock, reloadData } = useApp();
   // Use userSites for the dropdown (only sites user has access to), allSites for display lookups
@@ -172,12 +192,26 @@ const POCreate = () => {
       : 'estimated-current';
     
     setCart(prev => {
-      const existing = prev.find(line => line.itemId === item.id);
+      const existing = prev.find(line =>
+        isSameCartPriceLine(
+          line,
+          item.id,
+          finalUnitPrice,
+          selectedPriceOptionId,
+          selectedPriceOptionLabel
+        )
+      );
       if (existing) {
         const newQty = existing.quantityOrdered + quantityToAdd;
         return prev.map(line => 
-          line.itemId === item.id 
-          ? { ...line, quantityOrdered: newQty, totalPrice: newQty * finalUnitPrice, priceOptionId: selectedPriceOptionId, priceOptionLabel: selectedPriceOptionLabel } // Keep existing price or update? Update.
+          line.id === existing.id
+          ? {
+              ...line,
+              quantityOrdered: newQty,
+              totalPrice: Number((newQty * line.unitPrice).toFixed(2)),
+              priceOptionId: line.priceOptionId ?? selectedPriceOptionId,
+              priceOptionLabel: line.priceOptionLabel ?? selectedPriceOptionLabel
+            }
           : line
         );
       }
@@ -188,8 +222,8 @@ const POCreate = () => {
         sku: item.sku, 
         quantityOrdered: quantityToAdd,
         quantityReceived: 0,
-        unitPrice: finalUnitPrice, 
-        totalPrice: finalUnitPrice * quantityToAdd,
+        unitPrice: Number(finalUnitPrice || 0),
+        totalPrice: Number((finalUnitPrice * quantityToAdd).toFixed(2)),
         priceOptionLabel: selectedPriceOptionLabel,
         priceOptionId: selectedPriceOptionId
       }];
@@ -276,17 +310,33 @@ const POCreate = () => {
       const price = Math.max(0, parseFloat(modalPrice) || 0);
       const upq = modalUpq;
       const selectedPriceOption = modalPriceOptions.find(opt => opt.id === modalPriceOptionId);
+      const selectedPriceOptionId = selectedPriceOption?.id || modalPriceOptionId || undefined;
+      const selectedPriceOptionLabel = selectedPriceOption?.label || undefined;
       
       if (qty <= 0) return;
 
       // Add to cart logic (similar to addToCart but specific values)
       setCart(prev => {
-          const existing = prev.find(line => line.itemId === selectedDetailItem.id);
+          const existing = prev.find(line =>
+              isSameCartPriceLine(
+                  line,
+                  selectedDetailItem.id,
+                  price,
+                  selectedPriceOptionId,
+                  selectedPriceOptionLabel
+              )
+          );
           if (existing) {
               const newQty = existing.quantityOrdered + qty;
               return prev.map(line => 
-                  line.itemId === selectedDetailItem.id 
-                  ? { ...line, quantityOrdered: newQty, unitPrice: price, totalPrice: newQty * price, priceOptionId: selectedPriceOption?.id, priceOptionLabel: selectedPriceOption?.label }
+                  line.id === existing.id
+                  ? {
+                      ...line,
+                      quantityOrdered: newQty,
+                      totalPrice: Number((newQty * line.unitPrice).toFixed(2)),
+                      priceOptionId: line.priceOptionId ?? selectedPriceOptionId,
+                      priceOptionLabel: line.priceOptionLabel ?? selectedPriceOptionLabel
+                    }
                   : line
               );
           }
@@ -298,10 +348,10 @@ const POCreate = () => {
               quantityOrdered: qty,
               quantityReceived: 0,
               unitPrice: price,
-              totalPrice: price * qty,
+              totalPrice: Number((price * qty).toFixed(2)),
               upq: upq,
-              priceOptionId: selectedPriceOption?.id,
-              priceOptionLabel: selectedPriceOption?.label
+              priceOptionId: selectedPriceOptionId,
+              priceOptionLabel: selectedPriceOptionLabel
           }];
       });
 
@@ -411,6 +461,9 @@ const POCreate = () => {
                                         onChange={(e) => updateLinePrice(line.id, e.target.value)}
                                     />
                                  </div>
+                                 <span className="text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">
+                                     {line.quantityOrdered.toLocaleString()} x ${line.unitPrice.toFixed(2)}
+                                 </span>
                                  <span className="font-bold text-gray-900 dark:text-white">${line.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                              </div>
                          </div>
