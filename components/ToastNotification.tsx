@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -8,6 +8,7 @@ export interface Toast {
   type: ToastType;
   message: string;
   duration?: number;
+  dedupeKey?: string;
 }
 
 interface ToastNotificationProps {
@@ -18,7 +19,8 @@ interface ToastNotificationProps {
 
 function ToastNotification({ toast, onDismiss }: ToastNotificationProps) {
   useEffect(() => {
-    const duration = toast.duration || 5000;
+    if (toast.duration === 0) return;
+    const duration = toast.duration ?? 5000;
     const timer = setTimeout(() => {
       onDismiss(toast.id);
     }, duration);
@@ -78,23 +80,36 @@ export const ToastContainer = ({ toasts, onDismiss }: ToastContainerProps) => {
 export const useToast = () => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const showToast = (type: ToastType, message: string, duration?: number) => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    const newToast: Toast = { id, type, message, duration };
-    setToasts(prev => [...prev, newToast]);
-  };
+  const showToast = useCallback((type: ToastType, message: string, duration?: number) => {
+    const dedupeKey = `${type}:${message.trim().toLowerCase()}`;
+    setToasts(prev => {
+      const existingIndex = prev.findIndex(toast => toast.dedupeKey === dedupeKey);
+      if (existingIndex >= 0) {
+        const updated = [...prev];
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          duration: duration ?? updated[existingIndex].duration
+        };
+        return updated;
+      }
 
-  const dismissToast = (id: string) => {
+      const id = `toast-${Date.now()}-${Math.random()}`;
+      const newToast: Toast = { id, type, message, duration, dedupeKey };
+      return [...prev, newToast];
+    });
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  }, []);
 
   return {
     toasts,
     showToast,
     dismissToast,
-    success: (message: string, duration?: number) => showToast('success', message, duration),
-    error: (message: string, duration?: number) => showToast('error', message, duration),
-    warning: (message: string, duration?: number) => showToast('warning', message, duration),
-    info: (message: string, duration?: number) => showToast('info', message, duration)
+    success: useCallback((message: string, duration?: number) => showToast('success', message, duration), [showToast]),
+    error: useCallback((message: string, duration?: number) => showToast('error', message, duration), [showToast]),
+    warning: useCallback((message: string, duration?: number) => showToast('warning', message, duration), [showToast]),
+    info: useCallback((message: string, duration?: number) => showToast('info', message, duration), [showToast])
   };
 };

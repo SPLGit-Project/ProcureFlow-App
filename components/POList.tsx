@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -140,6 +140,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toasts, dismissToast, success } = useToast();
+  const handledDeleteNotificationRef = useRef<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const quickFilters = useMemo(() => quickFilterConfigByPage(filter), [filter]);
   const [selectedQuickFilterId, setSelectedQuickFilterId] = useState<string>(quickFilters[0]?.id ?? 'all');
@@ -189,11 +190,15 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     const deletedRequest = state?.deletedRequest;
     if (!deletedRequest) return;
 
+    const dedupeKey = `${deletedRequest.id || ''}:${deletedRequest.displayId || ''}:${location.key}`;
+    if (handledDeleteNotificationRef.current === dedupeKey) return;
+    handledDeleteNotificationRef.current = dedupeKey;
+
     const deletedLabel = deletedRequest.displayId || deletedRequest.id || 'Request';
     success(`${deletedLabel} deleted successfully.`, 3500);
-    void reloadData(true);
     navigate(location.pathname, { replace: true, state: null });
-  }, [location.pathname, location.state, navigate, reloadData, success]);
+    void reloadData(true);
+  }, [location.key, location.pathname, location.state, navigate, reloadData, success]);
 
   const routeScopedPos = useMemo(() => {
     if (filter === 'PENDING') {
