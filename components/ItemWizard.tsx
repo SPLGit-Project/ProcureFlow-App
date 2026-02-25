@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
     X, Check, ChevronRight, ChevronLeft, Package, Tag, 
-    Truck, BarChart2, Save, FileText, AlertCircle, Plus, Layers
+    Truck, BarChart2, Save, FileText, AlertCircle, Plus, Layers, Trash2
 } from 'lucide-react';
-import { Item, AttributeOption, Supplier, Site } from '../types';
+import { Item, AttributeOption, Supplier, ItemPriceOption } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 import { HierarchyManager } from '../utils/hierarchyManager';
+import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 
 interface ItemWizardProps {
     isOpen: boolean;
@@ -41,11 +42,21 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
 
     useEffect(() => {
         if (isOpen) {
-            if (existingItem) {
-                setFormData(existingItem);
-            } else {
-                setFormData({ status: 'ACTIVE', activeFlag: true });
-            }
+            const baseData: Partial<Item> = existingItem
+                ? { ...existingItem }
+                : { status: 'ACTIVE', activeFlag: true, unitPrice: 0 };
+            const priceOptions = normalizeItemPriceOptions(baseData);
+            const defaultPrice = getDefaultItemPriceOption({ ...baseData, priceOptions }).price;
+
+            setFormData({
+                ...baseData,
+                unitPrice: defaultPrice,
+                priceOptions,
+                specs: {
+                    ...(baseData.specs || {}),
+                    priceOptions
+                }
+            });
             setCurrentStep(0);
             setErrors({});
         }
@@ -78,6 +89,79 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
             const newErrors = { ...prev };
             delete newErrors.description;
             return newErrors;
+        });
+    };
+
+    const applyPriceOptions = (updater: (current: ItemPriceOption[]) => ItemPriceOption[]) => {
+        setFormData(prev => {
+            const current = normalizeItemPriceOptions(prev);
+            const updated = normalizeItemPriceOptions({
+                ...prev,
+                priceOptions: updater(current)
+            });
+            const defaultPrice = getDefaultItemPriceOption({ ...prev, priceOptions: updated }).price;
+            return {
+                ...prev,
+                unitPrice: defaultPrice,
+                priceOptions: updated,
+                specs: {
+                    ...(prev.specs || {}),
+                    priceOptions: updated
+                }
+            };
+        });
+
+        if (errors.unitPrice) {
+            setErrors(prev => {
+                const next = { ...prev };
+                delete next.unitPrice;
+                return next;
+            });
+        }
+    };
+
+    const handleDefaultPriceChange = (nextPriceRaw: string) => {
+        const nextPrice = Math.max(0, parseFloat(nextPriceRaw) || 0);
+        applyPriceOptions((current) => {
+            const hasDefault = current.some(opt => opt.isDefault);
+            return current.map((opt, idx) => (hasDefault ? opt.isDefault : idx === 0)
+                ? { ...opt, price: nextPrice }
+                : opt
+            );
+        });
+    };
+
+    const handleAddPriceOption = () => {
+        applyPriceOptions((current) => [
+            ...current,
+            {
+                id: `price-${Date.now()}`,
+                label: `Option ${current.length + 1}`,
+                price: current[0]?.price || 0,
+                isDefault: false,
+                activeFlag: true
+            }
+        ]);
+    };
+
+    const handleUpdatePriceOption = (id: string, updates: Partial<ItemPriceOption>) => {
+        applyPriceOptions((current) =>
+            current.map(opt => opt.id === id ? { ...opt, ...updates } : opt)
+        );
+    };
+
+    const handleSetDefaultPriceOption = (id: string) => {
+        applyPriceOptions((current) =>
+            current.map(opt => ({ ...opt, isDefault: opt.id === id }))
+        );
+    };
+
+    const handleRemovePriceOption = (id: string) => {
+        applyPriceOptions((current) => {
+            if (current.length <= 1) return current;
+            const filtered = current.filter(opt => opt.id !== id);
+            if (filtered.some(opt => opt.isDefault)) return filtered;
+            return filtered.map((opt, idx) => ({ ...opt, isDefault: idx === 0 }));
         });
     };
 
@@ -121,7 +205,18 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
         
         setIsSubmitting(true);
         try {
-            await onSave(formData);
+            const normalizedPriceOptions = normalizeItemPriceOptions(formData);
+            const payload: Partial<Item> = {
+                ...formData,
+                unitPrice: getDefaultItemPriceOption({ ...formData, priceOptions: normalizedPriceOptions }).price,
+                priceOptions: normalizedPriceOptions,
+                specs: {
+                    ...(formData.specs || {}),
+                    priceOptions: normalizedPriceOptions
+                }
+            };
+
+            await onSave(payload);
             onClose();
         } catch (error) {
             console.error(error);
@@ -146,6 +241,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
     const pools = safeOptions.filter(o => o.type === 'POOL');
     const uoms = safeOptions.filter(o => o.type === 'UOM');
     const subcategories = safeOptions.filter(o => o.type === 'SUB_CATEGORY').sort((a,b) => (a.value || '').localeCompare(b.value || ''));
+    const priceOptions = normalizeItemPriceOptions(formData);
 
     // UI Helpers
     const StepIcon = STEPS[currentStep].icon;
@@ -422,20 +518,83 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
 
                                 <div className="grid grid-cols-2 gap-6">
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Unit Price *</label>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Default Unit Price *</label>
                                         <div className="relative">
                                             <span className="absolute left-3 top-3 text-gray-500">$</span>
                                             <input 
                                                 type="number"
                                                 step="0.01"
                                                 value={formData.unitPrice || ''}
-                                                onChange={(e) => handleInputChange('unitPrice', parseFloat(e.target.value))}
+                                                onChange={(e) => handleDefaultPriceChange(e.target.value)}
                                                 className={`w-full p-3 pl-8 rounded-lg border ${errors.unitPrice ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'} dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none`}
                                             />
                                         </div>
                                         {errors.unitPrice && <p className="text-xs text-red-500">{errors.unitPrice}</p>}
                                     </div>
 
+                                </div>
+
+                                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50/60 dark:bg-[#15171e]/60 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h4 className="text-sm font-bold text-gray-900 dark:text-white">Price Variations</h4>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">Create selectable prices for this item (e.g. Standard, VIP, Promo).</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleAddPriceOption}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700"
+                                        >
+                                            <Plus size={14}/> Add Option
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        {priceOptions.map((option) => (
+                                            <div key={option.id} className={`grid grid-cols-12 gap-2 items-center rounded-lg border p-2.5 ${option.isDefault ? 'border-blue-300 bg-blue-50 dark:bg-blue-900/10 dark:border-blue-500/40' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1c23]'}`}>
+                                                <div className="col-span-1 flex justify-center">
+                                                    <input
+                                                        type="radio"
+                                                        checked={option.isDefault === true}
+                                                        onChange={() => handleSetDefaultPriceOption(option.id)}
+                                                        title="Set as default"
+                                                        className="w-4 h-4 accent-blue-600"
+                                                    />
+                                                </div>
+                                                <div className="col-span-6">
+                                                    <input
+                                                        type="text"
+                                                        value={option.label}
+                                                        onChange={(e) => handleUpdatePriceOption(option.id, { label: e.target.value || 'Option' })}
+                                                        className="w-full p-2 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#11131a] dark:text-white text-sm"
+                                                        placeholder="Option label"
+                                                    />
+                                                </div>
+                                                <div className="col-span-4 relative">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={option.price}
+                                                        onChange={(e) => handleUpdatePriceOption(option.id, { price: Math.max(0, parseFloat(e.target.value) || 0) })}
+                                                        className="w-full p-2 pl-6 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#11131a] dark:text-white text-sm"
+                                                    />
+                                                </div>
+                                                <div className="col-span-1 flex justify-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemovePriceOption(option.id)}
+                                                        disabled={priceOptions.length <= 1}
+                                                        className="p-1.5 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:text-gray-300 disabled:hover:bg-transparent"
+                                                        title={priceOptions.length <= 1 ? 'At least one option is required' : 'Remove option'}
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -553,6 +712,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                             <p className="text-xs text-gray-500 uppercase tracking-wider">Price</p>
                                             <h3 className="text-xl font-bold text-gray-900 dark:text-white">${(formData.unitPrice || 0).toFixed(2)}</h3>
                                             <p className="text-sm text-gray-500">per {formData.uom}</p>
+                                            <p className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-1">{priceOptions.length} price option{priceOptions.length > 1 ? 's' : ''}</p>
                                         </div>
                                     </div>
 

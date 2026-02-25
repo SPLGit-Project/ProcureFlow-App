@@ -8,6 +8,7 @@ import ConcurExportModal from './ConcurExportModal.tsx';
 import { db } from '../services/db.ts';
 import { supabase } from '../lib/supabaseClient.ts';
 import { v4 as uuidv4 } from 'uuid';
+import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 
 
 
@@ -31,6 +32,7 @@ const PODetail = () => {
   const [addItemId, setAddItemId] = useState('');
   const [addItemQty, setAddItemQty] = useState('1');
   const [addItemPrice, setAddItemPrice] = useState('0');
+  const [addItemPriceOptionId, setAddItemPriceOptionId] = useState('');
 
   const po = pos.find(p => p.id === id);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -53,19 +55,26 @@ const PODetail = () => {
     () => addableItems.find(item => item.id === addItemId),
     [addableItems, addItemId]
   );
+  const selectedAddItemPriceOptions = useMemo(
+    () => selectedAddItem ? normalizeItemPriceOptions(selectedAddItem) : [],
+    [selectedAddItem]
+  );
 
   useEffect(() => {
     if (!isEditing) return;
     if (addItemId && addableItems.some(item => item.id === addItemId)) return;
     if (addableItems.length === 0) {
       setAddItemId('');
+      setAddItemPriceOptionId('');
       setAddItemPrice('0');
       return;
     }
 
     const firstItem = addableItems[0];
+    const defaultPriceOption = getDefaultItemPriceOption(firstItem);
     setAddItemId(firstItem.id);
-    setAddItemPrice(String(firstItem.unitPrice || 0));
+    setAddItemPriceOptionId(defaultPriceOption.id);
+    setAddItemPrice(String(defaultPriceOption.price));
   }, [isEditing, addableItems, addItemId]);
 
   const timelineEvents = useMemo(() => {
@@ -232,6 +241,7 @@ const PODetail = () => {
         });
         setEditableLines(po.lines.map(line => ({ ...line })));
         setAddItemId('');
+        setAddItemPriceOptionId('');
         setAddItemQty('1');
         setAddItemPrice('0');
         setIsEditing(true);
@@ -241,6 +251,7 @@ const PODetail = () => {
       setIsEditing(false);
       setEditableLines([]);
       setAddItemId('');
+      setAddItemPriceOptionId('');
       setAddItemQty('1');
       setAddItemPrice('0');
   };
@@ -284,6 +295,7 @@ const PODetail = () => {
 
       const quantityOrdered = Math.max(1, Math.floor(Number(addItemQty) || 0));
       const unitPrice = Math.max(0, Number(addItemPrice) || 0);
+      const selectedPriceOption = normalizeItemPriceOptions(selectedItem).find(opt => opt.id === addItemPriceOptionId);
 
       const newLine: POLineItem = {
           id: uuidv4(),
@@ -293,11 +305,14 @@ const PODetail = () => {
           quantityOrdered,
           quantityReceived: 0,
           unitPrice,
-          totalPrice: Number((quantityOrdered * unitPrice).toFixed(2))
+          totalPrice: Number((quantityOrdered * unitPrice).toFixed(2)),
+          priceOptionId: selectedPriceOption?.id,
+          priceOptionLabel: selectedPriceOption?.label
       };
 
       setEditableLines(prev => [...prev, newLine]);
       setAddItemId('');
+      setAddItemPriceOptionId('');
       setAddItemQty('1');
       setAddItemPrice('0');
   };
@@ -666,22 +681,24 @@ const PODetail = () => {
                           </div>
 
                           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
-                              <div className="lg:col-span-6">
+                              <div className="lg:col-span-4">
                                   <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Item Picker</label>
                                   <div className="relative">
                                       <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                                       <select
                                           className="w-full appearance-none bg-white dark:bg-[#1e2029] border-2 border-blue-200/70 dark:border-blue-500/30 rounded-xl pl-9 pr-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30 focus:border-[var(--color-brand)]"
                                           value={addItemId}
-                                          onChange={(e) => {
-                                              const selectedId = e.target.value;
-                                              setAddItemId(selectedId);
-                                              const selectedItem = addableItems.find(item => item.id === selectedId);
-                                              if (selectedItem) {
-                                                  setAddItemPrice(String(selectedItem.unitPrice || 0));
-                                              }
-                                          }}
-                                      >
+                                      onChange={(e) => {
+                                          const selectedId = e.target.value;
+                                          setAddItemId(selectedId);
+                                          const selectedItem = addableItems.find(item => item.id === selectedId);
+                                          if (selectedItem) {
+                                              const defaultPriceOption = getDefaultItemPriceOption(selectedItem);
+                                              setAddItemPriceOptionId(defaultPriceOption.id);
+                                              setAddItemPrice(String(defaultPriceOption.price));
+                                          }
+                                      }}
+                                  >
                                           <option value="">{addableItems.length === 0 ? 'No active items available' : 'Choose an item to add...'}</option>
                                           {addableItems.map(item => (
                                               <option key={item.id} value={item.id}>
@@ -697,6 +714,33 @@ const PODetail = () => {
                                       </div>
                                   ) : (
                                       <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Tip: choose the item first, then set quantity and price.</p>
+                                  )}
+                              </div>
+                              <div className="lg:col-span-2">
+                                  <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Price Option</label>
+                                  {selectedAddItemPriceOptions.length > 1 ? (
+                                      <select
+                                          className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
+                                          value={addItemPriceOptionId}
+                                          onChange={(e) => {
+                                              const nextOptionId = e.target.value;
+                                              setAddItemPriceOptionId(nextOptionId);
+                                              const selectedOption = selectedAddItemPriceOptions.find(opt => opt.id === nextOptionId);
+                                              if (selectedOption) {
+                                                  setAddItemPrice(String(selectedOption.price));
+                                              }
+                                          }}
+                                      >
+                                          {selectedAddItemPriceOptions.map(option => (
+                                              <option key={option.id} value={option.id}>
+                                                  {option.label}
+                                              </option>
+                                          ))}
+                                      </select>
+                                  ) : (
+                                      <div className="h-[42px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] px-3 flex items-center text-xs font-semibold text-gray-500 dark:text-gray-300">
+                                          {selectedAddItemPriceOptions[0]?.label || 'Standard'}
+                                      </div>
                                   )}
                               </div>
                               <div className="lg:col-span-2">
@@ -751,6 +795,9 @@ const PODetail = () => {
                                   <td className="px-6 py-4">
                                       <div className="font-bold text-primary dark:text-white">{line.itemName}</div>
                                       <div className="text-xs text-tertiary dark:text-gray-500 font-mono mt-0.5">{line.sku}</div>
+                                      {line.priceOptionLabel && (
+                                          <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-1">{line.priceOptionLabel}</div>
+                                      )}
                                   </td>
                                   <td className="px-6 py-4 text-center font-medium text-primary dark:text-white">
                                       {isEditing ? (

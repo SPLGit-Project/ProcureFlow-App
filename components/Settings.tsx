@@ -1613,7 +1613,17 @@ if __name__ == "__main__":
                                         let displayVal: React.ReactNode = String(val === undefined || val === null ? '' : val);
                                         
                                         if (col.key === 'unitPrice') {
-                                            displayVal = `$${Number(val || 0).toFixed(2)}`;
+                                            const priceOptionCount = (item.priceOptions || []).filter(opt => opt.activeFlag !== false).length;
+                                            displayVal = (
+                                                <div className="flex flex-col">
+                                                    <span className="font-semibold text-gray-900 dark:text-white">${Number(val || 0).toFixed(2)}</span>
+                                                    {priceOptionCount > 1 && (
+                                                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                                                            {priceOptionCount} options
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            );
                                         } else if (col.key === 'rfidFlag' || col.key === 'cogFlag') {
                                             displayVal = (
                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${val ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-secondary dark:text-gray-500'}`}>

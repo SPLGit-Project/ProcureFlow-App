@@ -124,6 +124,14 @@ export interface Supplier {
   categories: string[];
 }
 
+export interface ItemPriceOption {
+  id: string;
+  label: string;
+  price: number;
+  isDefault?: boolean;
+  activeFlag?: boolean;
+}
+
 export interface Item {
   id: string;
   sku: string; // Internal SKU (Mapped from SAP_Item_Code)
@@ -146,7 +154,10 @@ export interface Item {
     size?: string;
     material?: string;
     measurements?: string;
+    priceOptions?: ItemPriceOption[];
+    [key: string]: unknown;
   };
+  priceOptions?: ItemPriceOption[];
   isRfid?: boolean;
   isCog?: boolean; // Customer Owned Goods
   
@@ -321,6 +332,8 @@ export interface POLineItem {
   unitPrice: number;
   totalPrice: number;
   upq?: number; // Units Per Quantity (Pack Size)
+  priceOptionId?: string;
+  priceOptionLabel?: string;
   // Concur Linkage
   concurPoNumber?: string; // The external PO number from Concur
   isForceClosed?: boolean; // If true, line is considered complete even if qty < ordered

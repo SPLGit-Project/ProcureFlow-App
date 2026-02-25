@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext';
-import { Item, POLineItem, PORequest, Site } from '../types';
+import { Item, ItemPriceOption, POLineItem, PORequest, Site } from '../types';
 import { 
   ShoppingCart, 
   Search, 
@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp';
+import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 
 const POCreate = () => {
   const { items, suppliers, sites: allSites, userSites, mappings, stockSnapshots, currentUser, createPO, getEffectiveStock, reloadData } = useApp();
@@ -62,6 +63,8 @@ const POCreate = () => {
   const [modalQuantity, setModalQuantity] = useState(1);
   const [modalPrice, setModalPrice] = useState('');
   const [modalUpq, setModalUpq] = useState(1); // Default UPQ
+  const [modalPriceOptionId, setModalPriceOptionId] = useState('');
+  const [modalPriceOptions, setModalPriceOptions] = useState<ItemPriceOption[]>([]);
 
   const selectedSite = sites.find(s => s.id === selectedSiteId);
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
@@ -91,7 +94,9 @@ const POCreate = () => {
     return effectiveItems.map(internalItem => {
         let supplierSku = 'N/A';
         let supplierCode = 'N/A';
-        let estimatedPrice = internalItem.unitPrice || 0;
+        const priceOptions = normalizeItemPriceOptions(internalItem);
+        const defaultPriceOption = getDefaultItemPriceOption({ ...internalItem, priceOptions });
+        let estimatedPrice = defaultPriceOption.price || internalItem.unitPrice || 0;
         let effectiveStock = 0;
         let isMapped = false;
 
@@ -120,6 +125,8 @@ const POCreate = () => {
 
         return {
             ...internalItem,
+            priceOptions,
+            priceOptionCount: priceOptions.length,
             supplierSku, // Now might be 'N/A'
             supplierCode, 
             price: estimatedPrice,
@@ -156,6 +163,13 @@ const POCreate = () => {
     // Quick Add: Default to 1 and estimated price
     const finalUnitPrice = item.price;
     const quantityToAdd = 1;
+    const defaultPriceOption = getDefaultItemPriceOption(item);
+    const selectedPriceOptionLabel = Math.abs((defaultPriceOption.price || 0) - Number(finalUnitPrice || 0)) < 0.0001
+      ? defaultPriceOption.label
+      : 'Estimated (Current Supplier)';
+    const selectedPriceOptionId = Math.abs((defaultPriceOption.price || 0) - Number(finalUnitPrice || 0)) < 0.0001
+      ? defaultPriceOption.id
+      : 'estimated-current';
     
     setCart(prev => {
       const existing = prev.find(line => line.itemId === item.id);
@@ -163,7 +177,7 @@ const POCreate = () => {
         const newQty = existing.quantityOrdered + quantityToAdd;
         return prev.map(line => 
           line.itemId === item.id 
-          ? { ...line, quantityOrdered: newQty, totalPrice: newQty * finalUnitPrice } // Keep existing price or update? Update.
+          ? { ...line, quantityOrdered: newQty, totalPrice: newQty * finalUnitPrice, priceOptionId: selectedPriceOptionId, priceOptionLabel: selectedPriceOptionLabel } // Keep existing price or update? Update.
           : line
         );
       }
@@ -175,7 +189,9 @@ const POCreate = () => {
         quantityOrdered: quantityToAdd,
         quantityReceived: 0,
         unitPrice: finalUnitPrice, 
-        totalPrice: finalUnitPrice * quantityToAdd
+        totalPrice: finalUnitPrice * quantityToAdd,
+        priceOptionLabel: selectedPriceOptionLabel,
+        priceOptionId: selectedPriceOptionId
       }];
     });
   };
@@ -240,7 +256,16 @@ const POCreate = () => {
       if (existingLine) {
           setModalQuantity(1); // Keep 1? Or pre-fill with extra? User said "select quantity". Usually means "add X".
       }
-      setModalPrice(item.price ? item.price.toString() : '0');
+      const baseOptions = normalizeItemPriceOptions(item);
+      const hasEstimatedMatch = baseOptions.some(opt => Math.abs(opt.price - Number(item.price || 0)) < 0.0001);
+      const effectiveOptions = (!hasEstimatedMatch && Number(item.price || 0) > 0)
+          ? [{ id: 'estimated-current', label: 'Estimated (Current Supplier)', price: Number(item.price || 0), isDefault: true, activeFlag: true }, ...baseOptions.map(opt => ({ ...opt, isDefault: false }))]
+          : baseOptions;
+
+      const defaultOption = effectiveOptions.find(opt => opt.isDefault) || effectiveOptions[0];
+      setModalPriceOptions(effectiveOptions);
+      setModalPriceOptionId(defaultOption?.id || '');
+      setModalPrice((defaultOption?.price ?? item.price ?? 0).toString());
       setModalUpq(item.upq || 1);
   };
 
@@ -248,8 +273,9 @@ const POCreate = () => {
       if (!selectedDetailItem) return;
       
       const qty = modalQuantity;
-      const price = parseFloat(modalPrice);
+      const price = Math.max(0, parseFloat(modalPrice) || 0);
       const upq = modalUpq;
+      const selectedPriceOption = modalPriceOptions.find(opt => opt.id === modalPriceOptionId);
       
       if (qty <= 0) return;
 
@@ -260,7 +286,7 @@ const POCreate = () => {
               const newQty = existing.quantityOrdered + qty;
               return prev.map(line => 
                   line.itemId === selectedDetailItem.id 
-                  ? { ...line, quantityOrdered: newQty, unitPrice: price, totalPrice: newQty * price }
+                  ? { ...line, quantityOrdered: newQty, unitPrice: price, totalPrice: newQty * price, priceOptionId: selectedPriceOption?.id, priceOptionLabel: selectedPriceOption?.label }
                   : line
               );
           }
@@ -273,7 +299,9 @@ const POCreate = () => {
               quantityReceived: 0,
               unitPrice: price,
               totalPrice: price * qty,
-              upq: upq
+              upq: upq,
+              priceOptionId: selectedPriceOption?.id,
+              priceOptionLabel: selectedPriceOption?.label
           }];
       });
 
@@ -341,6 +369,9 @@ const POCreate = () => {
                              <div className="min-w-0">
                                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-200 line-clamp-2">{line.itemName}</p>
                                  <p className="text-xs text-gray-500 font-mono mt-0.5">{line.sku}</p>
+                                 {line.priceOptionLabel && (
+                                     <p className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-0.5">{line.priceOptionLabel}</p>
+                                 )}
                              </div>
                              <button onClick={() => removeFromCart(line.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1"><Trash2 size={16}/></button>
                          </div>
@@ -654,6 +685,9 @@ const POCreate = () => {
                        <div className="flex items-center gap-4 shrink-0">
                            <div className="text-right">
                                <span className="block text-sm font-bold text-gray-900 dark:text-white">${item.price.toFixed(2)}</span>
+                               {item.priceOptionCount > 1 && (
+                                   <span className="block text-[10px] font-bold text-blue-600 dark:text-blue-400">{item.priceOptionCount} price options</span>
+                               )}
                                <span className="text-[10px] text-gray-400 uppercase">{item.uom || 'Unit'}</span>
                            </div>
                            <button 
@@ -708,6 +742,30 @@ const POCreate = () => {
                                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-white/5 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
                                     {selectedDetailItem.description}
                                 </p>
+                            </div>
+                        )}
+
+                        {modalPriceOptions.length > 1 && (
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Price Option</label>
+                                <select
+                                    className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] outline-none"
+                                    value={modalPriceOptionId}
+                                    onChange={(e) => {
+                                        const nextId = e.target.value;
+                                        setModalPriceOptionId(nextId);
+                                        const nextOption = modalPriceOptions.find(opt => opt.id === nextId);
+                                        if (nextOption) {
+                                            setModalPrice(nextOption.price.toString());
+                                        }
+                                    }}
+                                >
+                                    {modalPriceOptions.map(option => (
+                                        <option key={option.id} value={option.id}>
+                                            {option.label} - ${option.price.toFixed(2)}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                         )}
 

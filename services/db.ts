@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient';
 import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
+import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 
 export const db = {
     getRoles: async (): Promise<RoleDefinition[]> => {
@@ -244,48 +245,63 @@ export const db = {
     getItems: async (): Promise<Item[]> => {
         const { data, error } = await supabase.from('items').select('*');
         if (error) throw error;
-        return data.map((i: any) => ({
-            id: i.id,
-            sku: i.sku,
-            name: i.name,
-            description: i.description,
-            unitPrice: i.unit_price,
-            uom: i.uom,
-            upq: i.upq,
-            category: i.category,
-            subCategory: i.sub_category,
-            stockLevel: i.stock_level,
-            supplierId: i.supplier_id,
-            isRfid: i.is_rfid,
-            isCog: i.is_cog,
-            
-            // Normalize
-            sapItemCodeRaw: i.sap_item_code_raw,
-            sapItemCodeNorm: i.sap_item_code_norm,
-            
-            // Categorization
-            rangeName: i.range_name,
-            stockType: i.stock_type,
-            activeFlag: i.active_flag,
-            createdAt: i.created_at,
-            updatedAt: i.updated_at,
-            
-            // Extended Attributes (Master Data)
-            itemWeight: i.item_weight,
-            itemPool: i.item_pool,
-            itemCatalog: i.item_catalog,
-            itemType: i.item_type,
-            rfidFlag: i.rfid_flag,
-            itemColour: i.item_colour,
-            itemPattern: i.item_pattern,
-            itemMaterial: i.item_material,
-            itemSize: i.item_size,
-            measurements: i.measurements,
-            cogFlag: i.cog_flag,
-            cogCustomer: i.cog_customer,
-            
-            specs: i.specs
-        }));
+        return data.map((i: any) => {
+            const mappedItem: Item = {
+                id: i.id,
+                sku: i.sku,
+                name: i.name,
+                description: i.description,
+                unitPrice: Number(i.unit_price || 0),
+                uom: i.uom,
+                upq: i.upq,
+                category: i.category,
+                subCategory: i.sub_category,
+                stockLevel: i.stock_level,
+                supplierId: i.supplier_id,
+                isRfid: i.is_rfid,
+                isCog: i.is_cog,
+                
+                // Normalize
+                sapItemCodeRaw: i.sap_item_code_raw,
+                sapItemCodeNorm: i.sap_item_code_norm,
+                
+                // Categorization
+                rangeName: i.range_name,
+                stockType: i.stock_type,
+                activeFlag: i.active_flag,
+                createdAt: i.created_at,
+                updatedAt: i.updated_at,
+                
+                // Extended Attributes (Master Data)
+                itemWeight: i.item_weight,
+                itemPool: i.item_pool,
+                itemCatalog: i.item_catalog,
+                itemType: i.item_type,
+                rfidFlag: i.rfid_flag,
+                itemColour: i.item_colour,
+                itemPattern: i.item_pattern,
+                itemMaterial: i.item_material,
+                itemSize: i.item_size,
+                measurements: i.measurements,
+                cogFlag: i.cog_flag,
+                cogCustomer: i.cog_customer,
+                
+                specs: i.specs
+            };
+
+            const priceOptions = normalizeItemPriceOptions(mappedItem);
+            const defaultPrice = getDefaultItemPriceOption({ ...mappedItem, priceOptions }).price;
+
+            return {
+                ...mappedItem,
+                unitPrice: defaultPrice,
+                priceOptions,
+                specs: {
+                    ...(mappedItem.specs || {}),
+                    priceOptions
+                }
+            };
+        });
     },
 
     getItemImportConfig: async (): Promise<any> => {
@@ -1164,12 +1180,15 @@ export const db = {
 
     addItem: async (item: Item): Promise<void> => {
         const norm = normalizeItemCode(item.sku);
+        const specsWithPricing = buildItemSpecsWithPriceOptions(item);
+        const priceOptions = normalizeItemPriceOptions({ ...item, specs: specsWithPricing });
+        const defaultPrice = getDefaultItemPriceOption({ ...item, specs: specsWithPricing, priceOptions }).price;
         const { error } = await supabase.from('items').insert({
             id: item.id,
             sku: item.sku,
             name: item.name,
             description: item.description,
-            unit_price: item.unitPrice,
+            unit_price: defaultPrice,
             uom: item.uom,
             upq: item.upq,
             category: item.category,
@@ -1197,18 +1216,21 @@ export const db = {
             measurements: item.measurements,
             cog_flag: item.cogFlag,
             cog_customer: item.cogCustomer,
-            specs: item.specs
+            specs: specsWithPricing
         });
         if (error) throw error;
     },
 
     updateItem: async (item: Item): Promise<void> => {
         const norm = normalizeItemCode(item.sku);
+        const specsWithPricing = buildItemSpecsWithPriceOptions(item);
+        const priceOptions = normalizeItemPriceOptions({ ...item, specs: specsWithPricing });
+        const defaultPrice = getDefaultItemPriceOption({ ...item, specs: specsWithPricing, priceOptions }).price;
         const { error } = await supabase.from('items').update({
             sku: item.sku,
             name: item.name,
             description: item.description,
-            unit_price: item.unitPrice,
+            unit_price: defaultPrice,
             uom: item.uom,
             upq: item.upq,
             category: item.category,
@@ -1235,7 +1257,7 @@ export const db = {
             measurements: item.measurements,
             cog_flag: item.cogFlag,
             cog_customer: item.cogCustomer,
-            specs: item.specs
+            specs: specsWithPricing
         }).eq('id', item.id);
         if (error) throw error;
     },
