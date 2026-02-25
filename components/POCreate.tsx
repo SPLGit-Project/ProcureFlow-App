@@ -65,14 +65,24 @@ const POCreate = () => {
   const selectedSite = sites.find(s => s.id === selectedSiteId);
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
 
-  // Determine available items: SHOW ALL MASTER ITEMS
-  const displayItems = useMemo(() => {
-    // If no supplier selected, we can still show items but with no stock data
-    // OR we can default to empty. User said "Master item list must be available for all suppliers".
-    // We'll show all items always, and just overlay stock info if supplier is selected.
-    if (!items) return [];
+  // Only active master items should be available for request creation.
+  const activeMasterItems = useMemo(() => {
+    return (items || []).filter(item => item.activeFlag !== false);
+  }, [items]);
 
-    const effectiveItems = items.filter(item => 
+  const activeItemIds = useMemo(() => {
+    return new Set(
+      activeMasterItems
+        .map(item => item.id)
+        .filter((id): id is string => Boolean(id))
+    );
+  }, [activeMasterItems]);
+
+  // Determine available items from active master list.
+  const displayItems = useMemo(() => {
+    if (!activeMasterItems.length) return [];
+
+    const effectiveItems = activeMasterItems.filter(item => 
         (item.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
         (item.sku?.toLowerCase() || '').includes(searchTerm.toLowerCase())
     );
@@ -116,7 +126,7 @@ const POCreate = () => {
             isMapped // Helper flag for UI if needed
         };
     });
-  }, [selectedSupplierId, mappings, items, stockSnapshots, searchTerm, getEffectiveStock]);
+  }, [selectedSupplierId, mappings, activeMasterItems, stockSnapshots, searchTerm, getEffectiveStock]);
 
   const getPrice = (itemId: string, defaultPrice: number) => {
       // return overridePrices[itemId] !== undefined ? overridePrices[itemId] : defaultPrice;
@@ -227,6 +237,14 @@ const POCreate = () => {
 
   const handleSubmit = () => {
     if (!selectedSupplier || !selectedSite || cart.length === 0) return;
+
+    const archivedCartLines = cart.filter(line => !activeItemIds.has(line.itemId));
+    if (archivedCartLines.length > 0) {
+        const removedNames = archivedCartLines.map(line => line.itemName).join(', ');
+        setCart(prev => prev.filter(line => activeItemIds.has(line.itemId)));
+        alert(`Some items were archived and removed from your cart: ${removedNames}. Please review and submit again.`);
+        return;
+    }
 
     if (reasonForRequest === 'Other' && !comments.trim()) {
         alert('Please provide Additional Comments when selecting "Other" as the reason.');
