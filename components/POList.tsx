@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity,
   CheckCircle2,
@@ -17,6 +17,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import type { POStatus } from '../types';
 import ContextHelp from './ContextHelp';
+import { ToastContainer, useToast } from './ToastNotification';
 
 type BaseFilter = 'ALL' | 'PENDING' | 'COMPLETED';
 
@@ -135,7 +136,10 @@ const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
 };
 
 const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
-  const { pos, hasPermission, currentUser, userSites, siteName: resolveSiteName } = useApp();
+  const { pos, hasPermission, currentUser, userSites, siteName: resolveSiteName, reloadData } = useApp();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { toasts, dismissToast, success } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const quickFilters = useMemo(() => quickFilterConfigByPage(filter), [filter]);
   const [selectedQuickFilterId, setSelectedQuickFilterId] = useState<string>(quickFilters[0]?.id ?? 'all');
@@ -179,6 +183,17 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
       console.warn('POList: Unable to persist quick filter preference', error);
     }
   }, [selectedQuickFilterId, quickFilterStorageKey, hydratedQuickStorageKey, quickFilters]);
+
+  useEffect(() => {
+    const state = location.state as { deletedRequest?: { id?: string; displayId?: string } } | null;
+    const deletedRequest = state?.deletedRequest;
+    if (!deletedRequest) return;
+
+    const deletedLabel = deletedRequest.displayId || deletedRequest.id || 'Request';
+    success(`${deletedLabel} deleted successfully.`, 3500);
+    void reloadData(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, reloadData, success]);
 
   const routeScopedPos = useMemo(() => {
     if (filter === 'PENDING') {
@@ -304,6 +319,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
             (po.displayId || po.id).toLowerCase().includes(searchValue) ||
             (po.site || '').toLowerCase().includes(searchValue) ||
             po.requesterName.toLowerCase().includes(searchValue) ||
+            (po.customerName || '').toLowerCase().includes(searchValue) ||
             po.totalAmount.toString().includes(searchValue) ||
             po.lines.some((line) => line.concurPoNumber?.toLowerCase().includes(searchValue))
           );
@@ -374,7 +390,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
-              placeholder="Search by ID, Site, Supplier, Requester, Amount, or Concur Ref..."
+              placeholder="Search by ID, Customer, Site, Supplier, Requester, Amount, or Concur Ref..."
               className="pl-10 pr-4 py-2.5 w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] placeholder-tertiary dark:placeholder-gray-600 transition-colors"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
@@ -466,7 +482,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
             <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-semibold border-b border-gray-200 dark:border-gray-800">
               <tr>
                 <th className="px-6 py-4">Request ID</th>
-                <th className="px-6 py-4">Ref</th>
+                <th className="px-6 py-4">Customer</th>
                 <th className="px-6 py-4">Date</th>
                 <th className="px-6 py-4">Site</th>
                 <th className="px-6 py-4">Supplier</th>
@@ -483,9 +499,9 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                     {po.displayId || po.id}
                   </td>
                   <td className="px-6 py-4 font-mono text-xs">
-                    {po.lines[0]?.concurPoNumber ? (
-                      <span className="bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1 rounded border border-indigo-200 dark:border-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-semibold">
-                        {po.lines[0]?.concurPoNumber}
+                    {po.customerName ? (
+                      <span className="inline-flex max-w-[220px] truncate bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
+                        {po.customerName}
                       </span>
                     ) : (
                       <span className="text-gray-300 dark:text-gray-700">-</span>
@@ -559,12 +575,11 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
               </div>
 
               <div className="flex items-center justify-between text-sm gap-3">
-                <div className="text-secondary dark:text-gray-500 flex items-center gap-1 min-w-0">
-                  {po.lines[0]?.concurPoNumber && (
-                    <span className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded text-xs font-mono border border-indigo-200 dark:border-indigo-500/20 truncate">
-                      {po.lines[0]?.concurPoNumber}
-                    </span>
-                  )}
+                <div className="text-secondary dark:text-gray-500 flex items-center gap-1 min-w-0 text-xs">
+                  <span className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Customer</span>
+                  <span className="truncate font-semibold text-gray-700 dark:text-gray-300">
+                    {po.customerName || '-'}
+                  </span>
                 </div>
                 <div className="font-bold text-gray-900 dark:text-white text-base">${po.totalAmount.toLocaleString()}</div>
               </div>
@@ -585,6 +600,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
           )}
         </div>
       </div>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 };

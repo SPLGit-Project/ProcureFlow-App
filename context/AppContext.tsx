@@ -1681,6 +1681,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           alert((e as Error).message || "Failed to delete PO");
           reloadData(); // Revert
           logAction('PO_DELETE_FAILED', { id, error: (e as Error).message });
+          throw e;
       }
   };
 

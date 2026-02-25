@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
 import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search } from 'lucide-react';
-import { DeliveryHeader, POStatus, POLineItem } from '../types.ts';
+import { DeliveryHeader, Item, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
 import { db } from '../services/db.ts';
@@ -23,6 +23,7 @@ const PODetail = () => {
 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [isDeletingRequest, setIsDeletingRequest] = useState(false);
   const [concurInput, setConcurInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   
@@ -33,6 +34,10 @@ const PODetail = () => {
   const [addItemQty, setAddItemQty] = useState('1');
   const [addItemPrice, setAddItemPrice] = useState('0');
   const [addItemPriceOptionId, setAddItemPriceOptionId] = useState('');
+  const [addItemSearch, setAddItemSearch] = useState('');
+  const [isAddItemPickerOpen, setIsAddItemPickerOpen] = useState(false);
+  const [activeAddItemIndex, setActiveAddItemIndex] = useState(0);
+  const addItemPickerRef = useRef<HTMLDivElement>(null);
 
   const po = pos.find(p => p.id === id);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -60,6 +65,94 @@ const PODetail = () => {
     [selectedAddItem]
   );
 
+  const filteredAddableItems = useMemo(() => {
+    const normalizedSearch = addItemSearch.trim().toLowerCase();
+    const tokens = normalizedSearch.split(/\s+/).filter(Boolean);
+    const ranked = addableItems
+      .map(item => {
+        const sku = (item.sku || '').toLowerCase();
+        const name = (item.name || '').toLowerCase();
+        const category = (item.category || '').toLowerCase();
+        const subCategory = (item.subCategory || '').toLowerCase();
+        const haystack = `${sku} ${name} ${category} ${subCategory}`.trim();
+
+        if (!normalizedSearch) {
+          return { item, score: 1 };
+        }
+
+        if (tokens.length > 0 && !tokens.every(token => haystack.includes(token))) {
+          return { item, score: -1 };
+        }
+
+        let score = 0;
+        if (sku === normalizedSearch) score += 130;
+        if (sku.startsWith(normalizedSearch)) score += 95;
+        if (name.startsWith(normalizedSearch)) score += 80;
+        if (haystack.includes(normalizedSearch)) score += 40;
+        tokens.forEach(token => {
+          if (sku.includes(token)) score += 12;
+          if (name.includes(token)) score += 8;
+          if (category.includes(token) || subCategory.includes(token)) score += 4;
+        });
+        return { item, score };
+      })
+      .filter(entry => entry.score >= 0)
+      .sort((a, b) => {
+        if (a.score !== b.score) return b.score - a.score;
+        const nameCompare = (a.item.name || '').localeCompare(b.item.name || '');
+        if (nameCompare !== 0) return nameCompare;
+        return (a.item.sku || '').localeCompare(b.item.sku || '');
+      });
+
+    return ranked.map(entry => entry.item);
+  }, [addableItems, addItemSearch]);
+
+  const visibleAddableItems = useMemo(() => filteredAddableItems.slice(0, 60), [filteredAddableItems]);
+
+  const applyAddItemSelection = (selectedItem: Item) => {
+    if (!selectedItem?.id) return;
+    setAddItemId(selectedItem.id);
+    const defaultPriceOption = getDefaultItemPriceOption(selectedItem);
+    setAddItemPriceOptionId(defaultPriceOption.id);
+    setAddItemPrice(String(defaultPriceOption.price));
+    setAddItemSearch('');
+    setIsAddItemPickerOpen(false);
+    setActiveAddItemIndex(0);
+  };
+
+  const handleAddItemSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      setIsAddItemPickerOpen(false);
+      return;
+    }
+
+    if (!isAddItemPickerOpen && (event.key === 'ArrowDown' || event.key === 'Enter')) {
+      setIsAddItemPickerOpen(true);
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveAddItemIndex(prev => Math.min(prev + 1, Math.max(visibleAddableItems.length - 1, 0)));
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveAddItemIndex(prev => Math.max(prev - 1, 0));
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const selectedFromKeyboard = visibleAddableItems[activeAddItemIndex] || visibleAddableItems[0];
+      if (selectedFromKeyboard) {
+        applyAddItemSelection(selectedFromKeyboard);
+      }
+    }
+  };
+
   useEffect(() => {
     if (!isEditing) return;
     if (addItemId && addableItems.some(item => item.id === addItemId)) return;
@@ -67,6 +160,7 @@ const PODetail = () => {
       setAddItemId('');
       setAddItemPriceOptionId('');
       setAddItemPrice('0');
+      setAddItemSearch('');
       return;
     }
 
@@ -75,7 +169,31 @@ const PODetail = () => {
     setAddItemId(firstItem.id);
     setAddItemPriceOptionId(defaultPriceOption.id);
     setAddItemPrice(String(defaultPriceOption.price));
+    setAddItemSearch('');
   }, [isEditing, addableItems, addItemId]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setIsAddItemPickerOpen(false);
+      setAddItemSearch('');
+      setActiveAddItemIndex(0);
+    }
+  }, [isEditing]);
+
+  useEffect(() => {
+    if (!isAddItemPickerOpen) return;
+    setActiveAddItemIndex(prev => Math.min(prev, Math.max(visibleAddableItems.length - 1, 0)));
+  }, [isAddItemPickerOpen, visibleAddableItems.length]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (addItemPickerRef.current && !addItemPickerRef.current.contains(event.target as Node)) {
+        setIsAddItemPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const timelineEvents = useMemo(() => {
     if (!po) return [];
@@ -244,6 +362,9 @@ const PODetail = () => {
         setAddItemPriceOptionId('');
         setAddItemQty('1');
         setAddItemPrice('0');
+        setAddItemSearch('');
+        setIsAddItemPickerOpen(false);
+        setActiveAddItemIndex(0);
         setIsEditing(true);
   };
 
@@ -254,6 +375,9 @@ const PODetail = () => {
       setAddItemPriceOptionId('');
       setAddItemQty('1');
       setAddItemPrice('0');
+      setAddItemSearch('');
+      setIsAddItemPickerOpen(false);
+      setActiveAddItemIndex(0);
   };
 
   const handleLineQtyChange = (lineId: string, rawValue: string) => {
@@ -315,6 +439,9 @@ const PODetail = () => {
       setAddItemPriceOptionId('');
       setAddItemQty('1');
       setAddItemPrice('0');
+      setAddItemSearch('');
+      setIsAddItemPickerOpen(false);
+      setActiveAddItemIndex(0);
   };
 
   const handleSavePendingEdits = async () => {
@@ -436,11 +563,23 @@ const PODetail = () => {
       if (!globalThis.confirm(`ARE YOU SURE? \n\nThis will permanently delete PO ${po.displayId || po.id} and all associated data (lines, deliveries, approvals). This action cannot be undone.`)) return;
       
       try {
+          setIsDeletingRequest(true);
+          const deletedRef = po.displayId || po.id;
           await deletePO(po.id);
-          navigate('/');
+          navigate('/requests', {
+              replace: true,
+              state: {
+                  deletedRequest: {
+                      id: po.id,
+                      displayId: deletedRef
+                  }
+              }
+          });
       } catch (e: unknown) {
           console.error(e);
           alert("Failed to delete PO: " + (e as Error).message);
+      } finally {
+          setIsDeletingRequest(false);
       }
   };
 
@@ -662,63 +801,118 @@ const PODetail = () => {
           {activeTab === 'LINES' && (
               <div className="overflow-x-auto">
                   {isEditing && (
-                      <div className="p-4 md:p-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-50/70 via-white to-indigo-50/40 dark:from-[var(--color-brand)]/15 dark:via-[#15171e] dark:to-indigo-500/10">
+                      <div className="p-4 md:p-5 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-[#15171e]">
                           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                               <div className="flex items-start gap-3">
-                                  <div className="w-10 h-10 rounded-xl bg-[var(--color-brand)]/15 text-[var(--color-brand)] dark:bg-[var(--color-brand)]/20 dark:text-blue-300 flex items-center justify-center border border-[var(--color-brand)]/20">
+                                  <div className="w-10 h-10 rounded-xl bg-white dark:bg-[#1e2029] text-[var(--color-brand)] dark:text-blue-300 flex items-center justify-center border border-gray-200 dark:border-gray-700 shadow-sm">
                                       <Plus size={18} />
                                   </div>
                                   <div>
                                       <h3 className="text-sm md:text-base font-extrabold text-gray-900 dark:text-white tracking-tight">Add Item To Request</h3>
                                       <p className="text-xs md:text-sm text-gray-600 dark:text-gray-300 mt-0.5">
-                                          Select an active master item, set quantity and unit price, then add it to this request.
+                                          Search by SKU, item name, or category, then set quantity and unit price before adding.
                                       </p>
                                   </div>
                               </div>
-                              <div className="inline-flex items-center gap-2 self-start md:self-center px-3 py-1.5 rounded-full text-[11px] font-bold border border-blue-200 text-blue-700 bg-blue-50 dark:border-blue-500/30 dark:text-blue-300 dark:bg-blue-500/10">
-                                  {addableItems.length} available
+                              <div className="inline-flex items-center gap-2 self-start md:self-center px-3 py-1.5 rounded-full text-[11px] font-bold border border-gray-200 text-gray-600 bg-white dark:border-gray-700 dark:text-gray-300 dark:bg-[#1e2029]">
+                                  {addableItems.length} active items
                               </div>
                           </div>
 
                           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
-                              <div className="lg:col-span-4">
-                                  <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Item Picker</label>
-                                  <div className="relative">
-                                      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                                      <select
-                                          className="w-full appearance-none bg-white dark:bg-[#1e2029] border-2 border-blue-200/70 dark:border-blue-500/30 rounded-xl pl-9 pr-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30 focus:border-[var(--color-brand)]"
-                                          value={addItemId}
-                                      onChange={(e) => {
-                                          const selectedId = e.target.value;
-                                          setAddItemId(selectedId);
-                                          const selectedItem = addableItems.find(item => item.id === selectedId);
-                                          if (selectedItem) {
-                                              const defaultPriceOption = getDefaultItemPriceOption(selectedItem);
-                                              setAddItemPriceOptionId(defaultPriceOption.id);
-                                              setAddItemPrice(String(defaultPriceOption.price));
-                                          }
-                                      }}
-                                  >
-                                          <option value="">{addableItems.length === 0 ? 'No active items available' : 'Choose an item to add...'}</option>
-                                          {addableItems.map(item => (
-                                              <option key={item.id} value={item.id}>
-                                                  {item.sku} - {item.name}
-                                              </option>
-                                          ))}
-                                      </select>
+                              <div className="lg:col-span-5">
+                                  <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Item Search</label>
+                                  <div ref={addItemPickerRef} className="relative">
+                                      <Search size={15} className="absolute left-3 top-3 text-gray-400 pointer-events-none" />
+                                      <input
+                                          type="text"
+                                          value={addItemSearch}
+                                          onFocus={() => {
+                                              if (addableItems.length > 0) {
+                                                  setIsAddItemPickerOpen(true);
+                                              }
+                                          }}
+                                          onChange={(e) => {
+                                              setAddItemSearch(e.target.value);
+                                              setIsAddItemPickerOpen(true);
+                                              setActiveAddItemIndex(0);
+                                          }}
+                                          onKeyDown={handleAddItemSearchKeyDown}
+                                          placeholder={addableItems.length === 0 ? 'No active items available to add' : 'Search SKU, item name, category...'}
+                                          className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] disabled:opacity-60 disabled:cursor-not-allowed"
+                                          disabled={addableItems.length === 0}
+                                      />
+                                      {isAddItemPickerOpen && addableItems.length > 0 && (
+                                          <div className="absolute z-40 mt-2 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#12151f] shadow-2xl overflow-hidden">
+                                              <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-[#171a24] flex items-center justify-between gap-2 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                                                  <span>{filteredAddableItems.length} match{filteredAddableItems.length === 1 ? '' : 'es'}</span>
+                                                  {filteredAddableItems.length > visibleAddableItems.length && (
+                                                      <span>Showing first {visibleAddableItems.length}</span>
+                                                  )}
+                                              </div>
+                                              <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
+                                                  {visibleAddableItems.length === 0 ? (
+                                                      <div className="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                                                          No active items found. Try SKU or a shorter keyword.
+                                                      </div>
+                                                  ) : (
+                                                      visibleAddableItems.map((item, index) => {
+                                                          const isHighlighted = index === activeAddItemIndex;
+                                                          const isSelected = item.id === addItemId;
+                                                          return (
+                                                              <button
+                                                                  type="button"
+                                                                  key={item.id}
+                                                                  onMouseEnter={() => setActiveAddItemIndex(index)}
+                                                                  onClick={() => applyAddItemSelection(item)}
+                                                                  className={`w-full text-left rounded-lg px-3 py-2.5 border transition-colors ${
+                                                                      isHighlighted
+                                                                          ? 'border-[var(--color-brand)]/50 bg-[var(--color-brand)]/10 dark:bg-[var(--color-brand)]/15'
+                                                                          : isSelected
+                                                                              ? 'border-blue-200 dark:border-blue-500/30 bg-blue-50/60 dark:bg-blue-500/10'
+                                                                              : 'border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#1d2130]'
+                                                                  }`}
+                                                              >
+                                                                  <div className="flex items-center justify-between gap-3">
+                                                                      <div className="min-w-0">
+                                                                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{item.name}</p>
+                                                                          <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+                                                                              {item.sku}
+                                                                              {item.category ? ` - ${item.category}` : ''}
+                                                                              {item.subCategory ? ` / ${item.subCategory}` : ''}
+                                                                          </p>
+                                                                      </div>
+                                                                      {isSelected && (
+                                                                          <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-brand)]">Selected</span>
+                                                                      )}
+                                                                  </div>
+                                                              </button>
+                                                          );
+                                                      })
+                                                  )}
+                                              </div>
+                                              <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-800 text-[10px] text-gray-400 dark:text-gray-500">
+                                                  Tip: use arrows and Enter to select quickly.
+                                              </div>
+                                          </div>
+                                      )}
                                   </div>
                                   {selectedAddItem ? (
-                                      <div className="mt-2 inline-flex items-center gap-2 bg-white/80 dark:bg-black/20 border border-blue-200 dark:border-blue-500/20 rounded-lg px-2.5 py-1.5 text-xs">
+                                      <div className="mt-2 inline-flex items-center gap-2 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs">
                                           <span className="font-mono font-bold text-[var(--color-brand)]">{selectedAddItem.sku}</span>
                                           <span className="text-gray-700 dark:text-gray-300">{selectedAddItem.name}</span>
                                       </div>
                                   ) : (
-                                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Tip: choose the item first, then set quantity and price.</p>
+                                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Select an item from results, then set quantity and price.</p>
                                   )}
                               </div>
                               <div className="lg:col-span-2">
                                   <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Price Option</label>
-                                  {selectedAddItemPriceOptions.length > 1 ? (
+                                  {!selectedAddItem ? (
+                                      <div className="h-[42px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] px-3 flex items-center text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                          Select item first
+                                      </div>
+                                  ) : selectedAddItemPriceOptions.length > 1 ? (
                                       <select
                                           className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
                                           value={addItemPriceOptionId}
@@ -1066,8 +1260,10 @@ const PODetail = () => {
                             type="button"
                             key={s}
                             onClick={() => handleForceStatusUpdate(s)}
+                            disabled={isDeletingRequest}
                             className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors
                                 ${po.status === s ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-500/30' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'}
+                                ${isDeletingRequest ? 'opacity-50 cursor-not-allowed' : ''}
                             `}
                         >
                             {s}
@@ -1078,15 +1274,16 @@ const PODetail = () => {
                         <button 
                             type="button"
                             onClick={handleDeletePO}
-                            className="w-full text-left px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800"
+                            disabled={isDeletingRequest}
+                            className="w-full text-left px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                            DELETE REQUEST
+                            {isDeletingRequest ? 'Deleting Request...' : 'DELETE REQUEST'}
                         </button>
                     </div>
                 </div>
 
                 <div className="flex justify-end">
-                    <button type="button" onClick={() => setIsStatusModalOpen(false)} className="px-4 py-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-lg font-medium text-sm">Cancel</button>
+                    <button type="button" onClick={() => setIsStatusModalOpen(false)} disabled={isDeletingRequest} className="px-4 py-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-lg font-medium text-sm disabled:opacity-60 disabled:cursor-not-allowed">Cancel</button>
                 </div>
             </div>
         </div>
