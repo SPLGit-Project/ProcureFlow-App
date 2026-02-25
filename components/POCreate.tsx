@@ -171,6 +171,14 @@ const POCreate = () => {
     }));
   };
 
+  const setLineQuantity = (lineId: string, quantityValue: string) => {
+    const parsedQty = Math.max(1, Math.floor(Number(quantityValue) || 0));
+    setCart(prev => prev.map(line => {
+      if (line.id !== lineId) return line;
+      return { ...line, quantityOrdered: parsedQty, totalPrice: parsedQty * line.unitPrice };
+    }));
+  };
+
   const updateLinePrice = (lineId: string, newPriceVal: string) => {
     const newPrice = parseFloat(newPriceVal);
     if (isNaN(newPrice)) return;
@@ -304,7 +312,14 @@ const POCreate = () => {
                              <div className="flex items-center gap-3">
                                 <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-[#15171e]">
                                     <button onClick={() => updateQuantity(line.id, -1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Minus size={14}/></button>
-                                    <span className="text-sm font-semibold w-8 text-center text-gray-900 dark:text-white">{line.quantityOrdered}</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        value={line.quantityOrdered}
+                                        onChange={(e) => setLineQuantity(line.id, e.target.value)}
+                                        className="w-12 text-center text-sm font-semibold text-gray-900 dark:text-white bg-transparent outline-none"
+                                    />
                                     <button onClick={() => updateQuantity(line.id, 1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Plus size={14}/></button>
                                 </div>
                              </div>

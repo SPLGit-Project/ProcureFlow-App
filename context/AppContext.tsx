@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog } from '../types.ts';
+import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog } from '../types.ts';
 import { db } from '../services/db.ts';
 import { supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
@@ -117,6 +117,7 @@ interface AppContextType {
   
   // Core Actions
   createPO: (po: PORequest) => void;
+  updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; lines: POLineItem[]; }) => Promise<void>;
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
   linkConcurPO: (poId: string, concurPoNumber: string) => void;
   addDelivery: (poId: string, delivery: DeliveryHeader, closedLineIds?: string[]) => void;
@@ -1551,6 +1552,79 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   };
 
+  const updatePendingPO = async (
+      poId: string,
+      updates: {
+          customerName?: string;
+          reasonForRequest?: 'Depletion' | 'New Customer' | 'Other';
+          comments?: string;
+          lines: POLineItem[];
+      }
+  ) => {
+      if (!currentUser) throw new Error('You must be signed in to edit a request.');
+
+      const existing = pos.find(p => p.id === poId);
+      if (!existing) throw new Error('Request not found.');
+
+      const canEdit =
+          existing.status === 'PENDING_APPROVAL' &&
+          (currentUser.role === 'ADMIN' || existing.requesterId === currentUser.id);
+
+      if (!canEdit) {
+          throw new Error('Only the requester can edit while the request is pending approval.');
+      }
+
+      const normalizedLines = (updates.lines || []).map(line => {
+          const quantityOrdered = Math.max(1, Math.floor(Number(line.quantityOrdered) || 0));
+          const unitPrice = Math.max(0, Number(line.unitPrice) || 0);
+          return {
+              ...line,
+              quantityOrdered,
+              unitPrice,
+              totalPrice: Number((quantityOrdered * unitPrice).toFixed(2))
+          };
+      });
+
+      if (normalizedLines.length === 0) {
+          throw new Error('At least one line item is required.');
+      }
+
+      const totalAmount = Number(
+          normalizedLines.reduce((sum, line) => sum + line.totalPrice, 0).toFixed(2)
+      );
+
+      try {
+          await db.updatePendingPO(poId, {
+              requesterId: currentUser.role === 'ADMIN' ? undefined : currentUser.id,
+              customerName: updates.customerName,
+              reasonForRequest: updates.reasonForRequest,
+              comments: updates.comments,
+              lines: normalizedLines
+          });
+
+          setPos(prev => prev.map(p => {
+              if (p.id !== poId) return p;
+              return {
+                  ...p,
+                  customerName: updates.customerName,
+                  reasonForRequest: updates.reasonForRequest,
+                  comments: updates.comments,
+                  lines: normalizedLines,
+                  totalAmount
+              };
+          }));
+
+          logAction(
+              'PO_UPDATED',
+              { poId, lineCount: normalizedLines.length, totalAmount },
+              { status: existing.status, requesterId: existing.requesterId }
+          );
+      } catch (e) {
+          logAction('PO_UPDATE_FAILED', { poId, error: (e as Error).message });
+          throw e;
+      }
+  };
+
   const updatePOStatus = async (poId: string, status: POStatus, event: ApprovalEvent) => {
     // Optimistic
     setPos(prev => prev.map(p => p.id === poId ? { ...p, status, approvalHistory: [...p.approvalHistory, event] } : p));
@@ -1558,6 +1632,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     // Persist
     try {
         await db.updatePOStatus(poId, status);
+        await db.addPOApproval(poId, event);
         
         // NOTIFICATION TRIGGER
         if (status === 'APPROVED_PENDING_CONCUR') {
@@ -1581,6 +1656,20 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const deletePO = async (id: string) => {
       try {
+          const target = pos.find(p => p.id === id);
+          if (!target) throw new Error('Request not found.');
+
+          const isAdmin = currentUser?.role === 'ADMIN';
+          const isRequesterPending = Boolean(
+              currentUser &&
+              target.requesterId === currentUser.id &&
+              target.status === 'PENDING_APPROVAL'
+          );
+
+          if (!isAdmin && !isRequesterPending) {
+              throw new Error('Only pending requests can be deleted by the requester.');
+          }
+
           // Optimistic remove
           setPos(prev => prev.filter(p => p.id !== id));
           
@@ -1589,7 +1678,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           // sendNotification('SYSTEM', { message: `PO ${id} deleted by admin` });
       } catch (e) {
           console.error("Failed to delete PO", e);
-          alert("Failed to delete PO");
+          alert((e as Error).message || "Failed to delete PO");
           reloadData(); // Revert
           logAction('PO_DELETE_FAILED', { id, error: (e as Error).message });
       }
@@ -2026,9 +2115,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         try {
             await db.deleteItem(itemId);
             setItems(prev => prev.filter(i => i.id !== itemId));
+            logAction('ITEM_DELETED', { itemId });
         } catch (e) {
              console.error(e);
              alert("Failed to delete item");
+             logAction('ITEM_DELETE_FAILED', { itemId, error: (e as Error).message });
         }
   };
 
@@ -2036,9 +2127,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         try {
             await db.archiveItem(itemId);
             setItems(prev => prev.map(i => i.id === itemId ? { ...i, activeFlag: false } : i));
+            logAction('ITEM_ARCHIVED', { itemId });
         } catch (e) {
              console.error(e);
              alert("Failed to archive item");
+             logAction('ITEM_ARCHIVE_FAILED', { itemId, error: (e as Error).message });
         }
   };
 
@@ -2154,7 +2247,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep,
     notificationRules, upsertNotificationRule, deleteNotificationRule,
     theme, setTheme, branding, updateBranding,
-    createPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
+    createPO, updatePendingPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
     updateProfile, switchRole,
     addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: importMasterProducts,
     getAttributeOptions, upsertAttributeOption, deleteAttributeOption,

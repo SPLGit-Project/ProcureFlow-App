@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon } from 'lucide-react';
-import { DeliveryHeader, POStatus } from '../types.ts';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2 } from 'lucide-react';
+import { DeliveryHeader, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
 import { db } from '../services/db.ts';
@@ -14,7 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, suppliers, updatePOStatus, currentUser, hasPermission, addDelivery, linkConcurPO, reloadData, deletePO } = useApp();
+  const { pos, suppliers, items, updatePOStatus, updatePendingPO, currentUser, hasPermission, addDelivery, linkConcurPO, reloadData, deletePO } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -26,11 +26,28 @@ const PODetail = () => {
   const [isEditing, setIsEditing] = useState(false);
   
   // Local state for edits
-  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: '', comments: '', concurPoNumber: '' });
+  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: 'Depletion', comments: '' });
+  const [editableLines, setEditableLines] = useState<POLineItem[]>([]);
+  const [addItemId, setAddItemId] = useState('');
+  const [addItemQty, setAddItemQty] = useState('1');
+  const [addItemPrice, setAddItemPrice] = useState('0');
 
   const po = pos.find(p => p.id === id);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _supplier = po ? suppliers.find(s => s.id === po.supplierId) : undefined;
+
+  const canEditPendingRequest = Boolean(
+    po &&
+    po.status === 'PENDING_APPROVAL' &&
+    currentUser &&
+    (currentUser.id === po.requesterId || currentUser.role === 'ADMIN')
+  );
+
+  const addableItems = useMemo(() => {
+    const activeItems = (items || []).filter(item => item.activeFlag !== false);
+    const existingItemIds = new Set((isEditing ? editableLines : po?.lines || []).map(line => line.itemId));
+    return activeItems.filter(item => item.id && !existingItemIds.has(item.id));
+  }, [items, isEditing, editableLines, po?.lines]);
 
   const timelineEvents = useMemo(() => {
     if (!po) return [];
@@ -120,6 +137,8 @@ const PODetail = () => {
   const canLinkConcur = (hasPermission('link_concur') || po.requesterId === currentUser?.id) && po.status === 'APPROVED_PENDING_CONCUR';
   const canReceive = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING');
   const canClose = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED');
+  const canDeletePendingRequest = canEditPendingRequest;
+  const linesInView = isEditing ? editableLines : po.lines;
 
 
   const getStepStatus = (step: number) => {
@@ -186,34 +205,95 @@ const PODetail = () => {
 
 
   const handleStartEdit = () => {
-       if (!po) return;
+       if (!po || !canEditPendingRequest) return;
         setHeaderEdits({
             clientName: po.customerName || '',
-            reason: po.reasonForRequest || '',
-            comments: po.comments || '',
-            concurPoNumber: po.lines[0]?.concurPoNumber || ''
+            reason: po.reasonForRequest || 'Depletion',
+            comments: po.comments || ''
         });
+        setEditableLines(po.lines.map(line => ({ ...line })));
+        setAddItemId('');
+        setAddItemQty('1');
+        setAddItemPrice('0');
         setIsEditing(true);
   };
 
-  const handleSaveHeader = async () => {
+  const handleCancelEdit = () => {
+      setIsEditing(false);
+      setEditableLines([]);
+      setAddItemId('');
+      setAddItemQty('1');
+      setAddItemPrice('0');
+  };
+
+  const handleLineQtyChange = (lineId: string, rawValue: string) => {
+      const parsed = Math.max(1, Math.floor(Number(rawValue) || 0));
+      setEditableLines(prev => prev.map(line => {
+          if (line.id !== lineId) return line;
+          return {
+              ...line,
+              quantityOrdered: parsed,
+              totalPrice: Number((parsed * line.unitPrice).toFixed(2))
+          };
+      }));
+  };
+
+  const handleLinePriceChange = (lineId: string, rawValue: string) => {
+      const parsed = Math.max(0, Number(rawValue) || 0);
+      setEditableLines(prev => prev.map(line => {
+          if (line.id !== lineId) return line;
+          return {
+              ...line,
+              unitPrice: parsed,
+              totalPrice: Number((line.quantityOrdered * parsed).toFixed(2))
+          };
+      }));
+  };
+
+  const handleRemoveDraftLine = (lineId: string) => {
+      setEditableLines(prev => prev.filter(line => line.id !== lineId));
+  };
+
+  const handleAddDraftLine = () => {
+      const selectedItem = addableItems.find(item => item.id === addItemId);
+      if (!selectedItem) return;
+
+      const quantityOrdered = Math.max(1, Math.floor(Number(addItemQty) || 0));
+      const unitPrice = Math.max(0, Number(addItemPrice) || 0);
+
+      const newLine: POLineItem = {
+          id: uuidv4(),
+          itemId: selectedItem.id,
+          itemName: selectedItem.name,
+          sku: selectedItem.sku,
+          quantityOrdered,
+          quantityReceived: 0,
+          unitPrice,
+          totalPrice: Number((quantityOrdered * unitPrice).toFixed(2))
+      };
+
+      setEditableLines(prev => [...prev, newLine]);
+      setAddItemId('');
+      setAddItemQty('1');
+      setAddItemPrice('0');
+  };
+
+  const handleSavePendingEdits = async () => {
        if (!po) return;
         try {
-            await db.updatePODetails(po.id, {
-                clientName: headerEdits.clientName,
-                reasonForRequest: headerEdits.reason,
-                comments: headerEdits.comments
+            const validReason = (['Depletion', 'New Customer', 'Other'] as const).includes(headerEdits.reason as 'Depletion' | 'New Customer' | 'Other')
+                ? (headerEdits.reason as 'Depletion' | 'New Customer' | 'Other')
+                : 'Depletion';
+
+            await updatePendingPO(po.id, {
+                customerName: headerEdits.clientName,
+                reasonForRequest: validReason,
+                comments: headerEdits.comments,
+                lines: editableLines
             });
-
-            // If Concur PO number was changed, update it across all lines
-            const currentConcur = po.lines[0]?.concurPoNumber || '';
-            if (headerEdits.concurPoNumber !== currentConcur) {
-                await linkConcurPO(po.id, headerEdits.concurPoNumber);
-            }
-
             setIsEditing(false);
-            setIsEditing(false);
-            reloadData();
+            setEditableLines([]);
+            await reloadData(true);
        } catch (err: unknown) {
            console.error(err);
            alert('Failed to save changes: ' + (err as Error).message);
@@ -239,38 +319,6 @@ const PODetail = () => {
            await db.updateDeliveryLineFinanceInfo(lineId, { invoiceNumber: val });
       } catch (e: unknown) {
            console.error(e);
-      }
-  };
-
-  const handleUpdateLineQty = async (lineId: string, newQtyList: string, unitPrice: number) => {
-      const newQty = parseInt(newQtyList);
-      if (isNaN(newQty) || newQty < 0) return;
-
-      try {
-          await db.updatePOLine(lineId, { 
-              quantityOrdered: newQty,
-              totalPrice: newQty * unitPrice
-          });
-          reloadData(true);
-      } catch (e: unknown) {
-          console.error(e);
-          alert("Failed to update line quantity: " + (e as Error).message);
-      }
-  };
-
-  const handleUpdateLinePrice = async (lineId: string, newPriceStr: string, quantity: number) => {
-      const newPrice = parseFloat(newPriceStr);
-      if (isNaN(newPrice) || newPrice < 0) return;
-
-      try {
-          await db.updatePOLine(lineId, { 
-              unitPrice: newPrice,
-              totalPrice: newPrice * quantity
-          });
-          reloadData(true);
-      } catch (e: unknown) {
-          console.error(e);
-          alert("Failed to update unit price: " + (e as Error).message);
       }
   };
 
@@ -340,6 +388,12 @@ const PODetail = () => {
 
   const handleDeletePO = async () => {
       if (!po) return;
+      const isAdmin = currentUser?.role === 'ADMIN';
+      if (!isAdmin && !canDeletePendingRequest) {
+          alert('Only the requester can delete while pending approval.');
+          return;
+      }
+
       if (!globalThis.confirm(`ARE YOU SURE? \n\nThis will permanently delete PO ${po.displayId || po.id} and all associated data (lines, deliveries, approvals). This action cannot be undone.`)) return;
       
       try {
@@ -379,17 +433,26 @@ const PODetail = () => {
             </div>
             
             <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-               {/* Admin Edit Toggle */}
-               {currentUser?.role === 'ADMIN' && (
+               {canEditPendingRequest && (
                    !isEditing ? (
-                       <button type="button" onClick={handleStartEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors">
+                       <button type="button" onClick={handleStartEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors" title="Edit pending request">
                            <Edit2 size={18} />
                        </button>
                    ) : (
-                       <button type="button" onClick={handleSaveHeader} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm">
+                       <>
+                       <button type="button" onClick={handleSavePendingEdits} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm" title="Save pending request changes">
                            <Save size={18} />
                        </button>
+                       <button type="button" onClick={handleCancelEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors" title="Cancel edit">
+                           <XCircle size={18} />
+                       </button>
+                       </>
                    )
+               )}
+               {canDeletePendingRequest && !isEditing && (
+                    <button type="button" onClick={handleDeletePO} className="p-2.5 text-red-600 hover:text-red-700 border border-red-200 rounded-xl hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:text-red-300 transition-colors" title="Delete pending request">
+                        <Trash2 size={18} />
+                    </button>
                )}
                {currentUser?.role === 'ADMIN' && (
                     <button type="button" onClick={() => setIsStatusModalOpen(true)} className="p-2.5 text-amber-600 hover:text-amber-700 border border-amber-200 rounded-xl hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Admin: Force Status">
@@ -476,17 +539,9 @@ const PODetail = () => {
                     <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg"><LinkIcon size={16}/></div>
                     <div className="w-full">
                         <p className="text-xs text-secondary uppercase font-bold">Concur PO #</p>
-                        {isEditing ? (
-                            <input 
-                                className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                                value={headerEdits.concurPoNumber}
-                                onChange={e => setHeaderEdits({...headerEdits, concurPoNumber: e.target.value})}
-                            />
-                        ) : (
-                            <p className="text-sm font-medium text-primary dark:text-white">
-                                 {Array.from(new Set(po.lines.map(l => l.concurPoNumber).filter(Boolean))).join(', ') || '-'}
-                            </p>
-                        )}
+                        <p className="text-sm font-medium text-primary dark:text-white">
+                             {Array.from(new Set(po.lines.map(l => l.concurPoNumber).filter(Boolean))).join(', ') || '-'}
+                        </p>
                     </div>
                 </div>
 
@@ -495,11 +550,15 @@ const PODetail = () => {
                     <div className="w-full">
                         <p className="text-xs text-secondary uppercase font-bold">Reason</p>
                          {isEditing ? (
-                            <input 
+                            <select 
                                 className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
                                 value={headerEdits.reason}
                                 onChange={e => setHeaderEdits({...headerEdits, reason: e.target.value})}
-                            />
+                            >
+                                <option value="Depletion">Depletion</option>
+                                <option value="New Customer">New Customer</option>
+                                <option value="Other">Other</option>
+                            </select>
                         ) : (
                             <p className="text-sm font-medium text-primary dark:text-white">{po.reasonForRequest || '-'}</p>
                         )}
@@ -563,6 +622,66 @@ const PODetail = () => {
       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[300px]">
           {activeTab === 'LINES' && (
               <div className="overflow-x-auto">
+                  {isEditing && (
+                      <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#15171e]">
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                              <div className="md:col-span-6">
+                                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Add Item</label>
+                                  <select
+                                      className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white"
+                                      value={addItemId}
+                                      onChange={(e) => {
+                                          const selectedId = e.target.value;
+                                          setAddItemId(selectedId);
+                                          const selectedItem = addableItems.find(item => item.id === selectedId);
+                                          if (selectedItem) {
+                                              setAddItemPrice(String(selectedItem.unitPrice || 0));
+                                          }
+                                      }}
+                                  >
+                                      <option value="">Select active master item...</option>
+                                      {addableItems.map(item => (
+                                          <option key={item.id} value={item.id}>
+                                              {item.sku} - {item.name}
+                                          </option>
+                                      ))}
+                                  </select>
+                              </div>
+                              <div className="md:col-span-2">
+                                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Qty</label>
+                                  <input
+                                      type="number"
+                                      min="1"
+                                      step="1"
+                                      value={addItemQty}
+                                      onChange={(e) => setAddItemQty(e.target.value)}
+                                      className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white"
+                                  />
+                              </div>
+                              <div className="md:col-span-2">
+                                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Unit Price</label>
+                                  <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={addItemPrice}
+                                      onChange={(e) => setAddItemPrice(e.target.value)}
+                                      className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white"
+                                  />
+                              </div>
+                              <div className="md:col-span-2 flex md:justify-end">
+                                  <button
+                                      type="button"
+                                      onClick={handleAddDraftLine}
+                                      disabled={!addItemId}
+                                      className="w-full md:w-auto px-4 py-2.5 bg-[var(--color-brand)] text-white rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                  >
+                                      <Plus size={16} /> Add Line
+                                  </button>
+                              </div>
+                          </div>
+                      </div>
+                  )}
                   <table className="w-full text-left text-sm text-secondary dark:text-gray-400">
                       <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
                           <tr>
@@ -571,22 +690,25 @@ const PODetail = () => {
                               <th className="px-6 py-4 text-center">Received</th>
                               <th className="px-6 py-4 text-right">Unit Price</th>
                               <th className="px-6 py-4 text-right">Total</th>
+                              {isEditing && <th className="px-6 py-4 text-center">Actions</th>}
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                          {po.lines.map(line => (
+                          {linesInView.map(line => (
                               <tr key={line.id} className="hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors">
                                   <td className="px-6 py-4">
                                       <div className="font-bold text-primary dark:text-white">{line.itemName}</div>
                                       <div className="text-xs text-tertiary dark:text-gray-500 font-mono mt-0.5">{line.sku}</div>
                                   </td>
                                   <td className="px-6 py-4 text-center font-medium text-primary dark:text-white">
-                                      {isEditing && (po.status === 'PENDING_APPROVAL' || po.status === 'APPROVED_PENDING_CONCUR') ? (
+                                      {isEditing ? (
                                           <input 
                                               type="number" 
                                               className="w-20 px-2 py-1 text-center border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                                              defaultValue={line.quantityOrdered}
-                                              onBlur={(e) => handleUpdateLineQty(line.id, e.target.value, line.unitPrice)}
+                                              value={line.quantityOrdered}
+                                              min={1}
+                                              step={1}
+                                              onChange={(e) => handleLineQtyChange(line.id, e.target.value)}
                                           />
                                       ) : (
                                           line.quantityOrdered
@@ -605,24 +727,47 @@ const PODetail = () => {
                                       </div>
                                   </td>
                                   <td className="px-6 py-4 text-right">
-                                      {isEditing && (po.status === 'PENDING_APPROVAL' || po.status === 'APPROVED_PENDING_CONCUR') ? (
+                                      {isEditing ? (
                                           <div className="flex items-center justify-end gap-1">
                                               <span className="text-gray-400">$</span>
                                               <input 
                                                   type="number" 
                                                   className="w-24 px-2 py-1 text-right border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                                                  defaultValue={line.unitPrice}
+                                                  value={line.unitPrice}
                                                   step="0.01"
-                                                  onBlur={(e) => handleUpdateLinePrice(line.id, e.target.value, line.quantityOrdered)}
+                                                  min="0"
+                                                  onChange={(e) => handleLinePriceChange(line.id, e.target.value)}
                                               />
                                           </div>
                                       ) : (
                                           `$${line.unitPrice.toFixed(2)}`
                                       )}
                                   </td>
-                                  <td className="px-6 py-4 text-right font-bold text-primary dark:text-white">${line.totalPrice.toLocaleString()}</td>
+                                  <td className="px-6 py-4 text-right font-bold text-primary dark:text-white">
+                                      ${(line.totalPrice ?? (line.quantityOrdered * line.unitPrice)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </td>
+                                  {isEditing && (
+                                      <td className="px-6 py-4 text-center">
+                                          <button
+                                              type="button"
+                                              onClick={() => handleRemoveDraftLine(line.id)}
+                                              disabled={linesInView.length <= 1}
+                                              className="p-2 text-red-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed"
+                                              title={linesInView.length <= 1 ? 'At least one line is required' : 'Remove line'}
+                                          >
+                                              <Trash2 size={16} />
+                                          </button>
+                                      </td>
+                                  )}
                               </tr>
                           ))}
+                          {linesInView.length === 0 && (
+                              <tr>
+                                  <td colSpan={isEditing ? 6 : 5} className="px-6 py-10 text-center text-gray-400">
+                                      No line items.
+                                  </td>
+                              </tr>
+                          )}
                       </tbody>
                   </table>
               </div>

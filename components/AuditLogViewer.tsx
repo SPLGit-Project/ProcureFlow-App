@@ -10,7 +10,9 @@ export const AuditLogViewer: React.FC = () => {
     
     // Filters
     const today = new Date().toISOString().split('T')[0];
-    const [startDate, setStartDate] = useState<string>(today);
+    const initialStartDate = new Date();
+    initialStartDate.setDate(initialStartDate.getDate() - 30);
+    const [startDate, setStartDate] = useState<string>(initialStartDate.toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState<string>(today);
     const [filterUser, setFilterUser] = useState<string>(''); // This will now filter by performedByName locally or we can map to ID
     const [filterAction, setFilterAction] = useState<string>('');
@@ -27,7 +29,7 @@ export const AuditLogViewer: React.FC = () => {
             const data = await getAuditLogs({
                 startDate,
                 endDate,
-                actionType: filterAction
+                actionType: filterAction || undefined
             });
             setLogs(data);
         } catch (e) {
@@ -39,7 +41,7 @@ export const AuditLogViewer: React.FC = () => {
 
     useEffect(() => {
         fetchLogs();
-    }, [startDate, endDate]); // Auto-refresh when dates change
+    }, [startDate, endDate, filterAction]); // Auto-refresh when filters change
 
     // Client-side refinement for name (since backend currently filters by User ID only if provided)
     const filteredLogs = logs.filter(l => {
@@ -52,7 +54,7 @@ export const AuditLogViewer: React.FC = () => {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-black text-gray-900 dark:text-white">System Audit Log</h2>
-                    <p className="text-sm text-gray-500">Track critical system actions and background tasks.</p>
+                    <p className="text-sm text-gray-500">Track row-level inserts, updates, deletes, and system actions.</p>
                 </div>
                 <div className="flex gap-2">
                      <button type="button" onClick={fetchLogs} className="btn-secondary flex items-center gap-2">
@@ -102,7 +104,6 @@ export const AuditLogViewer: React.FC = () => {
                         className="w-full pl-10 input-field"
                         value={filterAction}
                         onChange={e => setFilterAction(e.target.value)}
-                        onBlur={fetchLogs} // Fetch on blur to avoid too many requests
                         onKeyDown={e => e.key === 'Enter' && fetchLogs()}
                     />
                 </div>

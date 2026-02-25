@@ -741,6 +741,114 @@ export const db = {
         if (error) throw error;
     },
 
+    updatePendingPO: async (
+        poId: string,
+        updates: {
+            requesterId?: string;
+            customerName?: string;
+            reasonForRequest?: string;
+            comments?: string;
+            lines: POLineItem[];
+        }
+    ): Promise<void> => {
+        const { data: existingPo, error: existingPoError } = await supabase
+            .from('po_requests')
+            .select('id, status, requester_id')
+            .eq('id', poId)
+            .single();
+
+        if (existingPoError) throw existingPoError;
+        if (!existingPo) throw new Error('Request not found.');
+        if (existingPo.status !== 'PENDING_APPROVAL') {
+            throw new Error('Only pending approval requests can be edited.');
+        }
+        if (updates.requesterId && existingPo.requester_id !== updates.requesterId) {
+            throw new Error('You can only edit your own pending request.');
+        }
+
+        const normalizedLines = (updates.lines || [])
+            .map((line) => {
+                const quantityOrdered = Math.max(1, Math.floor(Number(line.quantityOrdered) || 0));
+                const unitPrice = Math.max(0, Number(line.unitPrice) || 0);
+                const totalPrice = Number((quantityOrdered * unitPrice).toFixed(2));
+
+                return {
+                    ...line,
+                    quantityOrdered,
+                    unitPrice,
+                    totalPrice
+                };
+            })
+            .filter((line) => Boolean(line.itemId));
+
+        if (normalizedLines.length === 0) {
+            throw new Error('A request must contain at least one item.');
+        }
+
+        const totalAmount = normalizedLines.reduce((sum, line) => sum + line.totalPrice, 0);
+
+        const { error: headerError } = await supabase
+            .from('po_requests')
+            .update({
+                customer_name: updates.customerName,
+                reason_for_request: updates.reasonForRequest,
+                comments: updates.comments,
+                total_amount: Number(totalAmount.toFixed(2))
+            })
+            .eq('id', poId)
+            .eq('status', 'PENDING_APPROVAL');
+        if (headerError) throw headerError;
+
+        const { data: existingLines, error: existingLinesError } = await supabase
+            .from('po_lines')
+            .select('id')
+            .eq('po_request_id', poId);
+        if (existingLinesError) throw existingLinesError;
+
+        const lineRows = normalizedLines.map((line) => ({
+            id: line.id,
+            po_request_id: poId,
+            item_id: line.itemId,
+            sku: line.sku,
+            item_name: line.itemName,
+            quantity_ordered: line.quantityOrdered,
+            quantity_received: line.quantityReceived || 0,
+            unit_price: line.unitPrice,
+            total_price: line.totalPrice,
+            concur_po_number: line.concurPoNumber
+        }));
+
+        const { error: upsertError } = await supabase
+            .from('po_lines')
+            .upsert(lineRows, { onConflict: 'id' });
+        if (upsertError) throw upsertError;
+
+        const keepIds = new Set(normalizedLines.map((line) => line.id));
+        const deleteIds = (existingLines || [])
+            .map((line: { id: string }) => line.id)
+            .filter((lineId: string) => !keepIds.has(lineId));
+
+        if (deleteIds.length > 0) {
+            const { error: deleteError } = await supabase
+                .from('po_lines')
+                .delete()
+                .eq('po_request_id', poId)
+                .in('id', deleteIds);
+            if (deleteError) throw deleteError;
+        }
+    },
+
+    addPOApproval: async (poId: string, approval: ApprovalEvent): Promise<void> => {
+        const { error } = await supabase.from('po_approvals').insert({
+            po_request_id: poId,
+            approver_name: approval.approverName,
+            action: approval.action,
+            date: approval.date,
+            comments: approval.comments
+        });
+        if (error) throw error;
+    },
+
     updateDeliveryHeader: async (id: string, updates: { docketNumber?: string, date?: string, receivedBy?: string }): Promise<void> => {
         const payload: any = {};
         if (updates.docketNumber !== undefined) payload.docket_number = updates.docketNumber;
@@ -1519,7 +1627,7 @@ export const db = {
                 performer:users(name)
             `)
             .order('created_at', { ascending: false })
-            .limit(100);
+            .limit(500);
 
         if (filters?.startDate) {
             query = query.gte('created_at', filters.startDate);
