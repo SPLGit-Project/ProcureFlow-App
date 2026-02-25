@@ -49,6 +49,7 @@ const POCreate = () => {
   
   // Cart & Item State
   const [cart, setCart] = useState<POLineItem[]>([]);
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
   const [isCartExpanded, setIsCartExpanded] = useState(true);
   const [isCatalogExpanded, setIsCatalogExpanded] = useState(true); // Default open
   const [searchTerm, setSearchTerm] = useState('');
@@ -133,6 +134,24 @@ const POCreate = () => {
       return defaultPrice; // Overrides handled in Modal now
   };
 
+  const sanitizeQuantity = (value: string, fallback: number): number => {
+    const digitsOnly = (value || '').replace(/\D/g, '');
+    if (!digitsOnly) return Math.max(1, fallback);
+    const parsed = parseInt(digitsOnly, 10);
+    if (isNaN(parsed)) return Math.max(1, fallback);
+    return Math.max(1, parsed);
+  };
+
+  useEffect(() => {
+    setQuantityDrafts(prev => {
+      const next: Record<string, string> = {};
+      cart.forEach(line => {
+        next[line.id] = prev[line.id] !== undefined ? prev[line.id] : String(line.quantityOrdered);
+      });
+      return next;
+    });
+  }, [cart]);
+
   const addToCart = (item: any) => {
     // Quick Add: Default to 1 and estimated price
     const finalUnitPrice = item.price;
@@ -162,21 +181,39 @@ const POCreate = () => {
   };
 
   const updateQuantity = (lineId: string, delta: number) => {
+    let nextQty = 1;
     setCart(prev => prev.map(line => {
       if (line.id === lineId) {
-        const newQty = Math.max(1, line.quantityOrdered + delta);
-        return { ...line, quantityOrdered: newQty, totalPrice: newQty * line.unitPrice };
+        const baseQty = sanitizeQuantity(
+          quantityDrafts[line.id] ?? String(line.quantityOrdered),
+          line.quantityOrdered
+        );
+        nextQty = Math.max(1, baseQty + delta);
+        return { ...line, quantityOrdered: nextQty, totalPrice: nextQty * line.unitPrice };
       }
       return line;
     }));
+    setQuantityDrafts(prev => ({ ...prev, [lineId]: String(nextQty) }));
   };
 
-  const setLineQuantity = (lineId: string, quantityValue: string) => {
-    const parsedQty = Math.max(1, Math.floor(Number(quantityValue) || 0));
+  const updateQuantityDraft = (lineId: string, quantityValue: string) => {
+    const digitsOnly = (quantityValue || '').replace(/\D/g, '');
+    setQuantityDrafts(prev => ({ ...prev, [lineId]: digitsOnly }));
+  };
+
+  const commitQuantityDraft = (lineId: string, quantityValue?: string) => {
+    let parsedQty = 1;
     setCart(prev => prev.map(line => {
-      if (line.id !== lineId) return line;
-      return { ...line, quantityOrdered: parsedQty, totalPrice: parsedQty * line.unitPrice };
+      if (line.id === lineId) {
+        parsedQty = sanitizeQuantity(
+          quantityValue ?? quantityDrafts[lineId] ?? String(line.quantityOrdered),
+          line.quantityOrdered
+        );
+        return { ...line, quantityOrdered: parsedQty, totalPrice: parsedQty * line.unitPrice };
+      }
+      return line;
     }));
+    setQuantityDrafts(prev => ({ ...prev, [lineId]: String(parsedQty) }));
   };
 
   const updateLinePrice = (lineId: string, newPriceVal: string) => {
@@ -313,12 +350,19 @@ const POCreate = () => {
                                 <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-[#15171e]">
                                     <button onClick={() => updateQuantity(line.id, -1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Minus size={14}/></button>
                                     <input
-                                        type="number"
-                                        min="1"
-                                        step="1"
-                                        value={line.quantityOrdered}
-                                        onChange={(e) => setLineQuantity(line.id, e.target.value)}
-                                        className="w-12 text-center text-sm font-semibold text-gray-900 dark:text-white bg-transparent outline-none"
+                                        type="text"
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        value={quantityDrafts[line.id] ?? String(line.quantityOrdered)}
+                                        onChange={(e) => updateQuantityDraft(line.id, e.target.value)}
+                                        onBlur={(e) => commitQuantityDraft(line.id, e.target.value)}
+                                        onFocus={(e) => e.currentTarget.select()}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.currentTarget.blur();
+                                          }
+                                        }}
+                                        className="w-16 text-center text-sm font-semibold text-gray-900 dark:text-white bg-transparent outline-none"
                                     />
                                     <button onClick={() => updateQuantity(line.id, 1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Plus size={14}/></button>
                                 </div>

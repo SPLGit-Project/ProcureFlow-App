@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
 import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2 } from 'lucide-react';
@@ -48,6 +48,20 @@ const PODetail = () => {
     const existingItemIds = new Set((isEditing ? editableLines : po?.lines || []).map(line => line.itemId));
     return activeItems.filter(item => item.id && !existingItemIds.has(item.id));
   }, [items, isEditing, editableLines, po?.lines]);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    if (addItemId && addableItems.some(item => item.id === addItemId)) return;
+    if (addableItems.length === 0) {
+      setAddItemId('');
+      setAddItemPrice('0');
+      return;
+    }
+
+    const firstItem = addableItems[0];
+    setAddItemId(firstItem.id);
+    setAddItemPrice(String(firstItem.unitPrice || 0));
+  }, [isEditing, addableItems, addItemId]);
 
   const timelineEvents = useMemo(() => {
     if (!po) return [];
@@ -255,8 +269,13 @@ const PODetail = () => {
   };
 
   const handleAddDraftLine = () => {
-      const selectedItem = addableItems.find(item => item.id === addItemId);
-      if (!selectedItem) return;
+      const selectedItem =
+          addableItems.find(item => item.id === addItemId) ||
+          (items || []).find(item => item.id === addItemId && item.activeFlag !== false);
+      if (!selectedItem) {
+          alert('Please select an active item to add.');
+          return;
+      }
 
       const quantityOrdered = Math.max(1, Math.floor(Number(addItemQty) || 0));
       const unitPrice = Math.max(0, Number(addItemPrice) || 0);
@@ -639,7 +658,7 @@ const PODetail = () => {
                                           }
                                       }}
                                   >
-                                      <option value="">Select active master item...</option>
+                                      <option value="">{addableItems.length === 0 ? 'No active items available' : 'Select active master item...'}</option>
                                       {addableItems.map(item => (
                                           <option key={item.id} value={item.id}>
                                               {item.sku} - {item.name}
@@ -673,10 +692,10 @@ const PODetail = () => {
                                   <button
                                       type="button"
                                       onClick={handleAddDraftLine}
-                                      disabled={!addItemId}
+                                      disabled={!addItemId || addableItems.length === 0}
                                       className="w-full md:w-auto px-4 py-2.5 bg-[var(--color-brand)] text-white rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                   >
-                                      <Plus size={16} /> Add Line
+                                      <Plus size={16} /> Add Item
                                   </button>
                               </div>
                           </div>
