@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search } from 'lucide-react';
 import { DeliveryHeader, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
@@ -48,6 +48,11 @@ const PODetail = () => {
     const existingItemIds = new Set((isEditing ? editableLines : po?.lines || []).map(line => line.itemId));
     return activeItems.filter(item => item.id && !existingItemIds.has(item.id));
   }, [items, isEditing, editableLines, po?.lines]);
+
+  const selectedAddItem = useMemo(
+    () => addableItems.find(item => item.id === addItemId),
+    [addableItems, addItemId]
+  );
 
   useEffect(() => {
     if (!isEditing) return;
@@ -642,58 +647,86 @@ const PODetail = () => {
           {activeTab === 'LINES' && (
               <div className="overflow-x-auto">
                   {isEditing && (
-                      <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#15171e]">
-                          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                              <div className="md:col-span-6">
-                                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Add Item</label>
-                                  <select
-                                      className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white"
-                                      value={addItemId}
-                                      onChange={(e) => {
-                                          const selectedId = e.target.value;
-                                          setAddItemId(selectedId);
-                                          const selectedItem = addableItems.find(item => item.id === selectedId);
-                                          if (selectedItem) {
-                                              setAddItemPrice(String(selectedItem.unitPrice || 0));
-                                          }
-                                      }}
-                                  >
-                                      <option value="">{addableItems.length === 0 ? 'No active items available' : 'Select active master item...'}</option>
-                                      {addableItems.map(item => (
-                                          <option key={item.id} value={item.id}>
-                                              {item.sku} - {item.name}
-                                          </option>
-                                      ))}
-                                  </select>
+                      <div className="p-4 md:p-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-50/70 via-white to-indigo-50/40 dark:from-[var(--color-brand)]/15 dark:via-[#15171e] dark:to-indigo-500/10">
+                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                              <div className="flex items-start gap-3">
+                                  <div className="w-10 h-10 rounded-xl bg-[var(--color-brand)]/15 text-[var(--color-brand)] dark:bg-[var(--color-brand)]/20 dark:text-blue-300 flex items-center justify-center border border-[var(--color-brand)]/20">
+                                      <Plus size={18} />
+                                  </div>
+                                  <div>
+                                      <h3 className="text-sm md:text-base font-extrabold text-gray-900 dark:text-white tracking-tight">Add Item To Request</h3>
+                                      <p className="text-xs md:text-sm text-gray-600 dark:text-gray-300 mt-0.5">
+                                          Select an active master item, set quantity and unit price, then add it to this request.
+                                      </p>
+                                  </div>
                               </div>
-                              <div className="md:col-span-2">
-                                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Qty</label>
+                              <div className="inline-flex items-center gap-2 self-start md:self-center px-3 py-1.5 rounded-full text-[11px] font-bold border border-blue-200 text-blue-700 bg-blue-50 dark:border-blue-500/30 dark:text-blue-300 dark:bg-blue-500/10">
+                                  {addableItems.length} available
+                              </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+                              <div className="lg:col-span-6">
+                                  <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Item Picker</label>
+                                  <div className="relative">
+                                      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                      <select
+                                          className="w-full appearance-none bg-white dark:bg-[#1e2029] border-2 border-blue-200/70 dark:border-blue-500/30 rounded-xl pl-9 pr-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30 focus:border-[var(--color-brand)]"
+                                          value={addItemId}
+                                          onChange={(e) => {
+                                              const selectedId = e.target.value;
+                                              setAddItemId(selectedId);
+                                              const selectedItem = addableItems.find(item => item.id === selectedId);
+                                              if (selectedItem) {
+                                                  setAddItemPrice(String(selectedItem.unitPrice || 0));
+                                              }
+                                          }}
+                                      >
+                                          <option value="">{addableItems.length === 0 ? 'No active items available' : 'Choose an item to add...'}</option>
+                                          {addableItems.map(item => (
+                                              <option key={item.id} value={item.id}>
+                                                  {item.sku} - {item.name}
+                                              </option>
+                                          ))}
+                                      </select>
+                                  </div>
+                                  {selectedAddItem ? (
+                                      <div className="mt-2 inline-flex items-center gap-2 bg-white/80 dark:bg-black/20 border border-blue-200 dark:border-blue-500/20 rounded-lg px-2.5 py-1.5 text-xs">
+                                          <span className="font-mono font-bold text-[var(--color-brand)]">{selectedAddItem.sku}</span>
+                                          <span className="text-gray-700 dark:text-gray-300">{selectedAddItem.name}</span>
+                                      </div>
+                                  ) : (
+                                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Tip: choose the item first, then set quantity and price.</p>
+                                  )}
+                              </div>
+                              <div className="lg:col-span-2">
+                                  <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Qty</label>
                                   <input
                                       type="number"
                                       min="1"
                                       step="1"
                                       value={addItemQty}
                                       onChange={(e) => setAddItemQty(e.target.value)}
-                                      className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white"
+                                      className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
                                   />
                               </div>
-                              <div className="md:col-span-2">
-                                  <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Unit Price</label>
+                              <div className="lg:col-span-2">
+                                  <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Unit Price</label>
                                   <input
                                       type="number"
                                       min="0"
                                       step="0.01"
                                       value={addItemPrice}
                                       onChange={(e) => setAddItemPrice(e.target.value)}
-                                      className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white"
+                                      className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
                                   />
                               </div>
-                              <div className="md:col-span-2 flex md:justify-end">
+                              <div className="lg:col-span-2 flex lg:justify-end">
                                   <button
                                       type="button"
                                       onClick={handleAddDraftLine}
                                       disabled={!addItemId || addableItems.length === 0}
-                                      className="w-full md:w-auto px-4 py-2.5 bg-[var(--color-brand)] text-white rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                      className="w-full lg:w-auto px-4 py-2.5 bg-[var(--color-brand)] text-white rounded-xl font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm shadow-[var(--color-brand)]/25"
                                   >
                                       <Plus size={16} /> Add Item
                                   </button>
