@@ -119,6 +119,7 @@ interface AppContextType {
   createPO: (po: PORequest) => void;
   updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; lines: POLineItem[]; }) => Promise<void>;
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
+  linkConcurRequest: (poId: string, concurRequestNumber: string) => void;
   linkConcurPO: (poId: string, concurPoNumber: string) => void;
   addDelivery: (poId: string, delivery: DeliveryHeader, closedLineIds?: string[]) => void;
   
@@ -1685,6 +1686,29 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
 
+  const linkConcurRequest = async (poId: string, concurRequestNumber: string) => {
+      if (!concurRequestNumber.trim()) {
+          alert('Please enter a valid Concur Request number.');
+          return;
+      }
+
+      setPos(prev => prev.map(p => {
+          if (p.id !== poId) return p;
+          return { ...p, concurRequestNumber, status: 'APPROVED_PENDING_CONCUR' };
+      }));
+      
+      try {
+          await db.linkConcurRequest(poId, concurRequestNumber);
+          await db.updatePOStatus(poId, 'APPROVED_PENDING_CONCUR'); 
+          logAction('PO_CONCUR_REQUEST_LINKED', { poId, concurRequestNumber });
+      } catch (e) {
+          console.error('Failed to link Concur Request:', e);
+          alert(`Failed to link Concur Request: ${e instanceof Error ? e.message : 'Unknown error'}`);
+          reloadData();
+          logAction('PO_CONCUR_REQUEST_LINK_FAILED', { poId, concurRequestNumber, error: (e as Error).message });
+      }
+  };
+
   const linkConcurPO = async (poId: string, concurPoNumber: string) => {
       if (!concurPoNumber.trim()) {
           alert("Please enter a valid Concur PO number.");
@@ -2284,6 +2308,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         const svc = new DirectoryService(supabase);
         return await svc.searchDirectory(query, siteId);
     },
+    linkConcurRequest,
     sendNotification,
     deletePO
   }), [

@@ -19,7 +19,7 @@ const TaskDrawer: React.FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
 
     // --- Task Logic (Extracted from Dashboard) ---
     const pendingApprovals = useMemo(() => pos.filter(p => p.status === 'PENDING_APPROVAL' && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
-    const pendingConcur = useMemo(() => pos.filter(p => p.status === 'APPROVED_PENDING_CONCUR' && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
+    const pendingConcur = useMemo(() => pos.filter(p => (p.status === 'APPROVED_PENDING_CONCUR' || p.status === 'APPROVED_PENDING_CONCUR_REQUEST') && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
     const activeOrders = useMemo(() => pos.filter(p => (p.status === 'ACTIVE' || p.status === 'PARTIALLY_RECEIVED' || p.status === 'RECEIVED') && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
 
     const myPendingApprovals = useMemo(() => 

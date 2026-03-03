@@ -474,8 +474,8 @@ const AdminMigration = () => {
              const totalOrdered = po.lines.reduce((s, l) => s + (l.qtyOrdered || 0), 0);
              const totalReceived = po.lines.reduce((s, l) => s + (l.qtyReceived || 0), 0);
              
-             let newStatus = 'APPROVED_PENDING_CONCUR';
-             if (po.approvalStatus?.toLowerCase().includes('approved')) newStatus = 'APPROVED_PENDING_CONCUR'; 
+             let newStatus = 'APPROVED_PENDING_CONCUR_REQUEST';
+             if (po.approvalStatus?.toLowerCase().includes('approved')) newStatus = 'APPROVED_PENDING_CONCUR_REQUEST'; 
              
              if (totalReceived >= totalOrdered && totalOrdered > 0) {
                 newStatus = 'CLOSED';

@@ -293,6 +293,7 @@ export type POStatus =
   | 'DRAFT' 
   | 'PENDING_APPROVAL' 
   | 'REJECTED' 
+  | 'APPROVED_PENDING_CONCUR_REQUEST'
   | 'APPROVED_PENDING_CONCUR' // Approved internally, waiting for user to create in Concur
   | 'ACTIVE' // Created in Concur, ready for delivery
   | 'PARTIALLY_RECEIVED' 
@@ -317,6 +318,7 @@ export interface PORequest {
   deliveries: DeliveryHeader[];
   
   // New Fields
+  concurRequestNumber?: string;
   customerName?: string;
   reasonForRequest?: 'Depletion' | 'New Customer' | 'Other';
   comments?: string;

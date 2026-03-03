@@ -15,16 +15,18 @@ import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/i
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, suppliers, items, updatePOStatus, updatePendingPO, currentUser, hasPermission, addDelivery, linkConcurPO, reloadData, deletePO } = useApp();
+  const { pos, suppliers, items, updatePOStatus, updatePendingPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
   const [isConcurModalOpen, setIsConcurModalOpen] = useState(false);
+  const [isConcurRequestModalOpen, setIsConcurRequestModalOpen] = useState(false);
 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [isDeletingRequest, setIsDeletingRequest] = useState(false);
   const [concurInput, setConcurInput] = useState('');
+  const [concurRequestInput, setConcurRequestInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   
   // Local state for edits
@@ -280,6 +282,7 @@ const PODetail = () => {
   if (!po) return <div className="p-8 text-primary dark:text-white">PO Not Found</div>;
 
   const canApprove = hasPermission('approve_requests') && po.status === 'PENDING_APPROVAL';
+  const canLinkConcurRequest = (hasPermission('link_concur') || po.requesterId === currentUser?.id) && po.status === 'APPROVED_PENDING_CONCUR_REQUEST';
   const canLinkConcur = (hasPermission('link_concur') || po.requesterId === currentUser?.id) && po.status === 'APPROVED_PENDING_CONCUR';
   const canReceive = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING');
   const canClose = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED');
@@ -290,14 +293,15 @@ const PODetail = () => {
   const getStepStatus = (step: number) => {
       let currentStep = 1;
       if (po.status === 'PENDING_APPROVAL') currentStep = 1;
-      if (po.status === 'APPROVED_PENDING_CONCUR') currentStep = 2;
-      if (po.status === 'ACTIVE') currentStep = 3;
-      if (po.status === 'PARTIALLY_RECEIVED') currentStep = 4;
-      if (po.status === 'RECEIVED') currentStep = 5;
-      if (po.status === 'CLOSED') currentStep = 6;
+      if (po.status === 'APPROVED_PENDING_CONCUR_REQUEST') currentStep = 2;
+      if (po.status === 'APPROVED_PENDING_CONCUR') currentStep = 3;
+      if (po.status === 'ACTIVE') currentStep = 4;
+      if (po.status === 'PARTIALLY_RECEIVED') currentStep = 5;
+      if (po.status === 'RECEIVED') currentStep = 6;
+      if (po.status === 'CLOSED') currentStep = 7;
 
       if (po.status === 'REJECTED') return step === 2 ? 'error' : step < 2 ? 'complete' : 'pending';
-      if (po.status === 'VARIANCE_PENDING') return step === 4 ? 'warning' : step < 4 ? 'complete' : 'pending';
+      if (po.status === 'VARIANCE_PENDING') return step === 5 ? 'warning' : step < 5 ? 'complete' : 'pending';
 
       if (step < currentStep) return 'complete';
       if (step === currentStep) return 'current';
@@ -306,17 +310,17 @@ const PODetail = () => {
 
   const steps = [
       { num: 1, label: 'Requested' },
-
       { num: 2, label: 'Approved' },
-      { num: 3, label: 'In Concur' },
-      { num: 4, label: 'Delivered' },
-      { num: 5, label: 'Full' },
-      { num: 6, label: 'Complete' },
+      { num: 3, label: 'Req. Logged' },
+      { num: 4, label: 'In Concur' },
+      { num: 5, label: 'Delivered' },
+      { num: 6, label: 'Full' },
+      { num: 7, label: 'Complete' },
   ];
 
 
   const handleApproval = (approved: boolean) => {
-      updatePOStatus(po.id, approved ? 'APPROVED_PENDING_CONCUR' : 'REJECTED', {
+      updatePOStatus(po.id, approved ? 'APPROVED_PENDING_CONCUR_REQUEST' : 'REJECTED', {
           id: `ev-${Date.now()}`,
           action: approved ? 'APPROVED' : 'REJECTED',
           approverName: currentUser?.name || 'Unknown',
@@ -324,6 +328,12 @@ const PODetail = () => {
           date: new Date().toISOString().split('T')[0],
           comments: approved ? 'Approved via web portal' : 'Rejected via web portal'
       });
+  };
+
+  const handleConcurRequestLink = () => {
+      if(!concurRequestInput) return;
+      linkConcurRequest(po.id, concurRequestInput);
+      setIsConcurRequestModalOpen(false);
   };
 
   const handleConcurLink = () => {
@@ -598,11 +608,11 @@ const PODetail = () => {
                   <span className={`px-3 py-1 rounded-full text-xs font-bold border
                     ${po.status === 'ACTIVE' || po.status === 'RECEIVED' ? 'bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-500 border-green-200 dark:border-green-500/20' : 
                       po.status === 'PENDING_APPROVAL' ? 'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-500 border-yellow-200 dark:border-yellow-500/20' :
-                      po.status === 'APPROVED_PENDING_CONCUR' ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-500 border-blue-200 dark:border-blue-500/20' : 
+                      po.status === 'APPROVED_PENDING_CONCUR' || po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-500 border-blue-200 dark:border-blue-500/20' : 
                       po.status === 'VARIANCE_PENDING' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-500 border-amber-200 dark:border-amber-500/20' : 
                       po.status === 'REJECTED' ? 'bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-500 border-red-200 dark:border-red-500/20' : 'bg-gray-100 dark:bg-gray-700/30 text-secondary dark:text-gray-400 border-gray-200 dark:border-gray-700'
                     }`}>
-                    {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur Sync' : po.status.replace(/_/g, ' ')}
+                    {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur PO' : po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'Pending Concur Request' : po.status.replace(/_/g, ' ')}
                   </span>
               </div>
                <p className="text-secondary dark:text-gray-400 text-sm flex items-center gap-1">
@@ -652,6 +662,11 @@ const PODetail = () => {
                        <FileText size={18} /> Details for Concur
                    </button>
                )}
+              {canLinkConcurRequest && (
+                   <button type="button" onClick={() => setIsConcurRequestModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium">
+                      <LinkIcon size={18} /> Enter Request #
+                   </button>
+              )}
               {canLinkConcur && (
                    <button type="button" onClick={() => setIsConcurModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium">
                       <LinkIcon size={18} /> Link Concur PO
@@ -1213,6 +1228,31 @@ const PODetail = () => {
           />
       )}
 
+      {isConcurRequestModalOpen && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800 transform transition-all scale-100">
+                <div className="mb-4">
+                    <h2 className="text-xl font-bold text-primary dark:text-white">Enter Concur Request</h2>
+                    <p className="text-sm text-secondary dark:text-gray-400 mt-1">
+                        Enter the SAP Concur Request Number.
+                    </p>
+                </div>
+                <input 
+                    type="text" 
+                    autoFocus
+                    placeholder="e.g. 33145"
+                    className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-300 dark:border-gray-700 rounded-xl p-3 mb-6 focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none text-primary dark:text-white"
+                    value={concurRequestInput}
+                    onChange={e => setConcurRequestInput(e.target.value)}
+                />
+                <div className="flex justify-end gap-3">
+                    <button type="button" onClick={() => setIsConcurRequestModalOpen(false)} className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg font-medium">Cancel</button>
+                    <button type="button" onClick={handleConcurRequestLink} disabled={!concurRequestInput} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 font-bold shadow-lg shadow-indigo-500/20">Submit</button>
+                </div>
+            </div>
+        </div>
+      )}
+
       {isConcurModalOpen && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
             <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800 transform transition-all scale-100">
@@ -1255,7 +1295,7 @@ const PODetail = () => {
                 </div>
                 
                 <div className="space-y-2 mb-6">
-                    {['PENDING_APPROVAL', 'APPROVED_PENDING_CONCUR', 'ACTIVE', 'RECEIVED', 'CLOSED', 'REJECTED'].map(s => (
+                    {['PENDING_APPROVAL', 'APPROVED_PENDING_CONCUR_REQUEST', 'APPROVED_PENDING_CONCUR', 'ACTIVE', 'RECEIVED', 'CLOSED', 'REJECTED'].map(s => (
                         <button 
                             type="button"
                             key={s}

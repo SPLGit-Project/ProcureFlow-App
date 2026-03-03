@@ -40,7 +40,8 @@ const IN_PROGRESS_STATUSES: POStatus[] = ['ACTIVE', 'PARTIALLY_RECEIVED', 'VARIA
 const COMPLETED_STATUSES: POStatus[] = ['RECEIVED', 'CLOSED'];
 
 const statusLabel = (status: POStatus) => {
-  if (status === 'APPROVED_PENDING_CONCUR') return 'Pending Concur';
+  if (status === 'APPROVED_PENDING_CONCUR') return 'Pending Concur PO';
+  if (status === 'APPROVED_PENDING_CONCUR_REQUEST') return 'Pending Concur Req';
   if (status === 'PENDING_APPROVAL') return 'Pending Approval';
   if (status === 'PARTIALLY_RECEIVED') return 'Partially Received';
   if (status === 'VARIANCE_PENDING') return 'Variance Pending';
@@ -88,6 +89,7 @@ const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
       label: 'All Requests',
       statuses: [
         'PENDING_APPROVAL',
+        'APPROVED_PENDING_CONCUR_REQUEST',
         'APPROVED_PENDING_CONCUR',
         ...IN_PROGRESS_STATUSES,
         ...COMPLETED_STATUSES,
@@ -105,7 +107,7 @@ const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
     {
       id: 'pending-concur',
       label: 'Pending Concur',
-      statuses: ['APPROVED_PENDING_CONCUR'],
+      statuses: ['APPROVED_PENDING_CONCUR_REQUEST', 'APPROVED_PENDING_CONCUR'],
       icon: Link2
     },
     {
@@ -341,7 +343,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     if (status === 'PENDING_APPROVAL') {
       colorClass =
         'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-500 border-yellow-200 dark:border-yellow-500/20';
-    } else if (status === 'APPROVED_PENDING_CONCUR') {
+    } else if (status === 'APPROVED_PENDING_CONCUR' || status === 'APPROVED_PENDING_CONCUR_REQUEST') {
       colorClass =
         'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-500 border-blue-200 dark:border-blue-500/20';
     } else if (status === 'ACTIVE' || status === 'PARTIALLY_RECEIVED' || status === 'VARIANCE_PENDING') {

@@ -84,9 +84,9 @@ const HistoryView = () => {
         });
 
         // 3. Concur (Simulated if status passed)
-        if (['APPROVED_PENDING_CONCUR', 'ACTIVE', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CLOSED'].includes(po.status)) {
+        if (['APPROVED_PENDING_CONCUR_REQUEST', 'APPROVED_PENDING_CONCUR', 'ACTIVE', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CLOSED'].includes(po.status)) {
              // In a real app we'd have a date for this
-             if (po.status !== 'APPROVED_PENDING_CONCUR') {
+             if (po.status !== 'APPROVED_PENDING_CONCUR' && po.status !== 'APPROVED_PENDING_CONCUR_REQUEST') {
                  events.push({
                     id: 'concur',
                     title: 'Sync to Concur',

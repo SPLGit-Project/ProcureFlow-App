@@ -21,7 +21,7 @@ const ReportingView = () => {
             
             if (activeReport === 'OUTSTANDING_DELIVERIES') {
                 // Filter POs that are ACTIVE or PARTIALLY_RECEIVED or APPROVED_PENDING_CONCUR (if they have lines to show)
-                const activePos = pos.filter(po => ['ACTIVE', 'PARTIALLY_RECEIVED', 'APPROVED_PENDING_CONCUR'].includes(po.status));
+                const activePos = pos.filter(po => ['ACTIVE', 'PARTIALLY_RECEIVED', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST'].includes(po.status));
                 
                 activePos.forEach(po => {
                     po.lines.forEach(line => {

@@ -561,6 +561,7 @@ export const db = {
             })),
             reasonForRequest: p.reason_for_request,
             customerName: p.customer_name,
+            concurRequestNumber: p.concur_request_number,
             comments: p.comments
         }));
     },
@@ -1469,6 +1470,11 @@ export const db = {
 
     updatePOStatus: async (poId: string, status: string): Promise<void> => {
         const { error } = await supabase.from('po_requests').update({ status }).eq('id', poId);
+        if (error) throw error;
+    },
+
+    linkConcurRequest: async (poId: string, concurRequestNumber: string): Promise<void> => {
+        const { error } = await supabase.from('po_requests').update({ concur_request_number: concurRequestNumber }).eq('id', poId);
         if (error) throw error;
     },
 

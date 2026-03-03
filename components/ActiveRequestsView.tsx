@@ -6,19 +6,22 @@ import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin } from 'l
 import { PORequest } from '../types.ts';
 
 const ActiveRequestsView = () => {
-    const { pos, isLoadingData, linkConcurPO, currentUser: _currentUser } = useApp();
+    const { pos, isLoadingData, linkConcurPO, linkConcurRequest, currentUser: _currentUser } = useApp();
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMode, setFilterMode] = useState<'PENDING' | 'ACTIVE' | 'ALL'>('ALL'); // Improved filter state
     
     // Modal State
     const [isConcurModalOpen, setIsConcurModalOpen] = useState(false);
+    const [isConcurRequestModalOpen, setIsConcurRequestModalOpen] = useState(false);
     const [selectedPO, setSelectedPO] = useState<PORequest | null>(null);
 
     const filteredPOs = useMemo(() => {
         return pos.filter(po => {
             // Status Filter Logic
-            const isPendingConcur = po.status === 'APPROVED_PENDING_CONCUR';
+            const isPendingConcurPO = po.status === 'APPROVED_PENDING_CONCUR';
+            const isPendingConcurReq = po.status === 'APPROVED_PENDING_CONCUR_REQUEST';
+            const isPendingConcur = isPendingConcurPO || isPendingConcurReq;
             const isActive = po.status === 'ACTIVE';
             
             if (filterMode === 'PENDING' && !isPendingConcur) return false;
@@ -40,6 +43,19 @@ const ActiveRequestsView = () => {
             return true;
         }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
     }, [pos, searchTerm, filterMode]);
+
+    const handleOpenConcurRequestModal = (po: PORequest) => {
+        setSelectedPO(po);
+        setIsConcurRequestModalOpen(true);
+    };
+
+    const handleConcurRequestSubmit = (concurReqNum: string) => {
+        if (selectedPO) {
+            linkConcurRequest(selectedPO.id, concurReqNum);
+            setIsConcurRequestModalOpen(false);
+            setSelectedPO(null);
+        }
+    };
 
     const handleOpenConcurModal = (po: PORequest) => {
         setSelectedPO(po);
@@ -176,15 +192,22 @@ const ActiveRequestsView = () => {
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center">
                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border
-                                            ${po.status === 'APPROVED_PENDING_CONCUR' 
+                                            ${po.status === 'APPROVED_PENDING_CONCUR' || po.status === 'APPROVED_PENDING_CONCUR_REQUEST'
                                                 ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-900/30' 
                                                 : 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 border-green-200 dark:border-green-900/30'
                                             }`}>
-                                            {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Entry' : 'Active (Linked)'}
+                                            {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur PO' : po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'Pending Concur Req' : 'Active (Linked)'}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
-                                        {po.status === 'APPROVED_PENDING_CONCUR' ? (
+                                        {po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? (
+                                             <button 
+                                                onClick={() => handleOpenConcurRequestModal(po)}
+                                                className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-sm flex items-center justify-center gap-1 w-full"
+                                            >
+                                                <LinkIcon size={14} /> Enter Req #
+                                            </button>
+                                        ) : po.status === 'APPROVED_PENDING_CONCUR' ? (
                                              <button 
                                                 onClick={() => handleOpenConcurModal(po)}
                                                 className="px-3 py-1.5 bg-[var(--color-brand)] text-white text-xs font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-sm flex items-center gap-1 ml-auto"
@@ -215,7 +238,9 @@ const ActiveRequestsView = () => {
                     ) : (
                         filteredPOs.map((po) => {
                             const concurPoNum = po.lines.find(l => !!l.concurPoNumber)?.concurPoNumber;
-                            const isPendingEntry = po.status === 'APPROVED_PENDING_CONCUR';
+                            const isPendingConcurPO = po.status === 'APPROVED_PENDING_CONCUR';
+                            const isPendingConcurReq = po.status === 'APPROVED_PENDING_CONCUR_REQUEST';
+                            const isPendingEntry = isPendingConcurPO || isPendingConcurReq;
 
                             return (
                                 <article
@@ -237,7 +262,7 @@ const ActiveRequestsView = () => {
                                                     : 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-900/30'
                                             }`}
                                         >
-                                            {isPendingEntry ? 'Pending Entry' : 'Active Linked'}
+                                            {isPendingConcurPO ? 'Pending PO' : isPendingConcurReq ? 'Pending Req' : 'Active Linked'}
                                         </span>
                                     </div>
 
@@ -277,7 +302,19 @@ const ActiveRequestsView = () => {
                                                 <span className="text-[10px] text-gray-400">No Concur reference</span>
                                             )}
                                         </div>
-                                        {isPendingEntry ? (
+                                        {isPendingConcurReq ? (
+                                            <button
+                                                type="button"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleOpenConcurRequestModal(po);
+                                                }}
+                                                className="w-full px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-sm flex items-center justify-center gap-1"
+                                            >
+                                                <LinkIcon size={13} />
+                                                Link Req #
+                                            </button>
+                                        ) : isPendingConcurPO ? (
                                             <button
                                                 type="button"
                                                 onClick={(event) => {
@@ -301,6 +338,33 @@ const ActiveRequestsView = () => {
              </div>
 
              {/* Modal */}
+             {isConcurRequestModalOpen && selectedPO && (
+                <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setIsConcurRequestModalOpen(false)}>
+                     <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Link Concur Request</h2>
+                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                            Enter the SAP Concur Request Number for <b>{selectedPO.displayId || selectedPO.id}</b>.
+                        </p>
+                        
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            const val = (e.currentTarget.elements.namedItem('concurReqId') as HTMLInputElement).value;
+                            if(val) handleConcurRequestSubmit(val);
+                        }}>
+                            <input 
+                                name="concurReqId"
+                                autoFocus
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 dark:text-white mb-4 outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                placeholder="e.g. 33145"
+                            />
+                            <div className="flex justify-end gap-3">
+                                <button type="button" onClick={() => setIsConcurRequestModalOpen(false)} className="px-4 py-2 text-gray-500 font-bold hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg">Cancel</button>
+                                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-opacity-90">Link Request</button>
+                            </div>
+                        </form>
+                     </div>
+                </div>
+             )}
              {isConcurModalOpen && selectedPO && (
                 <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setIsConcurModalOpen(false)}>
                     {/* Render standard component manually wrapping logic or creating a prop-friendly version. 
