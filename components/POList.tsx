@@ -328,6 +328,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
             po.requesterName.toLowerCase().includes(searchValue) ||
             (po.customerName || '').toLowerCase().includes(searchValue) ||
             po.totalAmount.toString().includes(searchValue) ||
+            po.concurRequestNumber?.toLowerCase().includes(searchValue) ||
             po.lines.some((line) => line.concurPoNumber?.toLowerCase().includes(searchValue))
           );
         })
@@ -397,7 +398,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
-              placeholder="Search by ID, Customer, Site, Supplier, Requester, Amount, or Concur Ref..."
+              placeholder="Search by PR#, PO#, Customer, Site, Supplier, Requester, or Amount..."
               className="pl-10 pr-4 py-2.5 w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] placeholder-tertiary dark:placeholder-gray-600 transition-colors"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
@@ -488,11 +489,12 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
           <table className="w-full text-left text-sm text-secondary dark:text-gray-400">
             <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-semibold border-b border-gray-200 dark:border-gray-800">
               <tr>
-                <th className="px-6 py-4">Request ID</th>
+                <th className="px-6 py-4">Site</th>
                 <th className="px-6 py-4">Customer</th>
                 <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Site</th>
                 <th className="px-6 py-4">Supplier</th>
+                <th className="px-6 py-4">Concur PR #</th>
+                <th className="px-6 py-4">Concur PO #</th>
                 {filter === 'PENDING' && <th className="px-6 py-4">Requester</th>}
                 <th className="px-6 py-4 text-right">Amount</th>
                 <th className="px-6 py-4 text-center">Status</th>
@@ -502,8 +504,11 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
             <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
               {filteredPos.map((po) => (
                 <tr key={po.id} className="hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors group">
-                  <td className="px-6 py-4 font-medium text-gray-900 dark:text-white group-hover:text-[var(--color-brand)] transition-colors">
-                    {po.displayId || po.id}
+                  <td className="px-6 py-4">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                      <MapPin size={11} className="text-gray-400" />
+                      {po.site || 'Unknown'}
+                    </span>
                   </td>
                   <td className="px-6 py-4 font-mono text-xs">
                     {po.customerName ? (
@@ -515,13 +520,9 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                     )}
                   </td>
                   <td className="px-6 py-4">{new Date(po.requestDate).toLocaleDateString()}</td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
-                      <MapPin size={11} className="text-gray-400" />
-                      {po.site || 'Unknown'}
-                    </span>
-                  </td>
                   <td className="px-6 py-4 text-gray-700 dark:text-gray-300 font-medium">{po.supplierName}</td>
+                  <td className="px-6 py-4 text-gray-700 dark:text-gray-300 font-medium">{po.concurRequestNumber || '-'}</td>
+                  <td className="px-6 py-4 text-gray-700 dark:text-gray-300 font-medium">{po.lines.find(l => l.concurPoNumber)?.concurPoNumber || '-'}</td>
                   {filter === 'PENDING' && (
                     <td className="px-6 py-4 flex items-center gap-2">
                       <img
