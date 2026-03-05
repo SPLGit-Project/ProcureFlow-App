@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Search, Calendar, Filter, FileText, ChevronDown, ChevronRight, CheckCircle2, DollarSign } from 'lucide-react';
+import { Search, Calendar, Filter, FileText, ChevronDown, ChevronRight, CheckCircle2, DollarSign, Copy } from 'lucide-react';
 import ContextHelp from './ContextHelp';
 
 const FinanceView = () => {
@@ -115,6 +115,28 @@ const FinanceView = () => {
                      capitalisedDate: monthStr
                  });
              }
+          });
+      });
+  };
+
+  const handleApplyDateToAll = (poId: string, dateToApply: string | undefined) => {
+      if (!dateToApply) return;
+      const po = groupedData.find(p => p.poId === poId);
+      if(!po) return;
+
+      // Iterate all deliveries and lines
+      po.deliveries.forEach(del => {
+          del.lines.forEach(line => {
+              if (line.data.isCapitalised && line.data.capitalisedDate !== dateToApply) {
+                 updateFinanceInfo(poId, del.deliveryId, line.lineId, {
+                     capitalisedDate: dateToApply
+                 });
+              } else if (!line.data.isCapitalised) {
+                 updateFinanceInfo(poId, del.deliveryId, line.lineId, {
+                     isCapitalised: true,
+                     capitalisedDate: dateToApply
+                 });
+              }
           });
       });
   };
@@ -323,6 +345,14 @@ const FinanceView = () => {
                                                                             value={line.data.capitalisedDate ? line.data.capitalisedDate.substring(0, 7) : ''}
                                                                             onChange={(e) => handleDateChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
                                                                         />
+                                                                        <button 
+                                                                            type="button"
+                                                                            title="Apply this date to all items in this order"
+                                                                            onClick={() => handleApplyDateToAll(po.poId, line.data.capitalisedDate)}
+                                                                            className="p-1 hover:bg-green-100 dark:hover:bg-green-800 rounded text-green-600 dark:text-green-400 transition-colors"
+                                                                        >
+                                                                            <Copy size={12} />
+                                                                        </button>
                                                                     </div>
                                                                 )}
                                                             </td>
@@ -396,10 +426,18 @@ const FinanceView = () => {
                                                                         <Calendar size={14} className="text-green-600 dark:text-green-400"/>
                                                                         <input 
                                                                             type="month" 
-                                                                            className="text-xs border-none bg-transparent focus:ring-0 cursor-pointer text-gray-700 dark:text-gray-300 w-full p-0 font-medium"
+                                                                            className="text-xs border-none bg-transparent focus:ring-0 cursor-pointer text-gray-700 dark:text-gray-300 w-full p-0 font-medium flex-1"
                                                                             value={line.data.capitalisedDate ? line.data.capitalisedDate.substring(0, 7) : ''}
                                                                             onChange={(e) => handleDateChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
                                                                         />
+                                                                        <button 
+                                                                            type="button"
+                                                                            title="Apply this date to all items"
+                                                                            onClick={() => handleApplyDateToAll(po.poId, line.data.capitalisedDate)}
+                                                                            className="p-1.5 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-md text-green-600 dark:text-green-400 transition-colors flex-shrink-0"
+                                                                        >
+                                                                            <Copy size={14} />
+                                                                        </button>
                                                                     </div>
                                                                 </div>
                                                             )}

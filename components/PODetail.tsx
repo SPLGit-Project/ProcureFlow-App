@@ -657,7 +657,7 @@ const PODetail = () => {
                     </button>
                   </>
               )}
-               {po.status === 'APPROVED_PENDING_CONCUR' && (
+               {po.status === 'APPROVED_PENDING_CONCUR_REQUEST' && (
                    <button type="button" onClick={() => setIsExportModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-white dark:bg-white/10 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-white rounded-xl hover:bg-gray-50 dark:hover:bg-white/20 flex items-center gap-2 font-medium shadow-sm transition-all">
                        <FileText size={18} /> Details for Concur
                    </button>
