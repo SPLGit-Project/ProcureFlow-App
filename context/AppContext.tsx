@@ -1724,19 +1724,27 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       
       try {
           // 2. Locate PO in current state (to get line IDs)
-          // Note: We use the existing 'pos' from closure here, but we should verify it has lines.
-          const po = pos.find(p => p.id === poId);
+          let po = pos.find(p => p.id === poId);
           
+          // Fallback: If stale closure doesn't have PO or its lines (e.g. after skip),
+          // fetch line IDs directly from DB instead of failing.
           if (!po || !po.lines || po.lines.length === 0) {
-              console.warn("linkConcurPO: PO or lines not found in state, attempting to proceed via DB if IDs match.");
-              // If po is missing from state (unlikely but possible if filter changed), 
-              // we can't get line IDs easily without a fresh fetch. 
-              // However, the optimistic update already happened, so we can't easily revert without reload.
-              throw new Error("PO details not found in current view. Please refresh and try again.");
+              console.warn("linkConcurPO: PO or lines not found in local state, fetching from DB...");
+              const { data: dbLines, error: dbError } = await supabase
+                  .from('po_lines')
+                  .select('id')
+                  .eq('po_request_id', poId);
+              
+              if (dbError) throw dbError;
+              if (!dbLines || dbLines.length === 0) {
+                  throw new Error("No line items found for this PO. Please refresh and try again.");
+              }
+              
+              // Use a minimal PO-like object with just the line IDs
+              po = { lines: dbLines.map((l: { id: string }) => ({ id: l.id })) } as any;
           }
 
           // 3. Persist line-level updates
-          // We do this sequentially to ensure reliability, though Promise.all is faster.
           for (const line of po.lines) {
               await db.linkConcurPO(line.id, concurPoNumber);
           }

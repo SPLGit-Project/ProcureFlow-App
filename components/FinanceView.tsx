@@ -1,12 +1,13 @@
 
-import React, { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Search, Calendar, Filter, FileText, ChevronDown, ChevronRight, CheckCircle2, DollarSign, Copy } from 'lucide-react';
+import { Search, Calendar, Filter, FileText, ChevronDown, ChevronRight, CheckCircle2, DollarSign, Copy, MapPin, X } from 'lucide-react';
 import ContextHelp from './ContextHelp';
 
 const FinanceView = () => {
   const { pos, updateFinanceInfo } = useApp();
-  const [filterSupplier, setFilterSupplier] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterSite, setFilterSite] = useState('');
   const [expandedPOs, setExpandedPOs] = useState<Record<string, boolean>>({});
   const [bulkCapModalState, setBulkCapModalState] = useState<{ isOpen: boolean, poId: string, date: string }>({ isOpen: false, poId: '', date: '' });
 
@@ -24,60 +25,84 @@ const FinanceView = () => {
     setExpandedPOs({});
   };
   
-  // Group lines by PO -> Delivery
-  const groupedData = pos.filter(po => 
-      // Filter primarily by supplier at the top level
-      po.supplierName.toLowerCase().includes(filterSupplier.toLowerCase()) || 
-      po.lines.some(l => l.itemName.toLowerCase().includes(filterSupplier.toLowerCase()))
-  ).map(po => {
-      // Get all deliveries for this PO
-      const deliveries = po.deliveries.map(del => {
-          // Map lines within delivery and filter by viewStatus
-          const lines = del.lines
-            .filter(dLine => {
-                const matchesSearch = po.supplierName.toLowerCase().includes(filterSupplier.toLowerCase()) || 
-                                     po.lines.find(l => l.id === dLine.poLineId)?.itemName.toLowerCase().includes(filterSupplier.toLowerCase());
-                
-                return matchesSearch;
-            })
-            .map(dLine => {
-              const poLine = po.lines.find(l => l.id === dLine.poLineId);
-              return {
-                  lineId: dLine.id, 
-                  poLineId: dLine.poLineId,
-                  item: poLine?.itemName || 'Unknown',
-                  sku: poLine?.sku || '',
-                  qty: dLine.quantity,
-                  unitPrice: poLine?.unitPrice || 0,
-                  totalValue: (poLine?.unitPrice || 0) * dLine.quantity,
-                  freightAmount: dLine.freightAmount || 0,
-                  data: dLine 
-              };
-          });
-          
-          return {
-              deliveryId: del.id,
-              date: del.date,
-              docket: del.docketNumber,
-              receivedBy: del.receivedBy,
-              lines,
-              totalValue: lines.reduce((sum, l) => sum + l.totalValue, 0),
-              totalFreight: lines.reduce((sum, l) => sum + l.freightAmount, 0)
-          };
+  // Available sites for the filter dropdown
+  const availableSites = useMemo(() => {
+      const siteSet = new Set<string>();
+      pos.forEach(po => {
+          if (po.site) siteSet.add(po.site);
       });
+      return Array.from(siteSet).sort();
+  }, [pos]);
 
+  // Group lines by PO -> Delivery with enhanced search & site filter
+  const groupedData = useMemo(() => {
+    const q = searchTerm.toLowerCase().trim();
 
-      return {
-          poId: po.id,
-          displayId: po.displayId || po.id.substring(0, 8).toUpperCase(),
-          concurPo: po.lines[0]?.concurPoNumber || 'Pending',
-          supplier: po.supplierName,
-          requestDate: po.requestDate,
-          totalAmount: po.totalAmount, // PO Total
-          totalFreight: deliveries.reduce((sum, d) => sum + d.totalFreight, 0),
-          deliveries: deliveries.filter(d => d.lines.length > 0) // Only show deliveries with lines
-      };
-  }).filter(po => po.deliveries.length > 0); // Only show POs with deliveries
+    return pos.filter(po => {
+        // Site filter
+        if (filterSite && po.site !== filterSite) return false;
+
+        // Multi-field search
+        if (q) {
+            const concurPo = po.lines[0]?.concurPoNumber || '';
+            const matchFields = [
+                po.supplierName,
+                po.displayId || po.id,
+                po.site || '',
+                po.requesterName || '',
+                po.concurRequestNumber || '',
+                concurPo,
+                po.totalAmount.toString(),
+                ...po.lines.map(l => l.itemName),
+                ...po.lines.map(l => l.sku || ''),
+                ...po.deliveries.map(d => d.docketNumber || ''),
+            ];
+            const matchesSearch = matchFields.some(f => f.toLowerCase().includes(q));
+            if (!matchesSearch) return false;
+        }
+        return true;
+    }).map(po => {
+        const deliveries = po.deliveries.map(del => {
+            const lines = del.lines.map(dLine => {
+                const poLine = po.lines.find(l => l.id === dLine.poLineId);
+                return {
+                    lineId: dLine.id,
+                    poLineId: dLine.poLineId,
+                    item: poLine?.itemName || 'Unknown',
+                    sku: poLine?.sku || '',
+                    qty: dLine.quantity,
+                    unitPrice: poLine?.unitPrice || 0,
+                    totalValue: (poLine?.unitPrice || 0) * dLine.quantity,
+                    freightAmount: dLine.freightAmount || 0,
+                    data: dLine 
+                };
+            });
+            
+            return {
+                deliveryId: del.id,
+                date: del.date,
+                docket: del.docketNumber,
+                receivedBy: del.receivedBy,
+                lines,
+                totalValue: lines.reduce((sum, l) => sum + l.totalValue, 0),
+                totalFreight: lines.reduce((sum, l) => sum + l.freightAmount, 0)
+            };
+        });
+
+        return {
+            poId: po.id,
+            displayId: po.displayId || po.id.substring(0, 8).toUpperCase(),
+            concurPo: po.lines[0]?.concurPoNumber || 'Pending',
+            concurReq: po.concurRequestNumber || '',
+            supplier: po.supplierName,
+            site: po.site || 'Unknown',
+            requestDate: po.requestDate,
+            totalAmount: po.totalAmount,
+            totalFreight: deliveries.reduce((sum, d) => sum + d.totalFreight, 0),
+            deliveries: deliveries.filter(d => d.lines.length > 0)
+        };
+    }).filter(po => po.deliveries.length > 0);
+  }, [pos, searchTerm, filterSite]);
 
 
   const handleToggleCap = (poId: string, deliveryId: string, lineId: string, currentVal: boolean) => {
@@ -153,39 +178,79 @@ const FinanceView = () => {
       </div>
 
       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
-        {/* Filters */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] flex flex-col md:flex-row items-stretch md:items-center gap-4">
-             <div className="relative w-full md:max-w-md">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                 <input 
-                    type="text" 
-                    placeholder="Search Supplier or Item..." 
-                    className="pl-10 pr-4 py-2.5 w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] transition-all"
-                    value={filterSupplier}
-                    onChange={e => setFilterSupplier(e.target.value)}
-                 />
+         {/* Filters */}
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] flex flex-col gap-4">
+             {/* Row 1: Search + Site Filter */}
+             <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+                 <div className="relative flex-1 min-w-0">
+                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                     <input 
+                        type="text" 
+                        placeholder="Search PO #, Supplier, Item, Concur PO, Docket #..." 
+                        className="pl-10 pr-4 py-2.5 w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] transition-all"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                     />
+                 </div>
+
+                 {/* Site Filter Dropdown */}
+                 <div className="relative w-full md:w-52">
+                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                     <select
+                         value={filterSite}
+                         onChange={e => setFilterSite(e.target.value)}
+                         className="pl-9 pr-8 py-2.5 w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] transition-all appearance-none cursor-pointer"
+                     >
+                         <option value="">All Sites</option>
+                         {availableSites.map(s => (
+                             <option key={s} value={s}>{s}</option>
+                         ))}
+                     </select>
+                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+                 </div>
              </div>
 
-             <div className="grid grid-cols-2 gap-2 w-full md:w-auto">
-                <button 
-                  onClick={handleExpandAll}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
-                >
-                  Expand All
-                </button>
-                <button 
-                  onClick={handleCollapseAll}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
-                >
-                  Collapse All
-                </button>
+             {/* Row 2: Actions + Stats */}
+             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                 {/* Active Filters */}
+                 {(searchTerm || filterSite) && (
+                     <div className="flex items-center gap-2 flex-wrap">
+                         {searchTerm && (
+                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                 Search: "{searchTerm}"
+                                 <button type="button" onClick={() => setSearchTerm('')} className="hover:text-blue-900 dark:hover:text-blue-100"><X size={12} /></button>
+                             </span>
+                         )}
+                         {filterSite && (
+                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
+                                 <MapPin size={11} /> {filterSite}
+                                 <button type="button" onClick={() => setFilterSite('')} className="hover:text-green-900 dark:hover:text-green-100"><X size={12} /></button>
+                             </span>
+                         )}
+                         <button type="button" onClick={() => { setSearchTerm(''); setFilterSite(''); }} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline">Clear all</button>
+                     </div>
+                 )}
+
+                 <div className="flex items-center gap-2 sm:ml-auto">
+                     <button type="button"
+                       onClick={handleExpandAll}
+                       className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
+                     >
+                       Expand All
+                     </button>
+                     <button type="button"
+                       onClick={handleCollapseAll}
+                       className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border border-gray-200 dark:border-gray-700"
+                     >
+                       Collapse All
+                     </button>
+                     <div className="text-sm text-gray-500 flex items-center gap-2 bg-gray-50 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
+                         <Filter size={14}/>
+                         <span>{groupedData.length} POs found</span>
+                     </div>
+                 </div>
              </div>
 
-
-             <div className="w-full md:w-auto md:ml-auto text-sm text-gray-500 flex items-center justify-start gap-2 bg-gray-50 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
-                 <Filter size={14}/>
-                 <span>{groupedData.length} POs found</span>
-             </div>
         </div>
         
         <div className="divide-y divide-gray-200 dark:divide-gray-800">
@@ -210,7 +275,7 @@ const FinanceView = () => {
                                     </div>
                                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 mt-1">
                                         <span className="font-mono bg-gray-100 dark:bg-white/10 px-1.5 py-0.5 rounded">PO: {po.concurPo}</span>
-                                        <span>Req: {po.requestDate}</span>
+                                        <span>Req: {po.requestDate ? po.requestDate.split('T')[0] : ''}</span>
                                         <span>{po.deliveries.length} Deliveries</span>
                                     </div>
                                 </div>
