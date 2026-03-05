@@ -59,7 +59,7 @@ begin
             concur_po_number
         ) values (
             p_request_id,
-            coalesce((l_line->>'id')::uuid, uuid_generate_v4()),
+            coalesce((l_line->>'id')::uuid, gen_random_uuid()),
             (l_line->>'item_id')::uuid,
             l_line->>'sku',
             l_line->>'item_name',
