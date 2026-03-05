@@ -197,15 +197,16 @@ const FinanceView = () => {
                     <div key={po.poId} className="bg-white dark:bg-[#1e2029]">
                         {/* PO Header */}
                         <div 
-                            className="px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center gap-4 md:gap-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors"
+                            className="px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors"
                             onClick={() => togglePO(po.poId)}
                         >
-                            <div className="flex items-start md:items-center gap-3 md:gap-4 min-w-0">
-                                {isExpanded ? <ChevronDown size={20} className="text-gray-400"/> : <ChevronRight size={20} className="text-gray-400"/>}
+                            {/* Left Side: Supplier & Meta */}
+                            <div className="flex items-start md:items-center gap-3 md:gap-4 flex-1 min-w-0 mb-4 md:mb-0">
+                                {isExpanded ? <ChevronDown size={20} className="text-gray-400 shrink-0"/> : <ChevronRight size={20} className="text-gray-400 shrink-0"/>}
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2">
                                         <span className="font-bold text-gray-900 dark:text-white text-lg truncate">{po.supplier}</span>
-                                        {fullyCapitalised && <span className="shrink-0 text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide flex items-center gap-1"><CheckCircle2 size={10}/> Fully Capitalised</span>}
+                                        {fullyCapitalised && <span className="hidden sm:inline-flex shrink-0 text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide items-center gap-1"><CheckCircle2 size={10}/> Fully Capitalised</span>}
                                     </div>
                                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 mt-1">
                                         <span className="font-mono bg-gray-100 dark:bg-white/10 px-1.5 py-0.5 rounded">PO: {po.concurPo}</span>
@@ -214,36 +215,59 @@ const FinanceView = () => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 sm:gap-4 md:gap-6">
-                                <div className="text-left sm:text-right">
-                                    <div className="font-bold text-gray-900 dark:text-white text-lg">${po.totalAmount.toLocaleString()}</div>
-                                    <div className="text-xs text-gray-500">Total PO Value</div>
-                                </div>
-                                <div className="text-left sm:text-right px-4 py-1.5 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/30">
-                                    <div className="font-bold text-blue-700 dark:text-blue-400 text-lg">${po.totalFreight.toLocaleString()}</div>
-                                    <div className="text-xs text-blue-600/70 dark:text-blue-400/70">Total Freight Cost</div>
-                                </div>
-                            </div>
-                            <div className="w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 md:ml-4 md:pl-4 md:border-l border-gray-200 dark:border-gray-700">
-                                {!fullyCapitalised && (
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            openBulkCapModal(po.poId);
-                                        }}
-                                        className="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
-                                    >
-                                        <CheckCircle2 size={14}/>
-                                        Mark as Capitalised
-                                    </button>
-                                )}
+
+                            {/* Right Side: Totals & Actions (Aligned with Desktop Table) */}
+                            <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-0">
+                                {/* Mobile-only: Fully Capitalised badge */}
                                 {fullyCapitalised && (
-                                    <div className="text-green-600 text-xs font-bold flex items-center gap-1">
-                                        <CheckCircle2 size={14}/>
-                                        All Capitalised
-                                    </div>
+                                   <div className="sm:hidden mb-2">
+                                      <span className="inline-flex shrink-0 text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide items-center gap-1"><CheckCircle2 size={10}/> Fully Capitalised</span>
+                                   </div>
                                 )}
+                                
+                                {/* Padding to match table left padding on desktop before Value */}
+                                <div className="hidden md:block w-24 px-4 text-center"></div>
+
+                                {/* Total Value (Aligns with Value column: w-32 right) */}
+                                <div className="md:w-32 md:px-4 text-left md:text-right flex flex-row md:flex-col justify-between md:justify-center items-center md:items-end border-b md:border-b-0 border-gray-100 pb-2 md:pb-0 dark:border-gray-800">
+                                    <div className="text-xs text-gray-500 md:order-2 md:mt-0.5 font-medium">Total PO Value</div>
+                                    <div className="font-bold text-gray-900 dark:text-white text-base md:text-lg md:order-1">${po.totalAmount.toLocaleString()}</div>
+                                </div>
+
+                                {/* Invoice Spacer (w-40) */}
+                                <div className="hidden md:block w-40 px-4"></div>
+
+                                {/* Freight Cost (Aligns with Freight column: w-40 left) */}
+                                <div className="md:w-40 md:px-4 text-left md:text-left flex flex-row md:flex-col justify-between md:justify-center items-center md:items-start border-b md:border-b-0 border-gray-100 py-2 md:py-0 dark:border-gray-800">
+                                    <div className="text-xs text-blue-600/70 dark:text-blue-400/70 md:order-2 md:mt-0.5 font-medium">Total Freight</div>
+                                    <div className="font-bold text-blue-700 dark:text-blue-400 text-base md:text-lg md:order-1 bg-blue-50/50 dark:bg-blue-900/10 px-2 py-0.5 rounded -ml-2">${po.totalFreight.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                </div>
+
+                                {/* Action button (Aligns with Capitalisation column: w-40 center) */}
+                                <div className="md:w-40 md:px-4 flex justify-start md:justify-center items-center py-2 md:py-0">
+                                    {!fullyCapitalised && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                openBulkCapModal(po.poId);
+                                            }}
+                                            className="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                                        >
+                                            <CheckCircle2 size={14}/>
+                                            Mark as Capitalised
+                                        </button>
+                                    )}
+                                    {fullyCapitalised && (
+                                        <div className="text-green-600 text-[11px] uppercase tracking-wider font-bold flex items-center gap-1 justify-center whitespace-nowrap w-full">
+                                            <CheckCircle2 size={14}/>
+                                            All Capitalised
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {/* Cap Date Spacer (w-40) */}
+                                <div className="hidden md:block w-40 px-4"></div>
                             </div>
 
                         </div>
@@ -272,7 +296,7 @@ const FinanceView = () => {
                                                         <th className="px-4 py-3 font-normal text-center w-24">Qty</th>
                                                         <th className="px-4 py-3 font-normal text-right w-32">Value</th>
                                                         <th className="px-4 py-3 font-normal w-40">Invoice #</th>
-                                                        <th className="px-4 py-3 font-normal w-40">Freight $</th>
+                                                        <th className="px-4 py-3 font-normal w-40 text-left">Freight $</th>
                                                         <th className="px-4 py-3 font-normal w-40 text-center">Capitalisation</th>
                                                         <th className="px-4 py-3 font-normal w-40">Cap Date</th>
                                                     </tr>
