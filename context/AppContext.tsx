@@ -79,7 +79,7 @@ interface AppContextType {
   teamsWebhookUrl: string;
   updateTeamsWebhook: (url: string) => Promise<void>;
 
-  reloadData: (silent?: boolean) => Promise<void>;
+  reloadData: (silent?: boolean, force?: boolean) => Promise<void>;
 
   // Theme & Branding
   theme: 'light' | 'dark';
@@ -354,7 +354,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // Data Loading
   const lastFetchTime = React.useRef<number>(0);
-  const reloadData = useCallback(async (silent: boolean = false) => {
+  const reloadData = useCallback(async (silent: boolean = false, force: boolean = false) => {
         if (qaMode) {
             setRoles([...MOCK_ROLES]);
             setUsers([...MOCK_USERS]);
@@ -377,7 +377,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         // Smart Sync Check
         const now = Date.now();
         // If silent (smart) sync and data is fresh (< 5 mins), skip
-        if (silent && (now - lastFetchTime.current < 5 * 60 * 1000)) {
+        if (silent && !force && (now - lastFetchTime.current < 5 * 60 * 1000)) {
             console.log("Data is fresh, skipping reload.");
             return;
         }
@@ -1755,13 +1755,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
 
-  const addDelivery = async (poId: string, delivery: DeliveryHeader, closedLineIds: string[] = []) => {
+  const addDelivery = async (poId: string, delivery: DeliveryHeader, closedLineIds: string[] = [], newLines: POLineItem[] = []) => {
     const p = pos.find(req => req.id === poId);
     if (!p) return;
 
     let varianceTriggered = false;
 
-    const updatedLines = p.lines.map(line => {
+    const processedExistingLines = p.lines.map(line => {
       const deliveryLine = delivery.lines.find(dl => dl.poLineId === line.id);
       const newQtyReceived = line.quantityReceived + (deliveryLine?.quantity || 0);
       
@@ -1783,6 +1783,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           ? { ...line, quantityReceived: newQtyReceived, isForceClosed } 
           : line;
     });
+
+    const processedNewLines = newLines.map(line => {
+        const deliveryLine = delivery.lines.find(dl => dl.poLineId === line.id);
+        const newQtyReceived = deliveryLine?.quantity || 0;
+        
+        if (newQtyReceived > line.quantityOrdered) {
+            varianceTriggered = true;
+        }
+
+        return { ...line, quantityReceived: newQtyReceived };
+    });
+
+    const updatedLines = [...processedExistingLines, ...processedNewLines];
 
     // Determine Status
     let newStatus: POStatus = 'PARTIALLY_RECEIVED';
@@ -1811,11 +1824,17 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         
         // 2. Update PO Lines
         const linesToUpdate = updatedLines
-            .filter(l => delivery.lines.some(dl => dl.poLineId === l.id) || closedLineIds.includes(l.id))
+            .filter(l => delivery.lines.some(dl => dl.poLineId === l.id) || closedLineIds.includes(l.id) || newLines.some(nl => nl.id === l.id))
             .map(l => ({
                 id: l.id,
                 po_request_id: poId, // Required for upsert context usually
+                item_id: l.itemId,
+                item_name: l.itemName,
+                sku: l.sku,
+                quantity_ordered: l.quantityOrdered,
                 quantity_received: l.quantityReceived,
+                unit_price: l.unitPrice,
+                total_price: l.totalPrice,
                 is_force_closed: l.isForceClosed
             }));
         

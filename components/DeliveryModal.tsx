@@ -1,24 +1,65 @@
 
-import React, { useState } from 'react';
-import { DeliveryHeader, DeliveryLineItem, PORequest, User } from '../types.ts';
-import { X, AlertTriangle, CheckSquare, Square } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { DeliveryHeader, DeliveryLineItem, PORequest, User, POLineItem, Item } from '../types.ts';
+import { X, AlertTriangle, CheckSquare, Square, Plus, Search } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { useApp } from '../context/AppContext.tsx';
 
 interface Props {
     po: PORequest;
     currentUser: User;
     onClose: () => void;
-    onSubmit: (delivery: DeliveryHeader, closedLineIds: string[]) => void;
+    onSubmit: (delivery: DeliveryHeader, closedLineIds: string[], newLines: POLineItem[]) => void;
 }
 
 const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
+    const { items } = useApp();
     const [docketNumber, setDocketNumber] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [receipts, setReceipts] = useState<Record<string, number>>({});
     const [closedLines, setClosedLines] = useState<Set<string>>(new Set());
     
+    // Unplanned Items State
+    const [additionalLines, setAdditionalLines] = useState<POLineItem[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const searchRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+                setIsSearchOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+    
     // Show all lines to allow corrections or extra receipts
-    const activeLines = po.lines;
+    const activeLines = [...po.lines, ...additionalLines];
+
+    const availableItems = items.filter(i => 
+        i.activeFlag !== false && 
+        !activeLines.some(l => l.itemId === i.id) &&
+        (i.name.toLowerCase().includes(searchQuery.toLowerCase()) || i.sku?.toLowerCase().includes(searchQuery.toLowerCase()))
+    ).slice(0, 10);
+
+    const handleAddUnplannedItem = (item: Item) => {
+        const newLine: POLineItem = {
+            id: uuidv4(),
+            itemId: item.id,
+            itemName: item.name,
+            sku: item.sku || 'N/A',
+            quantityOrdered: 0,
+            quantityReceived: 0,
+            unitPrice: item.unitPrice || 0,
+            totalPrice: 0,
+            isForceClosed: false
+        };
+        setAdditionalLines(prev => [...prev, newLine]);
+        setSearchQuery('');
+        setIsSearchOpen(false);
+    };
 
     // Calculate Variance Triggers
     const variances: Record<string, 'OVER' | 'SHORT' | null> = {};
@@ -82,7 +123,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
             lines: deliveryLines
         };
         
-        onSubmit(header, Array.from(closedLines));
+        onSubmit(header, Array.from(closedLines), additionalLines);
     };
 
     return (
@@ -214,6 +255,53 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                                         <p className="font-medium">No items available to receive.</p>
                                     </div>
                                 )}
+
+                                {/* Unplanned Item Search */}
+                                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800" ref={searchRef}>
+                                    <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide mb-3">Add Unplanned Item</h4>
+                                    <div className="relative">
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-3 text-gray-400"><Search size={18}/></span>
+                                            <input 
+                                                type="text"
+                                                placeholder="Search master catalog..."
+                                                value={searchQuery}
+                                                onChange={e => {
+                                                    setSearchQuery(e.target.value);
+                                                    setIsSearchOpen(true);
+                                                }}
+                                                onFocus={() => setIsSearchOpen(true)}
+                                                className="w-full pl-10 pr-4 py-3 bg-white dark:bg-[#1a1c23] border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:border-blue-500 outline-none transition-all dark:text-white"
+                                            />
+                                        </div>
+                                        
+                                        {isSearchOpen && (searchQuery.length > 0 || availableItems.length > 0) && (
+                                            <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-10 max-h-60 overflow-y-auto">
+                                                {availableItems.length > 0 ? (
+                                                    availableItems.map(item => (
+                                                        <button
+                                                            key={item.id}
+                                                            type="button"
+                                                            onClick={() => handleAddUnplannedItem(item)}
+                                                            className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 flex justify-between items-center group transition-colors border-b border-gray-100 dark:border-gray-800 last:border-0"
+                                                        >
+                                                            <div>
+                                                                <span className="font-semibold text-gray-900 dark:text-white block text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400">{item.name}</span>
+                                                                <span className="text-[10px] text-gray-500 font-mono">{item.sku}</span>
+                                                            </div>
+                                                            <Plus size={16} className="text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400"/>
+                                                        </button>
+                                                    ))
+                                                ) : (
+                                                    <div className="px-4 py-6 text-center text-sm text-gray-500">
+                                                        No matches found in master catalog
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-2">Use this to receive items that arrived on the delivery but were not part of the original purchase order.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
