@@ -15,13 +15,13 @@ declare
     l_line jsonb;
     v_status text;
 begin
-    -- Verify status is PENDING
+    -- Verify status is PENDING_APPROVAL
     select status into v_status from public.po_requests where id = p_request_id;
     if v_status is null then
         raise exception 'Request % not found', p_request_id;
     end if;
-    if v_status != 'PENDING' then
-        raise exception 'Only PENDING requests can be edited (current status: %)', v_status;
+    if v_status != 'PENDING_APPROVAL' then
+        raise exception 'Only PENDING_APPROVAL requests can be edited (current status: %)', v_status;
     end if;
 
     -- Update Header (only provided fields)
@@ -55,16 +55,18 @@ begin
             item_name,
             quantity_ordered,
             unit_price,
-            total_price
+            total_price,
+            concur_po_number
         ) values (
             p_request_id,
             coalesce((l_line->>'id')::uuid, uuid_generate_v4()),
             (l_line->>'item_id')::uuid,
             l_line->>'sku',
             l_line->>'item_name',
-            (l_line->>'quantity_ordered')::int,
+            (l_line->>'quantity_ordered')::numeric,
             (l_line->>'unit_price')::numeric,
-            (l_line->>'total_price')::numeric
+            (l_line->>'total_price')::numeric,
+            l_line->>'concur_po_number'
         );
     end loop;
 end;

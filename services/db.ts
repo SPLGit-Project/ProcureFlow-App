@@ -803,56 +803,30 @@ export const db = {
         }
 
         const totalAmount = normalizedLines.reduce((sum, line) => sum + line.totalPrice, 0);
-
-        const { error: headerError } = await supabase
-            .from('po_requests')
-            .update({
-                customer_name: updates.customerName,
-                reason_for_request: updates.reasonForRequest,
-                comments: updates.comments,
-                total_amount: Number(totalAmount.toFixed(2))
-            })
-            .eq('id', poId)
-            .eq('status', 'PENDING_APPROVAL');
-        if (headerError) throw headerError;
-
-        const { data: existingLines, error: existingLinesError } = await supabase
-            .from('po_lines')
-            .select('id')
-            .eq('po_request_id', poId);
-        if (existingLinesError) throw existingLinesError;
-
+        // Wait! Let's ensure normalizedLines maps `concurPoNumber` to `concur_po_number` if it exists.
         const lineRows = normalizedLines.map((line) => ({
             id: line.id,
-            po_request_id: poId,
             item_id: line.itemId,
             sku: line.sku,
             item_name: line.itemName,
             quantity_ordered: line.quantityOrdered,
-            quantity_received: line.quantityReceived || 0,
             unit_price: line.unitPrice,
             total_price: line.totalPrice,
             concur_po_number: line.concurPoNumber
         }));
 
-        const { error: upsertError } = await supabase
-            .from('po_lines')
-            .upsert(lineRows, { onConflict: 'id' });
-        if (upsertError) throw upsertError;
+        const { error: rpcError } = await supabase.rpc('update_pending_po_request', {
+            p_request_id: poId,
+            p_header: {
+                total_amount: Number(totalAmount.toFixed(2)),
+                reason_for_request: updates.reasonForRequest,
+                comments: updates.comments,
+                customer_name: updates.customerName
+            },
+            p_lines: lineRows
+        });
 
-        const keepIds = new Set(normalizedLines.map((line) => line.id));
-        const deleteIds = (existingLines || [])
-            .map((line: { id: string }) => line.id)
-            .filter((lineId: string) => !keepIds.has(lineId));
-
-        if (deleteIds.length > 0) {
-            const { error: deleteError } = await supabase
-                .from('po_lines')
-                .delete()
-                .eq('po_request_id', poId)
-                .in('id', deleteIds);
-            if (deleteError) throw deleteError;
-        }
+        if (rpcError) throw rpcError;
     },
 
     addPOApproval: async (poId: string, approval: ApprovalEvent): Promise<void> => {
