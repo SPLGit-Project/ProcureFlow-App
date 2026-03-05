@@ -336,6 +336,17 @@ const PODetail = () => {
       setIsConcurRequestModalOpen(false);
   };
 
+  const handleSkipConcurRequest = () => {
+      updatePOStatus(po.id, 'APPROVED_PENDING_CONCUR', {
+          id: `ev-${Date.now()}`,
+          action: 'ADMIN_OVERRIDE',
+          approverName: currentUser?.name || 'System',
+          date: new Date().toISOString().split('T')[0],
+          comments: 'Concur Request step skipped'
+      });
+      setIsConcurRequestModalOpen(false);
+  };
+
   const handleConcurLink = () => {
       if(!concurInput) return;
       linkConcurPO(po.id, concurInput);
@@ -1247,6 +1258,7 @@ const PODetail = () => {
                 />
                 <div className="flex justify-end gap-3">
                     <button type="button" onClick={() => setIsConcurRequestModalOpen(false)} className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg font-medium">Cancel</button>
+                    <button type="button" onClick={handleSkipConcurRequest} className="px-4 py-2.5 text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 rounded-lg font-medium">Skip</button>
                     <button type="button" onClick={handleConcurRequestLink} disabled={!concurRequestInput} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 font-bold shadow-lg shadow-indigo-500/20">Submit</button>
                 </div>
             </div>

@@ -8,6 +8,7 @@ const FinanceView = () => {
   const { pos, updateFinanceInfo } = useApp();
   const [filterSupplier, setFilterSupplier] = useState('');
   const [expandedPOs, setExpandedPOs] = useState<Record<string, boolean>>({});
+  const [bulkCapModalState, setBulkCapModalState] = useState<{ isOpen: boolean, poId: string, date: string }>({ isOpen: false, poId: '', date: '' });
 
 
   const togglePO = (poId: string) => {
@@ -99,24 +100,10 @@ const FinanceView = () => {
       updateFinanceInfo(poId, deliveryId, lineId, { capitalisedDate: dateToSave });
   };
 
-  const handleBulkCapitalise = (poId: string) => {
-      const po = groupedData.find(p => p.poId === poId);
-      if(!po) return;
-
+  const openBulkCapModal = (poId: string) => {
       const now = new Date();
       const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-
-      // Iterate all deliveries and lines
-      po.deliveries.forEach(del => {
-          del.lines.forEach(line => {
-             if (!line.data.isCapitalised) {
-                 updateFinanceInfo(poId, del.deliveryId, line.lineId, {
-                     isCapitalised: true,
-                     capitalisedDate: monthStr
-                 });
-             }
-          });
-      });
+      setBulkCapModalState({ isOpen: true, poId, date: monthStr });
   };
 
   const handleApplyDateToAll = (poId: string, dateToApply: string | undefined) => {
@@ -240,9 +227,10 @@ const FinanceView = () => {
                             <div className="w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 md:ml-4 md:pl-4 md:border-l border-gray-200 dark:border-gray-700">
                                 {!fullyCapitalised && (
                                     <button
+                                        type="button"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            handleBulkCapitalise(po.poId);
+                                            openBulkCapModal(po.poId);
                                         }}
                                         className="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
                                     >
@@ -465,6 +453,55 @@ const FinanceView = () => {
             )}
         </div>
       </div>
+
+      {bulkCapModalState.isOpen && (
+          <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-sm w-full p-6 border border-gray-200 dark:border-gray-800" onClick={(e) => e.stopPropagation()}>
+                  <div className="mb-4">
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">Confirm Capitalisation</h2>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                          Select the month and year to apply to all items being marked as complete.
+                      </p>
+                  </div>
+                  <div className="mb-6">
+                      <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Cap Date</label>
+                      <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-[var(--color-brand)] focus-within:border-[var(--color-brand)] transition-all">
+                          <Calendar size={18} className="text-gray-400"/>
+                          <input 
+                              type="month" 
+                              className="w-full bg-transparent border-none focus:ring-0 text-gray-900 dark:text-white font-medium p-1"
+                              value={bulkCapModalState.date.substring(0, 7)}
+                              onChange={(e) => {
+                                  let newDate = e.target.value;
+                                  if (newDate) newDate += '-01';
+                                  setBulkCapModalState(prev => ({ ...prev, date: newDate }));
+                              }}
+                          />
+                      </div>
+                  </div>
+                  <div className="flex justify-end gap-3">
+                      <button 
+                          type="button" 
+                          onClick={() => setBulkCapModalState({ isOpen: false, poId: '', date: '' })} 
+                          className="px-4 py-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-lg font-medium"
+                      >
+                          Cancel
+                      </button>
+                      <button 
+                          type="button" 
+                          onClick={() => {
+                              handleApplyDateToAll(bulkCapModalState.poId, bulkCapModalState.date);
+                              setBulkCapModalState({ isOpen: false, poId: '', date: '' });
+                          }} 
+                          disabled={!bulkCapModalState.date}
+                          className="px-6 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 font-bold shadow-lg shadow-green-600/20 disabled:opacity-50 flex items-center gap-2"
+                      >
+                          <CheckCircle2 size={16}/> Apply & Complete
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
