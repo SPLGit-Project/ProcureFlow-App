@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
+import AvatarPicker from './AvatarPicker.tsx';
 
 import {
     Users, Shield, Globe, ShoppingBag, Truck, Layout, Bell, Database,
@@ -1310,15 +1311,11 @@ if __name__ == "__main__":
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">User Profile</h2>
                   
                   <div className="flex flex-col md:flex-row gap-8 items-start">
-                      <div className="relative group">
-                          <img 
-                            src={profileForm.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileForm.name || 'U')}&background=random`} 
-                            className="w-32 h-32 rounded-3xl object-cover bg-gray-100 dark:bg-white/5 border-2 border-gray-200 dark:border-gray-800 shadow-lg"
-                          />
-                          <button className="absolute bottom-2 right-2 p-2 bg-white dark:bg-[#15171e] rounded-xl shadow-md border border-gray-200 dark:border-gray-700 text-secondary dark:text-gray-500 hover:text-[var(--color-brand)] transition-colors">
-                              <Image size={16}/>
-                          </button>
-                      </div>
+                      <AvatarPicker
+                          currentAvatar={profileForm.avatar}
+                          userName={profileForm.name}
+                          onSelect={(url) => setProfileForm({...profileForm, avatar: url})}
+                      />
 
                       <div className="flex-1 space-y-5 w-full">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -1350,17 +1347,7 @@ if __name__ == "__main__":
                               />
                           </div>
 
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Avatar URL</label>
-                              <input 
-                                className="input-field font-mono text-xs" 
-                                placeholder="https://example.com/photo.jpg"
-                                value={profileForm.avatar} 
-                                onChange={e => setProfileForm({...profileForm, avatar: e.target.value})}
-                              />
-                          </div>
-
-                          {/* PWA Install Prompt Preference */}
+                           {/* PWA Install Prompt Preference */}
                           <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
                               <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-3">App Preferences</h4>
                               <label className="flex items-start gap-3 cursor-pointer group">
