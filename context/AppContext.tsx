@@ -1569,12 +1569,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const existing = pos.find(p => p.id === poId);
       if (!existing) throw new Error('Request not found.');
 
-      const canEdit =
-          existing.status === 'PENDING_APPROVAL' &&
-          (currentUser.role === 'ADMIN' || existing.requesterId === currentUser.id);
+      const isAdmin = currentUser.role === 'ADMIN';
+      const isRequesterAndPending = existing.status === 'PENDING_APPROVAL' && existing.requesterId === currentUser.id;
+      const canEdit = isAdmin || isRequesterAndPending;
 
       if (!canEdit) {
-          throw new Error('Only the requester can edit while the request is pending approval.');
+          throw new Error('You do not have permission to edit this request.');
       }
 
       const normalizedLines = (updates.lines || []).map(line => {
