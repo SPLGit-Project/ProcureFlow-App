@@ -765,6 +765,8 @@ export const db = {
             customerName?: string;
             reasonForRequest?: string;
             comments?: string;
+            concurRequestNumber?: string;
+            concurPoNumber?: string;
             lines: POLineItem[];
         }
     ): Promise<void> => {
@@ -821,7 +823,9 @@ export const db = {
                 total_amount: Number(totalAmount.toFixed(2)),
                 reason_for_request: updates.reasonForRequest,
                 comments: updates.comments,
-                customer_name: updates.customerName
+                customer_name: updates.customerName,
+                concur_request_number: updates.concurRequestNumber,
+                concur_po_number: updates.concurPoNumber
             },
             p_lines: lineRows
         });

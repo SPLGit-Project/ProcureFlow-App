@@ -30,7 +30,7 @@ const PODetail = () => {
   const [isEditing, setIsEditing] = useState(false);
   
   // Local state for edits
-  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: 'Depletion', comments: '' });
+  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: 'Depletion', comments: '', concurRequestNumber: '', concurPoNumber: '' });
   const [editableLines, setEditableLines] = useState<POLineItem[]>([]);
   const [addItemId, setAddItemId] = useState('');
   const [addItemQty, setAddItemQty] = useState('1');
@@ -45,7 +45,13 @@ const PODetail = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _supplier = po ? suppliers.find(s => s.id === po.supplierId) : undefined;
 
-  const canEditPendingRequest = Boolean(
+  const canEditRequest = Boolean(
+    po &&
+    currentUser &&
+    (currentUser.role === 'ADMIN' || (po.status === 'PENDING_APPROVAL' && currentUser.id === po.requesterId))
+  );
+
+  const canDeletePendingRequest = Boolean(
     po &&
     po.status === 'PENDING_APPROVAL' &&
     currentUser &&
@@ -286,7 +292,6 @@ const PODetail = () => {
   const canLinkConcur = (hasPermission('link_concur') || po.requesterId === currentUser?.id) && po.status === 'APPROVED_PENDING_CONCUR';
   const canReceive = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING');
   const canClose = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED');
-  const canDeletePendingRequest = canEditPendingRequest;
   const linesInView = isEditing ? editableLines : po.lines;
 
 
@@ -372,11 +377,13 @@ const PODetail = () => {
 
 
   const handleStartEdit = () => {
-       if (!po || !canEditPendingRequest) return;
+       if (!po || !canEditRequest) return;
         setHeaderEdits({
             clientName: po.customerName || '',
             reason: po.reasonForRequest || 'Depletion',
-            comments: po.comments || ''
+            comments: po.comments || '',
+            concurRequestNumber: po.concurRequestNumber || '',
+            concurPoNumber: po.concurPoNumber || ''
         });
         setEditableLines(po.lines.map(line => ({ ...line })));
         setAddItemId('');
@@ -476,6 +483,8 @@ const PODetail = () => {
                 customerName: headerEdits.clientName,
                 reasonForRequest: validReason,
                 comments: headerEdits.comments,
+                concurRequestNumber: headerEdits.concurRequestNumber,
+                concurPoNumber: headerEdits.concurPoNumber,
                 lines: editableLines
             });
             setIsEditing(false);
@@ -632,7 +641,7 @@ const PODetail = () => {
             </div>
             
             <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-               {canEditPendingRequest && (
+               {canEditRequest && (
                    !isEditing ? (
                        <button type="button" onClick={handleStartEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors" title="Edit pending request">
                            <Edit2 size={18} />
@@ -742,10 +751,38 @@ const PODetail = () => {
                 <div className="flex gap-3 items-start">
                     <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg"><LinkIcon size={16}/></div>
                     <div className="w-full">
+                        <p className="text-xs text-secondary uppercase font-bold">Concur Request #</p>
+                        {isEditing ? (
+                            <input 
+                                className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                value={headerEdits.concurRequestNumber}
+                                onChange={e => setHeaderEdits({...headerEdits, concurRequestNumber: e.target.value})}
+                                placeholder="Optional"
+                            />
+                        ) : (
+                            <p className="text-sm font-medium text-primary dark:text-white">
+                                {po.concurRequestNumber || '-'}
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex gap-3 items-start">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg"><LinkIcon size={16}/></div>
+                    <div className="w-full">
                         <p className="text-xs text-secondary uppercase font-bold">Concur PO #</p>
-                        <p className="text-sm font-medium text-primary dark:text-white">
-                             {Array.from(new Set(po.lines.map(l => l.concurPoNumber).filter(Boolean))).join(', ') || '-'}
-                        </p>
+                        {isEditing ? (
+                            <input 
+                                className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                value={headerEdits.concurPoNumber}
+                                onChange={e => setHeaderEdits({...headerEdits, concurPoNumber: e.target.value})}
+                                placeholder="Optional"
+                            />
+                        ) : (
+                            <p className="text-sm font-medium text-primary dark:text-white">
+                                {Array.from(new Set(po.lines.map(l => l.concurPoNumber).filter(Boolean))).join(', ') || po.concurPoNumber || '-'}
+                            </p>
+                        )}
                     </div>
                 </div>
 

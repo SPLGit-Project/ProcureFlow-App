@@ -319,6 +319,7 @@ export interface PORequest {
   
   // New Fields
   concurRequestNumber?: string;
+  concurPoNumber?: string;
   customerName?: string;
   reasonForRequest?: 'Depletion' | 'New Customer' | 'Other';
   comments?: string;

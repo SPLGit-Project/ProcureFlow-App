@@ -117,7 +117,7 @@ interface AppContextType {
   
   // Core Actions
   createPO: (po: PORequest) => void;
-  updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; lines: POLineItem[]; }) => Promise<void>;
+  updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; concurRequestNumber?: string; concurPoNumber?: string; lines: POLineItem[]; }) => Promise<void>;
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
   linkConcurRequest: (poId: string, concurRequestNumber: string) => void;
   linkConcurPO: (poId: string, concurPoNumber: string) => void;
@@ -1559,6 +1559,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           customerName?: string;
           reasonForRequest?: 'Depletion' | 'New Customer' | 'Other';
           comments?: string;
+          concurRequestNumber?: string;
+          concurPoNumber?: string;
           lines: POLineItem[];
       }
   ) => {
@@ -1600,6 +1602,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               customerName: updates.customerName,
               reasonForRequest: updates.reasonForRequest,
               comments: updates.comments,
+              concurRequestNumber: updates.concurRequestNumber,
+              concurPoNumber: updates.concurPoNumber,
               lines: normalizedLines
           });
 
@@ -1610,8 +1614,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                   customerName: updates.customerName,
                   reasonForRequest: updates.reasonForRequest,
                   comments: updates.comments,
-                  lines: normalizedLines,
-                  totalAmount
+                  concurRequestNumber: updates.concurRequestNumber || p.concurRequestNumber,
+                  concurPoNumber: updates.concurPoNumber || p.concurPoNumber,
+                  totalAmount: Number(totalAmount.toFixed(2)),
+                  lines: normalizedLines
               };
           }));
 
