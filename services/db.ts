@@ -873,6 +873,14 @@ export const db = {
         }).eq('id', lineId);
         if (error) throw error;
     },
+
+    adminUpdateDeliveryLineQty: async (lineId: string, quantity: number): Promise<void> => {
+        const { error } = await supabase.rpc('admin_update_delivery_line_qty', {
+            p_line_id: lineId,
+            p_new_qty: quantity
+        });
+        if (error) throw error;
+    },
     
     addSnapshot: async (snapshot: SupplierStockSnapshot): Promise<void> => {
          const { error } = await supabase.from('stock_snapshots').insert({

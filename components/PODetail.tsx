@@ -518,6 +518,16 @@ const PODetail = () => {
       }
   };
 
+  const handleUpdateDeliveryQty = async (lineId: string, val: number) => {
+      try {
+          await db.adminUpdateDeliveryLineQty(lineId, val);
+          await reloadData(true);
+      } catch (e: unknown) {
+          console.error(e);
+          alert('Failed to update delivery quantity: ' + (e as Error).message);
+      }
+  };
+
   /* Side Effect: If forcing to RECEIVED/CLOSED and no deliveries exist, create dummy delivery so it appears in Finance Review */
   const ensureDeliveryRecord = async (targetStatus: string) => {
       // Only strictly relevant for statuses that imply goods receipt
@@ -1191,7 +1201,25 @@ const PODetail = () => {
                                                 return (
                                                     <tr key={dLine.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
                                                         <td className="py-3 text-secondary dark:text-gray-300 font-medium">{poLine?.itemName}</td>
-                                                        <td className="py-3 text-right font-bold text-primary dark:text-white">{dLine.quantity}</td>
+                                                        <td className="py-3 text-right font-bold text-primary dark:text-white">
+                                                            {isEditing ? (
+                                                                <input 
+                                                                    type="number"
+                                                                    className="w-20 px-1 py-0.5 text-xs text-right border rounded bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                                    defaultValue={dLine.quantity}
+                                                                    onBlur={(e) => {
+                                                                        const val = Number(e.target.value);
+                                                                        if (!isNaN(val) && val >= 0) {
+                                                                            handleUpdateDeliveryQty(dLine.id, val);
+                                                                        }
+                                                                    }}
+                                                                    min={0}
+                                                                    step={0.01}
+                                                                />
+                                                            ) : (
+                                                                dLine.quantity
+                                                            )}
+                                                        </td>
                                                         
                                                         {/* Invoice - Read Only */}
                                                         <td className="py-3 pl-4 hidden md:table-cell">
