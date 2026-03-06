@@ -1,16 +1,12 @@
 import { useState, useMemo } from 'react';
 import { X, RefreshCw, Check } from 'lucide-react';
 
-// DiceBear avatar styles available for selection
+// Professional DiceBear avatar styles for enterprise use
 const AVATAR_STYLES = [
-    { id: 'avataaars', label: 'People' },
-    { id: 'bottts', label: 'Robots' },
-    { id: 'fun-emoji', label: 'Emoji' },
-    { id: 'lorelei', label: 'Lorelei' },
-    { id: 'notionists', label: 'Notionists' },
-    { id: 'thumbs', label: 'Thumbs' },
-    { id: 'shapes', label: 'Shapes' },
-    { id: 'rings', label: 'Rings' },
+    { id: 'initials', label: 'Initials' },
+    { id: 'avataaars', label: 'Portraits' },
+    { id: 'notionists', label: 'Minimalist' },
+    { id: 'shapes', label: 'Geometric' },
 ] as const;
 
 // Seed words used to generate unique avatar variations
@@ -33,7 +29,7 @@ interface AvatarPickerProps {
 
 const AvatarPicker = ({ currentAvatar, userName, onSelect }: AvatarPickerProps) => {
     const [isOpen, setIsOpen] = useState(false);
-    const [activeStyle, setActiveStyle] = useState('avataaars');
+    const [activeStyle, setActiveStyle] = useState('initials');
     const [seedOffset, setSeedOffset] = useState(0);
 
     const VISIBLE_COUNT = 24;
