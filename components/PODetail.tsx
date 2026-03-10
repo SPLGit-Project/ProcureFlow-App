@@ -358,9 +358,13 @@ const PODetail = () => {
       setIsConcurModalOpen(false);
   };
 
-  const handleDeliverySubmit = (delivery: DeliveryHeader, closedLineIds: string[]) => {
-      addDelivery(po.id, delivery, closedLineIds);
-      setIsDeliveryModalOpen(false);
+  const handleDeliverySubmit = async (delivery: DeliveryHeader, closedLineIds: string[], newLines: POLineItem[]) => {
+      try {
+          await addDelivery(po.id, delivery, closedLineIds, newLines);
+          setIsDeliveryModalOpen(false);
+      } catch (_error) {
+          alert('Failed to save delivery. Please try again.');
+      }
   };
 
   const handleCompletePO = async () => {

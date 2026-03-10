@@ -121,7 +121,7 @@ interface AppContextType {
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
   linkConcurRequest: (poId: string, concurRequestNumber: string) => void;
   linkConcurPO: (poId: string, concurPoNumber: string) => void;
-  addDelivery: (poId: string, delivery: DeliveryHeader, closedLineIds?: string[]) => void;
+  addDelivery: (poId: string, delivery: DeliveryHeader, closedLineIds?: string[], newLines?: POLineItem[]) => Promise<void>;
   
   // User Actions
   updateProfile: (profile: Partial<User>) => Promise<void>;
@@ -1831,8 +1831,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
     // Persist
     try {
-        await db.createDelivery(delivery, poId);
-
         // 1. Update PO Status
         await db.updatePOStatus(poId, newStatus);
         
@@ -1849,12 +1847,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 quantity_received: l.quantityReceived,
                 unit_price: l.unitPrice,
                 total_price: l.totalPrice,
-                is_force_closed: l.isForceClosed
+                is_force_closed: l.isForceClosed,
+                concur_po_number: l.concurPoNumber
             }));
         
         if (linesToUpdate.length > 0) {
             await db.updatePOLines(linesToUpdate);
         }
+
+        // 3. Create Delivery Header & Lines
+        await db.createDelivery(delivery, poId);
 
         // NOTIFICATION TRIGGER
         sendNotification('DELIVERY_RECEIVED', { poId: poId, deliveryId: delivery.id, receivedBy: delivery.receivedBy });

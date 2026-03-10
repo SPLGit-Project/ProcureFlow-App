@@ -1,0 +1,1 @@
+ALTER TABLE po_lines ADD COLUMN IF NOT EXISTS is_force_closed BOOLEAN DEFAULT false;
