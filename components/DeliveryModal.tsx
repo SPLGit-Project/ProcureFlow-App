@@ -21,6 +21,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
     
     // Unplanned Items State
     const [additionalLines, setAdditionalLines] = useState<POLineItem[]>([]);
+    const [lineSearchQuery, setLineSearchQuery] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const searchRef = useRef<HTMLDivElement>(null);
@@ -37,6 +38,10 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
     
     // Show all lines to allow corrections or extra receipts
     const activeLines = [...po.lines, ...additionalLines];
+    const filteredActiveLines = activeLines.filter(line => 
+        line.itemName.toLowerCase().includes(lineSearchQuery.toLowerCase()) || 
+        line.sku.toLowerCase().includes(lineSearchQuery.toLowerCase())
+    );
 
     const availableItems = items.filter(i => 
         i.activeFlag !== false && 
@@ -178,11 +183,34 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                         </div>
 
                         <div>
-                            <div className="flex justify-between items-end mb-3">
-                                <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide">Select Items to Receive</h3>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-3">
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide shrink-0">Select Items to Receive</h3>
+                                {activeLines.length > 5 && (
+                                    <div className="relative flex-1 max-w-sm">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                            <Search size={14}/>
+                                        </span>
+                                        <input 
+                                            type="text"
+                                            placeholder="Filter items by name or SKU..."
+                                            value={lineSearchQuery}
+                                            onChange={e => setLineSearchQuery(e.target.value)}
+                                            className="w-full pl-9 pr-3 py-1.5 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[var(--color-brand)] dark:text-white transition-all"
+                                        />
+                                        {lineSearchQuery && (
+                                            <button 
+                                                type="button"
+                                                onClick={() => setLineSearchQuery('')}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                            >
+                                                <X size={12}/>
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-3">
-                                {activeLines.map(line => {
+                                {filteredActiveLines.map(line => {
                                     const remaining = Math.max(0, line.quantityOrdered - line.quantityReceived);
                                     const inputQty = receipts[line.id] || 0;
                                     const variance = variances[line.id];
@@ -249,10 +277,21 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                                         </div>
                                     );
                                 })}
-                                {activeLines.length === 0 && (
+                                {filteredActiveLines.length === 0 && (
                                     <div className="flex flex-col items-center justify-center p-8 bg-gray-50 dark:bg-[#15171e] rounded-xl border border-dashed border-gray-300 dark:border-gray-700 text-gray-500">
                                         <AlertTriangle size={32} className="mb-2 text-gray-400" />
-                                        <p className="font-medium">No items available to receive.</p>
+                                        <p className="font-medium text-sm">
+                                            {lineSearchQuery ? `No items match "${lineSearchQuery}"` : "No items available to receive."}
+                                        </p>
+                                        {lineSearchQuery && (
+                                            <button 
+                                                type="button" 
+                                                onClick={() => setLineSearchQuery('')}
+                                                className="mt-2 text-xs text-[var(--color-brand)] hover:underline font-medium"
+                                            >
+                                                Clear search filters
+                                            </button>
+                                        )}
                                     </div>
                                 )}
 
