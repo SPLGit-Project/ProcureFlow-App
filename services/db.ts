@@ -839,8 +839,7 @@ export const db = {
                 reason_for_request: updates.reasonForRequest,
                 comments: updates.comments,
                 customer_name: updates.customerName,
-                concur_request_number: updates.concurRequestNumber,
-                concur_po_number: updates.concurPoNumber
+                concur_request_number: updates.concurRequestNumber
             },
             p_lines: lineRows
         });

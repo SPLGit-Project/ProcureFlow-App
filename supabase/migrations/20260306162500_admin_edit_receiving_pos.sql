@@ -48,8 +48,7 @@ begin
         customer_name = coalesce(p_header->>'customer_name', customer_name),
         supplier_id = coalesce((p_header->>'supplier_id')::uuid, supplier_id),
         site_id = coalesce((p_header->>'site_id')::uuid, site_id),
-        concur_request_number = coalesce(p_header->>'concur_request_number', concur_request_number),
-        concur_po_number = coalesce(p_header->>'concur_po_number', concur_po_number)
+        concur_request_number = coalesce(p_header->>'concur_request_number', concur_request_number)
     where id = p_request_id;
 
     -- Lines processing: UPSERT approach
