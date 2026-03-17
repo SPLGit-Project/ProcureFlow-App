@@ -243,9 +243,22 @@ export const db = {
     },
 
     getItems: async (): Promise<Item[]> => {
-        const { data, error } = await supabase.from('items').select('*');
-        if (error) throw error;
-        return data.map((i: any) => {
+        // Fetch ALL items using pagination to avoid Supabase's default 1000-row limit
+        let allData: any[] = [];
+        let from = 0;
+        const batchSize = 1000;
+        while (true) {
+            const { data, error } = await supabase
+                .from('items')
+                .select('*')
+                .range(from, from + batchSize - 1);
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            allData = allData.concat(data);
+            if (data.length < batchSize) break; // Last page
+            from += batchSize;
+        }
+        return allData.map((i: any) => {
             const mappedItem: Item = {
                 id: i.id,
                 sku: i.sku,
@@ -778,10 +791,12 @@ export const db = {
 
         if (existingPoError) throw existingPoError;
         if (!existingPo) throw new Error('Request not found.');
-        if (existingPo.status !== 'PENDING_APPROVAL') {
-            throw new Error('Only pending approval requests can be edited.');
-        }
+        // Status and ownership checks are handled by the RPC (update_pending_po_request)
+        // which allows admins to edit any status. Only enforce requester check for non-admins.
         if (updates.requesterId && existingPo.requester_id !== updates.requesterId) {
+            if (existingPo.status !== 'PENDING_APPROVAL') {
+                throw new Error('Only pending approval requests can be edited.');
+            }
             throw new Error('You can only edit your own pending request.');
         }
 

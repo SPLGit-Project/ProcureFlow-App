@@ -890,20 +890,30 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                          
                          if (validIds.length === 0) {
                              // Default to their first available site if selection is invalid
-                             if(mounted) setActiveSiteIds([userData.siteIds[0]]);
+                             // Use _setActiveSiteIds directly to avoid async timing issues
+                             if(mounted) {
+                                 _setActiveSiteIds([userData.siteIds[0]]);
+                                 localStorage.setItem('activeSiteIds', JSON.stringify([userData.siteIds[0]]));
+                             }
                          } else if (validIds.length !== activeSiteIds.length) {
                              // Update to only valid ones
-                             if(mounted) setActiveSiteIds(validIds);
+                             if(mounted) {
+                                 _setActiveSiteIds(validIds);
+                                 localStorage.setItem('activeSiteIds', JSON.stringify(validIds));
+                             }
                          }
                      } else {
                          // No access to any sites
-                         if(mounted) setActiveSiteIds([]); 
+                         if(mounted) {
+                             _setActiveSiteIds([]);
+                             localStorage.setItem('activeSiteIds', JSON.stringify([]));
+                         }
                      }
                 }
 
                 if (userData.status === 'APPROVED') {
-                    // Use silent reload if triggered from silent auth check
-                    reloadData(silent);
+                    // Use force reload to ensure data is fetched with the correct site context
+                    reloadData(silent, true);
                     logAction('USER_LOGIN', { email: userData.email, userId: userData.id });
                 } else {
                     logAction('USER_LOGIN_PENDING_APPROVAL', { email: userData.email, userId: userData.id });
@@ -1614,8 +1624,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                   customerName: updates.customerName,
                   reasonForRequest: updates.reasonForRequest,
                   comments: updates.comments,
-                  concurRequestNumber: updates.concurRequestNumber || p.concurRequestNumber,
-                  concurPoNumber: updates.concurPoNumber || p.concurPoNumber,
+                  concurRequestNumber: updates.concurRequestNumber ?? p.concurRequestNumber,
+                  concurPoNumber: updates.concurPoNumber ?? p.concurPoNumber,
                   totalAmount: Number(totalAmount.toFixed(2)),
                   lines: normalizedLines
               };

@@ -374,6 +374,19 @@ const POCreate = () => {
         return;
     }
 
+    // Commit any uncommitted quantity drafts before submitting
+    // This handles the case where a user typed a quantity but clicked Submit without blurring
+    const finalCart = cart.map(line => {
+        const draft = quantityDrafts[line.id];
+        if (draft !== undefined && draft !== String(line.quantityOrdered)) {
+            const committedQty = sanitizeQuantity(draft, line.quantityOrdered);
+            return { ...line, quantityOrdered: committedQty, totalPrice: committedQty * line.unitPrice };
+        }
+        return line;
+    });
+    setCart(finalCart);
+    setQuantityDrafts({});
+
     const newPO: PORequest = {
       id: uuidv4(),
       requestDate: requestDate,
@@ -385,8 +398,8 @@ const POCreate = () => {
       supplierId: selectedSupplier.id,
       supplierName: selectedSupplier.name,
       status: 'PENDING_APPROVAL',
-      totalAmount: cart.reduce((sum, line) => sum + line.totalPrice, 0),
-      lines: cart,
+      totalAmount: finalCart.reduce((sum, line) => sum + line.totalPrice, 0),
+      lines: finalCart,
       approvalHistory: [
         { id: uuidv4(), action: 'SUBMITTED', approverName: currentUser.name, date: new Date().toISOString() }
       ],

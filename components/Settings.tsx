@@ -133,7 +133,7 @@ const Settings = () => {
             }
             setIsItemFormOpen(false);
             setEditingItem(null);
-            reloadData(true);
+            reloadData(true, true);
         } catch (e) {
             console.error(e);
             error('Failed to save item');

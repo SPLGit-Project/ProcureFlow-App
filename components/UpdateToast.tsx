@@ -43,8 +43,8 @@ export default function UpdateToast() {
   const initialVersion = useRef<string | null>(
     (import.meta.env.VITE_APP_VERSION as string) || null
   );
-  const dismissTimer = useRef<NodeJS.Timeout | null>(null);
-  const checkInterval = useRef<NodeJS.Timeout | null>(null);
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkInterval = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Theme-aware styling
   const isDark = branding.sidebarTheme === 'dark' || 
