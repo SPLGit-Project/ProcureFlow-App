@@ -9,7 +9,26 @@ import { db } from '../services/db.ts';
 import { supabase } from '../lib/supabaseClient.ts';
 import { v4 as uuidv4 } from 'uuid';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
+import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage';
 
+const PO_DETAIL_EDIT_DRAFT_VERSION = 1;
+const PO_DETAIL_EDIT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface PODetailEditDraft {
+  headerEdits: {
+    clientName: string;
+    reason: string;
+    comments: string;
+    concurRequestNumber: string;
+    concurPoNumber: string;
+  };
+  editableLines: POLineItem[];
+  addItemId: string;
+  addItemQty: string;
+  addItemPrice: string;
+  addItemPriceOptionId: string;
+  addItemSearch: string;
+}
 
 
 const PODetail = () => {
@@ -40,6 +59,12 @@ const PODetail = () => {
   const [isAddItemPickerOpen, setIsAddItemPickerOpen] = useState(false);
   const [activeAddItemIndex, setActiveAddItemIndex] = useState(0);
   const addItemPickerRef = useRef<HTMLDivElement>(null);
+  const editDraftKey = currentUser?.id && id ? `pf_draft:${currentUser.id}:po-edit:${id}` : '';
+  const didRestoreEditDraftRef = useRef(false);
+
+  useEffect(() => {
+    didRestoreEditDraftRef.current = false;
+  }, [editDraftKey]);
 
   const po = pos.find(p => p.id === id);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -57,6 +82,36 @@ const PODetail = () => {
     currentUser &&
     (currentUser.id === po.requesterId || currentUser.role === 'ADMIN')
   );
+
+  useEffect(() => {
+    if (!editDraftKey || didRestoreEditDraftRef.current || !po) return;
+
+    if (!canEditRequest) {
+      clearDraft(editDraftKey);
+      didRestoreEditDraftRef.current = true;
+      return;
+    }
+
+    const draft = readDraft<PODetailEditDraft>(editDraftKey, {
+      ttlMs: PO_DETAIL_EDIT_DRAFT_TTL_MS,
+      version: PO_DETAIL_EDIT_DRAFT_VERSION
+    });
+
+    didRestoreEditDraftRef.current = true;
+
+    if (!draft) return;
+
+    setHeaderEdits(draft.headerEdits);
+    setEditableLines(draft.editableLines);
+    setAddItemId(draft.addItemId);
+    setAddItemQty(draft.addItemQty);
+    setAddItemPrice(draft.addItemPrice);
+    setAddItemPriceOptionId(draft.addItemPriceOptionId);
+    setAddItemSearch(draft.addItemSearch);
+    setIsAddItemPickerOpen(false);
+    setActiveAddItemIndex(0);
+    setIsEditing(true);
+  }, [canEditRequest, editDraftKey, po]);
 
   const addableItems = useMemo(() => {
     const activeItems = (items || []).filter(item => item.activeFlag !== false);
@@ -293,6 +348,37 @@ const PODetail = () => {
   const canReceive = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING');
   const canClose = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED');
   const linesInView = isEditing ? editableLines : po.lines;
+  const editDraftSnapshot = useMemo<PODetailEditDraft>(() => ({
+    headerEdits,
+    editableLines,
+    addItemId,
+    addItemQty,
+    addItemPrice,
+    addItemPriceOptionId,
+    addItemSearch
+  }), [
+    addItemId,
+    addItemPrice,
+    addItemPriceOptionId,
+    addItemQty,
+    addItemSearch,
+    editableLines,
+    headerEdits
+  ]);
+
+  useDraftPersistence(editDraftKey, editDraftSnapshot, {
+    enabled: Boolean(editDraftKey && isEditing && canEditRequest),
+    ttlMs: PO_DETAIL_EDIT_DRAFT_TTL_MS,
+    version: PO_DETAIL_EDIT_DRAFT_VERSION
+  });
+
+  useEffect(() => {
+    if (!isEditing || canEditRequest) return;
+
+    clearDraft(editDraftKey);
+    setIsEditing(false);
+    setEditableLines([]);
+  }, [canEditRequest, editDraftKey, isEditing]);
 
 
   const getStepStatus = (step: number) => {
@@ -401,6 +487,7 @@ const PODetail = () => {
   };
 
   const handleCancelEdit = () => {
+      clearDraft(editDraftKey);
       setIsEditing(false);
       setEditableLines([]);
       setAddItemId('');
@@ -491,6 +578,7 @@ const PODetail = () => {
                 concurPoNumber: headerEdits.concurPoNumber,
                 lines: editableLines
             });
+            clearDraft(editDraftKey);
             setIsEditing(false);
             setEditableLines([]);
             await reloadData(true);

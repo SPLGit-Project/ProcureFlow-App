@@ -3,10 +3,12 @@ import React from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 import { Shield } from 'lucide-react';
+import { consumeSessionLogoutNotice } from '../utils/sessionState.ts';
 
 const Login = () => {
   const { login, isAuthenticated, branding, isLoadingAuth } = useApp();
   const navigate = useNavigate();
+  const [logoutNotice] = React.useState(() => consumeSessionLogoutNotice());
 
   React.useEffect(() => {
     if (isAuthenticated) {
@@ -29,6 +31,12 @@ const Login = () => {
                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{branding.appName}</h1>
                <p className="text-gray-500 dark:text-gray-400 mt-2 text-center">Sign in to access your dashboard</p>
            </div>
+
+           {logoutNotice?.reason === 'idle' && (
+               <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                   Your session was signed out after 30 minutes of inactivity. Eligible drafts are still available after you sign back in.
+               </div>
+           )}
 
            <div className="space-y-4">
                <button 

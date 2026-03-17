@@ -123,7 +123,7 @@ const PendingApproval = () => {
 
                 <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-800 flex justify-center">
                     <button 
-                        onClick={logout}
+                        onClick={() => logout()}
                         className="flex items-center gap-2 text-gray-500 hover:text-red-600 transition-colors text-sm font-medium"
                     >
                         <LogOut size={16} />

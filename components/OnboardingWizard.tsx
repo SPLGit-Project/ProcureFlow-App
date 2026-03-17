@@ -1,14 +1,44 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { CheckCircle2, MapPin, ArrowRight, User as UserIcon, Building2, LogOut, Clock } from 'lucide-react';
-import { supabase } from '../lib/supabaseClient';
+import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage';
+
+const ONBOARDING_DRAFT_VERSION = 1;
+const ONBOARDING_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface OnboardingDraft {
+    step: 1 | 2;
+    selectedSites: string[];
+    requestAllSites: boolean;
+}
 
 const OnboardingWizard = () => {
     const { currentUser, logout, sites, updateProfile } = useApp();
-    const [step, setStep] = useState<1 | 2 | 3>(1);
-    const [selectedSites, setSelectedSites] = useState<string[]>([]);
-    const [requestAllSites, setRequestAllSites] = useState(false);
+    const draftKey = currentUser ? `pf_draft:${currentUser.id}:onboarding` : '';
+    const initialDraft = draftKey
+        ? readDraft<OnboardingDraft>(draftKey, {
+            ttlMs: ONBOARDING_DRAFT_TTL_MS,
+            version: ONBOARDING_DRAFT_VERSION
+        })
+        : null;
+    const [step, setStep] = useState<1 | 2 | 3>(initialDraft?.step || 1);
+    const [selectedSites, setSelectedSites] = useState<string[]>(initialDraft?.selectedSites || []);
+    const [requestAllSites, setRequestAllSites] = useState(initialDraft?.requestAllSites || false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const isOnboardingDraftEmpty = React.useCallback((draft: OnboardingDraft) =>
+        draft.step === 1 && !draft.requestAllSites && draft.selectedSites.length === 0
+    , []);
+
+    useDraftPersistence(draftKey, {
+        step: step === 3 ? 2 : (step as 1 | 2),
+        selectedSites,
+        requestAllSites
+    }, {
+        enabled: Boolean(currentUser && draftKey && step !== 3),
+        ttlMs: ONBOARDING_DRAFT_TTL_MS,
+        version: ONBOARDING_DRAFT_VERSION,
+        isEmpty: isOnboardingDraftEmpty
+    });
 
     const handleSiteToggle = (siteId: string) => {
         if (requestAllSites) return;
@@ -37,6 +67,7 @@ const OnboardingWizard = () => {
             await updateProfile({
                 approvalReason: `Requested Access: ${siteNames}`
             });
+            clearDraft(draftKey);
             setStep(3);
         } catch (error) {
             console.error("Onboarding failed", error);
@@ -59,7 +90,7 @@ const OnboardingWizard = () => {
                     <p className="text-gray-600 dark:text-gray-400 mb-8">
                         Your invitation to join ProcureFlow has expired (48h limit). Please contact your administrator to re-send your welcome email.
                     </p>
-                    <button onClick={logout} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium flex items-center justify-center gap-2 w-full">
+                    <button onClick={() => logout()} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium flex items-center justify-center gap-2 w-full">
                         <LogOut size={16} /> Sign Out
                     </button>
                 </div>
@@ -78,7 +109,7 @@ const OnboardingWizard = () => {
                     <p className="text-gray-600 dark:text-gray-400 mb-8">
                         Your access request has been sent to the administrators. You will be notified via email once approved.
                     </p>
-                    <button onClick={logout} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium flex items-center justify-center gap-2 w-full">
+                    <button onClick={() => logout()} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium flex items-center justify-center gap-2 w-full">
                         <LogOut size={16} /> Sign Out
                     </button>
                 </div>
@@ -182,7 +213,7 @@ const OnboardingWizard = () => {
                 {/* Footer Actions */}
                 <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#15171e] flex justify-between items-center">
                     {step === 1 ? (
-                        <button onClick={logout} className="text-gray-500 hover:text-gray-700 font-medium text-sm">
+                        <button onClick={() => logout()} className="text-gray-500 hover:text-gray-700 font-medium text-sm">
                             Cancel & Sign Out
                         </button>
                     ) : (

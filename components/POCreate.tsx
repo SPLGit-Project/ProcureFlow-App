@@ -2,7 +2,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext';
-import { Item, ItemPriceOption, POLineItem, PORequest, Site } from '../types';
+import { Item, ItemPriceOption, POLineItem, PORequest } from '../types';
+import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage';
 import { 
   ShoppingCart, 
   Search, 
@@ -26,6 +27,23 @@ import ContextHelp from './ContextHelp';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 
 const PRICE_MATCH_TOLERANCE = 0.0001;
+const PO_CREATE_DRAFT_VERSION = 1;
+const PO_CREATE_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface POCreateDraft {
+  selectedSiteId: string;
+  selectedSupplierId: string;
+  isHeaderExpanded: boolean;
+  customerName: string;
+  reasonForRequest: 'Depletion' | 'New Customer' | 'Other';
+  comments: string;
+  requestDate: string;
+  cart: POLineItem[];
+  quantityDrafts: Record<string, string>;
+  isCartExpanded: boolean;
+  isCatalogExpanded: boolean;
+  searchTerm: string;
+}
 
 const getPriceOptionMatchKey = (priceOptionId?: string, priceOptionLabel?: string) => {
   if (priceOptionId && priceOptionId.trim()) return `id:${priceOptionId.trim()}`;
@@ -46,10 +64,20 @@ const isSameCartPriceLine = (
 };
 
 const POCreate = () => {
-  const { items, suppliers, sites: allSites, userSites, mappings, stockSnapshots, currentUser, createPO, getEffectiveStock, reloadData } = useApp();
-  // Use userSites for the dropdown (only sites user has access to), allSites for display lookups
+  const { items, suppliers, userSites, mappings, stockSnapshots, currentUser, createPO, getEffectiveStock, reloadData } = useApp();
+  // Use userSites for the dropdown so request creation only shows permitted locations.
   const sites = userSites;
   const navigate = useNavigate();
+  const draftKey = currentUser ? `pf_draft:${currentUser.id}:po-create` : '';
+  const initialDraft = useMemo(
+    () => draftKey
+      ? readDraft<POCreateDraft>(draftKey, {
+          ttlMs: PO_CREATE_DRAFT_TTL_MS,
+          version: PO_CREATE_DRAFT_VERSION
+        })
+      : null,
+    [draftKey]
+  );
   
   // Auto-Refresh Data on Mount
   useEffect(() => {
@@ -57,23 +85,23 @@ const POCreate = () => {
   }, [reloadData]);
 
   // Header State
-  const [selectedSiteId, setSelectedSiteId] = useState(sites[0]?.id || '');
-  const [selectedSupplierId, setSelectedSupplierId] = useState('');
-  const [isHeaderExpanded, setIsHeaderExpanded] = useState(true);
+  const [selectedSiteId, setSelectedSiteId] = useState(initialDraft?.selectedSiteId || '');
+  const [selectedSupplierId, setSelectedSupplierId] = useState(initialDraft?.selectedSupplierId || '');
+  const [isHeaderExpanded, setIsHeaderExpanded] = useState(initialDraft?.isHeaderExpanded ?? true);
   
   // New Header Fields
-  const [customerName, setCustomerName] = useState('');
-  const [reasonForRequest, setReasonForRequest] = useState<'Depletion' | 'New Customer' | 'Other'>('Depletion');
-  const [comments, setComments] = useState('');
-  const [requestDate, setRequestDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customerName, setCustomerName] = useState(initialDraft?.customerName || '');
+  const [reasonForRequest, setReasonForRequest] = useState<'Depletion' | 'New Customer' | 'Other'>(initialDraft?.reasonForRequest || 'Depletion');
+  const [comments, setComments] = useState(initialDraft?.comments || '');
+  const [requestDate, setRequestDate] = useState(initialDraft?.requestDate || new Date().toISOString().split('T')[0]);
 
   
   // Cart & Item State
-  const [cart, setCart] = useState<POLineItem[]>([]);
-  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
-  const [isCartExpanded, setIsCartExpanded] = useState(true);
-  const [isCatalogExpanded, setIsCatalogExpanded] = useState(true); // Default open
-  const [searchTerm, setSearchTerm] = useState('');
+  const [cart, setCart] = useState<POLineItem[]>(initialDraft?.cart || []);
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>(initialDraft?.quantityDrafts || {});
+  const [isCartExpanded, setIsCartExpanded] = useState(initialDraft?.isCartExpanded ?? true);
+  const [isCatalogExpanded, setIsCatalogExpanded] = useState(initialDraft?.isCatalogExpanded ?? true); // Default open
+  const [searchTerm, setSearchTerm] = useState(initialDraft?.searchTerm || '');
   
   // Mobile Cart Drawer State
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
@@ -86,8 +114,65 @@ const POCreate = () => {
   const [modalPriceOptionId, setModalPriceOptionId] = useState('');
   const [modalPriceOptions, setModalPriceOptions] = useState<ItemPriceOption[]>([]);
 
+  useEffect(() => {
+    if (selectedSiteId && sites.some(site => site.id === selectedSiteId)) return;
+    if (sites[0]?.id) {
+      setSelectedSiteId(sites[0].id);
+    }
+  }, [selectedSiteId, sites]);
+
+  useEffect(() => {
+    if (!selectedSupplierId) return;
+    if (suppliers.some(supplier => supplier.id === selectedSupplierId)) return;
+    setSelectedSupplierId('');
+  }, [selectedSupplierId, suppliers]);
+
   const selectedSite = sites.find(s => s.id === selectedSiteId);
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
+
+  const createDraftSnapshot = useMemo<POCreateDraft>(() => ({
+    selectedSiteId,
+    selectedSupplierId,
+    isHeaderExpanded,
+    customerName,
+    reasonForRequest,
+    comments,
+    requestDate,
+    cart,
+    quantityDrafts,
+    isCartExpanded,
+    isCatalogExpanded,
+    searchTerm
+  }), [
+    cart,
+    comments,
+    customerName,
+    isCartExpanded,
+    isCatalogExpanded,
+    isHeaderExpanded,
+    quantityDrafts,
+    reasonForRequest,
+    requestDate,
+    searchTerm,
+    selectedSiteId,
+    selectedSupplierId
+  ]);
+
+  const isCreateDraftEmpty = React.useCallback((draft: POCreateDraft) =>
+    !draft.selectedSupplierId &&
+    !draft.customerName.trim() &&
+    !draft.comments.trim() &&
+    draft.reasonForRequest === 'Depletion' &&
+    draft.cart.length === 0 &&
+    !draft.searchTerm.trim()
+  , []);
+
+  useDraftPersistence(draftKey, createDraftSnapshot, {
+    enabled: Boolean(currentUser && draftKey),
+    ttlMs: PO_CREATE_DRAFT_TTL_MS,
+    version: PO_CREATE_DRAFT_VERSION,
+    isEmpty: isCreateDraftEmpty
+  });
 
   // Only active master items should be available for request creation.
   const activeMasterItems = useMemo(() => {
@@ -358,7 +443,7 @@ const POCreate = () => {
       setSelectedDetailItem(null);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedSupplier || !selectedSite || cart.length === 0) return;
 
     const archivedCartLines = cart.filter(line => !activeItemIds.has(line.itemId));
@@ -409,7 +494,10 @@ const POCreate = () => {
       comments
     };
 
-    createPO(newPO);
+    const didCreate = await createPO(newPO);
+    if (!didCreate) return;
+
+    clearDraft(draftKey);
     navigate('/requests');
   };
 

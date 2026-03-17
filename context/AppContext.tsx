@@ -6,6 +6,13 @@ import { supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
 import { DirectoryService } from '../services/graphService.ts';
 import {
+    getSessionActivityStorageKey,
+    SESSION_ACTIVITY_WRITE_THROTTLE_MS,
+    SESSION_IDLE_TIMEOUT_MS,
+    SESSION_WARNING_WINDOW_MS,
+    writeSessionLogoutNotice
+} from '../utils/sessionState.ts';
+import {
     MOCK_USERS,
     MOCK_ROLES,
     MOCK_SITES,
@@ -57,7 +64,7 @@ interface AppContextType {
   setActiveSiteIds: (ids: string[]) => void;
   siteName: (siteId?: string) => string;
   login: () => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (reason?: 'manual' | 'idle') => Promise<void>;
   isLoadingAuth: boolean;
   isPendingApproval: boolean;
   isLoadingData: boolean;
@@ -116,7 +123,7 @@ interface AppContextType {
   deleteNotificationRule: (id: string) => Promise<void>;
   
   // Core Actions
-  createPO: (po: PORequest) => void;
+  createPO: (po: PORequest) => Promise<boolean>;
   updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; concurRequestNumber?: string; concurPoNumber?: string; lines: POLineItem[]; }) => Promise<void>;
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
   linkConcurRequest: (poId: string, concurRequestNumber: string) => void;
@@ -281,6 +288,31 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       };
   });
 
+  const persistSessionActivity = useCallback((userId: string, force = false) => {
+      if (qaMode || !userId) return;
+
+      const now = Date.now();
+      if (!force && now - lastSessionActivityWriteRef.current < SESSION_ACTIVITY_WRITE_THROTTLE_MS) {
+          return;
+      }
+
+      lastSessionActivityWriteRef.current = now;
+      lastSessionActivityRef.current = now;
+      setIdleSecondsRemaining(null);
+
+      try {
+          localStorage.setItem(getSessionActivityStorageKey(userId), String(now));
+      } catch (error) {
+          console.warn('Session: Failed to persist activity timestamp.', error);
+      }
+  }, [qaMode]);
+
+  const markSessionActivity = useCallback((force = false) => {
+      const userId = currentUserRef.current?.id;
+      if (!userId) return;
+      persistSessionActivity(userId, force);
+  }, [persistSessionActivity]);
+
   // Data State
   const [pos, setPos] = useState<PORequest[]>(() => qaMode ? mockPosWithSiteIds : []);
   const [suppliers, setSuppliers] = useState<Supplier[]>(() => qaMode ? [...MOCK_SUPPLIERS] : []);
@@ -298,6 +330,17 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>(() => qaMode ? [...MOCK_WORKFLOW_STEPS] : []);
   const [notificationRules, setNotificationRules] = useState<NotificationRule[]>(() => qaMode ? [...MOCK_NOTIFICATIONS] : []);
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
+  const [idleSecondsRemaining, setIdleSecondsRemaining] = useState<number | null>(null);
+
+  const currentUserRef = React.useRef<User | null>(currentUser);
+  const logoutReasonRef = React.useRef<'manual' | 'idle' | null>(null);
+  const logoutInProgressRef = React.useRef(false);
+  const lastSessionActivityRef = React.useRef(Date.now());
+  const lastSessionActivityWriteRef = React.useRef(0);
+
+  useEffect(() => {
+      currentUserRef.current = currentUser;
+  }, [currentUser]);
 
   // --- Active Site Logic (Multi) ---
     const setActiveSiteIds = (ids: string[]) => {
@@ -558,7 +601,23 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 setIsAuthenticated(false);
                 setIsPendingApproval(false);
                 setIsLoadingAuth(false);
-                logAction('USER_LOGOUT', { email: session?.user?.email });
+                setIdleSecondsRemaining(null);
+                logoutInProgressRef.current = false;
+
+                const logoutReason = logoutReasonRef.current;
+                const signedOutUser = currentUserRef.current;
+                if (logoutReason === 'idle') {
+                    logAction('USER_LOGOUT_IDLE_TIMEOUT', {
+                        userId: signedOutUser?.id,
+                        email: signedOutUser?.email
+                    });
+                } else {
+                    logAction('USER_LOGOUT', {
+                        userId: signedOutUser?.id,
+                        email: signedOutUser?.email || session?.user?.email
+                    });
+                }
+                logoutReasonRef.current = null;
             }
         });
 
@@ -881,6 +940,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 setCurrentUser(userData);
                 setIsAuthenticated(true);
                 setIsPendingApproval(userData.status !== 'APPROVED');
+                persistSessionActivity(userData.id, true);
                 
                 // Initialize Active Site Context
                 if (userData.role !== 'ADMIN') {
@@ -1158,14 +1218,122 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
 
-  const logout = async () => {
+  const logout = async (reason: 'manual' | 'idle' = 'manual') => {
+      if (logoutInProgressRef.current) return;
+
+      logoutInProgressRef.current = true;
+      logoutReasonRef.current = reason;
+      setIdleSecondsRemaining(null);
+
+      if (reason === 'idle') {
+          writeSessionLogoutNotice({ reason, createdAt: Date.now() });
+      }
+
       if (qaMode) {
           setIsAuthenticated(false);
           setCurrentUser(null);
+          logoutInProgressRef.current = false;
           return;
       }
-      await supabase.auth.signOut();
+
+      try {
+          await supabase.auth.signOut();
+      } catch (error) {
+          logoutInProgressRef.current = false;
+          logoutReasonRef.current = null;
+          throw error;
+      }
   };
+
+  const handleStaySignedIn = async () => {
+      markSessionActivity(true);
+
+      if (qaMode) return;
+
+      try {
+          await supabase.auth.getSession();
+      } catch (error) {
+          console.error('Session: Failed to refresh active session.', error);
+      }
+  };
+
+  useEffect(() => {
+      if (qaMode || !isAuthenticated || !currentUser?.id) {
+          setIdleSecondsRemaining(null);
+          return;
+      }
+
+      const sessionActivityKey = getSessionActivityStorageKey(currentUser.id);
+
+      const syncActivityTimestamp = () => {
+          const raw = localStorage.getItem(sessionActivityKey);
+          const storedAt = raw ? Number(raw) : NaN;
+          const nextActivityAt = Number.isFinite(storedAt) && storedAt > 0 ? storedAt : Date.now();
+
+          lastSessionActivityRef.current = nextActivityAt;
+
+          if (!Number.isFinite(storedAt) || storedAt <= 0) {
+              persistSessionActivity(currentUser.id, true);
+          }
+      };
+
+      const evaluateIdleState = () => {
+          const remainingMs = SESSION_IDLE_TIMEOUT_MS - (Date.now() - lastSessionActivityRef.current);
+
+          if (remainingMs <= 0) {
+              setIdleSecondsRemaining(0);
+              if (!logoutInProgressRef.current) {
+                  void logout('idle');
+              }
+              return;
+          }
+
+          if (remainingMs <= SESSION_WARNING_WINDOW_MS) {
+              setIdleSecondsRemaining(Math.max(1, Math.ceil(remainingMs / 1000)));
+              return;
+          }
+
+          setIdleSecondsRemaining(null);
+      };
+
+      const handleUserActivity = () => {
+          markSessionActivity();
+      };
+
+      const handleStorageSync = (event: StorageEvent) => {
+          if (event.key !== sessionActivityKey || !event.newValue) return;
+
+          const nextTimestamp = Number(event.newValue);
+          if (!Number.isFinite(nextTimestamp) || nextTimestamp <= 0) return;
+
+          lastSessionActivityRef.current = nextTimestamp;
+          setIdleSecondsRemaining(null);
+      };
+
+      syncActivityTimestamp();
+      evaluateIdleState();
+
+      window.addEventListener('pointerdown', handleUserActivity, { passive: true });
+      window.addEventListener('keydown', handleUserActivity);
+      window.addEventListener('wheel', handleUserActivity, { passive: true });
+      window.addEventListener('touchstart', handleUserActivity, { passive: true });
+      window.addEventListener('storage', handleStorageSync);
+      window.addEventListener('focus', evaluateIdleState);
+      document.addEventListener('visibilitychange', evaluateIdleState);
+
+      const idleInterval = window.setInterval(evaluateIdleState, 1000);
+
+      return () => {
+          window.clearInterval(idleInterval);
+          window.removeEventListener('pointerdown', handleUserActivity);
+          window.removeEventListener('keydown', handleUserActivity);
+          window.removeEventListener('wheel', handleUserActivity);
+          window.removeEventListener('touchstart', handleUserActivity);
+          window.removeEventListener('storage', handleStorageSync);
+          window.removeEventListener('focus', evaluateIdleState);
+          document.removeEventListener('visibilitychange', evaluateIdleState);
+      };
+  }, [currentUser?.id, isAuthenticated, logout, markSessionActivity, persistSessionActivity, qaMode]);
 
   // --- Security Operations ---
   
@@ -1556,10 +1724,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         sendNotification('PO_CREATED', { poId: displayId, requesterId: po.requesterId, amount: po.totalAmount });
         logAction('PO_CREATED', { id: displayId, amount: po.totalAmount }, { requester: po.requesterName });
         setPos(prev => [{ ...po, displayId }, ...prev]);
+        return true;
     } catch (error) {
         console.error('Failed to create PO:', error);
         alert('Failed to create PO order.');
         logAction('PO_CREATE_FAILED', { requesterId: po.requesterId, error: (error as Error).message });
+        return false;
     }
   };
 
@@ -2302,6 +2472,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
     };
 
+  const idleCountdownLabel = idleSecondsRemaining === null
+      ? ''
+      : `${Math.floor(idleSecondsRemaining / 60)}:${String(idleSecondsRemaining % 60).padStart(2, '0')}`;
 
 
   // --- Context Value Memoization ---
@@ -2367,6 +2540,39 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   return (
     <AppContext.Provider value={contextValue}>
       {children}
+      {isAuthenticated && idleSecondsRemaining !== null && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-3xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] shadow-2xl p-6">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-4">
+              <svg viewBox="0 0 24 24" className="w-6 h-6 fill-none stroke-current stroke-2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Session timing out soon</h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 leading-6">
+              We&apos;ll sign you out after <span className="font-semibold text-gray-900 dark:text-white">{idleCountdownLabel}</span> of inactivity.
+              Eligible in-progress drafts will stay available for your account until you save them.
+            </p>
+            <div className="mt-6 flex flex-col-reverse sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => logout('manual')}
+                className="flex-1 rounded-2xl border border-gray-200 dark:border-gray-700 px-4 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+              >
+                Sign Out Now
+              </button>
+              <button
+                type="button"
+                onClick={handleStaySignedIn}
+                className="flex-1 rounded-2xl bg-[var(--color-brand)] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-95 transition-opacity"
+              >
+                Stay Signed In
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppContext.Provider>
   );
 };
