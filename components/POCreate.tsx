@@ -1,9 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { useApp } from '../context/AppContext';
-import { Item, ItemPriceOption, POLineItem, PORequest } from '../types';
-import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage';
+import { useApp } from '../context/AppContext.tsx';
+import { Item, ItemPriceOption, POLineItem, PORequest } from '../types.ts';
+import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
 import { 
   ShoppingCart, 
   Search, 
@@ -23,13 +23,14 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import ContextHelp from './ContextHelp';
-import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
-import { useSubmitGuard } from '../utils/useSubmitGuard';
+import ContextHelp from './ContextHelp.tsx';
+import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
+import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 
 const PRICE_MATCH_TOLERANCE = 0.0001;
 const PO_CREATE_DRAFT_VERSION = 1;
 const PO_CREATE_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+const REQUEST_REASON_OPTIONS = ['Depletion', 'New Customer', 'Other'] as const;
 
 interface POCreateDraft {
   selectedSiteId: string;
@@ -45,6 +46,23 @@ interface POCreateDraft {
   isCatalogExpanded: boolean;
   searchTerm: string;
 }
+
+type POCreateCatalogItem = Item & {
+  priceOptions: ItemPriceOption[];
+  priceOptionCount: number;
+  supplierSku: string;
+  supplierCode: string;
+  price: number;
+  effectiveStock: number;
+  isMapped: boolean;
+};
+
+const getLocalDateInputValue = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const getPriceOptionMatchKey = (priceOptionId?: string, priceOptionLabel?: string) => {
   if (priceOptionId && priceOptionId.trim()) return `id:${priceOptionId.trim()}`;
@@ -96,7 +114,7 @@ const POCreate = () => {
   const [customerName, setCustomerName] = useState(initialDraft?.customerName || '');
   const [reasonForRequest, setReasonForRequest] = useState<'Depletion' | 'New Customer' | 'Other'>(initialDraft?.reasonForRequest || 'Depletion');
   const [comments, setComments] = useState(initialDraft?.comments || '');
-  const [requestDate, setRequestDate] = useState(initialDraft?.requestDate || new Date().toISOString().split('T')[0]);
+  const [requestDate, setRequestDate] = useState(initialDraft?.requestDate || getLocalDateInputValue());
 
   
   // Cart & Item State
@@ -110,7 +128,7 @@ const POCreate = () => {
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   
   // Modal State
-  const [selectedDetailItem, setSelectedDetailItem] = useState<any | null>(null);
+  const [selectedDetailItem, setSelectedDetailItem] = useState<POCreateCatalogItem | null>(null);
   const [modalQuantity, setModalQuantity] = useState(1);
   const [modalPrice, setModalPrice] = useState('');
   const [modalUpq, setModalUpq] = useState(1); // Default UPQ
@@ -132,6 +150,13 @@ const POCreate = () => {
     setQuantityDrafts({});
     setSelectedDetailItem(null);
   }, [selectedSupplierId, suppliers]);
+
+  const handleSupplierChange = (nextSupplierId: string) => {
+    setSelectedSupplierId(nextSupplierId);
+    setCart([]);
+    setQuantityDrafts({});
+    setSelectedDetailItem(null);
+  };
 
   const selectedSite = sites.find(s => s.id === selectedSiteId);
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
@@ -247,11 +272,6 @@ const POCreate = () => {
     });
   }, [selectedSupplierId, mappings, activeMasterItems, stockSnapshots, searchTerm, getEffectiveStock]);
 
-  const getPrice = (itemId: string, defaultPrice: number) => {
-      // return overridePrices[itemId] !== undefined ? overridePrices[itemId] : defaultPrice;
-      return defaultPrice; // Overrides handled in Modal now
-  };
-
   const sanitizeQuantity = (value: string, fallback: number): number => {
     const digitsOnly = (value || '').replace(/\D/g, '');
     if (!digitsOnly) return Math.max(1, fallback);
@@ -269,57 +289,6 @@ const POCreate = () => {
       return next;
     });
   }, [cart]);
-
-  const addToCart = (item: any) => {
-    // Quick Add: Default to 1 and estimated price
-    const finalUnitPrice = item.price;
-    const quantityToAdd = 1;
-    const defaultPriceOption = getDefaultItemPriceOption(item);
-    const selectedPriceOptionLabel = Math.abs((defaultPriceOption.price || 0) - Number(finalUnitPrice || 0)) < 0.0001
-      ? defaultPriceOption.label
-      : 'Estimated (Current Supplier)';
-    const selectedPriceOptionId = Math.abs((defaultPriceOption.price || 0) - Number(finalUnitPrice || 0)) < 0.0001
-      ? defaultPriceOption.id
-      : 'estimated-current';
-    
-    setCart(prev => {
-      const existing = prev.find(line =>
-        isSameCartPriceLine(
-          line,
-          item.id,
-          finalUnitPrice,
-          selectedPriceOptionId,
-          selectedPriceOptionLabel
-        )
-      );
-      if (existing) {
-        const newQty = existing.quantityOrdered + quantityToAdd;
-        return prev.map(line => 
-          line.id === existing.id
-          ? {
-              ...line,
-              quantityOrdered: newQty,
-              totalPrice: Number((newQty * line.unitPrice).toFixed(2)),
-              priceOptionId: line.priceOptionId ?? selectedPriceOptionId,
-              priceOptionLabel: line.priceOptionLabel ?? selectedPriceOptionLabel
-            }
-          : line
-        );
-      }
-      return [...prev, {
-        id: uuidv4(),
-        itemId: item.id!,
-        itemName: item.name!,
-        sku: item.sku, 
-        quantityOrdered: quantityToAdd,
-        quantityReceived: 0,
-        unitPrice: Number(finalUnitPrice || 0),
-        totalPrice: Number((finalUnitPrice * quantityToAdd).toFixed(2)),
-        priceOptionLabel: selectedPriceOptionLabel,
-        priceOptionId: selectedPriceOptionId
-      }];
-    });
-  };
 
   const updateQuantity = (lineId: string, delta: number) => {
     let nextQty = 1;
@@ -373,7 +342,7 @@ const POCreate = () => {
   };
   
   // Modal Handlers
-  const openItemDetail = (item: any) => {
+  const openItemDetail = (item: POCreateCatalogItem) => {
       setSelectedDetailItem(item);
       setModalQuantity(1); // Default to 1, or check cart?
       // Check if already in cart
@@ -492,7 +461,7 @@ const POCreate = () => {
       totalAmount: finalCart.reduce((sum, line) => sum + line.totalPrice, 0),
       lines: finalCart,
       approvalHistory: [
-        { id: uuidv4(), action: 'SUBMITTED', approverName: currentUser.name, date: new Date().toISOString() }
+        { id: uuidv4(), action: 'SUBMITTED', approverName: currentUser.name, date: getLocalDateInputValue() }
       ],
       deliveries: [],
       customerName,
@@ -587,7 +556,8 @@ const POCreate = () => {
                      ${cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                  </span>
              </div>
-             <button 
+             <button
+               type="button"
                onClick={() => guardedSubmit(handleSubmit)}
                disabled={cart.length === 0 || isSubmitting}
                className="w-full bg-[var(--color-brand)] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
@@ -704,8 +674,7 @@ const POCreate = () => {
                                 className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
                                 value={selectedSupplierId}
                                 onChange={(e) => {
-                                    setSelectedSupplierId(e.target.value);
-                                    setCart([]); 
+                                    handleSupplierChange(e.target.value);
                                 }}
                             >
                                 <option value="">Select a supplier...</option>
@@ -746,11 +715,11 @@ const POCreate = () => {
                         <div>
                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Reason for Request <span className="text-red-500">*</span></label>
                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                 {['Depletion', 'New Customer', 'Other'].map(option => (
+                                 {REQUEST_REASON_OPTIONS.map(option => (
                                      <button
                                         key={option}
                                         type="button"
-                                        onClick={() => setReasonForRequest(option as any)}
+                                        onClick={() => setReasonForRequest(option)}
                                         className={`py-2 px-1 text-xs font-bold rounded-lg border transition-all ${reasonForRequest === option 
                                             ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)] shadow-sm' 
                                             : 'bg-white dark:bg-[#15171e] text-gray-500 border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}
