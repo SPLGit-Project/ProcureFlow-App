@@ -45,10 +45,21 @@ export default function PwaInstaller() {
       setUserEngaged(true);
     }
 
-    // Capture install prompt
-    const handleBeforeInstallPrompt = (e: Event) => {
+    // Capture install prompt (Fix H5: single listener — PWAInstallPrompt.tsx has been removed)
+    // Fix H5/Edge: verify SW is active before storing the prompt to prevent Edge compat issues
+    const handleBeforeInstallPrompt = async (e: Event) => {
       console.log('PWA: beforeinstallprompt fired');
       e.preventDefault();
+
+      // Edge pre-condition: only defer prompt if service worker is active
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg?.active) {
+          console.warn('PWA: Service worker not active yet, install prompt skipped.');
+          return;
+        }
+      }
+
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       
       // Show banner if not hidden by user and user is engaged
@@ -64,20 +75,25 @@ export default function PwaInstaller() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // For iOS (no beforeinstallprompt) - show floating button immediately if not standalone and not hidden
+    // iOS floating button shown at mount (banner triggered separately by userEngaged effect below)
     if (isIosDevice && !isStandaloneMode && !promptHidden) {
         setShowFloatingButton(true);
-        // Only show banner after user engagement
-        if (userEngaged) {
-            setShowBanner(true);
-        }
     }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       clearTimeout(engagementTimer);
     };
-  }, [userEngaged, promptHidden]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Mount only — engagement tracked separately below
+
+  // Fix M3: Dedicated effect for iOS banner — fires AFTER userEngaged becomes true.
+  // Previously this was inside the mount effect, where userEngaged was always false.
+  useEffect(() => {
+    if (isIOS && !isStandalone && !promptHidden && userEngaged) {
+      setShowBanner(true);
+    }
+  }, [isIOS, isStandalone, promptHidden, userEngaged]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;

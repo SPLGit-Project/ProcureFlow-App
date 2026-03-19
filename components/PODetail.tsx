@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabaseClient.ts';
 import { v4 as uuidv4 } from 'uuid';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage';
+import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 
 const PO_DETAIL_EDIT_DRAFT_VERSION = 1;
 const PO_DETAIL_EDIT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -61,6 +62,8 @@ const PODetail = () => {
   const addItemPickerRef = useRef<HTMLDivElement>(null);
   const editDraftKey = currentUser?.id && id ? `pf_draft:${currentUser.id}:po-edit:${id}` : '';
   const didRestoreEditDraftRef = useRef(false);
+
+  const { isSubmitting, guardedSubmit } = useSubmitGuard();
 
   useEffect(() => {
     didRestoreEditDraftRef.current = false;
@@ -750,10 +753,10 @@ const PODetail = () => {
                        </button>
                    ) : (
                        <>
-                       <button type="button" onClick={handleSavePendingEdits} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm" title="Save pending request changes">
+                       <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(handleSavePendingEdits)} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm disabled:opacity-50" title="Save pending request changes">
                            <Save size={18} />
                        </button>
-                       <button type="button" onClick={handleCancelEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors" title="Cancel edit">
+                       <button disabled={isSubmitting} type="button" onClick={handleCancelEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors disabled:opacity-50" title="Cancel edit">
                            <XCircle size={18} />
                        </button>
                        </>
@@ -771,10 +774,10 @@ const PODetail = () => {
                )}
               {canApprove && (
                   <>
-                    <button type="button" onClick={() => handleApproval(false)} className="flex-1 lg:flex-none justify-center px-4 py-2.5 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-2 font-medium">
+                    <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(() => handleApproval(false))} className="flex-1 lg:flex-none justify-center px-4 py-2.5 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-2 font-medium disabled:opacity-50">
                         <XCircle size={18} /> Reject
                     </button>
-                    <button type="button" onClick={() => handleApproval(true)} className="flex-1 lg:flex-none justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium">
+                    <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(() => handleApproval(true))} className="flex-1 lg:flex-none justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium disabled:opacity-50">
                         <CheckCircle size={18} /> Approve
                     </button>
                   </>
@@ -804,19 +807,19 @@ const PODetail = () => {
                   </button>
               )}
               {canClose && (
-                  <button type="button" onClick={handleCompletePO} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium">
+                  <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(handleCompletePO)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium disabled:opacity-50">
                       <CheckCircle size={18} /> Complete Order
                   </button>
               )}
 
               {po.status === 'VARIANCE_PENDING' && hasPermission('approve_requests') && (
-                   <button type="button" onClick={() => updatePOStatus(po.id, 'RECEIVED', {
+                   <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(() => updatePOStatus(po.id, 'RECEIVED', {
                        id: `ev-${Date.now()}`,
                        action: 'APPROVED',
                        approverName: currentUser?.name || 'Admin',
                        date: new Date().toISOString().split('T')[0],
                        comments: 'Variance Approved'
-                   })} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 flex items-center gap-2 shadow-lg shadow-amber-500/20 font-medium animate-pulse">
+                   }))} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 flex items-center gap-2 shadow-lg shadow-amber-500/20 font-medium animate-pulse disabled:opacity-50 disabled:animate-none">
                        <CheckCircle size={18} /> Approve Variance
                    </button>
               )}

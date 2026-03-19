@@ -494,7 +494,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         } finally {
             if (!silent) setIsLoadingData(false);
         }
-    }, [activeSiteIds, qaMode, mockPosWithSiteIds]);
+    }, [activeSiteIds, qaMode, mockPosWithSiteIds, isAuthenticated, currentUser?.id]);
 
     // Trigger reload when active site changes
     useEffect(() => {
@@ -972,8 +972,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 }
 
                 if (userData.status === 'APPROVED') {
-                    // Use force reload to ensure data is fetched with the correct site context
-                    reloadData(silent, true);
+                    // State changes (isAuthenticated, activeSiteIds) will automatically trigger reloadData 
+                    // via the useEffect hook, preventing race conditions from overlapping fetches.
                     logAction('USER_LOGIN', { email: userData.email, userId: userData.id });
                 } else {
                     logAction('USER_LOGIN_PENDING_APPROVAL', { email: userData.email, userId: userData.id });

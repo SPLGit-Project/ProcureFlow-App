@@ -194,6 +194,15 @@ export const db = {
     },
 
     deleteSite: async (id: string): Promise<void> => {
+        // Orphan guard (Fix F6): block delete if active POs reference this site
+        const { count, error: countErr } = await supabase
+            .from('po_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('site_id', id);
+        if (countErr) throw countErr;
+        if (count && count > 0) {
+            throw new Error(`Cannot delete site: ${count} purchase request(s) are linked to it. Reassign or archive them first.`);
+        }
         const { error } = await supabase.from('sites').delete().eq('id', id);
         if (error) throw error;
     },
@@ -238,6 +247,15 @@ export const db = {
     },
 
     deleteSupplier: async (id: string): Promise<void> => {
+        // Orphan guard (Fix F6): block delete if active POs reference this supplier
+        const { count, error: countErr } = await supabase
+            .from('po_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('supplier_id', id);
+        if (countErr) throw countErr;
+        if (count && count > 0) {
+            throw new Error(`Cannot delete supplier: ${count} purchase request(s) are linked to it. Close or reassign them first.`);
+        }
         const { error } = await supabase.from('suppliers').delete().eq('id', id);
         if (error) throw error;
     },
@@ -575,6 +593,7 @@ export const db = {
             reasonForRequest: p.reason_for_request,
             customerName: p.customer_name,
             concurRequestNumber: p.concur_request_number,
+            concurPoNumber: Array.from(new Set((p.po_lines || []).map((l: any) => l.concur_po_number).filter(Boolean))).join(', ') || undefined,
             comments: p.comments
         }));
     },
@@ -639,34 +658,12 @@ export const db = {
     },
 
     deletePO: async (id: string): Promise<void> => {
-        // 1. Get deliveries to find delivery lines
-        const { data: deliveries } = await supabase.from('deliveries').select('id').eq('po_request_id', id);
-        
-        if (deliveries && deliveries.length > 0) {
-            const deliveryIds = deliveries.map(d => d.id);
-            // Delete delivery lines
-            const { error: dlError } = await supabase.from('delivery_lines').delete().in('delivery_id', deliveryIds);
-            if (dlError) throw dlError;
-            
-            // Delete deliveries
-            const { error: dError } = await supabase.from('deliveries').delete().in('id', deliveryIds);
-            if (dError) throw dError;
-        }
-
-        // 2. Delete PO lines
-        const { error: plError } = await supabase.from('po_lines').delete().eq('po_request_id', id);
-        if (plError) throw plError;
-
-        // 3. Delete Approvals
-        const { error: aError } = await supabase.from('po_approvals').delete().eq('po_request_id', id);
-        if (aError) throw aError;
-        
-        // 4. Delete Notifications (if any relate to this PO directly, though schema might just be loose JSON)
-        // Skipping specific notification cleanup as it's often log-based, unless there's a specific FK.
-
-        // 5. Delete PO Request
-        const { error: poError } = await supabase.from('po_requests').delete().eq('id', id);
-        if (poError) throw poError;
+        // Delegates to the server-side RPC which runs all cascade deletes
+        // atomically inside a single PostgreSQL transaction (Fix F1).
+        // The RPC also enforces: auth ownership, status guard (non-admins can only
+        // delete DRAFT/PENDING), and writes an audit log entry.
+        const { error } = await supabase.rpc('delete_po_and_cascade', { p_po_id: id });
+        if (error) throw error;
     },
 
     deleteNotificationRule: async (id: string): Promise<void> => {
@@ -705,7 +702,12 @@ export const db = {
     },
 
     markNotificationRead: async (id: string): Promise<void> => {
-        await supabase.from('user_notifications').update({ is_read: true }).eq('id', id);
+        // Fix M1: surface error rather than silently discarding it
+        const { error } = await supabase
+            .from('user_notifications')
+            .update({ is_read: true })
+            .eq('id', id);
+        if (error) console.warn('markNotificationRead failed (non-fatal):', error);
     },
 
     createPO: async (po: PORequest): Promise<string> => {
@@ -746,16 +748,17 @@ export const db = {
             if (lErr) throw lErr;
         }
 
-        // 3. Insert History 
+        // 3. Insert History (Fix F2: error is now checked — was silently dropped before)
         if (po.approvalHistory && po.approvalHistory.length > 0) {
              const approval = po.approvalHistory[0];
-             await supabase.from('po_approvals').insert({
+             const { error: aErr } = await supabase.from('po_approvals').insert({
                  po_request_id: po.id,
                  approver_name: approval.approverName,
                  action: approval.action,
                  date: approval.date,
                  comments: approval.comments
              });
+             if (aErr) throw aErr;
         }
         
         return data?.display_id || po.id;
@@ -829,7 +832,7 @@ export const db = {
             quantity_ordered: line.quantityOrdered,
             unit_price: line.unitPrice,
             total_price: line.totalPrice,
-            concur_po_number: line.concurPoNumber
+            concur_po_number: line.concurPoNumber || updates.concurPoNumber
         }));
 
         const { error: rpcError } = await supabase.rpc('update_pending_po_request', {
@@ -941,18 +944,14 @@ export const db = {
             };
          });
          
-         const { error: delError } = await supabase
-            .from('stock_snapshots')
-            .delete()
-            .eq('supplier_id', supplierId)
-            .eq('snapshot_date', date);
-            
-         if (delError) {
-             console.error('Failed to clear previous stock snapshots', delError);
-             throw delError;
-         }
-
-         const { error } = await supabase.from('stock_snapshots').insert(rows);
+         // Fix F3/H2: Delegate to the replace_stock_snapshot RPC which runs the
+         // DELETE and all INSERTs inside a single atomic PostgreSQL transaction.
+         // If any INSERT fails, the previous snapshot data is preserved.
+         const { error } = await supabase.rpc('replace_stock_snapshot', {
+             p_supplier_id: supplierId,
+             p_date: date,
+             p_rows: rows
+         });
          if (error) throw error;
     },
 
@@ -1264,6 +1263,16 @@ export const db = {
     },
 
     deleteItem: async (itemId: string): Promise<void> => {
+        // Fix F6/H3: Orphan guard — prevent deleting items that are referenced by active PO lines.
+        // This mirrors the same pattern used in deleteSite/deleteSupplier.
+        const { count: poCount } = await supabase
+            .from('po_lines')
+            .select('id', { count: 'exact', head: true })
+            .eq('item_id', itemId);
+        if (poCount && poCount > 0) {
+            throw new Error(`Cannot delete this item — it is referenced by ${poCount} PO line(s). Archive the item instead.`);
+        }
+
         const { error } = await supabase.from('items').delete().eq('id', itemId);
         if (error) throw error;
     },

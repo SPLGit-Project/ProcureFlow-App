@@ -25,6 +25,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
+import { useSubmitGuard } from '../utils/useSubmitGuard';
 
 const PRICE_MATCH_TOLERANCE = 0.0001;
 const PO_CREATE_DRAFT_VERSION = 1;
@@ -84,6 +85,8 @@ const POCreate = () => {
       reloadData();
   }, [reloadData]);
 
+  const { isSubmitting, guardedSubmit } = useSubmitGuard();
+
   // Header State
   const [selectedSiteId, setSelectedSiteId] = useState(initialDraft?.selectedSiteId || '');
   const [selectedSupplierId, setSelectedSupplierId] = useState(initialDraft?.selectedSupplierId || '');
@@ -125,6 +128,9 @@ const POCreate = () => {
     if (!selectedSupplierId) return;
     if (suppliers.some(supplier => supplier.id === selectedSupplierId)) return;
     setSelectedSupplierId('');
+    setCart([]);
+    setQuantityDrafts({});
+    setSelectedDetailItem(null);
   }, [selectedSupplierId, suppliers]);
 
   const selectedSite = sites.find(s => s.id === selectedSiteId);
@@ -444,7 +450,7 @@ const POCreate = () => {
   };
 
   const handleSubmit = async () => {
-    if (!selectedSupplier || !selectedSite || cart.length === 0) return;
+    if (!currentUser || !selectedSupplier || !selectedSite || cart.length === 0) return;
 
     const archivedCartLines = cart.filter(line => !activeItemIds.has(line.itemId));
     if (archivedCartLines.length > 0) {
@@ -498,6 +504,8 @@ const POCreate = () => {
     if (!didCreate) return;
 
     clearDraft(draftKey);
+    setIsMobileCartOpen(false);
+    setSelectedDetailItem(null);
     navigate('/requests');
   };
 
@@ -524,13 +532,13 @@ const POCreate = () => {
                                      <p className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-0.5">{line.priceOptionLabel}</p>
                                  )}
                              </div>
-                             <button onClick={() => removeFromCart(line.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1"><Trash2 size={16}/></button>
+                             <button type="button" onClick={() => removeFromCart(line.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1"><Trash2 size={16}/></button>
                          </div>
                          
                          <div className="flex items-end justify-between gap-4">
                              <div className="flex items-center gap-3">
                                 <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-[#15171e]">
-                                    <button onClick={() => updateQuantity(line.id, -1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Minus size={14}/></button>
+                                    <button type="button" onClick={() => updateQuantity(line.id, -1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Minus size={14}/></button>
                                     <input
                                         type="text"
                                         inputMode="numeric"
@@ -546,7 +554,7 @@ const POCreate = () => {
                                         }}
                                         className="w-16 text-center text-sm font-semibold text-gray-900 dark:text-white bg-transparent outline-none"
                                     />
-                                    <button onClick={() => updateQuantity(line.id, 1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Plus size={14}/></button>
+                                    <button type="button" onClick={() => updateQuantity(line.id, 1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Plus size={14}/></button>
                                 </div>
                              </div>
                              
@@ -580,11 +588,11 @@ const POCreate = () => {
                  </span>
              </div>
              <button 
-               onClick={handleSubmit}
-               disabled={cart.length === 0}
+               onClick={() => guardedSubmit(handleSubmit)}
+               disabled={cart.length === 0 || isSubmitting}
                className="w-full bg-[var(--color-brand)] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
              >
-                Submit Request <ArrowRight size={18} />
+                {isSubmitting ? 'Submitting...' : <>Submit Request <ArrowRight size={18} /></>}
              </button>
          </div>
       </div>
@@ -667,7 +675,7 @@ const POCreate = () => {
                  <span className="text-xs text-gray-400 hidden sm:inline-block opacity-0 group-hover:opacity-100 transition-opacity">
                      {isHeaderExpanded ? 'Collapse' : 'Expand'}
                  </span>
-                 <button className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-500 transition-colors">
+                 <button type="button" className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-500 transition-colors">
                      {isHeaderExpanded ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
                  </button>
              </div>
@@ -741,6 +749,7 @@ const POCreate = () => {
                                  {['Depletion', 'New Customer', 'Other'].map(option => (
                                      <button
                                         key={option}
+                                        type="button"
                                         onClick={() => setReasonForRequest(option as any)}
                                         className={`py-2 px-1 text-xs font-bold rounded-lg border transition-all ${reasonForRequest === option 
                                             ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)] shadow-sm' 
@@ -793,13 +802,13 @@ const POCreate = () => {
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
                         />
-                        <button onClick={() => setIsCatalogExpanded(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
+                        <button type="button" onClick={() => setIsCatalogExpanded(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
                             <ChevronLeft size={18}/>
                         </button>
                     </>
                 ) : (
                     <div className="flex flex-col items-center gap-6">
-                        <button onClick={(e) => { e.stopPropagation(); setIsCatalogExpanded(true); }} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setIsCatalogExpanded(true); }} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
                             <ChevronRight size={20}/>
                         </button>
                          <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>
@@ -844,7 +853,8 @@ const POCreate = () => {
                                )}
                                <span className="text-[10px] text-gray-400 uppercase">{item.uom || 'Unit'}</span>
                            </div>
-                           <button 
+                           <button
+                                type="button"
                                 className="bg-gray-50 dark:bg-[#2b2d3b] text-[var(--color-brand)] border border-gray-200 dark:border-gray-600 rounded-lg p-2 shadow-sm hover:bg-[var(--color-brand)] hover:text-white hover:border-[var(--color-brand)] transition-all"
                             >
                                 <Plus size={18} />
@@ -870,7 +880,7 @@ const POCreate = () => {
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">{selectedDetailItem.name}</h3>
                             <p className="text-sm text-gray-500 font-mono mt-1">{selectedDetailItem.sku} • {selectedDetailItem.category}</p>
                         </div>
-                        <button onClick={() => setSelectedDetailItem(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        <button type="button" onClick={() => setSelectedDetailItem(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                             <X size={20} />
                         </button>
                     </div>
@@ -957,7 +967,8 @@ const POCreate = () => {
                              <div className="w-1/3">
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Quantity</label>
                                 <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#15171e] shadow-sm">
-                                    <button 
+                                    <button
+                                        type="button"
                                         onClick={() => setModalQuantity(Math.max(1, modalQuantity - 1))}
                                         className="p-2.5 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500 transition-colors"
                                     >
@@ -969,7 +980,8 @@ const POCreate = () => {
                                         value={modalQuantity}
                                         onChange={e => setModalQuantity(Math.max(1, parseInt(e.target.value) || 0))}
                                     />
-                                    <button 
+                                    <button
+                                        type="button"
                                         onClick={() => setModalQuantity(modalQuantity + 1)}
                                         className="p-2.5 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500 transition-colors"
                                     >
@@ -981,13 +993,15 @@ const POCreate = () => {
                     </div>
 
                     <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 grid grid-cols-2 gap-3">
-                        <button 
+                        <button
+                            type="button"
                             onClick={() => setSelectedDetailItem(null)}
                             className="btn-secondary w-full justify-center"
                         >
                             Cancel
                         </button>
-                        <button 
+                        <button
+                            type="button"
                             onClick={handleModalAdd}
                             className="btn-primary w-full justify-center flex items-center gap-2"
                         >
@@ -1008,13 +1022,13 @@ const POCreate = () => {
                         </h3>
                         <div className="flex items-center gap-2 shrink-0">
                             <span className="text-xs font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 px-2.5 py-1 rounded-full">{cart.length}</span>
-                            <button onClick={() => setIsCartExpanded(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
+                            <button type="button" onClick={() => setIsCartExpanded(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
                                 <ChevronRight size={18}/>
                             </button>
                         </div>
                     </>
                 ) : (
-                    <button onClick={() => setIsCartExpanded(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
+                    <button type="button" onClick={() => setIsCartExpanded(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
                         <ChevronLeft size={20}/>
                     </button>
                 )}
@@ -1072,12 +1086,13 @@ const POCreate = () => {
                           ${cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </div>
                   </button>
-                  <button 
-                      onClick={handleSubmit}
-                      disabled={cart.length === 0}
+                  <button
+                      type="button"
+                      onClick={() => guardedSubmit(handleSubmit)}
+                      disabled={cart.length === 0 || isSubmitting}
                       className="w-full bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none"
                   >
-                      Review
+                      {isSubmitting ? 'Submitting...' : 'Submit'}
                   </button>
               </div>
           </div>
@@ -1090,7 +1105,7 @@ const POCreate = () => {
               <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-[#1e2029] rounded-t-2xl shadow-2xl h-[85vh] flex flex-col transition-transform transform translate-y-0 pb-safe">
                   <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between shrink-0">
                       <h3 className="font-bold text-lg text-gray-900 dark:text-white">Current Order</h3>
-                      <button onClick={() => setIsMobileCartOpen(false)} className="p-2 bg-gray-100 dark:bg-white/10 rounded-full"><X size={18}/></button>
+                      <button type="button" onClick={() => setIsMobileCartOpen(false)} className="p-2 bg-gray-100 dark:bg-white/10 rounded-full"><X size={18}/></button>
                   </div>
                   <CartContent />
               </div>

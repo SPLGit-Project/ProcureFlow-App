@@ -4,6 +4,7 @@ import { DeliveryHeader, DeliveryLineItem, PORequest, User, POLineItem, Item } f
 import { X, AlertTriangle, CheckSquare, Square, Plus, Search } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
+import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 
 interface Props {
     po: PORequest;
@@ -25,6 +26,8 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const searchRef = useRef<HTMLDivElement>(null);
+
+    const { isSubmitting, guardedSubmit } = useSubmitGuard();
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -104,31 +107,29 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const deliveryLines: DeliveryLineItem[] = Object.entries(receipts)
-            .filter(([_, qty]) => (qty as number) > 0)
-            .map(([lineId, qty]) => ({
+        guardedSubmit(() => {
+            const deliveryLines: DeliveryLineItem[] = Object.entries(receipts)
+                .filter(([_, qty]) => (qty as number) > 0)
+                .map(([lineId, qty]) => ({
+                    id: uuidv4(),
+                    poLineId: lineId,
+                    quantity: qty as number,
+                    isCapitalised: false, 
+                    invoiceNumber: '' 
+                }));
+
+            if (deliveryLines.length === 0 && closedLines.size === 0) return;
+
+            const header: DeliveryHeader = {
                 id: uuidv4(),
-                poLineId: lineId,
-                quantity: qty as number,
-                isCapitalised: false, 
-                invoiceNumber: '' 
-            }));
-
-        // Allow submitting short-closes even if qty is 0? 
-        // If I want to close a line without receiving anything:
-        // Then deliveryLines might be empty for that line, but we still pass closedLineIds.
-        
-        if (deliveryLines.length === 0 && closedLines.size === 0) return;
-
-        const header: DeliveryHeader = {
-            id: uuidv4(),
-            date,
-            docketNumber,
-            receivedBy: currentUser.name,
-            lines: deliveryLines
-        };
-        
-        onSubmit(header, Array.from(closedLines), additionalLines);
+                date,
+                docketNumber,
+                receivedBy: currentUser.name,
+                lines: deliveryLines
+            };
+            
+            onSubmit(header, Array.from(closedLines), additionalLines);
+        });
     };
 
     return (
@@ -349,14 +350,14 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                         <button type="button" onClick={onClose} className="px-5 py-2.5 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors">Cancel</button>
                         <button 
                             type="submit" 
-                            disabled={Object.values(receipts).every(v => v === 0) && closedLines.size === 0}
+                            disabled={isSubmitting || (Object.values(receipts).every(v => v === 0) && closedLines.size === 0)}
                             className={`px-6 py-2.5 font-bold rounded-xl hover:opacity-90 shadow-lg disabled:opacity-50 disabled:shadow-none transition-all active:scale-95 flex items-center gap-2 ${
                                 hasAnyVariance 
                                     ? 'bg-amber-500 text-white' 
                                     : 'bg-[var(--color-brand)] text-white'
                             }`}
                         >
-                            {hasAnyVariance ? (
+                            {isSubmitting ? 'Submitting...' : hasAnyVariance ? (
                                 <>Submit for Approval <AlertTriangle size={16}/></>
                             ) : (
                                 'Confirm Receipt'

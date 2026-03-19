@@ -43,8 +43,8 @@ export default function UpdateToast() {
   const initialVersion = useRef<string | null>(
     (import.meta.env.VITE_APP_VERSION as string) || null
   );
-  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const checkInterval = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissTimer = useRef<number | null>(null);
+  const checkInterval = useRef<number | null>(null);
 
   // Theme-aware styling
   const isDark = branding.sidebarTheme === 'dark' || 
@@ -73,8 +73,8 @@ export default function UpdateToast() {
         setIsVisible(true);
 
         // Auto-dismiss timer
-        if (dismissTimer.current) clearTimeout(dismissTimer.current);
-        dismissTimer.current = setTimeout(() => {
+        if (dismissTimer.current) window.clearTimeout(dismissTimer.current);
+        dismissTimer.current = window.setTimeout(() => {
           setIsVisible(false);
         }, AUTO_DISMISS_MS);
       }
@@ -137,8 +137,8 @@ export default function UpdateToast() {
   const dismiss = useCallback(() => {
     setIsVisible(false);
     if (dismissTimer.current) {
-      clearTimeout(dismissTimer.current);
-      dismissTimer.current = null;
+        window.clearTimeout(dismissTimer.current);
+        dismissTimer.current = null;
     }
   }, []);
 
@@ -147,10 +147,10 @@ export default function UpdateToast() {
    */
   useEffect(() => {
     // Initial check after short delay
-    const initialCheck = setTimeout(checkForUpdates, 2000);
+    const initialCheck = window.setTimeout(checkForUpdates, 2000);
 
     // Periodic checks
-    checkInterval.current = setInterval(checkForUpdates, CHECK_INTERVAL_MS);
+    checkInterval.current = window.setInterval(checkForUpdates, CHECK_INTERVAL_MS);
 
     // Check when tab becomes visible
     const handleVisibility = () => {
@@ -165,9 +165,9 @@ export default function UpdateToast() {
     window.addEventListener('focus', handleFocus);
 
     return () => {
-      clearTimeout(initialCheck);
-      if (checkInterval.current) clearInterval(checkInterval.current);
-      if (dismissTimer.current) clearTimeout(dismissTimer.current);
+      window.clearTimeout(initialCheck);
+      if (checkInterval.current) window.clearInterval(checkInterval.current);
+      if (dismissTimer.current) window.clearTimeout(dismissTimer.current);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleFocus);
     };

@@ -3,9 +3,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import Layout from './components/Layout';
 import Login from './components/Login';
-import OnboardingWizard from './components/OnboardingWizard';
+import PendingApproval from './components/PendingApproval';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import InviteLanding from './components/InviteLanding';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Register Service Worker
 if ('serviceWorker' in navigator) {
@@ -64,11 +65,12 @@ function App() {
   return (
     <AppProvider>
       <PWAInstallPrompt />
+      <ErrorBoundary>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/invite" element={<InviteLanding />} />
-          <Route path="/pending-approval" element={<OnboardingWizard />} />
+          <Route path="/pending-approval" element={<PendingApproval />} />
           
           <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
             <Route index element={<Suspense fallback={<LoadingSpinner />}><Dashboard /></Suspense>} />
@@ -90,6 +92,7 @@ function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </ErrorBoundary>
     </AppProvider>
   );
 }
