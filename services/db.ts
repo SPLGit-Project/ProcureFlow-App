@@ -1483,7 +1483,14 @@ export const db = {
     },
 
     linkConcurRequest: async (poId: string, concurRequestNumber: string): Promise<void> => {
-        const { error } = await supabase.from('po_requests').update({ concur_request_number: concurRequestNumber }).eq('id', poId);
+        const trimmedRequestNumber = concurRequestNumber.trim();
+        const { error } = await supabase
+            .from('po_requests')
+            .update({
+                concur_request_number: trimmedRequestNumber,
+                status: 'APPROVED_PENDING_CONCUR'
+            })
+            .eq('id', poId);
         if (error) throw error;
     },
 

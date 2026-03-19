@@ -1873,25 +1873,27 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const linkConcurRequest = async (poId: string, concurRequestNumber: string) => {
-      if (!concurRequestNumber.trim()) {
+      const trimmedRequestNumber = concurRequestNumber.trim();
+
+      if (!trimmedRequestNumber) {
           alert('Please enter a valid Concur Request number.');
           return;
       }
 
       setPos(prev => prev.map(p => {
           if (p.id !== poId) return p;
-          return { ...p, concurRequestNumber, status: 'APPROVED_PENDING_CONCUR' };
+          return { ...p, concurRequestNumber: trimmedRequestNumber, status: 'APPROVED_PENDING_CONCUR' };
       }));
       
       try {
-          await db.linkConcurRequest(poId, concurRequestNumber);
-          await db.updatePOStatus(poId, 'APPROVED_PENDING_CONCUR'); 
-          logAction('PO_CONCUR_REQUEST_LINKED', { poId, concurRequestNumber });
+          await db.linkConcurRequest(poId, trimmedRequestNumber);
+          await reloadData(true, true);
+          logAction('PO_CONCUR_REQUEST_LINKED', { poId, concurRequestNumber: trimmedRequestNumber });
       } catch (e) {
           console.error('Failed to link Concur Request:', e);
           alert(`Failed to link Concur Request: ${e instanceof Error ? e.message : 'Unknown error'}`);
-          reloadData();
-          logAction('PO_CONCUR_REQUEST_LINK_FAILED', { poId, concurRequestNumber, error: (e as Error).message });
+          reloadData(true, true);
+          logAction('PO_CONCUR_REQUEST_LINK_FAILED', { poId, concurRequestNumber: trimmedRequestNumber, error: (e as Error).message });
       }
   };
 
