@@ -2,47 +2,128 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
-import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin } from 'lucide-react';
-import { PORequest } from '../types.ts';
+import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin, Download, CalendarRange, FunnelX } from 'lucide-react';
+import { PORequest, POStatus } from '../types.ts';
+import {
+    buildActiveRequestsCsv,
+    filterActiveRequests,
+    formatActiveRequestStatus,
+    getActiveRequests,
+    normalizeActiveRequestDateValue,
+    type ActiveRequestFilterMode
+} from '../utils/activeRequests.ts';
+
+type StatusOption = {
+    value: 'ALL' | POStatus;
+    label: string;
+};
+
+const ACTIVE_REQUEST_STATUS_OPTIONS: StatusOption[] = [
+    { value: 'ALL', label: 'All statuses' },
+    { value: 'APPROVED_PENDING_CONCUR_REQUEST', label: 'Pending Concur Req' },
+    { value: 'APPROVED_PENDING_CONCUR', label: 'Pending Concur PO' },
+    { value: 'ACTIVE', label: 'Active Linked' }
+];
+
+const toDateInputValue = (value: string | null) => value ?? '';
 
 const ActiveRequestsView = () => {
     const { pos, isLoadingData, linkConcurPO, linkConcurRequest, currentUser: _currentUser } = useApp();
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterMode, setFilterMode] = useState<'PENDING' | 'ACTIVE' | 'ALL'>('ALL'); // Improved filter state
-    
+    const [filterMode, setFilterMode] = useState<ActiveRequestFilterMode>('ALL');
+    const [selectedSite, setSelectedSite] = useState('ALL');
+    const [selectedStatus, setSelectedStatus] = useState<'ALL' | POStatus>('ALL');
+    const [fromDate, setFromDate] = useState<string | null>(null);
+    const [toDate, setToDate] = useState<string | null>(null);
+
     // Modal State
     const [isConcurModalOpen, setIsConcurModalOpen] = useState(false);
     const [isConcurRequestModalOpen, setIsConcurRequestModalOpen] = useState(false);
     const [selectedPO, setSelectedPO] = useState<PORequest | null>(null);
 
+    const activeRequests = useMemo(() => getActiveRequests(pos), [pos]);
+
+    const siteOptions = useMemo(() => {
+        const options = Array.from(new Set(activeRequests.map((po) => (po.site || 'Unknown').trim() || 'Unknown'))).sort((a, b) => a.localeCompare(b));
+        return ['ALL', ...options];
+    }, [activeRequests]);
+
     const filteredPOs = useMemo(() => {
-        return pos.filter(po => {
-            // Status Filter Logic
-            const isPendingConcurPO = po.status === 'APPROVED_PENDING_CONCUR';
-            const isPendingConcurReq = po.status === 'APPROVED_PENDING_CONCUR_REQUEST';
-            const isPendingConcur = isPendingConcurPO || isPendingConcurReq;
-            const isActive = po.status === 'ACTIVE';
-            
-            if (filterMode === 'PENDING' && !isPendingConcur) return false;
-            if (filterMode === 'ACTIVE' && !isActive) return false;
-            if (filterMode === 'ALL' && !isPendingConcur && !isActive) return false;
+        return filterActiveRequests(activeRequests, {
+            filterMode,
+            searchTerm,
+            selectedSite,
+            selectedStatus,
+            fromDate: normalizeActiveRequestDateValue(toDateInputValue(fromDate)),
+            toDate: normalizeActiveRequestDateValue(toDateInputValue(toDate))
+        });
+    }, [activeRequests, searchTerm, filterMode, selectedSite, selectedStatus, fromDate, toDate]);
 
-            // Search Filter
-            if (searchTerm) {
-                const searchLower = searchTerm.toLowerCase();
-                return (
-                    (po.displayId || po.id).toLowerCase().includes(searchLower) ||
-                    po.supplierName.toLowerCase().includes(searchLower) ||
-                    po.requesterName.toLowerCase().includes(searchLower) ||
-                    (po.site || '').toLowerCase().includes(searchLower) ||
-                    po.totalAmount.toString().includes(searchLower)
-                );
-            }
+    const hasActiveFilters = Boolean(
+        searchTerm.trim() ||
+        selectedSite !== 'ALL' ||
+        selectedStatus !== 'ALL' ||
+        fromDate ||
+        toDate ||
+        filterMode !== 'ALL'
+    );
 
-            return true;
-        }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
-    }, [pos, searchTerm, filterMode]);
+    const applyQuickDateRange = (mode: 'TODAY' | 'LAST_7' | 'THIS_MONTH' | 'CLEAR') => {
+        const today = new Date();
+        const pad = (value: number) => String(value).padStart(2, '0');
+        const toLocalDate = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+        if (mode === 'CLEAR') {
+            setFromDate(null);
+            setToDate(null);
+            return;
+        }
+
+        if (mode === 'TODAY') {
+            const todayValue = toLocalDate(today);
+            setFromDate(todayValue);
+            setToDate(todayValue);
+            return;
+        }
+
+        if (mode === 'LAST_7') {
+            const start = new Date(today);
+            start.setDate(today.getDate() - 6);
+            setFromDate(toLocalDate(start));
+            setToDate(toLocalDate(today));
+            return;
+        }
+
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        setFromDate(toLocalDate(monthStart));
+        setToDate(toLocalDate(today));
+    };
+
+    const resetFilters = () => {
+        setSearchTerm('');
+        setFilterMode('ALL');
+        setSelectedSite('ALL');
+        setSelectedStatus('ALL');
+        setFromDate(null);
+        setToDate(null);
+    };
+
+    const exportFilteredCsv = () => {
+        if (filteredPOs.length === 0) return;
+        const csv = buildActiveRequestsCsv(filteredPOs);
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const dateSuffix = new Date().toISOString().split('T')[0];
+        link.href = url;
+        link.setAttribute('download', `active-requests-${dateSuffix}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
 
     const handleOpenConcurRequestModal = (po: PORequest) => {
         setSelectedPO(po);
@@ -113,8 +194,8 @@ const ActiveRequestsView = () => {
             </div>
 
             {/* Filters */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="relative md:col-span-3">
+            <div className="space-y-4 mb-6">
+                <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                     <input 
                         type="text" 
@@ -123,6 +204,120 @@ const ActiveRequestsView = () => {
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
+                </div>
+
+                <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+                    <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 flex-1">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Site</label>
+                                <select
+                                    value={selectedSite}
+                                    onChange={(e) => setSelectedSite(e.target.value)}
+                                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#15171e] text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+                                >
+                                    {siteOptions.map((site) => (
+                                        <option key={site} value={site}>
+                                            {site === 'ALL' ? 'All sites' : site}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Status</label>
+                                <select
+                                    value={selectedStatus}
+                                    onChange={(e) => setSelectedStatus(e.target.value as 'ALL' | POStatus)}
+                                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#15171e] text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+                                >
+                                    {ACTIVE_REQUEST_STATUS_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">From Date</label>
+                                <input
+                                    type="date"
+                                    value={toDateInputValue(fromDate)}
+                                    onChange={(e) => setFromDate(normalizeActiveRequestDateValue(e.target.value))}
+                                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#15171e] text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">To Date</label>
+                                <input
+                                    type="date"
+                                    value={toDateInputValue(toDate)}
+                                    onChange={(e) => setToDate(normalizeActiveRequestDateValue(e.target.value))}
+                                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#15171e] text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-2 xl:justify-end">
+                            <button
+                                type="button"
+                                onClick={exportFilteredCsv}
+                                disabled={filteredPOs.length === 0}
+                                className="px-4 py-2.5 rounded-xl bg-[var(--color-brand)] text-white text-sm font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-95 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
+                            >
+                                <Download size={16} />
+                                Export CSV
+                            </button>
+                            <button
+                                type="button"
+                                onClick={resetFilters}
+                                disabled={!hasActiveFilters}
+                                className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                <FunnelX size={16} />
+                                Clear Filters
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                            <CalendarRange size={16} />
+                            Date filters are inclusive. Choose the same day in both fields to filter a single day.
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => applyQuickDateRange('TODAY')}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 dark:bg-[#15171e] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]"
+                            >
+                                Today
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => applyQuickDateRange('LAST_7')}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 dark:bg-[#15171e] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]"
+                            >
+                                Last 7 Days
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => applyQuickDateRange('THIS_MONTH')}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 dark:bg-[#15171e] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]"
+                            >
+                                This Month
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => applyQuickDateRange('CLEAR')}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-[#15171e] text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]"
+                            >
+                                Clear Dates
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -196,7 +391,7 @@ const ActiveRequestsView = () => {
                                                 ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-900/30' 
                                                 : 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 border-green-200 dark:border-green-900/30'
                                             }`}>
-                                            {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur PO' : po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'Pending Concur Req' : 'Active (Linked)'}
+                                            {formatActiveRequestStatus(po.status)}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
