@@ -1484,18 +1484,19 @@ export const db = {
 
     linkConcurRequest: async (poId: string, concurRequestNumber: string): Promise<void> => {
         const trimmedRequestNumber = concurRequestNumber.trim();
-        const { error } = await supabase
-            .from('po_requests')
-            .update({
-                concur_request_number: trimmedRequestNumber,
-                status: 'APPROVED_PENDING_CONCUR'
-            })
-            .eq('id', poId);
+        const { error } = await supabase.rpc('link_concur_request_number', {
+            p_po_id: poId,
+            p_concur_request_number: trimmedRequestNumber
+        });
         if (error) throw error;
     },
 
-    linkConcurPO: async (poLineId: string, concurPoNumber: string): Promise<void> => {
-        const { error } = await supabase.from('po_lines').update({ concur_po_number: concurPoNumber }).eq('id', poLineId);
+    linkConcurPO: async (poId: string, concurPoNumber: string): Promise<void> => {
+        const trimmedPoNumber = concurPoNumber.trim();
+        const { error } = await supabase.rpc('link_concur_po_number', {
+            p_po_id: poId,
+            p_concur_po_number: trimmedPoNumber
+        });
         if (error) throw error;
     },
 

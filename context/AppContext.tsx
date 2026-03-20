@@ -1898,7 +1898,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const linkConcurPO = async (poId: string, concurPoNumber: string) => {
-      if (!concurPoNumber.trim()) {
+      const trimmedPoNumber = concurPoNumber.trim();
+
+      if (!trimmedPoNumber) {
           alert("Please enter a valid Concur PO number.");
           return;
       }
@@ -1906,48 +1908,21 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       // 1. Optimistic Update (Immediate Feedback)
       setPos(prev => prev.map(p => {
           if (p.id !== poId) return p;
-          const updatedLines = p.lines.map(l => ({ ...l, concurPoNumber }));
+          const updatedLines = p.lines.map(l => ({ ...l, concurPoNumber: trimmedPoNumber }));
           return { ...p, lines: updatedLines, status: 'ACTIVE' as POStatus };
       }));
       
       try {
-          // 2. Locate PO in current state (to get line IDs)
-          let po = pos.find(p => p.id === poId);
-          
-          // Fallback: If stale closure doesn't have PO or its lines (e.g. after skip),
-          // fetch line IDs directly from DB instead of failing.
-          if (!po || !po.lines || po.lines.length === 0) {
-              console.warn("linkConcurPO: PO or lines not found in local state, fetching from DB...");
-              const { data: dbLines, error: dbError } = await supabase
-                  .from('po_lines')
-                  .select('id')
-                  .eq('po_request_id', poId);
-              
-              if (dbError) throw dbError;
-              if (!dbLines || dbLines.length === 0) {
-                  throw new Error("No line items found for this PO. Please refresh and try again.");
-              }
-              
-              // Use a minimal PO-like object with just the line IDs
-              po = { lines: dbLines.map((l: { id: string }) => ({ id: l.id })) } as any;
-          }
-
-          // 3. Persist line-level updates
-          for (const line of po.lines) {
-              await db.linkConcurPO(line.id, concurPoNumber);
-          }
-
-          // 4. Update Header Status
-          await db.updatePOStatus(poId, 'ACTIVE'); 
-          
-          console.log(`Successfully linked Concur PO ${concurPoNumber} to PO ${poId}`);
-          logAction('PO_CONCUR_LINKED', { poId, concurPoNumber });
+          await db.linkConcurPO(poId, trimmedPoNumber);
+          await reloadData(true, true);
+          console.log(`Successfully linked Concur PO ${trimmedPoNumber} to PO ${poId}`);
+          logAction('PO_CONCUR_LINKED', { poId, concurPoNumber: trimmedPoNumber });
       } catch (e) {
           console.error("Failed to link Concur PO:", e);
           alert(`Failed to link Concur PO: ${e instanceof Error ? e.message : 'Unknown error'}`);
           // Revert state
           reloadData();
-          logAction('PO_CONCUR_LINK_FAILED', { poId, concurPoNumber, error: (e as Error).message });
+          logAction('PO_CONCUR_LINK_FAILED', { poId, concurPoNumber: trimmedPoNumber, error: (e as Error).message });
       }
   };
 
