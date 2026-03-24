@@ -1488,7 +1488,7 @@ export const db = {
             p_po_id: poId,
             p_concur_request_number: trimmedRequestNumber
         });
-        if (error) throw error;
+        if (error) throw new Error(error.message || 'Failed to link Concur Request');
     },
 
     linkConcurPO: async (poId: string, concurPoNumber: string): Promise<void> => {
@@ -1497,7 +1497,7 @@ export const db = {
             p_po_id: poId,
             p_concur_po_number: trimmedPoNumber
         });
-        if (error) throw error;
+        if (error) throw new Error(error.message || 'Failed to link Concur PO');
     },
 
     updatePOLines: async (lines: any[]): Promise<void> => {

@@ -767,10 +767,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             // 4. JIT Migration: Link Auth ID if missing
             if (rawData && session.user.id && (!rawData.auth_user_id || rawData.auth_user_id !== session.user.id)) {
                  console.log("Auth: Linking user identity...");
-                 supabase.rpc('link_user_identity').then(({ error }) => {
-                     if (error) console.error("Auth: Failed to link identity", error);
-                     else console.log("Auth: Identity linked successfully.");
-                 });
+                 const { error: linkErr } = await supabase.rpc('link_user_identity');
+                 if (linkErr) console.error("Auth: Failed to link identity", linkErr);
+                 else console.log("Auth: Identity linked successfully.");
             }
 
             // 5. Load Persistent Preferences
@@ -872,6 +871,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
                     const dbUser = {
                         id: session.user.id,
+                        auth_user_id: session.user.id,
                         email: session.user.email || '',
                         name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'Unknown User',
                         role_id: roleToUse,
@@ -1889,11 +1889,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           await db.linkConcurRequest(poId, trimmedRequestNumber);
           await reloadData(true, true);
           logAction('PO_CONCUR_REQUEST_LINKED', { poId, concurRequestNumber: trimmedRequestNumber });
-      } catch (e) {
+      } catch (e: any) {
           console.error('Failed to link Concur Request:', e);
-          alert(`Failed to link Concur Request: ${e instanceof Error ? e.message : 'Unknown error'}`);
+          const msg = e instanceof Error ? e.message : (e.message || 'Unknown error');
+          alert(`Failed to link Concur Request: ${msg}`);
           reloadData(true, true);
-          logAction('PO_CONCUR_REQUEST_LINK_FAILED', { poId, concurRequestNumber: trimmedRequestNumber, error: (e as Error).message });
+          logAction('PO_CONCUR_REQUEST_LINK_FAILED', { poId, concurRequestNumber: trimmedRequestNumber, error: msg });
       }
   };
 
@@ -1917,12 +1918,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           await reloadData(true, true);
           console.log(`Successfully linked Concur PO ${trimmedPoNumber} to PO ${poId}`);
           logAction('PO_CONCUR_LINKED', { poId, concurPoNumber: trimmedPoNumber });
-      } catch (e) {
+      } catch (e: any) {
           console.error("Failed to link Concur PO:", e);
-          alert(`Failed to link Concur PO: ${e instanceof Error ? e.message : 'Unknown error'}`);
+          const msg = e instanceof Error ? e.message : (e.message || 'Unknown error');
+          alert(`Failed to link Concur PO: ${msg}`);
           // Revert state
           reloadData();
-          logAction('PO_CONCUR_LINK_FAILED', { poId, concurPoNumber: trimmedPoNumber, error: (e as Error).message });
+          logAction('PO_CONCUR_LINK_FAILED', { poId, concurPoNumber: trimmedPoNumber, error: msg });
       }
   };
 
