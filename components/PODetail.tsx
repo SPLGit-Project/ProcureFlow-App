@@ -260,7 +260,6 @@ const PODetail = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
   const timelineEvents = useMemo(() => {
     if (!po) return [];
     
@@ -343,14 +342,12 @@ const PODetail = () => {
     return events.sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [po]);
 
-  if (!po) return <div className="p-8 text-primary dark:text-white">PO Not Found</div>;
-
-  const canApprove = hasPermission('approve_requests') && po.status === 'PENDING_APPROVAL';
-  const canLinkConcurRequest = (hasPermission('link_concur') || po.requesterId === currentUser?.id) && po.status === 'APPROVED_PENDING_CONCUR_REQUEST';
-  const canLinkConcur = (hasPermission('link_concur') || po.requesterId === currentUser?.id) && po.status === 'APPROVED_PENDING_CONCUR';
-  const canReceive = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING');
-  const canClose = (hasPermission('receive_goods') || po.requesterId === currentUser?.id) && (po.status === 'ACTIVE' || po.status === 'PARTIALLY_RECEIVED' || po.status === 'RECEIVED');
-  const linesInView = isEditing ? editableLines : po.lines;
+  const canApprove = hasPermission('approve_requests') && po?.status === 'PENDING_APPROVAL';
+  const canLinkConcurRequest = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR_REQUEST';
+  const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR';
+  const canReceive = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'PARTIALLY_RECEIVED' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
+  const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'PARTIALLY_RECEIVED' || po?.status === 'RECEIVED');
+  
   const editDraftSnapshot = useMemo<PODetailEditDraft>(() => ({
     headerEdits,
     editableLines,
@@ -382,6 +379,11 @@ const PODetail = () => {
     setIsEditing(false);
     setEditableLines([]);
   }, [canEditRequest, editDraftKey, isEditing]);
+
+  if (!po) return <div className="p-8 text-primary dark:text-white">PO Not Found</div>;
+
+  const linesInView = isEditing ? editableLines : po.lines;
+
 
 
   const getStepStatus = (step: number) => {
