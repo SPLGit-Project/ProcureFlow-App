@@ -355,6 +355,7 @@ export interface DeliveryHeader {
   date: string;
   docketNumber: string;
   receivedBy: string;
+  receivedById?: string;
   lines: DeliveryLineItem[];
 }
 

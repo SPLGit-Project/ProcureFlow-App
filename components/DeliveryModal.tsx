@@ -125,6 +125,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                 date,
                 docketNumber,
                 receivedBy: currentUser.name,
+                receivedById: currentUser.id,
                 lines: deliveryLines
             };
             

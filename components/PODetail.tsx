@@ -347,6 +347,12 @@ const PODetail = () => {
   const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR';
   const canReceive = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'PARTIALLY_RECEIVED' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
   const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'PARTIALLY_RECEIVED' || po?.status === 'RECEIVED');
+  const isAdmin = currentUser?.role === 'ADMIN';
+  const canEditDeliveries = Boolean(
+    po &&
+    currentUser &&
+    (isAdmin || (hasPermission('receive_goods') && (!po.siteId || currentUser.siteIds.includes(po.siteId))))
+  );
   
   const editDraftSnapshot = useMemo<PODetailEditDraft>(() => ({
     headerEdits,
@@ -617,7 +623,7 @@ const PODetail = () => {
 
   const handleUpdateDeliveryQty = async (lineId: string, val: number) => {
       try {
-          await db.adminUpdateDeliveryLineQty(lineId, val);
+          await db.updateDeliveryLineQty(lineId, val);
           await reloadData(true);
       } catch (e: unknown) {
           console.error(e);
@@ -691,7 +697,6 @@ const PODetail = () => {
 
   const handleDeletePO = async () => {
       if (!po) return;
-      const isAdmin = currentUser?.role === 'ADMIN';
       if (!isAdmin && !canDeletePendingRequest) {
           alert('Only the requester can delete while pending approval.');
           return;
@@ -748,14 +753,14 @@ const PODetail = () => {
             </div>
             
             <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-               {canEditRequest && (
+               {(canEditRequest || canEditDeliveries) && (
                    !isEditing ? (
-                       <button type="button" onClick={handleStartEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors" title="Edit pending request">
+                       <button type="button" onClick={handleStartEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors" title={canEditRequest ? "Edit request" : "Edit deliveries"}>
                            <Edit2 size={18} />
                        </button>
                    ) : (
                        <>
-                       <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(handleSavePendingEdits)} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm disabled:opacity-50" title="Save pending request changes">
+                       <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(canEditRequest ? handleSavePendingEdits : handleCancelEdit)} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm disabled:opacity-50" title={canEditRequest ? "Save changes" : "Finish editing"}>
                            <Save size={18} />
                        </button>
                        <button disabled={isSubmitting} type="button" onClick={handleCancelEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors disabled:opacity-50" title="Cancel edit">
@@ -878,7 +883,7 @@ const PODetail = () => {
                     <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg"><LinkIcon size={16}/></div>
                     <div className="w-full">
                         <p className="text-xs text-secondary uppercase font-bold">Concur PO #</p>
-                        {isEditing ? (
+                        {isEditing && canEditRequest ? (
                             <input 
                                 className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
                                 value={headerEdits.concurPoNumber}
@@ -897,7 +902,7 @@ const PODetail = () => {
                     <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-secondary"><Info size={16}/></div>
                     <div className="w-full">
                         <p className="text-xs text-secondary uppercase font-bold">Reason</p>
-                         {isEditing ? (
+                         {isEditing && canEditRequest ? (
                             <select 
                                 className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
                                 value={headerEdits.reason}
@@ -917,7 +922,7 @@ const PODetail = () => {
                     <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><FileText size={16}/></div>
                     <div className="w-full">
                         <p className="text-xs text-gray-500 uppercase font-bold">Comments</p>
-                         {isEditing ? (
+                         {isEditing && canEditRequest ? (
                             <textarea 
                                 className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
                                 rows={2}
@@ -1209,7 +1214,7 @@ const PODetail = () => {
                                   <td className="px-6 py-4 text-right font-bold text-primary dark:text-white">
                                       ${(line.totalPrice ?? (line.quantityOrdered * line.unitPrice)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </td>
-                                  {isEditing && (
+                                  {isEditing && canEditRequest && (
                                       <td className="px-6 py-4 text-center">
                                           <button
                                               type="button"

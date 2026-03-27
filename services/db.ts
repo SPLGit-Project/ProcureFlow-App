@@ -580,6 +580,7 @@ export const db = {
                 date: d.date,
                 docketNumber: d.docket_number,
                 receivedBy: d.received_by,
+                receivedById: d.received_by_id,
                 lines: (d.lines || []).map((dl: any) => ({
                     id: dl.id,
                     poLineId: dl.po_line_id,
@@ -891,7 +892,7 @@ export const db = {
         if (error) throw error;
     },
 
-    adminUpdateDeliveryLineQty: async (lineId: string, quantity: number): Promise<void> => {
+    updateDeliveryLineQty: async (lineId: string, quantity: number): Promise<void> => {
         const { error } = await supabase.rpc('admin_update_delivery_line_qty', {
             p_line_id: lineId,
             p_new_qty: quantity
@@ -1457,7 +1458,8 @@ export const db = {
             po_request_id: poId,
             date: delivery.date,
             docket_number: delivery.docketNumber,
-            received_by: delivery.receivedBy
+            received_by: delivery.receivedBy,
+            received_by_id: delivery.receivedById
         });
         
         if (headerError) throw headerError;
