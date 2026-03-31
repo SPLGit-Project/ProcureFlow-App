@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { 
-    X, Check, ChevronRight, ChevronLeft, Package, Tag, 
-    Truck, BarChart2, Save, FileText, AlertCircle, Plus, Layers, Trash2
+    X, Check, ChevronRight, Package, Tag, 
+    Truck, BarChart2, AlertCircle, Plus, Layers, Trash2
 } from 'lucide-react';
-import { Item, AttributeOption, Supplier, ItemPriceOption } from '../types';
-import { normalizeItemCode } from '../utils/normalization';
-import { HierarchyManager } from '../utils/hierarchyManager';
-import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
+import { Item, AttributeOption, Supplier, ItemPriceOption } from '../types.ts';
+import { normalizeItemCode } from '../utils/normalization.ts';
+import { HierarchyManager } from '../utils/hierarchyManager.ts';
+import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 
 interface ItemWizardProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: (item: Partial<Item>) => Promise<void>;
     existingItem?: Item | null;
+    items?: Item[];
     suppliers: Supplier[];
     attributeOptions: AttributeOption[];
     upsertAttributeOption: (option: Partial<AttributeOption>) => Promise<void>;
@@ -28,7 +29,7 @@ const STEPS = [
 ];
 
 export const ItemWizard: React.FC<ItemWizardProps> = ({
-    isOpen, onClose, onSave, existingItem, suppliers, attributeOptions, upsertAttributeOption
+    isOpen, onClose, onSave, existingItem, items = [], suppliers, attributeOptions, upsertAttributeOption: _upsertAttributeOption
 }) => {
     const [currentStep, setCurrentStep] = useState(0);
     const [formData, setFormData] = useState<Partial<Item>>({
@@ -37,8 +38,6 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [newCategory, setNewCategory] = useState('');
-    const [showNewCatInput, setShowNewCatInput] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -64,7 +63,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
 
     if (!isOpen) return null;
 
-    const handleInputChange = (field: keyof Item, value: any) => {
+    const handleInputChange = <K extends keyof Item>(field: K, value: Item[K]) => {
         setFormData(prev => ({ ...prev, [field]: value }));
         if (errors[field]) {
             setErrors(prev => {
@@ -77,7 +76,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
 
     const handleDescriptionChange = (val: string) => {
         setFormData(prev => {
-            const updates: any = { description: val };
+            const updates: Partial<Item> = { description: val };
             // If name is empty or matches previous description, update it
             // Limit name to 60 chars for display sanity
             if (!prev.name || prev.name === prev.description?.substring(0, prev.name.length)) {
@@ -170,7 +169,18 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
         let isValid = true;
 
         if (stepIndex === 0) { // Identity
-            if (!formData.sku) newErrors.sku = 'SAP Code is required';
+            if (!formData.sku || !formData.sku.trim()) {
+                newErrors.sku = 'SAP Code is required';
+            } else if (items.length > 0) {
+                const normalizedInputSku = normalizeItemCode(formData.sku).normalized;
+                const isDuplicate = items.some(i => 
+                    normalizeItemCode(i.sku).normalized === normalizedInputSku && 
+                    i.id !== formData.id
+                );
+                if (isDuplicate) {
+                    newErrors.sku = 'An item with this SAP Code already exists (check archived items).';
+                }
+            }
             if (!formData.description) newErrors.description = 'Description is required';
             if (!formData.name) newErrors.name = 'Item Name is required';
         } else if (stepIndex === 1) { // Classification
@@ -226,21 +236,10 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
         }
     };
 
-    const handleAddCategory = async () => {
-        if (!newCategory.trim()) return;
-        await upsertAttributeOption({ type: 'CATEGORY', value: newCategory.trim() });
-        setFormData(prev => ({ ...prev, category: newCategory.trim() }));
-        setNewCategory('');
-        setShowNewCatInput(false);
-    };
 
     // Filtered Options (Defensive)
     const safeOptions = Array.isArray(attributeOptions) ? attributeOptions : [];
-    const categories = safeOptions.filter(o => o.type === 'CATEGORY').sort((a,b) => (a.value || '').localeCompare(b.value || ''));
-    const catalogs = safeOptions.filter(o => o.type === 'CATALOG');
-    const pools = safeOptions.filter(o => o.type === 'POOL');
     const uoms = safeOptions.filter(o => o.type === 'UOM');
-    const subcategories = safeOptions.filter(o => o.type === 'SUB_CATEGORY').sort((a,b) => (a.value || '').localeCompare(b.value || ''));
     const priceOptions = normalizeItemPriceOptions(formData);
 
     // UI Helpers
@@ -263,7 +262,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                             Step {currentStep + 1} of {STEPS.length}: {STEPS[currentStep].label}
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                    <button type="button" onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors">
                         <X size={20} className="text-gray-500" />
                     </button>
                 </div>
@@ -763,14 +762,14 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
 
                 {/* Footer */}
                 <div className="p-6 border-t border-gray-200 dark:border-gray-800 flex justify-between bg-gray-50 dark:bg-[#181a21]/50">
-                    <button 
+                    <button type="button" 
                         onClick={currentStep === 0 ? onClose : handleBack}
                         className="px-6 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors font-medium"
                     >
                         {currentStep === 0 ? 'Cancel' : 'Back'}
                     </button>
                     
-                    <button 
+                    <button type="button" 
                         onClick={currentStep === STEPS.length - 1 ? handleSave : handleNext}
                         disabled={isSubmitting}
                         className={`px-8 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20 ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}

@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-unused-vars no-explicit-any
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
@@ -26,15 +27,15 @@ import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/filePar
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { AuditLogViewer } from './AuditLogViewer.tsx';
 import * as XLSX from 'xlsx';
-import CatalogManagement from './CatalogManagement'; // Import CatalogManagement
-import MenuEditor from './MenuEditor';
-import { ItemWizard } from './ItemWizard';
-import { HierarchyManager } from '../utils/hierarchyManager';
-import { seedCatalogData } from '../utils/catalogSeeder';
-import SimpleWorkflowConfig from './SimpleWorkflowConfig';
+import CatalogManagement from './CatalogManagement.tsx'; // Import CatalogManagement
+import MenuEditor from './MenuEditor.tsx';
+import { ItemWizard } from './ItemWizard.tsx';
+import { HierarchyManager } from '../utils/hierarchyManager.ts';
+import { seedCatalogData } from '../utils/catalogSeeder.ts';
+import SimpleWorkflowConfig from './SimpleWorkflowConfig.tsx';
 
 
-const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, icon: any, category: 'Sidebar Navigation' | 'Admin Portal' | 'Operational Actions' }[] = [
+const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, icon: React.ElementType, category: 'Sidebar Navigation' | 'Admin Portal' | 'Operational Actions' }[] = [
     // Sidebar Navigation
     { id: 'view_dashboard', label: 'Dashboard', description: 'Access dashboard overview', icon: Layout, category: 'Sidebar Navigation' },
     { id: 'view_items', label: 'Items', description: 'View master item list', icon: Box, category: 'Sidebar Navigation' },
@@ -235,7 +236,7 @@ const Settings = () => {
           recipientType: 'ROLE',
           recipientIds: [],
           includeRequester: false,
-          appUrl: window.location.origin
+          appUrl: globalThis.location.origin
       },
       {
           id: '2',
@@ -250,7 +251,7 @@ const Settings = () => {
           recipientType: 'REQUESTER',
           recipientIds: [],
           includeRequester: false,
-          appUrl: window.location.origin
+          appUrl: globalThis.location.origin
       },
       {
           id: '3',
@@ -265,7 +266,7 @@ const Settings = () => {
           recipientType: 'REQUESTER',
           recipientIds: [],
           includeRequester: false,
-          appUrl: window.location.origin
+          appUrl: globalThis.location.origin
       },
       {
           id: '4',
@@ -280,7 +281,7 @@ const Settings = () => {
           recipientType: 'ROLE',
           recipientIds: [],
           includeRequester: false,
-          appUrl: window.location.origin
+          appUrl: globalThis.location.origin
       }
   ]);
 
@@ -352,6 +353,7 @@ const Settings = () => {
       }
   };
 
+  // deno-lint-ignore require-await
   const handleTestNotification = async (workflow: any) => {
       try {
           // Here you would send a test notification
@@ -459,7 +461,7 @@ const Settings = () => {
                 return;
             }
 
-            const shouldArchiveMissing = window.confirm(
+            const shouldArchiveMissing = globalThis.confirm(
                 `Found ${mappedItems.length} items to import.\n\nDo you want to ARCHIVE items that are NOT in this list?\n\nClick OK to Archive missing items (Replica Mode).\nClick Cancel to Update/Add only (Merge Mode).`
             );
 
@@ -749,7 +751,7 @@ const Settings = () => {
       return matchesSupplier && matchesFrom && matchesTo && matchesStatus;
   }).sort((a,b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime());
 
-  const allTabs: { id: AdminTab, icon: any, label: string, permission?: PermissionId }[] = [
+  const allTabs: { id: AdminTab, icon: React.ElementType, label: string, permission?: PermissionId }[] = [
       { id: 'ITEMS', icon: Box, label: 'Items', permission: 'view_items' },
       { id: 'CATALOG', icon: BookOpen, label: 'Catalog', permission: 'view_items' },
       { id: 'STOCK', icon: Database, label: 'Stock', permission: 'view_stock' },
@@ -767,7 +769,7 @@ const Settings = () => {
       { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'manage_settings' }
   ];
 
-  const visibleTabs: { id: AdminTab, icon: any, label: string }[] = [
+  const visibleTabs: { id: AdminTab, icon: React.ElementType, label: string }[] = [
       { id: 'PROFILE', icon: User, label: 'My Profile' },
       ...allTabs.filter(tab => !tab.permission || hasPermission(tab.permission))
   ];
@@ -905,7 +907,7 @@ const Settings = () => {
 
     try {
         // Use the enhanced parser with confidence scoring
-        const { parseStockFileEnhanced } = await import('../utils/fileParser');
+        const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
         const result = await parseStockFileEnhanced(file);
 
         // If parsing failed completely (no data to map), show errors
@@ -937,7 +939,7 @@ const Settings = () => {
         if (!parseResult || !stockSupplierId) return;
 
         // Re-parse data with confirmed mapping
-        const { parseDataRows } = await import('../utils/fileParser');
+        const { parseDataRows } = await import('../utils/fileParser.ts');
         const parsedSnapshots = parseDataRows(
             parseResult.rawData || [],
             mapping,
@@ -1236,7 +1238,7 @@ if __name__ == "__main__":
         <label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase block">{label}</label>
         <div className="flex flex-wrap gap-3">
             {PRESET_COLORS.slice(0, 6).map(color => (
-                <button
+                <button type="button"
                     key={color.hex}
                     onClick={() => onChange(color.hex)}
                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-transform hover:scale-110 ${value.toLowerCase() === color.hex ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-white dark:ring-offset-[#1e2029]' : ''}`}
@@ -1276,7 +1278,7 @@ if __name__ == "__main__":
                       const isActive = activeTab === tab.id;
                       const TabIcon = tab.icon;
                       return (
-                          <button
+                          <button type="button"
                               key={tab.id}
                               onClick={() => setActiveTab(tab.id)}
                               aria-current={isActive ? 'page' : undefined}
@@ -1369,7 +1371,7 @@ if __name__ == "__main__":
                           </div>
 
                           <div className="pt-4 flex justify-end">
-                              <button 
+                              <button type="button" 
                                 onClick={handleSaveProfile} 
                                 disabled={isSavingProfile}
                                 className="btn-primary flex items-center gap-2"
@@ -1414,7 +1416,7 @@ if __name__ == "__main__":
                            <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded text-secondary dark:text-gray-500 focus:ring-gray-400"/>
                            Show Archived
                         </label>
-                        <button 
+                        <button type="button" 
                             onClick={async () => {
                                 setIsImportingItems(true);
                                 try {
@@ -1429,7 +1431,7 @@ if __name__ == "__main__":
                         >
                             <RefreshCw size={16} className={isImportingItems ? 'animate-spin' : ''}/>
                         </button>
-                        <button 
+                        <button type="button" 
                             onClick={handleExportItems}
                             disabled={isImportingItems}
                             className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 
@@ -1437,7 +1439,7 @@ if __name__ == "__main__":
                         >
                             <Download size={16}/>
                         </button>
-                        <button 
+                        <button type="button" 
                             onClick={() => itemImportInputRef.current?.click()} 
                             disabled={isImportingItems}
                             className="p-2 text-secondary hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 
@@ -1457,7 +1459,7 @@ if __name__ == "__main__":
                                 onChange={e => setItemSearch(e.target.value)}
                             />
                         </div>
-                        <button onClick={() => { 
+                        <button type="button" onClick={() => { 
                             setEditingItem(null); 
                             setIsItemFormOpen(true); 
                         }} className="btn-primary flex items-center gap-2 text-sm shadow-sm" title="Add New Item">
@@ -1507,7 +1509,7 @@ if __name__ == "__main__":
                 </select>
                 
                 {(filterPool || filterCatalog || filterType || filterCategory || filterSubCategory) && (
-                    <button onClick={() => setFilterPool('')} className="ml-auto text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1">
+                    <button type="button" onClick={() => setFilterPool('')} className="ml-auto text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1">
                         <X size={12}/> Clear
                     </button>
                 )}
@@ -1633,7 +1635,7 @@ if __name__ == "__main__":
                                     })}
                                     <td className="px-4 py-3 text-right sticky right-0 z-20 bg-white dark:bg-[#1e2029] shadow-[-10px_0_10px_-10px_rgba(0,0,0,0.1)]">
                                         <div className="flex justify-end gap-2">
-                                            <button onClick={() => { 
+                                            <button type="button" onClick={() => { 
                                                 setEditingItem(item); 
                                                 setItemForm({ 
                                                     sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, upq: Number(item.upq) || 1, category: item.category, subCategory: item.subCategory || '',
@@ -1648,7 +1650,7 @@ if __name__ == "__main__":
                                             }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-secondary dark:text-gray-500">
                                                 <Edit2 size={16} />
                                             </button>
-                                            <button onClick={() => requestDelete(item)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500" title="Archive Item">
+                                            <button type="button" onClick={() => requestDelete(item)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500" title="Archive Item">
                                                 <Archive size={16} />
                                             </button>
                                         </div>
@@ -1675,6 +1677,7 @@ if __name__ == "__main__":
                     onClose={() => setIsItemFormOpen(false)}
                     onSave={handleWizardSave}
                     existingItem={editingItem}
+                    items={items}
                     suppliers={suppliers}
                     attributeOptions={attributeOptions}
                     upsertAttributeOption={upsertAttributeOption}
@@ -1794,8 +1797,8 @@ if __name__ == "__main__":
                           <div className="flex justify-between items-center mb-2">
                               <h4 className="font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2"><CheckCircle2 size={18}/> Ready to Import {importPreview.length} Records</h4>
                               <div className="flex gap-2">
-                                  <button onClick={() => { setIsImporting(false); setImportPreview([]); }} className="text-red-500 text-sm font-bold hover:underline">Cancel</button>
-                                  <button onClick={confirmImport} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md">Confirm Overwrite</button>
+                                  <button type="button" onClick={() => { setIsImporting(false); setImportPreview([]); }} className="text-red-500 text-sm font-bold hover:underline">Cancel</button>
+                                  <button type="button" onClick={confirmImport} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md">Confirm Overwrite</button>
                               </div>
                           </div>
                           <div className="max-h-60 table-shell overflow-y-auto text-xs border border-blue-100 dark:border-blue-800 rounded bg-white dark:bg-[#15171e]">
@@ -1887,7 +1890,7 @@ if __name__ == "__main__":
                                                  <span className="text-[10px] text-tertiary dark:text-gray-500 font-mono mt-0.5 max-w-[100px] truncate" title={mappedItem?.name}>{mappedItem?.sku}</span>
                                              </div>
                                          ) : (
-                                             <button onClick={() => { setMappingSource(snap); setIsManualMapOpen(true); }} className="badge bg-red-100 text-red-800 border-red-200 hover:bg-red-200 w-fit">Unmapped</button>
+                                             <button type="button" onClick={() => { setMappingSource(snap); setIsManualMapOpen(true); }} className="badge bg-red-100 text-red-800 border-red-200 hover:bg-red-200 w-fit">Unmapped</button>
                                          )}
                                      </td>
                                      <td className="px-4 py-4">
@@ -2031,11 +2034,11 @@ if __name__ == "__main__":
                       </div>
                   </div>
                    <div className="flex gap-3 items-center mt-2 md:mt-0">
-                       <button onClick={() => refreshAvailability().then(() => alert('Availability Recalculated'))} className="text-secondary hover:text-[var(--color-brand)] text-xs font-bold flex items-center gap-1 transition-colors">
+                       <button type="button" onClick={() => refreshAvailability().then(() => alert('Availability Recalculated'))} className="text-secondary hover:text-[var(--color-brand)] text-xs font-bold flex items-center gap-1 transition-colors">
                            <RefreshCw size={14}/> Update Mapping
                        </button>
-                       <button onClick={async () => {
-                           if (!window.confirm('Run Auto-Match Algorithm? This uses Master SKU matching and fuzzy logic.')) return;
+                       <button type="button" onClick={async () => {
+                           if (!globalThis.confirm('Run Auto-Match Algorithm? This uses Master SKU matching and fuzzy logic.')) return;
                            const results = [];
                            for (const s of suppliers) {
                                const res = await runAutoMapping(s.id);
@@ -2046,10 +2049,10 @@ if __name__ == "__main__":
                            <Wand2 size={14}/> Run Auto-Match
                        </button>
                        {mappingSubTab === 'PROPOSED' && mappings.filter(m => m.mappingStatus === 'PROPOSED' && m.confidenceScore >= 0.9).length > 0 && (
-                            <button 
+                            <button type="button" 
                                 onClick={async () => {
                                     const highConf = mappings.filter(m => m.mappingStatus === 'PROPOSED' && m.confidenceScore >= 0.9);
-                                    if (!window.confirm(`Confirm all ${highConf.length} high-confidence (>=90%) mappings?`)) return;
+                                    if (!globalThis.confirm(`Confirm all ${highConf.length} high-confidence (>=90%) mappings?`)) return;
                                     for (const m of highConf) {
                                         await updateMapping({ ...m, mappingStatus: 'CONFIRMED' });
                                     }
@@ -2065,16 +2068,16 @@ if __name__ == "__main__":
 
               {/* Sub Tabs */}
               <div className="flex gap-6 border-b border-gray-200 dark:border-gray-800">
-                  <button onClick={() => setMappingSubTab('PROPOSED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'PROPOSED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+                  <button type="button" onClick={() => setMappingSubTab('PROPOSED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'PROPOSED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
                       Proposed Mappings ({mappings.filter(m => m.mappingStatus === 'PROPOSED').length})
                   </button>
-                  <button onClick={() => setMappingSubTab('CONFIRMED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'CONFIRMED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+                  <button type="button" onClick={() => setMappingSubTab('CONFIRMED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'CONFIRMED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
                       Confirmed ({mappings.filter(m => m.mappingStatus === 'CONFIRMED').length})
                   </button>
-                  <button onClick={() => setMappingSubTab('REJECTED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'REJECTED' ? 'border-red-500 text-red-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+                  <button type="button" onClick={() => setMappingSubTab('REJECTED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'REJECTED' ? 'border-red-500 text-red-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
                       Rejected ({mappings.filter(m => m.mappingStatus === 'REJECTED').length})
                   </button>
-                  <button 
+                  <button type="button" 
                     onClick={() => {
                         setMappingSubTab('MEMORY');
                         getMappingMemory().then(setMappingMemory);
@@ -2093,9 +2096,9 @@ if __name__ == "__main__":
                                   <h4 className="font-bold text-purple-900 dark:text-purple-100 flex items-center gap-2 text-sm"><Database size={16}/> Persistent Mapping Memory</h4>
                                   <p className="text-[11px] text-purple-700 dark:text-purple-300">This memory allows the system to automatically map future uploads based on these historical confirmed decisions.</p>
                               </div>
-                              <button 
+                              <button type="button" 
                                 onClick={async () => {
-                                    if (!window.confirm('This will update Master Item prices to match the latest confirmed supplier sell prices. Continue?')) return;
+                                    if (!globalThis.confirm('This will update Master Item prices to match the latest confirmed supplier sell prices. Continue?')) return;
                                     setIsSyncing(true);
                                     try {
                                         await syncItemsFromSnapshots();
@@ -2145,9 +2148,9 @@ if __name__ == "__main__":
                                               {new Date(mem.created_at).toLocaleDateString()}
                                           </td>
                                           <td className="px-6 py-4 text-center table-sticky-right">
-                                              <button 
+                                              <button type="button" 
                                                 onClick={async () => {
-                                                    if (!window.confirm('Forget this mapping decision? Future uploads will need re-mapping.')) return;
+                                                    if (!globalThis.confirm('Forget this mapping decision? Future uploads will need re-mapping.')) return;
                                                     await deleteMapping(mem.id);
                                                     setMappingMemory(prev => prev.filter(p => p.id !== mem.id));
                                                 }}
@@ -2307,12 +2310,12 @@ if __name__ == "__main__":
                                               <div className="flex justify-center gap-2">
                                                   {map.mappingStatus === 'PROPOSED' && (
                                                       <>
-                                                          <button onClick={() => updateMapping({ ...map, mappingStatus: 'CONFIRMED' }).then(() => alert('Confirmed'))} className="icon-btn-green" title="Confirm"><CheckCircle2 size={18}/></button>
-                                                          <button onClick={() => updateMapping({ ...map, mappingStatus: 'REJECTED' })} className="icon-btn-red" title="Reject"><XCircle size={18}/></button>
+                                                          <button type="button" onClick={() => updateMapping({ ...map, mappingStatus: 'CONFIRMED' }).then(() => alert('Confirmed'))} className="icon-btn-green" title="Confirm"><CheckCircle2 size={18}/></button>
+                                                          <button type="button" onClick={() => updateMapping({ ...map, mappingStatus: 'REJECTED' })} className="icon-btn-red" title="Reject"><XCircle size={18}/></button>
                                                       </>
                                                   )}
                                                   {map.mappingStatus === 'CONFIRMED' && (
-                                                       <button onClick={() => updateMapping({ ...map, mappingStatus: 'PROPOSED' })} className="text-xs text-gray-400 hover:text-[var(--color-brand)] underline">Un-confirm</button>
+                                                       <button type="button" onClick={() => updateMapping({ ...map, mappingStatus: 'PROPOSED' })} className="text-xs text-gray-400 hover:text-[var(--color-brand)] underline">Un-confirm</button>
                                                   )}
                                               </div>
                                           </td>
@@ -2332,7 +2335,7 @@ if __name__ == "__main__":
       {activeTab === 'SUPPLIERS' && (
         <div className="space-y-6 animate-fade-in">
              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
-                 <div className="flex justify-end mb-4"><button onClick={() => openSupplierForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Supplier</button></div>
+                 <div className="flex justify-end mb-4"><button type="button" onClick={() => openSupplierForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Supplier</button></div>
                  <div className="table-shell">
                     <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[700px]">
                         <thead className="table-header"><tr><th className="px-6 py-4 table-sticky-left">Supplier</th><th className="px-6 py-4">Key Contact</th><th className="px-6 py-4">Categories</th><th className="px-6 py-4 text-center table-sticky-right">Action</th></tr></thead>
@@ -2342,7 +2345,7 @@ if __name__ == "__main__":
                                     <td className="px-6 py-4 table-sticky-left"><div className="font-bold text-gray-900 dark:text-white">{s.name}</div><div className="text-xs">{s.address}</div></td>
                                     <td className="px-6 py-4"><div className="font-medium text-gray-900 dark:text-white">{s.keyContact}</div><div className="text-xs text-[var(--color-brand)]">{s.contactEmail}</div><div className="text-xs">{s.phone}</div></td>
                                     <td className="px-6 py-4">{s.categories.map(c => <span key={c} className="badge mr-1">{c}</span>)}</td>
-                                    <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button onClick={() => openSupplierForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button onClick={() => deleteSupplier(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
+                                    <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button type="button" onClick={() => openSupplierForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button type="button" onClick={() => deleteSupplier(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -2391,7 +2394,7 @@ if __name__ == "__main__":
       {activeTab === 'SITES' && (
         <div className="space-y-6 animate-fade-in">
              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
-                 <div className="flex justify-end mb-4"><button onClick={() => openSiteForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Site</button></div>
+                 <div className="flex justify-end mb-4"><button type="button" onClick={() => openSiteForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Site</button></div>
                  <div className="table-shell">
                     <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[700px]">
                         <thead className="table-header"><tr><th className="px-6 py-4 table-sticky-left">Site Name</th><th className="px-6 py-4">Suburb</th><th className="px-6 py-4">Address</th><th className="px-6 py-4">State</th><th className="px-6 py-4">Contact</th><th className="px-6 py-4 text-center table-sticky-right">Action</th></tr></thead>
@@ -2403,7 +2406,7 @@ if __name__ == "__main__":
                                     <td className="px-6 py-4">{s.address}</td>
                                     <td className="px-6 py-4"><span className="badge">{s.state}</span> <span className="text-xs text-gray-400">{s.zip}</span></td>
                                     <td className="px-6 py-4">{s.contactPerson}</td>
-                                    <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button onClick={() => openSiteForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button onClick={() => deleteSite(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
+                                    <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button type="button" onClick={() => openSiteForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button type="button" onClick={() => deleteSite(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -2492,7 +2495,7 @@ if __name__ == "__main__":
                                     </div>
                                     <div className="flex-1">
                                         <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoUpload}/>
-                                        <button onClick={() => logoInputRef.current?.click()} className="text-xs font-bold text-[var(--color-brand)] border border-[var(--color-brand)] px-3 py-1.5 rounded-lg hover:bg-[var(--color-brand)] hover:text-white transition-colors">
+                                        <button type="button" onClick={() => logoInputRef.current?.click()} className="text-xs font-bold text-[var(--color-brand)] border border-[var(--color-brand)] px-3 py-1.5 rounded-lg hover:bg-[var(--color-brand)] hover:text-white transition-colors">
                                             Upload Logo
                                         </button>
                                         <p className="text-[10px] text-gray-400 mt-1">Recommended: 200x200px PNG</p>
@@ -2509,7 +2512,7 @@ if __name__ == "__main__":
                                         { id: 'serif', name: 'Elegant Serif', font: 'font-serif' },
                                         { id: 'mono', name: 'Technical Mono', font: 'font-mono' }
                                     ].map(font => (
-                                        <button
+                                        <button type="button"
                                             key={font.id}
                                             onClick={() => setBrandingForm({...brandingForm, fontFamily: font.id as any})}
                                             className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${brandingForm.fontFamily === font.id ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 ring-1 ring-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}
@@ -2534,7 +2537,7 @@ if __name__ == "__main__":
                     </div>
                     
                     <div className="flex justify-end pt-4">
-                        <button onClick={handleSaveBranding} className="btn-primary w-full md:w-auto py-3 px-8 text-base">Save Branding Changes</button>
+                        <button type="button" onClick={handleSaveBranding} className="btn-primary w-full md:w-auto py-3 px-8 text-base">Save Branding Changes</button>
                     </div>
                 </div>
           </div>
@@ -2689,7 +2692,7 @@ if __name__ == "__main__":
 
                               {/* Actions */}
                               <div className="flex items-center gap-2 shrink-0">
-                                  <button
+                                  <button type="button"
                                       onClick={async () => {
                                           const action = isNeverInvited ? 'Send invitation' : 'Resend invitation';
                                           if (!confirm(`${action} to ${user.name || user.email}?\n\nThis will generate an invitation link valid for 48 hours.`)) return;
@@ -2725,9 +2728,9 @@ if __name__ == "__main__":
                                           <><Mail size={13} /> Resend Invite</>
                                       )}
                                   </button>
-                                  <button
+                                  <button type="button"
                                       onClick={() => {
-                                          if (window.confirm(`Archive ${user.name || user.email}? This will remove them from the pending list.`)) {
+                                          if (globalThis.confirm(`Archive ${user.name || user.email}? This will remove them from the pending list.`)) {
                                               archiveUser(user.id);
                                           }
                                       }}
@@ -2845,7 +2848,7 @@ if __name__ == "__main__":
                               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
                           </div>
 
-                          <button onClick={() => { 
+                          <button type="button" onClick={() => { 
                               setInviteForm(prev => ({ 
                                 ...prev, 
                                 siteIds: activeSiteIds.length > 0 ? activeSiteIds : (sites.length > 0 ? [sites[0].id] : []) 
@@ -2937,7 +2940,7 @@ if __name__ == "__main__":
                                           </td>
                                           <td className="px-6 py-4 text-right table-sticky-right">
                                               <div className="flex items-center justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                                  <button 
+                                                  <button type="button" 
                                                     onClick={() => {
                                                         setInviteForm({
                                                             id: user.id,
@@ -2995,9 +2998,9 @@ if __name__ == "__main__":
 
                                                       </div>
                                                   )}
-                                                  <button 
+                                                  <button type="button" 
                                                     onClick={() => {
-                                                      if (window.confirm(`Are you sure you want to archive ${user.name}?`)) {
+                                                      if (globalThis.confirm(`Are you sure you want to archive ${user.name}?`)) {
                                                         archiveUser(user.id);
                                                       }
                                                     }} 
@@ -3062,7 +3065,7 @@ if __name__ == "__main__":
               <div className="w-full md:w-80 flex-shrink-0 bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden max-h-[400px] md:max-h-none">
                   <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
                       <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Security Roles</h3>
-                      <button onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl text-[var(--color-brand)] transition-all active:scale-95 shadow-sm bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800"><Plus size={18}/></button>
+                      <button type="button" onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl text-[var(--color-brand)] transition-all active:scale-95 shadow-sm bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800"><Plus size={18}/></button>
                   </div>
                   
                   <div className="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar">
@@ -3071,7 +3074,7 @@ if __name__ == "__main__":
                       
                       <div className="space-y-1">
                           {roles.map(role => (
-                              <button
+                              <button type="button"
                                   key={role.id}
                                   onClick={() => { setActiveRole(role); setUserSearch(''); }}
                                   className={`w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3 transition-all ${activeRole?.id === role.id ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/20 scale-[1.02]' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300 group'}`}
@@ -3104,7 +3107,7 @@ if __name__ == "__main__":
                                   <p className="text-sm text-gray-500 dark:text-gray-400">{activeRole.description}</p>
                               </div>
                               {!activeRole.isSystem && (
-                                  <button onClick={() => deleteRole(activeRole.id)} className="btn-secondary text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 px-3 py-2 text-xs flex items-center gap-2">
+                                  <button type="button" onClick={() => deleteRole(activeRole.id)} className="btn-secondary text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 px-3 py-2 text-xs flex items-center gap-2">
                                       <Trash2 size={14}/> Delete Role
                                   </button>
                               )}
@@ -3142,7 +3145,7 @@ if __name__ == "__main__":
                                                                <div key={category} className="space-y-3">
                                                                    <div className="flex items-center justify-between pl-1">
                                                                        <div className="flex items-center gap-2"><div className="p-1.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-400">{category === 'Sidebar Navigation' ? <Layout size={12}/> : category === 'Admin Portal' ? <SettingsIcon size={12}/> : <Zap size={12}/>}</div><div className="text-[11px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">{category}</div></div>
-                                                                       <button 
+                                                                       <button type="button" 
                                                                            onClick={() => {
                                                                                let newPerms: PermissionId[];
                                                                                if (isAllSelected) {
@@ -3168,7 +3171,7 @@ if __name__ == "__main__":
                                                                                    <div className="flex items-center gap-3 flex-1 min-w-0"><div className={`p-2 rounded-xl transition-colors ${isEnabled ? 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]' : 'bg-gray-50 dark:bg-gray-800 text-gray-400 group-hover:bg-gray-100 dark:group-hover:bg-gray-700'}`}><Icon size={16}/></div><div className="min-w-0">
                                                                                        <div className="font-bold text-xs text-gray-900 dark:text-white leading-tight truncate">{perm.label}</div>
                                                                                        <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{perm.description}</div></div></div>
-                                                                                   <button 
+                                                                                   <button type="button" 
                                                                                        disabled={activeRole.id === 'ADMIN' && perm.id === 'manage_settings'} 
                                                                                        onClick={() => {
                                                                                            const newPerms = isEnabled 
@@ -3207,7 +3210,7 @@ if __name__ == "__main__":
                                   <h3 className="text-lg font-bold text-gray-900 dark:text-white text-center">Select a Role</h3>
                                   <p className="text-sm">Select a role from the sidebar to configure permissions and view users.</p>
                               </div>
-                              <button onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="btn-primary">Create New Role</button>
+                              <button type="button" onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="btn-primary">Create New Role</button>
                           </div>
                       )}
                   </div>
@@ -3224,7 +3227,7 @@ if __name__ == "__main__":
                           <p className="text-xs text-gray-500 dark:text-gray-400">Configure automated alerts and recipients.</p>
                       </div>
                   </div>
-                   <button onClick={() => setIsTeamsConfigOpen(true)} className="btn-secondary flex items-center gap-2 text-xs">
+                   <button type="button" onClick={() => setIsTeamsConfigOpen(true)} className="btn-secondary flex items-center gap-2 text-xs">
                         {teamsWebhookUrl ? <CheckCircle2 size={12} className="text-green-500"/> : <AlertCircle size={12} className="text-orange-500"/>}
                         Configure Teams
                    </button>
@@ -3279,7 +3282,7 @@ if __name__ == "__main__":
                                       </div>
                                   </td>
                                   <td className="px-6 py-4 text-center">
-                                      <button 
+                                      <button type="button" 
                                           onClick={() => handleToggleActive(rule)}
                                           className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase transition-colors ${rule.isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}
                                       >
@@ -3287,7 +3290,7 @@ if __name__ == "__main__":
                                       </button>
                                   </td>
                                   <td className="px-6 py-4 text-right table-sticky-right">
-                                      <button onClick={() => openRuleConfig(rule)} className="text-sm font-bold text-[var(--color-brand)] hover:underline">Configure</button>
+                                      <button type="button" onClick={() => openRuleConfig(rule)} className="text-sm font-bold text-[var(--color-brand)] hover:underline">Configure</button>
                                   </td>
                               </tr>
                           ))}
@@ -3308,7 +3311,7 @@ if __name__ == "__main__":
                                 </h2>
                                 <p className="text-sm text-gray-500 mt-1">Rule: <span className="font-bold text-gray-700 dark:text-gray-300">{editingRule.label}</span></p>
                             </div>
-                            <button onClick={() => setIsRuleModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24}/></button>
+                            <button type="button" onClick={() => setIsRuleModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24}/></button>
                         </div>
                         
                         {/* Body */}
@@ -3321,10 +3324,10 @@ if __name__ == "__main__":
                                     
                                     {/* Add Recipient Dropdown */}
                                     <div className="relative group">
-                                        <button className="btn-secondary text-xs flex items-center gap-1 py-1.5"><Plus size={14}/> Add Recipient</button>
+                                        <button type="button" className="btn-secondary text-xs flex items-center gap-1 py-1.5"><Plus size={14}/> Add Recipient</button>
                                         <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#15171e] rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 p-2 hidden group-hover:block z-50">
                                             <div className="text-[10px] font-bold text-gray-400 px-2 py-1 uppercase">Dynamic</div>
-                                            <button 
+                                            <button type="button" 
                                                 onClick={() => setEditingRule({ ...editingRule, recipients: [...editingRule.recipients, { type: 'REQUESTER', id: 'requester', channels: { email: true, inApp: true, teams: false } }] })}
                                                 className="w-full text-left px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg flex items-center gap-2"
                                             >
@@ -3334,7 +3337,7 @@ if __name__ == "__main__":
                                             <div className="border-t border-gray-100 dark:border-gray-800 my-1"></div>
                                             <div className="text-[10px] font-bold text-gray-400 px-2 py-1 uppercase">Roles</div>
                                             {roles.map(r => (
-                                                <button 
+                                                <button type="button" 
                                                     key={r.id}
                                                     onClick={() => setEditingRule({ ...editingRule, recipients: [...editingRule.recipients, { type: 'ROLE', id: r.id, channels: { email: true, inApp: true, teams: false } }] })}
                                                     className="w-full text-left px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg flex items-center gap-2"
@@ -3344,7 +3347,7 @@ if __name__ == "__main__":
                                             ))}
                                             
                                             <div className="border-t border-gray-100 dark:border-gray-800 my-1"></div>
-                                            <button 
+                                            <button type="button" 
                                                  onClick={() => {
                                                      const email = prompt("Enter email address:");
                                                      if (email) {
@@ -3433,7 +3436,7 @@ if __name__ == "__main__":
                                                         </label>
                                                     </div>
 
-                                                    <button 
+                                                    <button type="button" 
                                                         onClick={() => {
                                                             const newRecipients = editingRule.recipients.filter((_, i) => i !== idx);
                                                             setEditingRule({ ...editingRule, recipients: newRecipients });
@@ -3452,8 +3455,8 @@ if __name__ == "__main__":
 
                         {/* Footer */}
                         <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 flex justify-end gap-3">
-                            <button onClick={() => setIsRuleModalOpen(false)} className="px-6 py-2.5 text-gray-500 font-bold hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors">Cancel</button>
-                            <button onClick={handleSaveRule} className="btn-primary px-8 flex items-center gap-2">
+                            <button type="button" onClick={() => setIsRuleModalOpen(false)} className="px-6 py-2.5 text-gray-500 font-bold hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors">Cancel</button>
+                            <button type="button" onClick={handleSaveRule} className="btn-primary px-8 flex items-center gap-2">
                                 <Save size={18}/> Save Changes
                             </button>
                         </div>
@@ -3478,8 +3481,8 @@ if __name__ == "__main__":
                             </div>
                         </div>
                         <div className="flex justify-end gap-3 pt-6">
-                            <button onClick={() => setIsTeamsConfigOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
-                            <button onClick={() => { updateTeamsWebhook(teamsUrlForm); setIsTeamsConfigOpen(false); }} className="btn-primary">Save Configuration</button>
+                            <button type="button" onClick={() => setIsTeamsConfigOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                            <button type="button" onClick={() => { updateTeamsWebhook(teamsUrlForm); setIsTeamsConfigOpen(false); }} className="btn-primary">Save Configuration</button>
                         </div>
                     </div>
                  </div>
@@ -3541,7 +3544,7 @@ if __name__ == "__main__":
                                 </div>
                                 <div className="mt-2 max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
                                     {items.filter(i => (i.name || '').toLowerCase().includes(itemSearch.toLowerCase()) || (i.sku || '').toLowerCase().includes(itemSearch.toLowerCase())).slice(0, 10).map(i => (
-                                        <button 
+                                        <button type="button" 
                                             key={i.id}
                                             onClick={() => {
                                                 // Confirm Map
@@ -3575,7 +3578,7 @@ if __name__ == "__main__":
                             </div>
 
                             <div className="flex justify-end pt-2">
-                                <button onClick={() => { setIsManualMapOpen(false); setMappingSource(null); }} className="text-gray-500 hover:text-gray-700 font-bold text-sm">Cancel</button>
+                                <button type="button" onClick={() => { setIsManualMapOpen(false); setMappingSource(null); }} className="text-gray-500 hover:text-gray-700 font-bold text-sm">Cancel</button>
                             </div>
                         </div>
                     </div>
@@ -3591,10 +3594,10 @@ if __name__ == "__main__":
                               <p className="text-sm text-gray-500">Customize the welcome email sent to new users.</p>
                           </div>
                            <div className="flex gap-3">
-                               <button onClick={handleTestEmail} className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 font-medium transition-colors">
+                               <button type="button" onClick={handleTestEmail} className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 font-medium transition-colors">
                                    Send Test Email
                                </button>
-                              <button onClick={handleSaveEmailTemplate} className="px-4 py-2 bg-[var(--color-brand)] text-white rounded-lg hover:opacity-90 font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2">
+                              <button type="button" onClick={handleSaveEmailTemplate} className="px-4 py-2 bg-[var(--color-brand)] text-white rounded-lg hover:opacity-90 font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2">
                                   <Save size={18} /> Save Changes
                               </button>
                           </div>
@@ -3679,14 +3682,14 @@ if __name__ == "__main__":
                                     </h2>
                                     <p className="text-sm text-gray-500 mt-1">Configure logic, notifications, and SLAs.</p>
                                 </div>
-                                <button onClick={() => setEditingStepId(null)} className="text-gray-400 hover:text-gray-600"><X size={24}/></button>
+                                <button type="button" onClick={() => setEditingStepId(null)} className="text-gray-400 hover:text-gray-600"><X size={24}/></button>
                             </div>
 
                             {/* Tabs */}
                             <div className="flex border-b border-gray-100 dark:border-gray-800 px-6 gap-6">
-                                <button onClick={() => setActiveStepTab('GENERAL')} className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeStepTab === 'GENERAL' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>General</button>
-                                <button onClick={() => setActiveStepTab('NOTIFICATIONS')} className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeStepTab === 'NOTIFICATIONS' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Notifications {(step.notifications?.length || 0) > 0 && <span className="ml-1 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full text-[10px]">{step.notifications?.length}</span>}</button>
-                                <button onClick={() => setActiveStepTab('SLA')} className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeStepTab === 'SLA' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>SLA {step.sla?.warnAfterHours && <span className="ml-1 text-[var(--color-brand)]">•</span>}</button>
+                                <button type="button" onClick={() => setActiveStepTab('GENERAL')} className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeStepTab === 'GENERAL' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>General</button>
+                                <button type="button" onClick={() => setActiveStepTab('NOTIFICATIONS')} className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeStepTab === 'NOTIFICATIONS' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Notifications {(step.notifications?.length || 0) > 0 && <span className="ml-1 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full text-[10px]">{step.notifications?.length}</span>}</button>
+                                <button type="button" onClick={() => setActiveStepTab('SLA')} className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeStepTab === 'SLA' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>SLA {step.sla?.warnAfterHours && <span className="ml-1 text-[var(--color-brand)]">•</span>}</button>
                             </div>
 
                             {/* Body */}
@@ -3704,13 +3707,13 @@ if __name__ == "__main__":
                                         <div>
                                             <label className="text-xs font-bold text-gray-500 uppercase">Approver Assignment {/* Select User or Role */}</label>
                                             <div className="flex bg-gray-100 dark:bg-[#15171e] p-1 rounded-lg mt-1 mb-2">
-                                                <button 
+                                                <button type="button" 
                                                     onClick={() => updateWorkflowStep({ ...step, approverType: 'ROLE', approverId: roles[0]?.id || '' })}
                                                     className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-bold rounded-md transition-all ${step.approverType !== 'USER' ? 'bg-white dark:bg-[#2b2d3b] text-[var(--color-brand)] shadow-sm' : 'text-gray-500'}`}
                                                 >
                                                     <Shield size={12}/> Role
                                                 </button>
-                                                <button 
+                                                <button type="button" 
                                                     onClick={() => updateWorkflowStep({ ...step, approverType: 'USER', approverId: users.filter(u => u.status === 'APPROVED')[0]?.id || '' })}
                                                     className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-bold rounded-md transition-all ${step.approverType === 'USER' ? 'bg-white dark:bg-[#2b2d3b] text-[var(--color-brand)] shadow-sm' : 'text-gray-500'}`}
                                                 >
@@ -3782,7 +3785,7 @@ if __name__ == "__main__":
                                     <div className="space-y-6 animate-fade-in">
                                         <div className="flex justify-between items-center">
                                             <h3 className="text-sm font-bold text-gray-900 dark:text-white">Embedded Notification Rules</h3>
-                                            <button 
+                                            <button type="button" 
                                                 onClick={() => {
                                                     const newRule = {
                                                         trigger: 'ON_ENTRY',
@@ -3808,7 +3811,7 @@ if __name__ == "__main__":
                                             )}
                                             {(step.notifications || []).map((rule, idx) => (
                                                 <div key={idx} className="bg-gray-50 dark:bg-white/5 p-4 rounded-xl border border-gray-200 dark:border-gray-800 relative group">
-                                                    <button 
+                                                    <button type="button" 
                                                         onClick={() => {
                                                             const newRules = step.notifications!.filter((_, i) => i !== idx);
                                                             updateWorkflowStep({ ...step, notifications: newRules });
@@ -3931,7 +3934,7 @@ if __name__ == "__main__":
 
                             {/* Footer */}
                             <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 flex justify-end gap-3">
-                                <button onClick={() => setEditingStepId(null)} className="px-6 py-2.5 text-gray-500 font-bold hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors">Close</button>
+                                <button type="button" onClick={() => setEditingStepId(null)} className="px-6 py-2.5 text-gray-500 font-bold hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors">Close</button>
                             </div>
                         </div>
                     </div>
@@ -3953,8 +3956,8 @@ if __name__ == "__main__":
                                 <input className="input-field" value={roleFormDesc} onChange={e => setRoleFormDesc(e.target.value)}/>
                             </div>
                             <div className="flex justify-end gap-3 pt-4">
-                                <button onClick={() => setIsRoleEditorOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
-                                <button onClick={() => {
+                                <button type="button" onClick={() => setIsRoleEditorOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                                <button type="button" onClick={() => {
                                     // Handle Create
                                     const newRole: RoleDefinition = {
                                         id: roleFormName.toUpperCase().replace(/\s+/g, '_'),
@@ -3993,7 +3996,7 @@ if __name__ == "__main__":
                                             : 'Add a new user to the organization and assign access.'}
                                     </p>
                                 </div>
-                                <button onClick={handleResetInviteWizard} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                <button type="button" onClick={handleResetInviteWizard} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                                     <X size={24}/>
                                 </button>
                             </div>
@@ -4023,9 +4026,9 @@ if __name__ == "__main__":
                                    <div className="space-y-6">
                                        {/* Tab Switcher */}
                                        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-full md:w-fit">
-                                           <button onClick={() => setInviteTab('SEARCH')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'SEARCH' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Search Users & Directory</button>
-                                           <button onClick={() => setInviteTab('MEMBERS')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MEMBERS' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Active Members</button>
-                                           <button onClick={() => setInviteTab('MANUAL')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MANUAL' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Manual Entry</button>
+                                           <button type="button" onClick={() => setInviteTab('SEARCH')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'SEARCH' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Search Users & Directory</button>
+                                           <button type="button" onClick={() => setInviteTab('MEMBERS')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MEMBERS' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Active Members</button>
+                                           <button type="button" onClick={() => setInviteTab('MANUAL')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MANUAL' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Manual Entry</button>
                                        </div>
 
                                        {inviteTab === 'SEARCH' ? (
@@ -4130,7 +4133,7 @@ if __name__ == "__main__":
                                                                 <p className="text-sm font-bold text-gray-600 dark:text-gray-300">No matches found</p>
                                                                 <p className="text-xs text-gray-400 mt-1 max-w-[200px] mx-auto">We couldn't find anyone matching "{directorySearch}" in your organization.</p>
                                                             </div>
-                                                            <button
+                                                            <button type="button"
                                                                 onClick={() => setInviteTab('MANUAL')}
                                                                 className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"
                                                             >
@@ -4158,7 +4161,7 @@ if __name__ == "__main__":
                                                            <div className="flex flex-col items-end gap-1">
                                                                <span className="text-[10px] font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded uppercase">{u.role}</span>
                                                                <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                   <button 
+                                                                   <button type="button" 
                                                                        onClick={(e) => {
                                                                            e.stopPropagation();
                                                                            if(confirm(`Resend invitation to ${u.name}?`)) {
@@ -4183,7 +4186,7 @@ if __name__ == "__main__":
                                                <div><label className="text-xs font-bold text-gray-500 uppercase">Email Address</label><input required type="email" className="input-field mt-1" value={inviteForm.email} onChange={e => setInviteForm({...inviteForm, email: e.target.value})}/></div>
                                                <div><label className="text-xs font-bold text-gray-500 uppercase">Job Title</label><input className="input-field mt-1" value={inviteForm.jobTitle} onChange={e => setInviteForm({...inviteForm, jobTitle: e.target.value})}/></div>
                                                <div className="flex justify-end pt-4">
-                                                   <button 
+                                                   <button type="button" 
                                                         disabled={!inviteForm.name || !inviteForm.email}
                                                         onClick={() => {
                                                             setInviteForm({ ...inviteForm, id: uuidv4() });
@@ -4220,7 +4223,7 @@ if __name__ == "__main__":
                                                  </div>
                                                  <div className="text-xs text-gray-400 font-medium truncate">{inviteForm.email}</div>
                                              </div>
-                                             <button 
+                                             <button type="button" 
                                                 onClick={() => setInviteStep(1)} 
                                                 className="ml-auto p-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-gray-400 hover:text-[var(--color-brand)] hover:border-[var(--color-brand)] transition-all shadow-sm"
                                                 title="Change User"
@@ -4266,7 +4269,7 @@ if __name__ == "__main__":
                                                           <MapPin size={14} className="text-emerald-500"/> Authorized Sites
                                                       </label>
                                                       {sites.length > 0 && (
-                                                          <button 
+                                                          <button type="button" 
                                                             onClick={() => {
                                                                 const allIds = sites.map(s => s.id);
                                                                 const isAllSelected = inviteForm.siteIds.length === allIds.length;
@@ -4330,11 +4333,11 @@ if __name__ == "__main__":
                            {/* Footer */}
                            <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 flex justify-between items-center">
                                {inviteStep === 2 ? (
-                                   <button onClick={() => setInviteStep(1)} className="text-gray-500 font-bold text-sm hover:underline">Back</button>
+                                   <button type="button" onClick={() => setInviteStep(1)} className="text-gray-500 font-bold text-sm hover:underline">Back</button>
                                ) : <div></div>}
                                
                                {inviteStep === 2 && (
-                                   <button 
+                                   <button type="button" 
                                         onClick={async () => {
                                             // Handle Final Submit
                                             // Case-insensitive check for existing user
