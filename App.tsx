@@ -4,7 +4,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import Layout from './components/Layout';
 import Login from './components/Login';
 import PendingApproval from './components/PendingApproval';
-import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+
 import InviteLanding from './components/InviteLanding';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -64,7 +64,7 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <AppProvider>
-      <PWAInstallPrompt />
+
       <ErrorBoundary>
       <BrowserRouter>
         <Routes>

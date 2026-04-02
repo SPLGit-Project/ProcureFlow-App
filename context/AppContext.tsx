@@ -363,12 +363,31 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     };
 
     useEffect(() => {
-        if (!qaMode) return;
+        if (!isAuthenticated) return;
         if (activeSiteIds.length > 0) return;
-        const defaults = MOCK_SITES.slice(0, 3).map(s => s.id);
-        _setActiveSiteIds(defaults);
-        localStorage.setItem('activeSiteIds', JSON.stringify(defaults));
-    }, [qaMode, activeSiteIds.length]);
+        
+        if (qaMode) {
+            const defaults = MOCK_SITES.slice(0, 3).map(s => s.id);
+            _setActiveSiteIds(defaults);
+            localStorage.setItem('activeSiteIds', JSON.stringify(defaults));
+            return;
+        }
+
+        // For non-admins, auto-select all assigned sites if none are active
+        if (currentUser && currentUser.role !== 'ADMIN' && currentUser.siteIds && currentUser.siteIds.length > 0) {
+             _setActiveSiteIds([...currentUser.siteIds]);
+             localStorage.setItem('activeSiteIds', JSON.stringify(currentUser.siteIds));
+             // Persist this default to the user profile
+             savePreferences({ activeSiteIds: currentUser.siteIds });
+        }
+        
+        // For admins, default to the first site if none are selected to avoid "no data" view
+        if (currentUser && currentUser.role === 'ADMIN' && sites.length > 0) {
+             _setActiveSiteIds([sites[0].id]);
+             localStorage.setItem('activeSiteIds', JSON.stringify([sites[0].id]));
+             savePreferences({ activeSiteIds: [sites[0].id] });
+        }
+    }, [qaMode, activeSiteIds.length, isAuthenticated, currentUser, sites]);
 
     // --- Computed: Sites the current user has access to ---
     const userSites = React.useMemo(() => {
