@@ -159,6 +159,26 @@ const Settings = () => {
       setActiveTab(state.activeTab);
     }
   }, [location.state]);
+
+  // --- Smart Sticky Header Logic ---
+  const [isStuck, setIsStuck] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+     const observer = new IntersectionObserver(
+         ([entry]) => {
+             setIsStuck(!entry.isIntersecting);
+         },
+         { threshold: [0] }
+     );
+     
+     const current = sentinelRef.current;
+     if (current) observer.observe(current);
+     
+     return () => {
+         if (current) observer.unobserve(current);
+     };
+  }, []);
   
   // --- Security: Permission-based Guard ---
   useEffect(() => {
@@ -1271,8 +1291,9 @@ if __name__ == "__main__":
          </div>
       </div>
 
-      <div className="sticky top-0 z-30 -mx-4 px-4 md:mx-0 md:px-0">
-          <div className="rounded-2xl border border-gray-200/80 bg-white/75 p-2 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-[#15171e]/90">
+      <div ref={sentinelRef} className="h-px w-full pointer-events-none absolute" />
+      <div className={`sticky top-[-1px] z-30 transition-all duration-300 ${isStuck ? '-mx-4 sm:-mx-4 md:-mx-8 px-4 sm:px-4 md:px-8 bg-white/95 dark:bg-[#15171e]/95 border-b border-gray-200 dark:border-gray-800 shadow-md py-3' : '-mx-4 px-4 md:mx-0 md:px-0 pt-2 pb-2'}`}>
+          <div className={`transition-all duration-300 ${isStuck ? 'rounded-none border-0 bg-transparent p-0 shadow-none backdrop-blur-none max-w-7xl mx-auto' : 'rounded-2xl border border-gray-200/80 bg-white/75 p-2 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-[#15171e]/90'}`}>
               <div className="flex items-center gap-2 overflow-x-auto">
                   {visibleTabs.map(tab => {
                       const isActive = activeTab === tab.id;

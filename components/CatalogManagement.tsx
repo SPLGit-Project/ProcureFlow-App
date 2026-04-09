@@ -433,7 +433,13 @@ const CatalogManagement = ({
     return (
         <div className="space-y-6 h-full min-h-0 flex flex-col">
             {/* Header & Main Nav */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-2">
+            <div ref={sentinelRef} className="h-px w-full pointer-events-none absolute" />
+            <div className={`sticky top-[64px] z-20 transition-all duration-300 ${
+                isStuck 
+                ? '-mx-4 sm:-mx-4 md:-mx-8 px-4 sm:px-4 md:px-8 bg-white/95 dark:bg-[#15171e]/95 border-b border-gray-200 dark:border-gray-800 shadow-md py-3 mb-4' 
+                : 'mb-0'
+            }`}>
+                <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 ${isStuck ? 'max-w-7xl mx-auto' : ''}`}>
                 <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar pb-1">
                     {GROUPED_TABS.map(tab => {
                         const Icon = tab.icon;
@@ -486,6 +492,9 @@ const CatalogManagement = ({
                         <span>Visual Map</span>
                     </button>
                 </div>
+            </div>
+
+            </div>
             </div>
 
             {/* Main Content Area */}

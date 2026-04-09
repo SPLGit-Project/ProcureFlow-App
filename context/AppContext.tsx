@@ -1737,8 +1737,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     };
 
   const createPO = async (po: PORequest) => {
+    if (!currentUser) {
+        alert("You must be logged in to create a request.");
+        return false;
+    }
     try {
-        const displayId = await db.createPO(po);
+        const displayId = await db.createPO({ ...po, requesterId: currentUser.id });
         // NOTIFICATION TRIGGER
         sendNotification('PO_CREATED', { poId: displayId, requesterId: po.requesterId, amount: po.totalAmount });
         logAction('PO_CREATED', { id: displayId, amount: po.totalAmount }, { requester: po.requesterName });

@@ -176,7 +176,13 @@ const SimpleWorkflowConfig = ({
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div ref={sentinelRef} className="h-px w-full pointer-events-none absolute" />
+            <div className={`sticky top-[64px] z-20 transition-all duration-300 ${
+                isStuck 
+                ? '-mx-4 sm:-mx-4 md:-mx-8 px-4 sm:px-4 md:px-8 bg-white/95 dark:bg-[#15171e]/95 border-b border-gray-200 dark:border-gray-800 shadow-xl py-3 mb-4' 
+                : 'mb-0'
+            }`}>
+                <div className={`flex items-center justify-between ${isStuck ? 'max-w-7xl mx-auto' : ''}`}>
                 <div>
                     <h2 className="text-2xl font-bold text-primary dark:text-white">Workflow Notifications</h2>
                     <p className="text-secondary dark:text-gray-400 mt-1">Configure automated email and in-app notifications for key events</p>
@@ -218,6 +224,9 @@ const SimpleWorkflowConfig = ({
                         )}
                     </button>
                 </div>
+            </div>
+
+            </div>
             </div>
 
             {/* Workflow Cards */}
