@@ -13,16 +13,7 @@ declare
     v_status text;
     v_requester_id uuid;
     v_is_admin boolean;
-    v_auth_uid uuid;
-begin
-    v_auth_uid := auth.uid();
-
-    -- Resolve admin status
-    select exists (
-        select 1 from public.users u
-        join public.roles r on u.role_id = r.id
-        where u.auth_user_id = v_auth_uid and r.id = 'ADMIN'
-    ) into v_is_admin;
+    v_is_admin := public.is_admin();
 
     -- Fetch the PO
     select status, requester_id

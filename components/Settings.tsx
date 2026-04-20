@@ -35,7 +35,7 @@ import { seedCatalogData } from '../utils/catalogSeeder.ts';
 import SimpleWorkflowConfig from './SimpleWorkflowConfig.tsx';
 
 
-const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, icon: React.ElementType, category: 'Sidebar Navigation' | 'Admin Portal' | 'Operational Actions' }[] = [
+const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, icon: React.ElementType, category: 'Sidebar Navigation' | 'Admin Portal' | 'Operational Actions' | 'Development' }[] = [
     // Sidebar Navigation
     { id: 'view_dashboard', label: 'Dashboard', description: 'Access dashboard overview', icon: Layout, category: 'Sidebar Navigation' },
     { id: 'view_items', label: 'Items', description: 'View master item list', icon: Box, category: 'Sidebar Navigation' },
@@ -62,7 +62,10 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'receive_goods', label: 'Receive Goods', description: 'Mark items as received', icon: Package, category: 'Operational Actions' },
     { id: 'manage_finance', label: 'Finance Management', description: 'Edit finance codes', icon: DollarSign, category: 'Operational Actions' },
     { id: 'manage_items', label: 'Manage Items', description: 'Create/Edit/Delete Items', icon: Layers, category: 'Operational Actions' },
-    { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', icon: Truck, category: 'Operational Actions' }
+    { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', icon: Truck, category: 'Operational Actions' },
+    
+    // Development
+    { id: 'manage_development', label: 'Development Admin', description: 'Access to Smart Buying and Data Ingest tools', icon: Code, category: 'Development' }
 ];
 
 type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT';
@@ -3151,13 +3154,12 @@ if __name__ == "__main__":
                                                           <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold">
                                                               <Loader2 size={12} className="animate-spin" /> Saving...
                                                           </span>
-                                                      )}
                                                       <span className="px-2 py-1 rounded bg-[var(--color-brand)]/10 text-[var(--color-brand)] text-[10px] font-bold">{activeRole.permissions.length} Active Rules</span>
                                                   </div>
                                               </div>
                                               <div className="p-6">
                                                   <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-8">
-                                                       {['Sidebar Navigation', 'Admin Portal', 'Operational Actions'].map((category) => {
+                                                       {['Sidebar Navigation', 'Admin Portal', 'Operational Actions', 'Development'].map((category) => {
                                                            const categoryPerms = AVAILABLE_PERMISSIONS.filter(p => (p as any).category === category);
                                                            const allCategoryIds = categoryPerms.map(p => p.id);
                                                            const isAllSelected = allCategoryIds.every(id => activeRole.permissions.includes(id));
@@ -3165,7 +3167,7 @@ if __name__ == "__main__":
                                                            return (
                                                                <div key={category} className="space-y-3">
                                                                    <div className="flex items-center justify-between pl-1">
-                                                                       <div className="flex items-center gap-2"><div className="p-1.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-400">{category === 'Sidebar Navigation' ? <Layout size={12}/> : category === 'Admin Portal' ? <SettingsIcon size={12}/> : <Zap size={12}/>}</div><div className="text-[11px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">{category}</div></div>
+                                                                       <div className="flex items-center gap-2"><div className="p-1.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-400">{category === 'Sidebar Navigation' ? <Layout size={12}/> : category === 'Admin Portal' ? <SettingsIcon size={12}/> : category === 'Development' ? <Code size={12}/> : <Zap size={12}/>}</div><div className="text-[11px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">{category}</div></div>
                                                                        <button type="button" 
                                                                            onClick={() => {
                                                                                let newPerms: PermissionId[];

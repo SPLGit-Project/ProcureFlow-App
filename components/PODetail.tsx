@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
 import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search } from 'lucide-react';
@@ -345,8 +345,8 @@ const PODetail = () => {
   const canApprove = hasPermission('approve_requests') && po?.status === 'PENDING_APPROVAL';
   const canLinkConcurRequest = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR_REQUEST';
   const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR';
-  const canReceive = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'PARTIALLY_RECEIVED' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
-  const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'PARTIALLY_RECEIVED' || po?.status === 'RECEIVED');
+  const canReceive = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
+  const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED');
   const isAdmin = currentUser?.role === 'ADMIN';
   const canEditDeliveries = Boolean(
     po &&
@@ -398,9 +398,8 @@ const PODetail = () => {
       if (po.status === 'APPROVED_PENDING_CONCUR_REQUEST') currentStep = 2;
       if (po.status === 'APPROVED_PENDING_CONCUR') currentStep = 3;
       if (po.status === 'ACTIVE') currentStep = 4;
-      if (po.status === 'PARTIALLY_RECEIVED') currentStep = 5;
-      if (po.status === 'RECEIVED') currentStep = 6;
-      if (po.status === 'CLOSED') currentStep = 7;
+      if (po.status === 'RECEIVED') currentStep = 5;
+      if (po.status === 'CLOSED') currentStep = 6;
 
       if (po.status === 'REJECTED') return step === 2 ? 'error' : step < 2 ? 'complete' : 'pending';
       if (po.status === 'VARIANCE_PENDING') return step === 5 ? 'warning' : step < 5 ? 'complete' : 'pending';
@@ -415,9 +414,8 @@ const PODetail = () => {
       { num: 2, label: 'Approved' },
       { num: 3, label: 'Req. Logged' },
       { num: 4, label: 'In Concur' },
-      { num: 5, label: 'Delivered' },
-      { num: 6, label: 'Full' },
-      { num: 7, label: 'Complete' },
+      { num: 5, label: 'Full' },
+      { num: 6, label: 'Complete' },
   ];
 
 
@@ -634,7 +632,7 @@ const PODetail = () => {
   /* Side Effect: If forcing to RECEIVED/CLOSED and no deliveries exist, create dummy delivery so it appears in Finance Review */
   const ensureDeliveryRecord = async (targetStatus: string) => {
       // Only strictly relevant for statuses that imply goods receipt
-      if (!['RECEIVED', 'CLOSED', 'PARTIALLY_RECEIVED'].includes(targetStatus)) return;
+      if (!['RECEIVED', 'CLOSED'].includes(targetStatus)) return;
       if (!po || po.deliveries.length > 0) return;
 
       try {

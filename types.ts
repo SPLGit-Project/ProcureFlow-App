@@ -25,7 +25,8 @@ export type PermissionId =
   | 'manage_finance'
   | 'manage_settings'
   | 'manage_items'
-  | 'manage_suppliers';
+  | 'manage_suppliers'
+  | 'manage_development';
 
 export interface Permission {
     id: PermissionId;
@@ -296,7 +297,6 @@ export type POStatus =
   | 'APPROVED_PENDING_CONCUR_REQUEST'
   | 'APPROVED_PENDING_CONCUR' // Approved internally, waiting for user to create in Concur
   | 'ACTIVE' // Created in Concur, ready for delivery
-  | 'PARTIALLY_RECEIVED' 
   | 'RECEIVED' 
   | 'VARIANCE_PENDING'
   | 'CLOSED';

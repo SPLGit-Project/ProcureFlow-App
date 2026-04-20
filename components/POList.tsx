@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useApp } from '../context/AppContext.tsx';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -15,7 +15,7 @@ import {
   XCircle
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { POStatus } from '../types';
+import type { POStatus } from '../types.ts';
 import ContextHelp from './ContextHelp';
 import { ToastContainer, useToast } from './ToastNotification';
 
@@ -36,14 +36,13 @@ type SiteFilterOption = {
   normalizedSiteName?: string;
 };
 
-const IN_PROGRESS_STATUSES: POStatus[] = ['ACTIVE', 'PARTIALLY_RECEIVED', 'VARIANCE_PENDING'];
+const IN_PROGRESS_STATUSES: POStatus[] = ['ACTIVE', 'VARIANCE_PENDING'];
 const COMPLETED_STATUSES: POStatus[] = ['RECEIVED', 'CLOSED'];
 
 const statusLabel = (status: POStatus) => {
   if (status === 'APPROVED_PENDING_CONCUR') return 'Pending Concur PO';
   if (status === 'APPROVED_PENDING_CONCUR_REQUEST') return 'Pending Concur Req';
   if (status === 'PENDING_APPROVAL') return 'Pending Approval';
-  if (status === 'PARTIALLY_RECEIVED') return 'Partially Received';
   if (status === 'VARIANCE_PENDING') return 'Variance Pending';
   return status.replace(/_/g, ' ');
 };
@@ -347,7 +346,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     } else if (status === 'APPROVED_PENDING_CONCUR' || status === 'APPROVED_PENDING_CONCUR_REQUEST') {
       colorClass =
         'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-500 border-blue-200 dark:border-blue-500/20';
-    } else if (status === 'ACTIVE' || status === 'PARTIALLY_RECEIVED' || status === 'VARIANCE_PENDING') {
+    } else if (status === 'ACTIVE' || status === 'VARIANCE_PENDING') {
       colorClass =
         'bg-indigo-100 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20';
     } else if (status === 'RECEIVED') {

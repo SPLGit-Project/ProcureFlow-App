@@ -13,7 +13,8 @@ export const ALL_PERMISSIONS: Permission[] = [
     { id: 'manage_finance', label: 'Manage Finance', description: 'Edit capitalization and invoices.', category: 'Admin' },
     { id: 'manage_settings', label: 'Manage Settings', description: 'Access admin panel.', category: 'Admin' },
     { id: 'manage_items', label: 'Manage Items', description: 'Create/Edit items and catalog.', category: 'Admin' },
-    { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit suppliers.', category: 'Admin' },
+    { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Admin' },
+    { id: 'manage_development', label: 'Development Admin', description: 'Access development tools.', category: 'Admin' },
 ];
 
 export const MOCK_ROLES: RoleDefinition[] = [
@@ -27,7 +28,7 @@ export const MOCK_ROLES: RoleDefinition[] = [
     },
     { 
         id: 'ADMIN', name: 'Administrator', description: 'Full system access.', isSystem: true,
-        permissions: ['view_dashboard', 'create_request', 'view_all_requests', 'approve_requests', 'link_concur', 'receive_goods', 'view_finance', 'manage_finance', 'manage_settings', 'manage_items', 'manage_suppliers'] 
+        permissions: ['view_dashboard', 'create_request', 'view_all_requests', 'approve_requests', 'link_concur', 'receive_goods', 'view_finance', 'manage_finance', 'manage_settings', 'manage_items', 'manage_suppliers', 'manage_development'] 
     }
 ];
 

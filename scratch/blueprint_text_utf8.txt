@@ -1,0 +1,4850 @@
+﻿SPL SERVICES
+BundleConnect
+Database Design Blueprint
+Comprehensive Schema Reference for All 7 Australian Sites
+Document Type
+Database Design & Architecture Blueprint
+Organisation
+SPL Services Pty Ltd
+Scope
+All 7 
+BundleConnect
+ MySQL replica instances
+Sites Covered
+Melbourne Â· Sydney Â· Perth Â· Cairns Â· Adelaide Â· Albany Â· Brisbane
+Database Version
+MySQL 5.7.28 (all sites except ADL: 5.7.43)
+Schema Source
+Forensic extraction from read-only replica instances
+Prepared
+April 2026
+Classification
+CONFIDENTIAL â€“ Internal Use Only
+âš‘  This
+ document is derived from live forensic dumps of the 
+BundleConnect
+ MySQL replica databases at each site. Column definitions, row counts, and behavioural observations reflect the state at time of extraction. A developer reading this document will have a complete, working understanding of the 
+BundleConnect
+ database schema, business logic, and site-specific variations.
+1.  Network Architecture Overview
+1
+1.1  Replication Topology
+1
+1.2  Site Inventory
+1
+1.3  Storage Engine Distribution
+1
+1.4  Global Synchronisation Setting
+1
+2.  Core RFID Transaction Tables
+1
+2.1  rfidtrans â€” Primary Transaction Log
+1
+2.1.1  Row Volume by Site
+1
+2.1.2  Column Definitions
+1
+2.1.3  Transaction Type Legend (trans_type)
+1
+2.1.4  Key Index
+1
+2.2  rfidtrans_unreg â€” Unregistered Transactions
+1
+2.3  rfidtrans_last â€” Current Item State
+1
+2.4  rfid â€” Item Master Registry
+1
+2.4.1  Relationship to Transaction Tables
+1
+3.  Reader Configuration
+1
+3.1  rfidinit â€” RFID Reader Definitions
+1
+4.  System Configuration
+1
+4.1  rfidconfig â€” Site Configuration Table
+1
+4.1.1  Site-Specific Configuration Values
+1
+5.  Customer & Dimension Tables
+1
+5.1  debtors â€” Customer Master
+1
+5.2  rfiddept â€” Department
+1
+5.3  rfidward â€” Ward
+1
+5.4  rfidperson â€” Person
+1
+5.5  rfidcustlevels â€” Customer Level Names
+1
+6.  Stock / Linen Item Type Tables
+1
+6.1  rfidstock â€” RFID-Tracked Stock Types
+1
+6.2  stock â€” General Stock Table
+1
+7.  Operational & Lifecycle Tables
+1
+7.1  rfidlost â€” Lost Item Log
+1
+7.2  rfiddiscards â€” Item Retirement Log
+1
+7.3  rfidchglog â€” Stock Type Change Log
+1
+7.4  rfidtrans_sensitivity â€” Signal Strength Log
+1
+7.5  autoreturn_log â€” Auto-Return Events
+1
+7.6  dailycnt â€” Daily Count Summary
+1
+8.  Order Management & Invoicing Tables
+1
+8.1  corders â€” Customer Orders
+1
+8.2  psliphdr â€” Packing Slip Header
+1
+8.3  pslip â€” Packing Slip Lines
+1
+8.4  invhdr / invline â€” Invoice Header & Lines
+1
+9.  Satellite & Site-Specific Tables
+1
+9.1  Ramsay Health Care Linen Tracking
+1
+9.2  BabyCan Customer Program (MEL & ALB)
+1
+9.3  equipdata â€” Wash Equipment Integration (BNE)
+1
+9.4  contractor_count â€” Contractor Performance (ALB & SYD)
+1
+9.5  chuteass â€” Chute Assignment (ALB & BNE)
+1
+10.  Business Workflows & Data Logic
+1
+10.1  The Linen Lifecycle
+1
+10.2  Current Stock-at-Customer Calculation
+1
+10.3  Unregistered Item Detection
+1
+10.4  Batch & Order System
+1
+10.5  Cloud Synchronisation Workflow
+1
+10.6  Transaction Type 8 â€” System-Generated Rows
+1
+10.7  rfidtrans_order â€” Order-Linked Transactions
+1
+11.  Site-Specific Schema Variations
+1
+11.1  Melbourne (MEL) â€” Reference Site
+1
+11.2  Sydney (SYD) â€” Replication Stopped
+1
+11.3  Perth (PER) â€” SAP Integration Site
+1
+11.4  Cairns (CNS) â€” Auto-Despatch Site
+1
+11.5  Adelaide (ADL) â€” Unique Transaction Types
+1
+11.6  Albany (ALB) â€” Unique rfidcust/rfidstock Data
+1
+11.7  Brisbane (BNE) â€” Rebuilt November 2025
+1
+12.  Developer Quick Reference
+1
+12.1  Universal Join Patterns
+1
+12.2  High-Watermark Polling (Recommended Pattern)
+1
+12.3  Foreign Key Map (Logical â€” Not Enforced)
+1
+12.4  Site-Specific Query Filters Required
+1
+12.5  Tables with Identical Row Counts Across Sites
+1
+12.6  NULL and Missing Data Patterns
+1
+12.7  rfidcust vs debtors â€” Critical Distinction
+1
+1.  Network Architecture Overview
+1.1  Replication
+ Topology
+Every 
+BundleConnect
+ site runs a pair of MySQL 5.7 instances on a single Windows host. The master instance on port 3306 is the operational write-primary; the replica on port 3307 is configured as 
+read_only
+=ON and streams changes from the master via MySQL binary-log replication. SPL's monitoring and reporting tools connect exclusively to the replica port 3307.
+The 
+Replicate_Rewrite_DB
+ parameter remaps the master database name to a different schema name on the replica, allowing the same host to carry both schemas simultaneously without collision.
+Replication Configuration Summary
+Replication type
+Asynchronous binary log (row/statement based)
+Master port
+3306  (
+write-primary, not directly accessible to monitoring)
+Replica port
+3307  (
+read_only
+ = ON, used by all monitoring/reporting)
+Schema rewrite
+Replicate_Rewrite_DB
+ remaps master DB name â†’ replica DB name
+Crash recovery
+NONE for 
+MyISAM
+ tables (95%+ of tables at most sites)
+Character set
+latin1 / latin1_swedish_
+ci  (
+all 7 sites)
+1.2  Site
+ Inventory
+The table below summarises each site's replica instance. Row counts are derived from 
+row_stats
+ in the forensic dump (exact counts, not 
+InnoDB
+ estimates).
+Site
+Hostname
+MySQL Ver.
+max_conn
+Total 
+rfidtrans
+Total 
+rfid
+Tables
+Key Notes
+MEL
+BRDTRK01
+5.7.28
+2,000
+211,308,253
+4,859,733
+166
+Largest DB; Ramsay/McCallum/
+BabyCan
+ satellites
+SYD
+SYDTRK01
+5.7.28
+151
+92,154,143
+1,112,661
+154
+REPLICATION STOPPED; 57.7% 
+unreg
+ ratio
+PER
+PERTRK01
+5.7.28
+10,000
+109,121,633
+1,644,328
+173
+SAP integration (14 
+InnoDB
+); most tables
+CNS
+CNSTRK01
+5.7.28
+151
+27,900,285
+491,723
+163
+Mixed despatch AUTO=Y; 
+global_sync
+=0
+ADL
+ADETRK01
+5.7.43
+10,000
+105,343,194
+1,155,696
+148
+D: drive; type 6/D unique; 5.7.43 only
+ALB
+ALBTRK01
+5.7.28
+151
+5,363,340
+929,603
+172
+Only site with 
+rfidcust
+/
+rfidstock
+ data
+BNE
+BNETRK01
+5.7.28
+2,000
+100,185,831
+919,423
+164
+REBUILT Nov 2025; 55% type 8; 
+equipdata
+ 11.7M
+1.3  Storage
+ Engine Distribution
+MyISAM
+ is the dominant storage engine across all sites (approximately 95%+ of tables). 
+InnoDB
+ is used selectively for newer tables, notably at Perth for SAP integration. The dominance of 
+MyISAM
+ has significant implications: there is no transactional ACID protection, no row-level locking, and no crash recovery. A hard power failure or OS crash can leave 
+MyISAM
+ tables in a corrupted state (MySQL error 144 â€” "Table is marked as crashed").
+Site
+MyISAM
+ Tables
+InnoDB
+ Tables
+Notes
+MEL
+~162
+4
+rfid_ramsay
+, 
+rfid_ramsay_desp
+, 
+rfid_babycan
+, 
+rfidtrans_babycan
+SYD
+~154
+0
+All 
+MyISAM
+PER
+~159
+14
+SAP tables (
+sap_invoices
+, 
+saptrans
+) + location tables
+CNS
+~162
+1
+contractor_count
+ADL
+~147
+1
+contractor_count
+ALB
+~169
+3
+rfid_ramsay
+, 
+rfid_ramsay_desp
+, 
+rfid_babycan
+ + 
+rfidtrans_babycan
+BNE
+~160
+4
+contractor_count
+, 
+rfid_ramsay
+; ALL tables rebuilt 2025-11-02
+1.4  Global
+ Synchronisation Setting
+The 
+rfidconfig.global
+_sync_period
+ field controls how often 
+BundleConnect
+ pushes data to the cloud API (in minutes). A value of 0 disables automatic sync entirely, meaning data only synchronises on-demand or via manual trigger. Four of seven sites have this disabled:
+Site
+global_sync_period
+Sync Status
+Implication
+MEL
+15 min
+Active
+Syncs every 15 minutes
+SYD
+0
+DISABLED
+No automatic sync; manual only
+PER
+15 min
+Active
+Syncs every 15 minutes
+CNS
+0
+DISABLED
+No automatic sync; manual only
+ADL
+0
+DISABLED
+No automatic sync; manual only
+ALB
+0
+DISABLED
+No automatic sync; manual only
+BNE
+0
+DISABLED
+No automatic sync; manual only
+2.  Core RFID Transaction Tables
+This section documents the tables at the heart of 
+BundleConnect's
+ RFID tracking system. Every physical movement of a tagged linen item through the laundry lifecycle is captured in 
+rfidtrans
+. The 
+rfid
+ table is the item master registry. All other tables in this section are derived views or projections of this core data.
+2.1  
+rfidtrans
+ â€” Primary Transaction Log
+This is the single largest and most important table in the system. Every RFID scan event â€” soil-in, despatch, lost, and system-generated â€” creates one row. The table is 
+MyISAM
+ at all sites. There are no foreign key constraints; referential integrity is enforced by application logic only.
+2.1.1  Row
+ Volume by Site
+Site
+Total Rows
+Engine
+Approx Data Size
+Notes
+MEL
+211,308,253
+MyISAM
+~23.4 GB
+Largest; includes all historical data
+SYD
+92,154,143
+MyISAM
+~10.5 GB
+Replication stopped; data may be stale
+PER
+109,121,633
+MyISAM
+~12.4 GB
+Active; SAP-integrated site
+CNS
+27,900,285
+MyISAM
+~3.2 GB
+Smaller site; auto-despatch heavy
+ADL
+105,343,194
+MyISAM
+~12.0 GB
+Active; type 6/D unique to ADL
+ALB
+5,363,340
+MyISAM
+~0.6 GB
+Smallest; fewest RFID readers
+BNE
+100,185,831
+MyISAM
+~11.4 GB
+Rebuilt 2025-11-02; pre-2024 data absent
+2.1.2  Column
+ Definitions
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT â€” surrogate PK
+rfid_no
+char(
+30)
+N
+MUL
+RFID tag identifier; links to 
+rfid.rfid
+_no
+deb_key
+int(
+6)
+N
+0
+FK â†’ 
+debtors.DEB_KEY
+ (logical, not enforced)
+dept_key
+int(
+6)
+N
+0
+FK â†’ 
+rfiddept.DEPT
+_KEY
+ward_key
+int(
+6)
+N
+0
+FK â†’ 
+rfidward.WARD
+_KEY
+person_key
+int(
+6)
+N
+0
+FK â†’ 
+rfidperson.PERSON
+_KEY
+stk_key
+int(
+6)
+N
+0
+FK â†’ 
+rfidstock.STK_KEY
+ (or 
+stock.STK_KEY
+)
+trans_date
+datetime
+N
+MUL
+Timestamp of the RFID scan event
+trans_type
+char(
+1)
+N
+See type legend below
+operator
+int(
+4)
+N
+0
+Reader operator/user ID
+reason_no
+int(
+6)
+N
+0
+Reason code (0 = no reason)
+trolley_no
+char(
+30)
+N
+Trolley identifier if applicable
+batch
+int(
+8)
+N
+0
+Batch this transaction belongs to
+next_batch
+int(
+8)
+N
+0
+Next expected batch for this item
+connect_order_no
+int(
+8)
+N
+0
+BundleConnect
+ cloud order number
+scann_dept
+int(
+6)
+N
+0
+Department at time of scan (scanner dept)
+2.1.3  Transaction
+ Type Legend (
+trans_type
+)
+The 
+trans_type
+ column is a single character that defines the nature of the scan event. Some types are universal across all sites; others are site-specific.
+Type
+Name
+Sites
+Description
+'1'
+Soil-In
+All
+Item received at laundry â€” dirty linen arriving for processing
+'2'
+Despatch
+All
+Item despatched/returned to customer â€” clean linen leaving laundry
+'L'
+Lost
+All
+Item marked as lost at a customer location
+'8'
+System-Generated
+SYD,CNS
+,
+ADL,BNE
+Auto-generated by 
+BundleConnect
+ system (order-matching, reconciliation). NOT a physical scan.
+'B'
+Perth-Specific
+PER
+Unique to Perth â€” believed to be batch/bulk event type
+'6'
+ADL-Specific
+ADL
+Unique to Adelaide â€” purpose not documented in schema
+'D'
+ADL-Specific
+ADL
+Unique to Adelaide â€” purpose not documented in schema
+âš‘  Type
+ '8' transactions are system-generated and do NOT represent physical linen movement. At BNE they account for 55% of all 
+rfidtrans
+ rows; at SYD approximately 57.7% of rows in 
+rfidtrans_unreg
+ are type '8'. Monitoring queries that count physical scans MUST filter: WHERE 
+trans_type
+ NOT IN ('8') â€” or for ADL: WHERE 
+trans_type
+ NOT IN ('8','6','D').
+2.1.4  Key
+ Index
+Index Name
+Column(s)
+Type
+Purpose
+PRIMARY
+record_number
+UNIQUE
+Surrogate PK; used for high-watermark polling (
+MAX(
+record_number
+))
+rfid_no
+ (MUL)
+rfid_no
+INDEX
+Fast lookup of all transactions for a specific tag
+trans_date
+ (MUL)
+trans_date
+INDEX
+Date-range queries for reporting periods
+âš‘  High
+-watermark polling pattern: monitoring systems record 
+MAX(
+record_number
+) as a cursor, then poll WHERE 
+record_number
+ 
+> :
+last
+_seen
+. This is more efficient than timestamp-based polling for 
+MyISAM
+ tables because 
+trans_date
+ has low cardinality in busy windows.
+2.2  
+rfidtrans
+_unreg
+ â€” Unregistered Transactions
+Stores scan events where 
+rfid_no
+ was not found in the 
+rfid
+ registry at the time of scanning. These represent scans of unrecognised tags â€” either genuinely unregistered items, items from other sites, or system-generated type-8 events. The schema is identical to 
+rfidtrans
+.
+Site
+Rows
+Unreg
+ %
+Notes
+MEL
+14,644,442
+6.5%
+Normal baseline; well-managed tag registry
+SYD
+53,165,827
+57.7%
+CRITICAL â€” replication stopped; majority of recent scans unregistered
+PER
+24,742,914
+22.7%
+Elevated but partially explained by SAP stock types
+CNS
+10,568,090
+37.9%
+High; may relate to auto-despatch or cross-site linen
+ADL
+12,352,099
+11.7%
+Normal range for Adelaide
+ALB
+216,459
+4.0%
+Lowest network ratio â€” healthiest tag registry
+BNE
+28,364,111
+28.3%
+Post-rebuild anomaly; pre-2024 registry gap
+âš‘  Unregistered
+ ratio = 
+rfidtrans_
+unreg.total
+_rows
+ / (
+rfidtrans.total
+_rows
+ + 
+rfidtrans_
+unreg.total
+_rows
+). Ratios above ~15% warrant investigation. SYD's 57.7% is a critical indicator that the tag registry is out of sync with operational scanning.
+2.3  
+rfidtrans
+_last
+ â€” Current Item State
+A materialised snapshot of the most recent transaction for each RFID tag. There is a UNIQUE index on 
+rfid_no
+, making this table the fastest way to 
+answer
+ "what is the current state of tag X?". Updated whenever 
+rfidtrans
+ receives a new row for that tag.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+NOT 
+auto_increment
+ â€” mirrors 
+rfidtrans.record
+_number
+rfid_no
+char(
+30)
+N
+UNI
+UNIQUE â€” one row per tag. Fast point lookup.
+deb_key
+int(
+6)
+N
+0
+Current customer
+dept_key
+int(
+6)
+N
+0
+Current department
+ward_key
+int(
+6)
+N
+0
+Current ward
+person_key
+int(
+6)
+N
+0
+Current person
+stk_key
+int(
+6)
+N
+0
+Current stock type
+trans_date
+datetime
+N
+MUL
+Date/time of latest transaction
+trans_type
+char(
+1)
+N
+MUL
+Type of latest transaction
+next_batch
+int(
+8)
+N
+0
+Next expected batch
+scann_dept
+int(
+6)
+N
+0
+Scanner department of latest scan
+wash_count
+int(
+6)
+N
+0
+Cumulative wash cycle count for this item
+Site
+rfidtrans_last
+ rows
+rfid
+ rows
+Coverage %
+Notes
+MEL
+4,856,925
+4,859,733
+~99.9%
+Near-complete coverage
+SYD
+1,112,244
+1,112,661
+~99.9%
+Good coverage despite replication issue
+PER
+1,639,790
+1,644,328
+~99.7%
+Normal
+CNS
+490,495
+491,723
+~99.7%
+Normal
+ADL
+1,154,604
+1,155,696
+~99.9%
+Normal
+ALB
+924,739
+929,603
+~99.5%
+Normal
+BNE
+919,251
+919,423
+~99.98%
+Post-rebuild; gap expected in history
+2.4  
+rfid
+ â€” Item Master Registry
+The 
+rfid
+ table is the central item registry. Every RFID-tagged linen item that has ever been registered in 
+BundleConnect
+ has exactly one row here. This is the "source of truth" for item identity, current ownership, and lifecycle state. The primary join key is 
+rfid_no
+, which appears in every transaction table.
+Site
+rfid
+ rows
+Engine
+Data Size
+Notes
+MEL
+4,859,733
+MyISAM
+~1.1 GB
+Largest registered fleet
+SYD
+1,112,661
+MyISAM
+~127 MB
+Normal
+PER
+1,644,328
+MyISAM
+~187 MB
+Largest active site fleet
+CNS
+491,723
+MyISAM
+~56 MB
+Smallest active site
+ADL
+1,155,696
+MyISAM
+~132 MB
+Normal
+ALB
+929,603
+MyISAM
+~106 MB
+Normal
+BNE
+919,423
+MyISAM
+~105 MB
+Rebuilt Nov 2025
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+rfid_no
+char(
+30)
+N
+MUL
+RFID tag string â€” joins to all transaction tables
+deb_key
+int(
+6)
+N
+0
+Current owner debtor
+dept_key
+int(
+6)
+N
+0
+Current department
+ward_key
+int(
+6)
+N
+0
+Current ward
+person_key
+int(
+6)
+N
+0
+Assigned person
+stk_key
+int(
+6)
+N
+0
+MUL
+FK â†’ 
+rfidstock
+/
+stock.STK_KEY
+max_usage
+int(
+8)
+N
+0
+Maximum wash cycles before discard
+tag_no
+int(
+6)
+N
+0
+Internal tag sequence number
+supp_batch
+char(
+10)
+N
+Supplier batch reference
+lost
+char(
+1)
+N
+N
+Y=lost item; N=active
+lost_date
+date
+Y
+Date item was declared lost
+lost_deb
+int(
+6)
+N
+0
+Debtor at time of loss
+lost_dept
+int(
+6)
+N
+0
+Department at time of loss
+lost_ward
+int(
+6)
+N
+0
+Ward at time of loss
+lost_person
+int(
+6)
+N
+0
+Person at time of loss
+asset_code
+char(
+20)
+N
+External asset tracking code
+pack
+int(
+8)
+N
+0
+Pack number this item belongs to
+loc_status
+char(
+1)
+N
+Location tracking status
+loc_date
+date
+Y
+Date of last location update
+loc_reader
+int(
+6)
+N
+0
+Reader that last located item
+loc_inv_cred
+char(
+1)
+N
+Location inventory credit flag
+loc_inv_cred_date
+datetime
+Y
+Timestamp of location inventory credit
+active_date
+date
+Y
+Date item was first activated in system
+barcode
+char(
+20)
+N
+Barcode value linked to this RFID tag
+trolley
+char(
+1)
+N
+N
+Y=trolley item
+trolley_no
+char(
+30)
+N
+Trolley number if trolley=Y
+trolley_code
+char(
+30)
+N
+Trolley classification code
+garment_id
+char(
+20)
+N
+External garment identifier
+âš‘  LIFECYCLE
+ FLAG: 
+rfid.lost
+='Y' marks an item as lost. When lost, the 
+lost_date
+, 
+lost_deb
+, 
+lost_dept
+, 
+lost_ward
+, 
+lost_person
+ columns record the context at time of loss. Items with lost='Y' should not appear in active stock counts. The 
+active_date
+ column records when an item first entered the system â€” NULL 
+active_date
+ is a known data quality issue at multiple sites.
+2.4.1  Relationship
+ to Transaction Tables
+Join
+Left Table
+Right Table
+Key Column
+Notes
+Item transactions
+rfidtrans
+rfid
+rfid_no
+ = 
+rfid_no
+All historical scans for a tag
+Current state
+rfidtrans_last
+rfid
+rfid_no
+ = 
+rfid_no
+Fastest current-state lookup
+Unregistered check
+rfidtrans_unreg
+rfid
+rfid_no
+ NOT IN 
+rfid
+Tag not in registry
+Lost items
+rfidlost
+rfid
+rfid_no
+ = 
+rfid_no
+Lost event log
+Discards
+rfiddiscards
+rfid
+rfid_no
+ = 
+rfid_no
+Discard/retirement events
+Change log
+rfidchglog
+rfid
+rfid_no
+ = 
+rfid_no
+Stock type reclassifications
+3.  Reader Configuration
+3.1  
+rfidinit
+ â€” RFID Reader Definitions
+Each row in 
+rfidinit
+ defines one physical RFID reader installed at a site. This table drives the 
+BundleConnect
+ client application's reader management â€” which readers are active, how they behave, what customer they are associated with, and what print/docket behaviour is configured.
+Site
+Reader Count
+Notes
+MEL
+38
+Largest fleet; complex multi-customer environment
+SYD
+16
+Standard
+PER
+26
+SAP-integrated; highest reader count for active sites
+CNS
+16
+Standard
+ADL
+18
+Standard
+ALB
+7
+Smallest reader fleet; lowest throughput
+BNE
+19
+Post-rebuild; some reader configs may be re-initialised
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+EQUIP
+int(
+2)
+N
+0
+Equipment number (ties to 
+equipdata
+)
+READER_IP
+char(
+15)
+N
+IP address of this reader on the network
+READER_PORT
+int(
+4)
+N
+0
+TCP port the reader listens on
+reader_rank
+int(
+2)
+N
+0
+Sort order / priority among readers
+description
+varchar(
+100)
+N
+Human-readable reader name (e.g. "Soil 
+In
+ Gate 1")
+auto_soilin
+char(
+1)
+N
+N
+Y=automatically record soil-in on detection
+auto_accept
+char(
+1)
+N
+Y
+Y=auto-accept scans without operator confirmation
+power_level
+decimal(
+4,2)
+N
+0.00
+RF transmit power in dBm
+lstartables
+char(
+1)
+N
+N
+Enable linen start table tracking
+deb_key
+int(
+6)
+N
+0
+Default customer this reader is assigned to
+send_docket
+char(
+1)
+N
+N
+Print despatch docket at this reader
+send_copies
+int(
+1)
+N
+1
+Number of despatch docket copies
+receive_docket
+char(
+1)
+N
+N
+Print soil-in docket at this reader
+receive_copies
+int(
+1)
+N
+1
+Number of soil-in docket copies
+cust_app_tabs
+char(
+10)
+N
+A
+Application tabs visible to customer at this reader
+scann_dept
+int(
+8)
+N
+0
+Scanning department associated with this reader
+reader_type_no
+int(
+8)
+N
+0
+Reader hardware type code
+reader_mode_no
+int(
+8)
+N
+1002
+Operating mode (1002=standard inventory)
+auto_door
+char(
+1)
+N
+N
+Trigger auto door open on detection
+no_read_period
+int(
+2)
+N
+5
+Seconds to ignore repeated reads of same tag
+sensitivity
+decimal(
+20,6)
+N
+-88.000000
+RSSI threshold (dBm); tags below ignored
+record_sensitivity
+char(
+1)
+N
+N
+Record sensitivity readings to 
+rfidtrans_sensitivity
+filter_sensitivity
+char(
+1)
+N
+N
+Apply sensitivity filter before recording
+active
+char(
+1)
+N
+Y
+Y=reader in active use; N=disabled
+reader_search_mode_no
+int(
+11)
+N
+1
+Search mode for tag reads
+weight_validation
+char(
+1)
+N
+N
+Enable weight validation at this reader
+single_door
+char(
+1)
+N
+N
+Single door mode (one item at a time)
+4.  System Configuration
+4.1  
+rfidconfig
+ â€” Site Configuration Table
+There is always exactly ONE row in 
+rfidconfig
+ per site. This table is the site-wide configuration store for the 
+BundleConnect
+ system â€” controlling print behaviour, sync intervals, cloud API credentials, and security settings. It is the single most important configuration table for any developer or operator to understand.
+âš‘  SECURITY
+: The 
+connect_credentials
+ column stores the 
+BundleConnect
+ API username and password in PLAINTEXT. This value is replicated to the read-only replica where any user with SELECT access can read it. This is a network-wide security finding at all 7 sites.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT; always = 1
+despatch_copies
+int(
+2)
+N
+0
+Default number of despatch docket copies to print
+level1â€“level4
+char(
+20) Ã—4
+N
+Display labels for the 4-level location hierarchy (e.g. "
+Department","Ward
+")
+auto_accept
+char(
+1)
+N
+N
+Site-wide auto-accept default
+logo
+char(
+1)
+N
+N
+Print logo on documents
+docket_no
+int(
+6)
+N
+0
+Current docket sequence number
+auto_soilin
+char(
+1)
+N
+N
+Site-wide auto soil-in default
+next_batch
+int(
+8)
+N
+1
+Next batch number to allocate
+next_pack
+int(
+8)
+N
+100
+Next pack number sequence
+next_pslip
+int(
+8)
+N
+100
+Next packing slip number sequence
+connect_domain
+char(
+100)
+N
+BundleConnect
+ API base URL / domain
+connect_credentials
+char(
+100)
+N
+PLAINTEXT "
+username:password
+" for cloud API â€” SECURITY RISK
+print_docket_on_accept
+char(
+1)
+N
+N
+Auto-print docket when scan accepted
+check_accept_on_despatch
+char(
+1)
+N
+N
+Require explicit accept before despatch allowed
+check_for_double_despatch
+char(
+1)
+N
+N
+Alert if item being despatched twice
+allow_unregistered_despatch
+char(
+1)
+N
+N
+Allow despatch of tags not in 
+rfid
+ registry
+allow_mixed_despatch
+char(
+1)
+N
+N
+Allow mixing of multiple stock types in one despatch
+despatch_password
+char(
+20)
+N
+Optional password to confirm despatch operations
+read_lock
+int(
+4)
+N
+0
+Lock reads after N seconds of inactivity
+sync_mins
+int(
+4)
+N
+10
+Per-reader sync interval in minutes
+auto_consolidate_slips
+char(
+1)
+N
+N
+Auto-consolidate packing slips on despatch
+last_connect_check
+datetime
+Y
+Timestamp of last successful cloud API connectivity check
+barcode_length
+int(
+2)
+Y
+Expected barcode length for validation (NULL=any)
+alerts_login
+char(
+50)
+N
+Login for alerts/notification service
+alerts_password
+char(
+50)
+N
+Password for alerts service
+alerts_start
+time
+Y
+Start of alerting window
+alerts_end
+time
+Y
+End of alerting window
+allow_despatch_exclude
+char(
+1)
+N
+N
+Allow excluding items from despatch batches
+language
+char(
+50)
+N
+ENGLISH
+UI language
+culture_info
+char(
+50)
+N
+en
+-AU
+.NET 
+CultureInfo
+ string (e.g. 
+en
+-AU)
+mixed_despatch_type
+char(
+1)
+N
+Type code for mixed despatch records
+wait_secs
+int(
+2)
+N
+0
+Reader poll wait time in seconds
+reg_deb
+int(
+4)
+N
+0
+Default debtor for item registration
+wash_type
+char(
+1)
+N
+S
+Wash type: S=standard, other values site-defined
+global_sync_period
+int(
+4)
+N
+15
+Minutes between cloud sync cycles; 0=DISABLED (
+CNS,ADL
+,
+ALB,BNE
+)
+global_sync_hour
+int(
+2)
+N
+0
+Hour of day for daily global sync
+add_soilin_on_inspection
+char(
+1)
+N
+N
+Create soil-in record during inspection scan
+global_domain
+char(
+100)
+N
+Global (network-wide) API domain override
+allow_registration_reassign
+char(
+1)
+N
+N
+Allow reassigning a tag to a different stock item
+skip_stocklinks_despatch
+char(
+1)
+N
+N
+Skip stock link validation on despatch
+skip_print_at_despatch
+char(
+1)
+N
+N
+Suppress printing at despatch
+global_batch_size
+int(
+11)
+N
+500
+Number of records per cloud sync batch
+record_sensitivity
+char(
+1)
+N
+N
+Record sensitivity data globally
+max_trolley_weight
+int(
+3)
+N
+0
+Maximum trolley weight in kg (0=unlimited)
+weight_variance
+int(
+3)
+N
+0
+Acceptable weight variance percentage
+4.1.1  Site
+-Specific Configuration Values
+Parameter
+MEL
+SYD
+PER
+CNS
+ADL
+ALB
+BNE
+global_sync_period
+15
+0 !
+15
+0 !
+0 !
+0 !
+0 !
+wash_type
+S
+S
+S
+S
+S
+S
+S
+global_batch_size
+500
+500
+500
+500
+500
+500
+500
+allow_unregistered_despatch
+N
+N
+N
+Y
+N
+N
+N
+allow_mixed_despatch
+N
+N
+N
+Y
+N
+N
+N
+âš‘  CNS
+ is the only site with 
+allow_unregistered_despatch
+=Y and 
+allow_mixed_despatch
+=Y. This reflects the auto-despatch mode observed at CNS and explains the higher unregistered ratio there.
+5.  Customer & Dimension Tables
+The dimension tables define the location hierarchy and reference data used throughout the system. Understanding these tables is essential for interpreting the foreign key values (
+deb_key
+, 
+dept_key
+, 
+ward_key
+, 
+person_key
+, 
+stk_key
+) stored in every transaction row.
+5.1  debtors
+ â€” Customer Master
+The debtor is the billing entity â€” typically a hospital, hotel, or healthcare facility. 
+deb_key
+ is the universal foreign key used throughout the system to identify which customer an item belongs 
+to
+ or a transaction was performed for. This table contains both active and inactive customers (DATE_INACTIVE not null = inactive).
+Site
+Debtor Count
+Notes
+MEL
+911
+Largest customer base; multi-industry (hospital + hotel)
+SYD
+1,005
+Similar to
+ MEL
+PER
+395
+Smaller base; specialised
+CNS
+871
+Normal
+ADL
+1,278
+Largest; ADL has unique debtor artefacts (
+debtors_old
+, 
+debtors_copy
+)
+ALB
+1,245
+Normal
+BNE
+1,358
+Largest; post-rebuild data intact
+The debtors table contains 130+ columns. Key columns for developers are:
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+DEB_KEY
+int(
+6)
+N
+MUL
+The universal customer identifier used as FK across all tables
+ALPHA
+char(
+3)
+Y
+MUL
+3-char mnemonic code for debtor
+TRADING_NAME
+varchar(
+128)
+Y
+MUL
+Customer display name
+DEBTOR_STATUS
+char(
+1)
+Y
+A=active, I=inactive, S=suspended
+DEBTOR_TYPE
+char(
+1)
+Y
+Customer type classification
+DATE_INACTIVE
+date
+Y
+NULL=active customer; set=inactive since this date
+AUTO_DESPATCH
+char(
+1)
+Y
+Y=auto despatch enabled for this customer
+connect_uuid
+char(
+50)
+N
+BundleConnect
+ cloud UUID for this debtor
+connect_autoreturn
+char(
+1)
+N
+N
+Auto-return linen to laundry from this customer
+EMAIL_ADDRESS
+char(
+80)
+N
+Invoice/correspondence email
+INTERFACECODE
+int(
+6)
+N
+MUL
+SAP/external interface mapping code
+external_account
+varchar(
+20)
+N
+MUL
+External system account number (SAP GL code)
+5.2  
+rfiddept
+ â€” Department
+Departments are the second level of the 4-level customer location hierarchy (Customer â†’ Department â†’ Ward â†’ Person). Each department belongs to a single debtor (DEB_KEY). The 
+connect_uuid
+ and 
+connect_update
+ columns sync this record to the 
+BundleConnect
+ cloud.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+RECORD_NUMBER
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+DEB_KEY
+int(
+6)
+N
+MUL
+FK â†’ 
+debtors.DEB_KEY
+DEPT_KEY
+int(
+6)
+N
+Department identifier (unique within a debtor)
+DEPT_NAME
+varchar(
+60)
+N
+MUL
+Display name (e.g. "Surgical", "ICU")
+connect_uuid
+char(
+50)
+N
+Cloud sync UUID
+default_level
+char(
+1)
+N
+N
+Y=default department for this customer
+connect_update
+timestamp
+N
+Last cloud sync timestamp; 
+auto-updated
+ on row change
+5.3  
+rfidward
+ â€” Ward
+Wards are the third level of the hierarchy, nested under departments. A ward represents a specific care area, room type, or delivery location within a department.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+RECORD_NUMBER
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+DEB_KEY
+int(
+6)
+N
+MUL
+FK â†’ 
+debtors.DEB_KEY
+DEPT_KEY
+int(
+6)
+N
+FK â†’ 
+rfiddept.DEPT
+_KEY
+ (within same DEB_KEY)
+WARD_KEY
+int(
+6)
+N
+Ward identifier (unique within a dept)
+WARD_NAME
+varchar(
+60)
+N
+MUL
+Display name (e.g. "Ward 4B", "Operating Theatre")
+connect_uuid
+char(
+50)
+N
+Cloud sync UUID
+dept_uuid
+char(
+50)
+N
+UUID of parent department
+default_level
+char(
+1)
+N
+N
+Y=default ward for this dept
+connect_update
+timestamp
+N
+Last cloud sync timestamp
+5.4  
+rfidperson
+ â€” Person
+Persons are the fourth and most granular level of the hierarchy. They represent individual staff members or garment recipients who have linen assigned to them personally (common in scrub/workwear programs). Most sites have very few rows in this table as person-level tracking is not universally used.
+Site
+Person Rows
+Notes
+MEL
+0
+Person-level tracking not in use
+SYD
+8
+Minimal use
+PER
+2
+Minimal use
+CNS
+1
+Minimal use
+ADL
+0
+Not in use
+ALB
+53
+Most active person tracking in the network
+BNE
+17
+Limited use
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+RECORD_NUMBER
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+DEB_KEY
+int(
+6)
+N
+MUL
+FK â†’ 
+debtors.DEB_KEY
+DEPT_KEY
+int(
+6)
+N
+FK â†’ 
+rfiddept.DEPT
+_KEY
+WARD_KEY
+int(
+6)
+N
+FK â†’ 
+rfidward.WARD
+_KEY
+PERSON_KEY
+int(
+6)
+N
+Person identifier
+salutation
+char(
+6)
+N
+Title (Dr, Mr, Ms, etc.)
+SURNAME
+varchar(
+60)
+N
+MUL
+Last name
+FORENAME
+varchar(
+60)
+N
+First name
+locker
+char(
+60)
+N
+Locker/storage location for this person
+instruction
+char(
+60)
+N
+Special handling instructions
+active
+char(
+1)
+N
+Y
+Y=active; N=no longer at facility
+connect_uuid
+char(
+50)
+N
+Cloud sync UUID
+connect_update
+timestamp
+N
+Last cloud sync timestamp
+5.5  
+rfidcustlevels
+ â€” Customer Level Names
+Stores the custom display names for each of the 4 location hierarchy levels (level 1â€“4) as configured per customer. This allows different customers to use their own terminology (e.g. "Floor", "Unit", "Bay") instead of the generic defaults.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+deb_key
+int(
+6)
+N
+FK â†’ 
+debtors.DEB_KEY
+level
+int(
+1)
+N
+0
+Level number 1â€“4 (1=top, 4=most granular)
+name
+char(
+20)
+N
+Custom label for this level (e.g. "Floor", "Ward")
+Site
+Rows
+Avg per customer
+MEL
+2,733
+~3.0
+SYD
+3,012
+~3.0
+PER
+1,185
+~3.0
+CNS
+2,616
+~3.0
+ADL
+3,843
+~3.0
+ALB
+3,813
+~3.0
+BNE
+4,074
+~3.0
+6.  Stock / Linen Item Type Tables
+The stock and 
+rfidstock
+ tables define the linen item types (garment types, linen categories) managed at each site. 
+stk_key
+ is the universal foreign key used to identify the type of linen item in every transaction record.
+6.1  
+rfidstock
+ â€” RFID-Tracked Stock Types
+rfidstock
+ is the primary stock type registry for RFID-tracked items. Each row defines a distinct garment or linen type that can be tracked. The combination of CODE and STK_KEY uniquely identifies a stock type. DEB_KEY links the stock type to a specific customer when the item type is customer-specific (0 = generic/shared).
+âš‘  IMPORTANT
+: At SYD, PER, CNS, ADL, and BNE the 
+rfidstock
+ table contains 0 rows. Albany (ALB) is the only site with 
+rfidstock
+ populated (58 rows). This means these sites use the stock table instead. Developer queries should always check both tables, 
+or
+ join to whichever is non-empty at the target site.
+Site
+rfidstock
+ rows
+stock rows
+Active Source
+MEL
+0
+2,975
+stock
+SYD
+0
+3,188
+stock
+PER
+0
+3,226
+stock
+CNS
+0
+3,086
+stock
+ADL
+0
+2,193
+stock
+ALB
+58
+3,779
+BOTH â€” 
+rfidstock
+=customer-specific, stock=general
+BNE
+0
+3,615
+stock
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+RECORD_NUMBER
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+CODE
+varchar(
+15)
+Y
+MUL
+Short stock code (e.g. "BED-K", "SCRUB-S")
+STK_KEY
+int(
+6)
+N
+MUL
+Stock type numeric key â€” universal FK in all transaction tables
+TYPE
+char(
+1)
+Y
+MUL
+Stock class: R=rental, H=hire, S=sale, etc.
+DESCx
+varchar(
+40)
+Y
+Full description (e.g. "King Bed Sheet")
+PROD_GRP
+int(
+4)
+N
+MUL
+Product group for reporting aggregation
+WEIGHT
+decimal(
+4,2)
+N
+0.00
+Item weight in kg (used for trolley weight validation)
+DEB_KEY
+int(
+6)
+N
+0
+Owner customer (0=generic/shared)
+LAUNDER_CHG
+decimal(
+8,4)
+N
+0.0000
+Per-item laundry charge rate
+HIRE_CHG
+decimal(
+6,4)
+N
+0.0000
+Per-item hire charge rate
+DRY_CHG
+decimal(
+6,2)
+N
+0.00
+Dry cleaning charge rate
+max_usage
+int(
+5)
+N
+0
+Maximum wash cycles before retirement (0=unlimited)
+soiled_count
+char(
+1)
+N
+N
+Y=count this type in soiled/soil-in tallies
+rfid_trolley
+char(
+1)
+N
+N
+Y=this is a trolley item type
+asset_code
+char(
+20)
+N
+External asset classification code
+INTERFACECODE
+int(
+6)
+N
+MUL
+SAP/external interface mapping code
+6.2  stock
+ â€” General Stock Table
+The stock table is the expanded version of 
+rfidstock
+ with additional columns for cloud sync (
+connect_uuid
+, 
+connect_update
+, 
+connect_autoreturn
+), alternate IDs, and an 
+is_rfid
+ flag. At most sites, stock is the primary stock reference. Columns are near-identical to 
+rfidstock
+ with the following additions:
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+is_rfid
+char(
+1)
+N
+N
+Y=this stock type uses RFID tracking
+external_code
+char(
+20)
+N
+External system code (SAP material number)
+alternate_stock_id
+char(
+50)
+N
+Alternative identifier for cross-system matching
+connect_uuid
+char(
+50)
+N
+BundleConnect
+ cloud UUID for this stock type
+connect_update
+timestamp
+N
+Auto-updated
+ on change; used for cloud sync delta detection
+connect_autoreturn
+char(
+1)
+N
+N
+Auto-return items of this type when scanned at laundry
+DESCx
+varchar(
+255)
+Y
+Extended description (255 chars vs 40 in 
+rfidstock
+)
+weight
+decimal(
+6,4)
+N
+Higher precision than 
+rfidstock
+ (6,4 vs 4,2)
+7.  Operational & Lifecycle Tables
+7.1  
+rfidlost
+ â€” Lost Item Log
+Records each event where an item is declared lost. Items can be marked lost at a customer site (e.g. not returned after a scan cycle). The lost flag on the 
+rfid
+ row is set to Y simultaneously. This table provides the historical audit trail of loss events.
+Site
+rfidlost
+ rows
+Notes
+MEL
+165,552
+Active lost tracking
+SYD
+0
+Not populated â€” potential data gap
+PER
+12,749
+Active
+CNS
+0
+Not populated
+ADL
+166,983
+Active; largest lost count
+ALB
+0
+Not populated
+BNE
+0
+Not populated â€” post-rebuild
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+rfid_no
+char(
+30)
+N
+MUL
+RFID tag â€” joins to 
+rfid.rfid
+_no
+deb_key
+int(
+6)
+N
+0
+Customer at time of loss
+dept_key
+int(
+6)
+N
+0
+Department at time of loss
+ward_key
+int(
+6)
+N
+0
+Ward at time of loss
+person_key
+int(
+6)
+N
+0
+Person at time of loss
+stk_key
+int(
+6)
+N
+0
+Stock type at time of loss
+trans_date
+datetime
+N
+MUL
+Timestamp of loss event
+lost_type
+char(
+1)
+N
+Loss classification code
+7.2  
+rfiddiscards
+ â€” Item Retirement Log
+Records items that have been retired from service â€” typically due to reaching 
+max_usage
+ wash count, being damaged, or being declared unfit. Each discard event records the item's history at the point of retirement.
+Site
+rfiddiscards
+ rows
+Notes
+MEL
+137
+Very low â€” possibly not actively used
+SYD
+0
+Not populated
+PER
+114,748
+Active use â€” largest discard count
+CNS
+4
+Minimal
+ADL
+56,075
+Active use
+ALB
+0
+Not populated
+BNE
+0
+Not populated â€” post-rebuild
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+rfid_no
+char(
+30)
+N
+MUL
+RFID tag
+deb_key
+int(
+6)
+N
+0
+Customer at discard
+dept_key
+int(
+6)
+N
+0
+Department at discard
+ward_key
+int(
+6)
+N
+0
+Ward at discard
+person_key
+int(
+6)
+N
+0
+Person at discard
+stk_key
+int(
+6)
+N
+0
+Stock type
+trans_date
+datetime
+N
+Discard timestamp
+reason_no
+int(
+6)
+N
+0
+Discard reason code
+batch
+char(
+10)
+N
+Batch reference
+reg_date
+datetime
+N
+Date item was originally registered
+wash_count
+int(
+4)
+N
+0
+Total wash cycles at discard
+last_deb
+int(
+6)
+N
+0
+Last customer before discard
+barcode
+char(
+20)
+N
+0
+Barcode at retirement
+last_dept
+int(
+6)
+Y
+Last department
+last_ward
+int(
+6)
+Y
+Last ward
+7.3  
+rfidchglog
+ â€” Stock Type Change Log
+Records when an item's stock type (
+stk_key
+) is reclassified â€” for example, when a sheet is re-registered from one size to another, or when an item is transferred to a different linen category.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+rfid_no
+char(
+30)
+N
+MUL
+RFID tag being reclassified
+change_date
+datetime
+N
+When the reclassification occurred
+new_stk_key
+int(
+6)
+N
+0
+New stock type after change
+prev_stk_key
+int(
+6)
+N
+0
+Previous stock type before change
+reversed
+char(
+1)
+N
+N
+Y=this change was subsequently reversed
+7.4  
+rfidtrans
+_sensitivity
+ â€” Signal Strength Log
+Stores RSSI (signal strength) readings for tags detected at readers configured with 
+record_sensitivity
+=Y. Used for reader calibration and tag detection quality analysis. Empty at all sites in the forensic extract â€” this suggests the feature is not actively used across the network.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+rfid_no
+char(
+30)
+N
+MUL
+Tag identifier
+deb_key
+int(
+6)
+N
+0
+Customer context
+stk_key
+int(
+6)
+N
+0
+Stock type
+trans_date
+datetime
+N
+MUL
+Detection timestamp
+trans_type
+char(
+1)
+N
+Transaction type
+max_sensitivity
+decimal(
+20,6)
+N
+0.000000
+Maximum RSSI reading in dBm during detection window
+wash_count
+int(
+11)
+N
+0
+Wash count at time of detection
+7.5  
+autoreturn
+_log
+ â€” Auto-Return Events
+Records each automated return event generated by the 
+BundleConnect
+ 
+autoreturn
+ feature. When the system calculates that a customer has insufficient stock, it automatically creates a return order. This table logs each such calculation and its outcome. Only MEL, PER, and ADL have data.
+Site
+Rows
+Notes
+MEL
+1,977,523
+Active; largest volume
+SYD
+0
+Not used
+PER
+91,217
+Active
+CNS
+0
+Not used
+ADL
+97,577
+Active
+ALB
+0
+Not used
+BNE
+0
+Not used â€” post-rebuild
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+deb_key
+int(
+10) unsigned
+N
+MUL
+Customer this return was generated for
+customer_name
+varchar(
+128)
+Y
+Denormalised
+ customer name at time of event
+stk_key
+int(
+10) unsigned
+N
+Stock type being returned
+stock_name
+varchar(
+128)
+Y
+Denormalised
+ stock name
+managed_or_autoreturn
+char(
+1)
+Y
+M=managed return, A=auto-return
+stock_at_customer
+int(
+10) unsigned
+N
+Quantity at customer at time of calculation
+agreed_level
+int(
+10) unsigned
+N
+Par level (agreed stock quantity at customer)
+order_qty_not_dispatched
+int(
+10) unsigned
+N
+Pending orders not yet despatched
+managed_return_qty
+int(
+10) unsigned
+N
+Quantity managed to return
+soil_count
+int(
+10) unsigned
+N
+Soil-in count since last despatch
+dispatch_qty
+int(
+10) unsigned
+N
+Quantity despatched in this event
+old_order_qty
+int(
+10) unsigned
+N
+Previous order quantity
+new_order_qty
+int(
+10) unsigned
+N
+New order quantity generated
+connect_order_no
+int(
+10) unsigned
+N
+BundleConnect
+ order number created
+delivery_date
+date
+Y
+Scheduled delivery date
+update_failed
+char(
+1)
+Y
+Y=cloud update failed; see 
+error_msg
+error_msg
+varchar(
+512)
+Y
+Error details if 
+update_failed
+=Y
+created_at
+timestamp
+N
+Auto-set on INSERT; auto-updated on change
+dept_key
+int(
+10) unsigned
+Y
+Department context (optional)
+dept_name
+varchar(
+128)
+Y
+Denormalised
+ department name
+ward_key
+int(
+10) unsigned
+Y
+Ward context (optional)
+ward_name
+varchar(
+128)
+Y
+Denormalised
+ ward name
+7.6  
+dailycnt
+ â€” Daily Count Summary
+A pre-aggregated daily count summary per customer and stock type. Updated daily to avoid real-time aggregation of the full 
+rfidtrans
+ history for reporting. Key for stock-on-hand and despatch reports.
+Site
+Rows
+Notes
+MEL
+0
+Not populated at MEL â€” reporting uses 
+rfidtrans
+ directly
+SYD
+604,497
+Active
+PER
+18,766
+Active
+CNS
+72
+Minimal
+ADL
+102
+Minimal
+ALB
+197,992
+Active
+BNE
+1,774,140
+Largest â€” active reporting table
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+RECORD_NUMBER
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+DEB_KEY
+int(
+6)
+N
+MUL
+Customer
+DATE
+date
+Y
+MUL
+Date of the count period
+STK_KEY
+int(
+6)
+N
+0
+Stock type
+MISC_KEY
+int(
+6)
+N
+0
+Miscellaneous key (department or product group)
+STK_TYPE
+char(
+1)
+Y
+Stock class (R/H/S)
+auto_count
+int(
+6)
+N
+0
+Auto-despatched item count
+db_count
+int(
+6)
+N
+0
+Database count (RFID-calculated stock)
+QTY_DESPATCHED
+int(
+4)
+N
+0
+Total qty despatched on this date
+HIRE_COUNT
+int(
+4)
+N
+0
+Hire items counted
+stk_count
+int(
+6)
+N
+0
+Physical stock count
+reject_count
+int(
+6)
+N
+0
+Items rejected/not accepted
+rewash_count
+int(
+6)
+N
+0
+Items sent for rewash
+clean_count
+int(
+6)
+N
+0
+Clean items counted
+processor
+int(
+6)
+N
+0
+Processing unit / machine that generated this count
+8.  Order Management & Invoicing Tables
+8.1  
+corders
+ â€” Customer Orders
+Stores customer linen orders. Each order line links a customer (
+deb_key
+) to a stock type (
+stk_key
+) and tracks quantities ordered vs. delivered. Orders drive packing slip creation and despatch workflows. The 
+connect_uuid
+ and 
+connect_order_uuid
+ columns link the order to the 
+BundleConnect
+ cloud order management system.
+Site
+corders
+ rows
+Notes
+MEL
+0
+Not visible â€” possibly in separate schema
+SYD
+885,804
+Active order management
+PER
+385,676
+Active
+CNS
+1,023,664
+Largest â€” high order volume
+ADL
+146,983
+Active
+ALB
+1,916,528
+Very high â€” reflects Albany's active ordering workflow
+BNE
+734,584
+Active
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+deb_key
+mediumint
+(
+8) unsigned
+N
+MUL
+FK â†’ 
+debtors.DEB_KEY
+order_no
+int(
+8)
+N
+MUL
+Order number (sequential within customer)
+stk_key
+mediumint
+(
+8) unsigned
+N
+Stock type ordered
+misc_key
+mediumint
+(
+8) unsigned
+N
+Additional classification key
+create_date
+date
+Y
+Date order was created
+order_date
+date
+Y
+Requested delivery date
+finish_date
+date
+Y
+Actual fulfilment date
+ordered
+int(
+6)
+N
+0
+Quantity ordered
+delivered
+int(
+6)
+N
+0
+Quantity delivered to date
+status
+varchar(
+64)
+N
+Order status (open, partial, complete, cancelled)
+pslip
+int(
+8)
+N
+0
+FK â†’ 
+psliphdr.packing
+_slp_no
+pstat
+char(
+1)
+N
+Packing slip status for this order line
+purchase_order
+varchar(
+20)
+N
+Customer purchase order reference number
+priority_no
+int(
+2)
+N
+0
+Priority level (0=normal, higher=urgent)
+connect_uuid
+char(
+50)
+N
+BundleConnect
+ cloud entity UUID
+connect_order_uuid
+char(
+50)
+N
+BundleConnect
+ cloud order UUID
+dept_key
+int(
+6)
+N
+0
+Delivery department
+ward_key
+int(
+6)
+N
+0
+Delivery ward
+person_key
+int(
+6)
+N
+0
+Delivery person
+8.2  
+psliphdr
+ â€” Packing Slip Header
+A packing slip (despatch docket) is the document that accompanies clean linen returned to a customer. 
+psliphdr
+ stores one header row per packing slip document. The packing slip number (
+packing_slp_no
+) is the key that links to 
+pslip
+ line items.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+RECORD_NUMBER
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+STATUS
+char(
+1)
+Y
+MUL
+O=open, D=despatched, I=invoiced, C=cancelled
+DEB_KEY
+int(
+6)
+N
+MUL
+FK â†’ 
+debtors.DEB_KEY
+dept_key
+int(
+6)
+N
+0
+Delivery department
+ward_key
+int(
+6)
+N
+0
+Delivery ward
+person_key
+int(
+6)
+N
+0
+Delivery person
+packing_slp_no
+int(
+8)
+N
+MUL
+Packing slip number â€” PK for business logic
+DELIVERY_CODE
+varchar(
+4)
+Y
+Delivery route code
+DATE_CREATED
+date
+Y
+Date slip was created
+DATE_REQUIRED
+date
+Y
+MUL
+Customer requested delivery date
+order_no
+varchar(
+20)
+Y
+Customer order reference
+PSLIP_LINES
+int(
+2)
+N
+0
+Number of line items on this slip
+INVOICE_NUMBER
+int(
+6)
+N
+0
+Invoice number once invoiced (links to 
+invhdr
+)
+LINES_COLLATED
+int(
+2)
+N
+0
+Number of lines collated into invoice
+corder_no
+int(
+6)
+N
+MUL
+FK â†’ 
+corders.order
+_no
+user_key
+int(
+6)
+N
+0
+User who created the packing slip
+8.3  
+pslip
+ â€” Packing Slip Lines
+Each row in 
+pslip
+ is one stock-type line on a packing slip. A packing slip header has 
+1..
+N lines. The quantity columns track what was ordered, what was credited back, and whether the line has been invoiced.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+RECORD_NUMBER
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+DEB_KEY
+int(
+6)
+N
+MUL
+FK â†’ 
+debtors.DEB_KEY
+packing_slp_no
+int(
+8)
+N
+MUL
+FK â†’ 
+psliphdr.packing
+_slp_no
+STK_KEY
+int(
+6)
+N
+MUL
+FK â†’ stock/
+rfidstock.STK_KEY
+STK_TYPE
+char(
+1)
+Y
+Stock class (R/H/S)
+QTY
+int(
+4)
+N
+0
+Quantity despatched
+XCHGS
+decimal(
+6,2)
+N
+0.00
+Extra charges applied to this line
+TYPE_OF_CLEAN
+char(
+1)
+Y
+Cleaning type (L=launder, D=dry, P=press)
+QTY_CREDITED
+int(
+4)
+N
+0
+Quantity credited (returned by customer)
+POSTED
+char(
+1)
+Y
+Y=invoiced/posted to accounts
+HIRE_QTY
+int(
+4)
+N
+0
+Hire quantity on this line
+discard_qty
+int(
+4)
+N
+0
+Quantity discarded from this delivery
+rewash_qty
+int(
+4)
+N
+0
+Quantity returned for rewash
+create_date
+timestamp
+N
+Auto-set on INSERT
+corder_no
+int(
+6)
+N
+MUL
+FK â†’ 
+corders.order
+_no
+8.4  
+invhdr
+ / 
+invline
+ â€” Invoice Header & Lines
+Once packing slips are collated and posted, they generate invoices. 
+invhdr
+ stores one row per invoice; 
+invline
+ stores one row per stock type line within the invoice. The invoice date ranges and quantities in these tables drive accounts receivable reporting.
+Site
+invhdr
+ rows
+invline
+ rows
+Notes
+MEL
+0
+0
+Invoicing at MEL may use separate schema
+SYD
+90,475
+692,761
+Active invoicing
+PER
+23,400
+229,218
+Active
+CNS
+61,217
+509,083
+Active
+ADL
+0
+0
+No invoicing data â€” possible separate process
+ALB
+99,529
+825,812
+Active
+BNE
+200,962
+1,564,868
+Largest invoice volume post-rebuild
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+RECORD_NUMBER
+bigint
+(
+20) unsigned
+N
+PRI
+invhdr
+ PK
+DEB_KEY
+int(
+6)
+N
+MUL
+FK â†’ debtors
+YEAR
+int(
+4)
+N
+0
+Invoice year
+MONTH
+int(
+2)
+N
+0
+Invoice month
+INVOICE_NUMBER
+int(
+6)
+N
+MUL
+Sequential invoice number (unique per site)
+INV_DATE
+date
+Y
+MUL
+Invoice date
+STATUS
+char(
+1)
+Y
+MUL
+O=open, P=posted, V=voided
+GST_CALC
+decimal(
+8,2)
+N
+0.00
+Calculated GST amount
+CLEANING_CHG
+decimal(
+8,2)
+N
+0.00
+Total cleaning charges on invoice
+master_inv
+int(
+8)
+N
+0
+Master invoice number (for consolidated billing)
+9.  Satellite & Site-Specific Tables
+Several sites maintain satellite tables to handle specialised workflows â€” cross-site linen tracking for contracted health networks (Ramsay Health Care), dedicated customer garment programs (
+BabyCan
+), and equipment integration (Brisbane wash equipment). These tables are 
+InnoDB
+ at all sites where they appear.
+9.1  Ramsay
+ Health Care Linen Tracking
+Ramsay Health Care is a major private hospital group. Multiple sites maintain satellite 
+rfid
+ tables for Ramsay linen that circulates between the SPL laundry and Ramsay hospital locations. These tables mirror the structure of the core 
+rfid
+ table but contain only Ramsay-owned items.
+Table
+Engine
+MEL rows
+ALB rows
+BNE rows
+Purpose
+rfid_ramsay
+InnoDB
+2,268
+9,434
+71,938
+Ramsay linen item registry (
+InnoDB
+ â€” foreign key enforced)
+rfid_ramsay_desp
+InnoDB
+12,827
+12,827
+â€”
+Ramsay despatch event log
+rfid_ramsay_from_albury
+InnoDB
+262,466
+262,466
+â€”
+Cross-site: Albury-origin linen at Albany and Melbourne
+âš‘  
+rfid
+_ramsay_from_albury
+ contains 262,466 rows at both MEL and ALB â€” the identical count confirms this table is replicated/synchronised between the two sites. The "
+from_albury
+" suffix identifies linen originating from the Albury facility that is managed via Albany or Melbourne.
+The 
+rfid_ramsay
+ table uses the same column structure as 
+rfid
+, but as an 
+InnoDB
+ table it supports transactions and foreign key constraints â€” a notable improvement over the 
+MyISAM
+-based 
+rfid
+ table. Columns mirror 
+rfid
+ exactly (
+rfid_no
+, 
+deb_key
+, 
+dept_key
+, 
+ward_key
+, 
+person_key
+, 
+stk_key
+, lost, 
+active_date
+, etc.).
+9.2  
+BabyCan
+ Customer Program (MEL & ALB)
+BabyCan
+ is a customer at both Melbourne and Albany. Their linen program uses dedicated satellite tables â€” 
+rfid_babycan
+ (item registry) and 
+rfidtrans_babycan
+ (transaction log) â€” rather than the standard 
+rfid
+/
+rfidtrans
+ tables. Both are 
+InnoDB
+.
+Table
+Engine
+MEL rows
+ALB rows
+Notes
+rfid_babycan
+InnoDB
+6,083
+6,083
+Item master â€” identical at both sites (synchronised)
+rfidtrans_babycan
+InnoDB
+19,669
+19,669
+Transaction log â€” identical at both sites (synchronised)
+âš‘  The
+ identical row counts at MEL and ALB for both 
+BabyCan
+ tables confirm active synchronisation between the two sites for this customer program.
+9.3  
+equipdata
+ â€” Wash Equipment Integration (BNE)
+equipdata
+ is present at all sites but is populated only at Brisbane (11,676,762 rows). It records individual equipment process events â€” such as washer loading, unloading, and extraction â€” linked to linen items. This provides a wash-equipment-level audit trail that no other site maintains. The table is 
+MyISAM
+.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+equip_no
+int(
+8)
+N
+MUL
+Equipment identifier (washer/extractor number)
+operator_no
+int(
+8)
+N
+MUL
+Operator who performed the action
+action_type
+int(
+2)
+N
+0
+Action code (load, unload, process, etc.)
+lane
+int(
+2)
+N
+0
+Processing lane number
+item_key
+int(
+8)
+N
+MUL
+FK â†’ 
+rfid
+/stock item identifier
+qty
+decimal(
+8,4)
+N
+0.0000
+Quantity processed (decimal supports partial loads)
+action_date
+timestamp
+N
+MUL
+Timestamp of the equipment action
+cust_key
+int(
+6)
+N
+0
+Customer this load was processed for
+âš‘  At
+ 11.7 million rows and growing, 
+equipdata
+ is the second-largest table at BNE after 
+rfidtrans
+. Queries against this table without appropriate index use (
+equip_no
+, 
+action_date
+) will be slow. The qty column uses 
+decimal(
+8,4) suggesting integration with a continuous-feed system that processes fractional loads.
+9.4  
+contractor
+_count
+ â€” Contractor Performance (ALB & SYD)
+Tracks linen processing counts per contractor. Used to measure contractor throughput and quality metrics. Most sites have this table but with negligible rows except Albany (775,894) and Sydney (694,680). At Brisbane it has only 4 rows. The table is 
+InnoDB
+ at BNE and CNS, 
+MyISAM
+ elsewhere.
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+record_number
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+contractor_key
+int(
+6)
+N
+FK â†’ contractor entity
+date
+datetime
+Y
+Processing date/time
+deb_key
+int(
+6)
+N
+0
+Customer whose linen was processed
+stk_key
+int(
+6)
+N
+0
+Stock type processed
+misc_key
+int(
+6)
+N
+0
+Additional classification
+total
+int(
+6)
+N
+0
+Total items processed
+clean
+int(
+6)
+N
+0
+Items passing quality check
+rewash
+int(
+6)
+N
+0
+Items requiring rewash
+discard
+int(
+6)
+N
+0
+Items discarded
+adjustment
+varchar(
+20)
+N
+Adjustment notes or reference
+tracker_id
+int(
+8)
+N
+0
+Tracker session identifier
+pack_no
+int(
+6)
+N
+0
+Pack reference number
+9.5  
+chuteass
+ â€” Chute Assignment (ALB & BNE)
+Maps customer/stock combinations to sorting chute numbers. Used in automated linen sorting systems where clean items are directed to a specific delivery chute based on the customer and item type. Present only at ALB (1,112 rows) and BNE (212,763 rows).
+Column Name
+Type
+Null
+Default
+Key
+Extra / Notes
+RECORD_NUMBER
+bigint
+(
+20) unsigned
+N
+PRI
+AUTO_INCREMENT
+DEB_KEY
+int(
+6)
+N
+FK â†’ 
+debtors.DEB_KEY
+CHUTE_NO
+int(
+2)
+N
+0
+Physical chute number at the sorting station
+STK_KEY
+int(
+6)
+N
+0
+Stock type to route to this chute
+MISC_KEY
+int(
+6)
+N
+0
+Additional routing key
+GROUP_CODE
+int(
+6)
+N
+0
+Grouping code for chute assignment
+chutes
+int(
+3)
+N
+0
+Number of chute positions allocated
+âš‘  The
+ large BNE 
+chuteass
+ count (212,763) vs Albany (1,112) reflects BNE's more extensive automated sorting infrastructure. This table is used in real-time by the sorting system to route every clean item to the correct delivery chute.
+10.  Business Workflows & Data Logic
+This section documents the business processes that drive data into the 
+BundleConnect
+ database, and the logic that determines how rows are created, updated, and used in each table.
+10.1  The
+ Linen Lifecycle
+Every RFID-tagged linen item follows a lifecycle through the system. Each stage creates one or more rows in 
+rfidtrans
+. The diagram below describes the full journey:
+Linen Item Lifecycle Stages
+Stage 1: Registration
+A new RFID tag is scanned and registered. A row is created in 
+rfid
+ with 
+deb_key
+, 
+stk_key
+, and 
+active_date
+ set. 
+rfidtrans_last
+ is also populated for this tag.
+Stage 2: Despatch (
+trans_type
+='2')
+Clean linen is despatched to a customer. 
+rfidtrans
+ row created with 
+trans_type
+='2', 
+deb_key
+, 
+dept_key
+, 
+ward_key
+. 
+rfidtrans_last
+ updated. A 
+pslip
+ line may be created if packing slip workflow is active.
+Stage 3: At Customer
+Item is in use at the customer site. No transaction created â€” the state is inferred from 
+rfidtrans_last
+ (last 
+trans_type
+='2' = currently at customer).
+Stage 4: Soil-In (
+trans_type
+='1')
+Item returned to laundry via RFID scanner. 
+rfidtrans
+ row created with 
+trans_type
+='1'. 
+rfidtrans_last
+ updated. 
+wash_count
+ in 
+rfidtrans_last
+ incremented.
+Stage 5: Processing
+Item passes through laundry process. No 
+rfidtrans
+ row â€” processing is tracked in 
+equipdata
+ at BNE only.
+Stage 6: Quality Check
+Optional step. Items failing quality may go to 
+rfiddiscards
+ or 
+rewash_count
+ in 
+dailycnt
+.
+Stage 7: Repeat or Discard
+Item returns to Stage 2 (another despatch cycle) or is retired to 
+rfiddiscards
+ when 
+max_usage
+ is reached or item is damaged.
+Loss Event (
+trans_type
+='L')
+At any point, if an item cannot be located, it is marked lost: 
+rfid.lost
+='Y', 
+rfidlost
+ row created, 
+rfidtrans
+ row created with 
+trans_type
+='L'.
+10.2  Current
+ Stock-at-Customer Calculation
+To determine how many items of a given stock type are currently at a customer (real-time stock-on-hand), the canonical query joins 
+rfidtrans_last
+ to 
+rfid
+:
+Stock-at-Customer Query Logic
+Primary query
+SELECT 
+stk_key
+, 
+COUNT(
+*) as 
+qty_at_customer
+ FROM 
+rfidtrans_last
+ WHERE 
+deb_key
+ 
+= :deb
+ AND 
+trans_type
+ = '2' GROUP BY 
+stk_key
+Meaning
+All tags whose LAST transaction 
+was a despatch
+ ('2') to this customer are currently at that customer.
+Exclusions
+Exclude 
+rfid.lost
+='Y' items. Exclude 
+trans_type
+='8' rows (system-generated) to avoid inflating counts at BNE/SYD/ADL/CNS.
+Alternative (slow)
+Full 
+rfidtrans
+ scan: 
+MAX(
+trans_date
+) per 
+rfid_no
+ for each customer â€” avoid on large tables (200M+ rows).
+10.3  Unregistered
+ Item Detection
+When a scanner detects an RFID tag 
+not present
+ in the 
+rfid
+ registry, 
+BundleConnect
+ writes the scan to 
+rfidtrans_unreg
+ instead of 
+rfidtrans
+. The tag structure is identical to 
+rfidtrans
+; the difference is where it lands.
+Unregistered Transaction Logic
+Registration check
+SELECT 
+COUNT(
+*) FROM 
+rfid
+ WHERE 
+rfid_no
+ 
+= :
+scanned
+_rfid_no
+If found
+Write to 
+rfidtrans
+ (registered transaction)
+If not found
+Write to 
+rfidtrans_unreg
+ (unregistered transaction)
+Remediation
+An operator can register the tag: INSERT INTO 
+rfid
+ with the correct 
+deb_key
+, 
+stk_key
+. Subsequent scans then go to 
+rfidtrans
+.
+Bulk 
+unreg
+ ratio query
+SELECT COUNT(
+t.record
+_number
+) / (COUNT(
+t.record
+_number
+) + COUNT(
+u.record
+_number
+)) FROM 
+rfidtrans
+ t, 
+rfidtrans_unreg
+ u WHERE 
+t.trans
+_date
+ >
+= :start
+10.4  Batch
+ & Order System
+BundleConnect
+ uses a batch/order system to group despatched items:
+batch in 
+rfidtrans
+: The batch number of the current delivery run. Multiple items despatched together share the same batch number.
+next_batch
+ in 
+rfidtrans
+: The batch number expected for the NEXT delivery of this item to this customer. Used to detect double-despatch or missing deliveries.
+connect_order_no
+ in 
+rfidtrans
+: The 
+BundleConnect
+ cloud order number associated with this despatch. Links the local transaction to the cloud order management system.
+corders
+ table: Stores the full order records. 
+order_no
+ + 
+deb_key
+ is the business key. 
+pslip
+ links the order line to its packing slip.
+psliphdr.status
+ lifecycle: O (open) â†’ D (despatched) â†’ I (invoiced). A packing slip must be in D status before the invoice can be generated.
+10.5  Cloud
+ Synchronisation Workflow
+BundleConnect
+ synchronises local data to the cloud API at the interval defined by 
+rfidconfig.global
+_sync_period
+. The sync process involves:
+Sync Object
+Local Table
+Cloud Direction
+Trigger Column
+Notes
+Customer (debtor)
+debtors
+Push
+connect_update
+connect_uuid
+ links local to cloud record
+Department
+rfiddept
+Push
+connect_update
+connect_uuid
+, 
+dept_uuid
+ for hierarchy
+Ward
+rfidward
+Push
+connect_update
+dept_uuid
+ links to parent department UUID
+Person
+rfidperson
+Push
+connect_update
+Person-level allocation
+Stock type
+stock
+Push
+connect_update
+is_rfid
+=Y items only
+Orders
+corders
+Pull+Push
+connect_order_uuid
+Orders may originate in cloud or locally
+Auto-return
+autoreturn_log
+Pull
+created_at
+Cloud triggers local auto-return calculations
+âš‘  For
+ the 4 sites with 
+global_sync_period
+=0 (SYD, CNS, ADL, ALB, BNE), this sync does NOT run automatically. Cloud data and local data can drift indefinitely until a manual sync is triggered. This is a significant operational risk, particularly for order management (
+corders
+) and stock levels (stock).
+10.6  Transaction
+ Type 8 â€” System-Generated Rows
+Type-8 transactions are generated by the 
+BundleConnect
+ software itself â€” not by physical RFID scans. They are created during order reconciliation and batch-matching processes. A developer must understand this to avoid double-counting physical linen movements.
+Site
+Type '8' in 
+rfidtrans
+Type '8' %
+Impact on Queries
+MEL
+Not observed
+~0%
+No impact
+SYD
+In 
+unreg
+57.7% of 
+unreg
+Filter 
+unreg
+ queries: WHERE 
+trans_
+type
+ !
+= '8'
+PER
+Not observed
+~0%
+No impact
+CNS
+Present
+Moderate
+Filter: WHERE 
+trans_type
+ NOT IN ('8')
+ADL
+Present
+Moderate
+Also filter: AND 
+trans_type
+ NOT IN ('6','D')
+ALB
+Not observed
+~0%
+No impact
+BNE
+~55M rows
+~55%
+CRITICAL: majority of rows are type '8'
+âš‘  DEVELOPER
+ RULE: Any query counting physical linen movements MUST include WHERE 
+trans_type
+ IN ('1','2','L'). At BNE, omitting this filter will inflate counts by approximately 2.2x due to the volume of type-8 rows.
+10.7  
+rfidtrans
+_order
+ â€” Order-Linked Transactions
+A subset of 
+rfidtrans
+ rows that are specifically linked to customer orders. When a despatch is performed against a 
+corders
+ record, the transaction is additionally written to 
+rfidtrans_order
+. This table allows fast lookup of all scans associated with a specific delivery/order.
+Site
+rfidtrans_order
+ rows
+Notes
+MEL
+18,736,034
+Active order-driven despatch
+SYD
+0
+Not in use
+PER
+607,791
+Active
+CNS
+0
+Not in use â€” auto-despatch mode
+ADL
+1,227,088
+Active
+ALB
+0
+Not in use
+BNE
+0
+Not in use post-rebuild
+The schema mirrors 
+rfidtrans
+ with the addition of 
+docket_no
+ (KEY=MUL) which links to the dockets table for physical docket printing.
+11.  Site-Specific Schema Variations
+While the core schema is consistent across all 7 sites, each site has evolved unique tables, data patterns, or configurations that reflect their operational requirements. This section documents those differences.
+11.1  Melbourne
+ (MEL) â€” Reference Site
+Melbourne Specifics
+Unique Tables
+rfid_mccallum
+, rfid_mccallum_23sep25, rfid_mccallum_27aug25, rfid_mccallum_9sep25 â€” point-in-time snapshots of McCallum linen
+Satellite Tables
+rfid_ramsay
+ (2,268), 
+rfid_ramsay_desp
+ (12,827), 
+rfid_ramsay_from_albury
+ (262,466), 
+rfid_babycan
+ (6,083), 
+rfidtrans_babycan
+ (19,669)
+rfidtrans
+ rows
+211,308,253 â€” largest in network; deepest history
+rfidtrans_order
+18,736,034 â€” most active order-linked despatch tracking
+Reporting tables
+spl_vwagedlinen
+*, 
+spl_vwrfidaudit
+ â€” SPL-specific reporting views materialised as tables
+InnoDB
+ tables
+4 â€” all satellite tables (Ramsay + 
+BabyCan
+)
+Notes
+MEL appears to be the reference/template site. It has the most tables (166) and the most complete data history.
+11.2  Sydney
+ (SYD) â€” Replication Stopped
+Sydney Specifics
+Critical Issue
+Replication has STOPPED. The replica database is not receiving new transactions from the master.
+Unreg
+ ratio
+57.7% â€” indicates the 
+rfid
+ registry is severely out of sync with operational scanning
+Unique tables
+association, drivers, 
+noorders
+, 
+stdorder
+, 
+psl_old
+, 
+hirehdr
+, 
+hireline
+, 
+delinvhdr
+, 
+delinvline
+, 
+delmess
+, 
+delpriority
+, 
+dtrans
+, 
+mail_trans
+rfidtrans
+ rows
+92,154,143 â€” frozen at time replication stopped
+psl_old
+Archive table for packing slips; suggests the 
+pslip
+ system was replaced/updated at some point
+hire tables
+hirehdr
+/
+hireline
+ suggest a hire/rental linen product available at SYD not present at all sites
+Impact
+ALL data from this replica must be treated as stale. Any current-state queries (stock-at-customer, recent transactions) will be unreliable.
+11.3  Perth
+ (PER) â€” SAP Integration Site
+Perth Specifics
+SAP Tables
+sap_invoices
+, 
+saptrans
+, 
+sapfolders
+ â€” SAP ERP integration; 14 
+InnoDB
+ tables total
+InnoDB
+ count
+14 â€” highest in network; SAP tables plus 
+location_summary
+, 
+location_table
+, 
+track_bi_snapshot_temp
+Unique tables
+autoreturn_log_copy
+, 
+rfidinit_old
+, 
+rfidtrans_last_summ
+, 
+invpsliptoo
+, 
+tmppslip
+, 
+tmppsliphdr
+, 
+psl_copy
+, 
+stock_copy
+, 
+site_debtors
+, 
+spl_vwagedlinen_ramsay
+, 
+spl_vwreturnedlinen_ramsay
+max_connections
+10,000 â€” set for high-concurrency SAP integration polling
+rfidtrans
+ rows
+109,121,633 â€” active high-volume site
+rfiddiscards
+114,748 â€” most active discard tracking in network
+SAP workflow
+saptrans
+ stores SAP-exported transaction data; INTERFACECODE on debtors/stock maps GL accounts for SAP posting
+custinvmsg
+Customer invoice messages â€” custom invoice text per debtor
+11.4  Cairns
+ (CNS) â€” Auto-Despatch Site
+Cairns Specifics
+Auto-despatch
+allow_unregistered_despatch
+=Y, 
+allow_mixed_despatch
+=Y in 
+rfidconfig
+ â€” unique to CNS in the network
+global_sync_period
+0 â€” sync disabled
+Unique tables
+kb_rfidinit
+ (backup/copy of 
+rfidinit
+), 
+ltrolleys
+ (long trolleys?), 
+psl_copy
+, 
+pslipadd
+, 
+tmppslip
+, 
+tmppsliphdr
+rfidtrans
+ rows
+27,900,285 â€” smallest active site volume
+Unreg
+ ratio
+37.9% â€” elevated; partially explained by auto-despatch configuration accepting unregistered tags
+mail_trans
+ table
+Email/notification transaction log â€” also present at SYD and ALB
+Notes
+The auto-despatch configuration means items can be despatched without being individually verified, which drives up the unregistered ratio.
+11.5  Adelaide
+ (ADL) â€” Unique Transaction Types
+Adelaide Specifics
+Unique 
+trans_types
+Types '6' and 'D' observed only at ADL. Purpose not documented in schema. Must be included in filter lists: WHERE 
+trans_type
+ NOT IN ('8','6','D')
+MySQL version
+5.7.43 â€” only site not running 5.7.28
+max_connections
+10,000 â€” matches Perth
+Data drive
+D:\MySQLReplica\Data\ â€” all other sites use C:\
+Unique tables
+debtors_copy
+, 
+debtors_old
+, 
+stock_old
+, 
+stock_copy
+, rfidtrans_7jul25, 
+rfidtrans_new
+, 
+stk_key_conversion
+rfidtrans_7jul25
+Point-in-time snapshot of 
+rfidtrans
+ from 7 July 2025 â€” used for reconciliation
+stk_key_conversion
+Mapping table for stock key migration â€” indicates a stock reclassification project was undertaken at ADL
+rfidtrans
+ rows
+105,343,194 â€” 
+second-largest
+ after MEL
+global_sync_period
+0 â€” sync disabled
+11.6  Albany
+ (ALB) â€” Unique 
+rfidcust
+/
+rfidstock
+ Data
+Albany Specifics
+rfidcust
+ rows
+15 â€” ONLY site with 
+rfidcust
+ data; all others are 0
+rfidstock
+ rows
+58 â€” ONLY site with 
+rfidstock
+ data; all others are 0
+Implication
+The 
+rfidcust
+=0 at other sites is NOT because the table is unused â€” it is because the master replication config excludes this data. ALB's master replicates 
+rfidcust
+; others do not.
+Unique tables
+chuteass
+ (1,112), 
+debai
+, 
+route_order
+, 
+unalloc
+, 
+washmach
+, 
+ltrolleys
+, 
+rfid_ramsay
+ (9,434), 
+rfid_ramsay_from_albury
+ (262,466), 
+rfid_babycan
+ (6,083), 
+rfidtrans_babycan
+ (19,669)
+Unreg
+ ratio
+4.0% â€” lowest in network; best tag registry hygiene
+chuteass
+Present with 1,112 rows â€” automated sorting system in use
+rfidperson
+53 rows â€” highest person-level tracking in network
+global_sync_period
+0 â€” sync disabled
+notes
+Albany is the healthiest replica in terms of data quality. 
+rfidcust
+ and 
+rfidstock
+ population suggests the master at ALB was configured differently from the rest of the network at deployment.
+11.7  Brisbane
+ (BNE) â€” Rebuilt November 2025
+Brisbane Specifics
+CRITICAL
+All 157 tables in the Brisbane replica were re-created in a 16-minute window on 2025-11-02. All CREATE_TIME timestamps fall within this window.
+History gap
+rfidtrans
+ minimum date = 2024-01-01. All pre-January 2024 transaction history is absent despite BNE operating since approximately 2008. This data was not included in the rebuild.
+type '8' share
+~55% of 
+rfidtrans
+ rows are 
+trans_type
+='8'. This is an anomaly created during the rebuild â€” the system-generated events were reproduced but the underlying physical scans were not.
+Unique tables
+banking, 
+clschuteass
+, 
+debai
+, 
+ecspins
+, 
+vw_report
+, 
+washdd
+, 
+washmach
+, 
+washtt
+, 
+chuteass
+ (212,763)
+equipdata
+11,676,762 rows â€” unique wash equipment integration, largest in network
+chuteass
+212,763 rows â€” most extensive automated sorting configuration in network
+max_connections
+2,000 â€” mid-range between 151 (default) and 10,000 (PER/ADL)
+rfid_ramsay
+71,938 rows â€” active Ramsay program with different date range than ALB
+global_sync_period
+0 â€” sync disabled
+12.  Developer Quick Reference
+12.1  Universal
+ Join Patterns
+The following join patterns work at all 7 sites. Column names are case-insensitive in MySQL 5.7 on Windows (latin1_swedish_ci collation).
+Use Case
+Tables
+Join Condition
+Tag history
+rfidtrans
+WHERE 
+rfid_no
+ 
+= :tag
+ AND 
+trans_date
+ >
+= :start
+Current item state
+rfidtrans_last
+WHERE 
+rfid_no
+ 
+= :tag
+ (UNIQUE â€” 
+O(
+1))
+Items at customer
+rfidtrans_last
+WHERE 
+deb_key
+ 
+= :deb
+ AND 
+trans_type
+ = '2'
+Item details
+rfid
+ r JOIN 
+rfidtrans_last
+ l
+ON 
+r.rfid
+_no
+ = 
+l.rfid
+_no
+Stock type name
+rfidtrans_last
+ l JOIN stock s
+ON 
+l.stk_key
+ = 
+s.STK_KEY
+Customer name
+rfidtrans_last
+ l JOIN debtors d
+ON 
+l.deb_key
+ = 
+d.DEB_KEY
+Dept name
+rfidtrans_last
+ l JOIN 
+rfiddept
+ dep
+ON 
+l.deb_key
+=
+dep.DEB_KEY
+ AND 
+l.dept
+_key
+=
+dep.DEPT
+_KEY
+Lost items
+rfid
+WHERE lost = 'Y'
+Physical scans only
+rfidtrans
+WHERE 
+trans_type
+ IN ('1','2','L')
+12.2  High
+-Watermark Polling (Recommended Pattern)
+The recommended pattern for incremental data extraction from 
+rfidtrans
+ and 
+rfidtrans_unreg
+ uses the 
+record_number
+ PK as a cursor. This is more reliable than timestamp-based polling because:
+record_number
+ is guaranteed monotonically increasing (AUTO_INCREMENT)
+trans_date
+ can be set to any value by the application; 
+record_number
+ cannot
+Type '8' system rows share the same 
+record_number
+ sequence â€” they MUST be included in watermark increments to avoid gaps, then filtered for physical-scan analysis
+MyISAM
+ tables do not guarantee temporal ordering of concurrent inserts; 
+record_number
+ does
+High-Watermark Polling Recipe
+Step 1: Init
+SELECT 
+MAX(
+record_number
+) FROM 
+rfidtrans
+ â†’ store 
+as :
+last
+_seen
+Step 2: Poll
+SELECT * FROM 
+rfidtrans
+ WHERE 
+record_number
+ 
+> :
+last
+_seen
+ ORDER BY 
+record_number
+ LIMIT 10000
+Step 3: Update cursor
+Store 
+MAX(
+record_number
+) from result set as 
+new :
+last
+_seen
+Step 4: Filter for physical
+WHERE 
+trans_type
+ IN ('1','2','L') (post-fetch or in query)
+Unreg
+ equivalent
+Same pattern on 
+rfidtrans_unreg
+ with 
+separate :
+last
+_seen_unreg
+ cursor
+12.3  Foreign
+ Key Map (Logical â€” Not Enforced)
+MySQL foreign key constraints are not defined in the 
+MyISAM
+ tables. The following relationships are enforced by the 
+BundleConnect
+ application only. A developer should treat these as logical FKs.
+Child Column
+Parent Table
+Parent Column
+Notes
+rfidtrans.rfid
+_no
+rfid
+rfid_no
+If no match â†’ write to 
+rfidtrans_unreg
+ instead
+rfidtrans.deb_key
+debtors
+DEB_KEY
+Customer who owns the item
+rfidtrans.stk_key
+stock / 
+rfidstock
+STK_KEY
+Check stock first; 
+rfidstock
+ if ALB
+rfidtrans.dept
+_key
+rfiddept
+DEPT_KEY WHERE DEB_KEY matches
+Scoped by 
+deb_key
+rfidtrans.ward
+_key
+rfidward
+WARD_KEY WHERE DEB_KEY matches
+Scoped by 
+deb_key
+rfidtrans.person
+_key
+rfidperson
+PERSON_KEY WHERE DEB_KEY matches
+Scoped by 
+deb_key
+rfidtrans_
+last.rfid
+_no
+rfid
+rfid_no
+UNIQUE constraint enforces 1:1
+corders.deb_key
+debtors
+DEB_KEY
+Order owner
+psliphdr.packing
+_slp_no
+pslip
+packing_slp_no
+1:N
+ â€” one header, many lines
+invhdr.INVOICE
+_NUMBER
+invline
+INVOICE_NUMBER
+1:N
+ â€” one invoice, many lines
+rfidinit.deb_key
+debtors
+DEB_KEY
+Default customer for reader
+rfid.stk_key
+stock
+STK_KEY
+Item type registration
+12.4  Site
+-Specific Query Filters Required
+Site
+Filter Required
+Reason
+ALL
+trans_type
+ IN ('1','2','L') for physical scans
+Exclude system-generated rows
+BNE
+AND 
+trans_
+type
+ !
+= '8' is CRITICAL
+55% of rows are type '8' â€” omitting skews all counts 2.2x
+ADL
+AND 
+trans_type
+ NOT IN ('8','6','D')
+Types '6' and 'D' are ADL-unique non-standard events
+SYD
+Treat all data as potentially stale
+Replication stopped â€” replica not current
+CNS
+expect higher 
+unreg
+ ratio
+allow_unregistered_despatch
+=Y inflates 
+unreg
+ table
+ALB
+JOIN 
+rfidcust
+ and 
+rfidstock
+ if customer-stock lookup needed
+Only site with these populated
+BNE
+rfidtrans
+ history starts 2024-01-01
+Pre-rebuild history absent â€” do not query before this date
+12.5  Tables
+ with Identical Row Counts Across Sites
+The following pairs of identical counts across sites indicate synchronised or replicated data:
+Table
+Sites
+Count
+Significance
+rfid_babycan
+MEL + ALB
+6,083
+BabyCan
+ item registry synchronised between sites
+rfidtrans_babycan
+MEL + ALB
+19,669
+BabyCan
+ transaction log synchronised
+rfid_ramsay_from_albury
+MEL + ALB
+262,466
+Albury cross-site linen synchronised
+rfid_ramsay_desp
+MEL + ALB
+12,827
+Ramsay despatch log synchronised
+12.6  NULL
+ and Missing Data Patterns
+Column
+Table
+Sites Affected
+Issue
+active_date
+rfid
+ALL
+NULL at many sites â€” item activation date not always populated on registration
+rfidcust
+ rows
+rfidcust
+MEL,SYD
+,
+PER,CNS
+,
+ADL,BNE
+0 rows â€” customer master mirror not replicated from master
+rfidstock
+ rows
+rfidstock
+MEL,SYD
+,
+PER,CNS
+,
+ADL,BNE
+0 rows â€” stock mirror not replicated from master
+invhdr
+/
+invline
+invhdr,invline
+MEL,ADL
+0 rows â€” invoicing processed differently or in separate schema
+dailycnt
+dailycnt
+MEL
+0 rows â€” MEL uses direct 
+rfidtrans
+ queries for reporting
+rfidlost
+rfidlost
+SYD,CNS
+,
+ALB,BNE
+0 rows â€” lost item tracking not in use at these sites
+rfiddiscards
+rfiddiscards
+SYD,CNS
+,
+ALB,BNE
+0 rows â€” discard tracking not in use
+autoreturn_log
+autoreturn_log
+SYD,CNS
+,
+ALB,BNE
+0 rows â€” auto-return not configured
+12.7  
+rfidcust
+ vs debtors â€” Critical Distinction
+There are two customer master tables: 
+rfidcust
+ and debtors. They are structurally similar (both have DEB_KEY, TRADING_NAME, address fields) but serve different roles:
+rfidcust
+ vs debtors
+debtors
+Fully populated at all 7 sites (395â€“1,358 rows). This is the PRIMARY customer master. All billing, invoicing, and RFID scanning uses DEB_KEY from debtors.
+rfidcust
+Populated ONLY at Albany (15 rows). At all other sites 
+rfidcust
+=0 rows. This table appears to be a customer-facing restricted view or 
+BundleConnect
+ customer portal user table, not the operational debtor master.
+Key difference
+rfidcust
+ uses a 6-char ALPHA code; debtors 
+uses
+ a 3-char ALPHA. 
+rfidcust
+ has AUTO_DESPATCH, 
+login_name
+, 
+ms_pw
+ columns not in debtors.
+Developer action
+ALWAYS query debtors for customer lookups. Never rely on 
+rfidcust
+ being populated.

@@ -58,6 +58,20 @@ const CatalogManagement = ({
     const [isDragging, setIsDragging] = useState(false);
     const dragStart = useRef({ x: 0, y: 0 });
 
+    const sentinelRef = useRef<HTMLDivElement>(null);
+    const [isStuck, setIsStuck] = useState(false);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            ([entry]) => setIsStuck(!entry.isIntersecting),
+            { threshold: 1.0, rootMargin: '-64px 0px 0px 0px' }
+        );
+        if (sentinelRef.current) {
+            observer.observe(sentinelRef.current);
+        }
+        return () => observer.disconnect();
+    }, []);
+
     // --- Miller Columns UI Polish State ---
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [minimizedColumns, setMinimizedColumns] = useState<Record<string, boolean>>({});
@@ -433,8 +447,7 @@ const CatalogManagement = ({
     return (
         <div className="space-y-6 h-full min-h-0 flex flex-col">
             {/* Header & Main Nav */}
-            <div ref={sentinelRef} className="h-px w-full pointer-events-none absolute" />
-            <div className={`sticky top-[64px] z-20 transition-all duration-300 ${
+            <div ref={sentinelRef} className="h-px w-full pointer-events-none absolute" />            <div className={`sticky top-[64px] z-20 transition-all duration-300 ${
                 isStuck 
                 ? '-mx-4 sm:-mx-4 md:-mx-8 px-4 sm:px-4 md:px-8 bg-white/95 dark:bg-[#15171e]/95 border-b border-gray-200 dark:border-gray-800 shadow-md py-3 mb-4' 
                 : 'mb-0'
@@ -492,8 +505,6 @@ const CatalogManagement = ({
                         <span>Visual Map</span>
                     </button>
                 </div>
-            </div>
-
             </div>
             </div>
 

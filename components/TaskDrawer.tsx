@@ -1,11 +1,9 @@
-
-import React, { useMemo } from 'react';
+import { useMemo, FC } from 'react';
 import { 
-  X, CheckCircle2, AlertCircle, Clock, Link as LinkIcon, 
-  Package, ChevronRight, Bell, Calendar, ArrowRight,
-  ClipboardList, Info, ExternalLink
+  X, CheckCircle2, Package, ChevronRight, ArrowRight,
+  ClipboardList
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 
 interface TaskDrawerProps {
@@ -13,14 +11,14 @@ interface TaskDrawerProps {
     onClose: () => void;
 }
 
-const TaskDrawer: React.FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
+const TaskDrawer: FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
     const { pos, currentUser, hasPermission, activeSiteIds } = useApp();
     const navigate = useNavigate();
 
     // --- Task Logic (Extracted from Dashboard) ---
     const pendingApprovals = useMemo(() => pos.filter(p => p.status === 'PENDING_APPROVAL' && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
     const pendingConcur = useMemo(() => pos.filter(p => (p.status === 'APPROVED_PENDING_CONCUR' || p.status === 'APPROVED_PENDING_CONCUR_REQUEST') && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
-    const activeOrders = useMemo(() => pos.filter(p => (p.status === 'ACTIVE' || p.status === 'PARTIALLY_RECEIVED' || p.status === 'RECEIVED') && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
+    const activeOrders = useMemo(() => pos.filter(p => (p.status === 'ACTIVE' || p.status === 'RECEIVED') && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
 
     const myPendingApprovals = useMemo(() => 
         (currentUser?.role === 'APPROVER' || currentUser?.role === 'ADMIN') ? pendingApprovals : [], 
@@ -100,6 +98,7 @@ const TaskDrawer: React.FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
                         </div>
                     </div>
                     <button 
+                        type="button"
                         onClick={onClose}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors text-tertiary"
                     >
@@ -191,6 +190,7 @@ const TaskDrawer: React.FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
                 {/* Footer */}
                 <div className="p-6 border-t border-default bg-gray-50/50 dark:bg-white/5">
                     <button 
+                        type="button"
                         onClick={() => { navigate('/requests'); onClose(); }}
                         className="w-full flex items-center justify-center gap-2 py-3.5 bg-[var(--color-brand)] text-white rounded-xl font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all text-sm"
                     >

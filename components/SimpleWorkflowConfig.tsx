@@ -70,6 +70,20 @@ const SimpleWorkflowConfig = ({
     const [showSaved, setShowSaved] = useState(false);
     const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    const sentinelRef = useRef<HTMLDivElement>(null);
+    const [isStuck, setIsStuck] = useState(false);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            ([entry]) => setIsStuck(!entry.isIntersecting),
+            { threshold: 1.0, rootMargin: '-64px 0px 0px 0px' }
+        );
+        if (sentinelRef.current) {
+            observer.observe(sentinelRef.current);
+        }
+        return () => observer.disconnect();
+    }, []);
+
     // Sync localWorkflows when parent prop changes (e.g. after reload)
     useEffect(() => {
         setLocalWorkflows(workflows);
@@ -224,8 +238,6 @@ const SimpleWorkflowConfig = ({
                         )}
                     </button>
                 </div>
-            </div>
-
             </div>
             </div>
 

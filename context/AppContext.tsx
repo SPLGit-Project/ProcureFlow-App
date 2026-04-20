@@ -1332,24 +1332,24 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       syncActivityTimestamp();
       evaluateIdleState();
 
-      window.addEventListener('pointerdown', handleUserActivity, { passive: true });
-      window.addEventListener('keydown', handleUserActivity);
-      window.addEventListener('wheel', handleUserActivity, { passive: true });
-      window.addEventListener('touchstart', handleUserActivity, { passive: true });
-      window.addEventListener('storage', handleStorageSync);
-      window.addEventListener('focus', evaluateIdleState);
+      globalThis.addEventListener('pointerdown', handleUserActivity, { passive: true });
+      globalThis.addEventListener('keydown', handleUserActivity);
+      globalThis.addEventListener('wheel', handleUserActivity, { passive: true });
+      globalThis.addEventListener('touchstart', handleUserActivity, { passive: true });
+      globalThis.addEventListener('storage', handleStorageSync);
+      globalThis.addEventListener('focus', evaluateIdleState);
       document.addEventListener('visibilitychange', evaluateIdleState);
 
-      const idleInterval = window.setInterval(evaluateIdleState, 1000);
+      const idleInterval = globalThis.setInterval(evaluateIdleState, 1000);
 
       return () => {
-          window.clearInterval(idleInterval);
-          window.removeEventListener('pointerdown', handleUserActivity);
-          window.removeEventListener('keydown', handleUserActivity);
-          window.removeEventListener('wheel', handleUserActivity);
-          window.removeEventListener('touchstart', handleUserActivity);
-          window.removeEventListener('storage', handleStorageSync);
-          window.removeEventListener('focus', evaluateIdleState);
+          globalThis.clearInterval(idleInterval);
+          globalThis.removeEventListener('pointerdown', handleUserActivity);
+          globalThis.removeEventListener('keydown', handleUserActivity);
+          globalThis.removeEventListener('wheel', handleUserActivity);
+          globalThis.removeEventListener('touchstart', handleUserActivity);
+          globalThis.removeEventListener('storage', handleStorageSync);
+          globalThis.removeEventListener('focus', evaluateIdleState);
           document.removeEventListener('visibilitychange', evaluateIdleState);
       };
   }, [currentUser?.id, isAuthenticated, logout, markSessionActivity, persistSessionActivity, qaMode]);
@@ -1994,14 +1994,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     const updatedLines = [...processedExistingLines, ...processedNewLines];
 
     // Determine Status
-    let newStatus: POStatus = 'PARTIALLY_RECEIVED';
+    let newStatus: POStatus = 'ACTIVE';
     
+    // Calculate if all items are now received
+    const allLinesReceived = updatedLines.every(l => l.quantityReceived >= l.quantityOrdered);
+
     if (varianceTriggered) {
         newStatus = 'VARIANCE_PENDING';
     } else {
         // Standard Calculation
-        const allReceived = updatedLines.every(l => l.quantityReceived >= l.quantityOrdered || l.isForceClosed);
-        newStatus = allReceived ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
+        newStatus = allLinesReceived ? 'RECEIVED' : 'ACTIVE';
     }
 
     // Optimistic Update
@@ -2141,7 +2143,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       let pendingDemand = 0;
       pos.forEach(po => {
           if (new Date(po.requestDate) > new Date(latestSnapshot.snapshotDate)) {
-             if (['PENDING_APPROVAL', 'APPROVED_PENDING_CONCUR', 'ACTIVE', 'PARTIALLY_RECEIVED'].includes(po.status)) {
+             if (['PENDING_APPROVAL', 'APPROVED_PENDING_CONCUR', 'ACTIVE'].includes(po.status)) {
                  const demandForItem = po.lines
                      .filter(l => l.itemId === itemId)
                      .reduce((sum, line) => sum + (Number(line.quantityOrdered) || 0), 0);

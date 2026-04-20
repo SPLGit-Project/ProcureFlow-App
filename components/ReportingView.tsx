@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { FileText, Download, Filter, Search, BarChart3, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { POStatus, PORequest } from '../types';
+import { useState } from 'react';
+import { useApp } from '../context/AppContext.tsx';
+import { FileText, Download, BarChart3, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { POStatus } from '../types.ts';
 
 type ReportType = 'OUTSTANDING_DELIVERIES' | 'FINANCE_SUMMARY' | 'PO_STATUS';
 
@@ -20,8 +20,8 @@ const ReportingView = () => {
             let data: any[] = [];
             
             if (activeReport === 'OUTSTANDING_DELIVERIES') {
-                // Filter POs that are ACTIVE or PARTIALLY_RECEIVED or APPROVED_PENDING_CONCUR (if they have lines to show)
-                const activePos = pos.filter(po => ['ACTIVE', 'PARTIALLY_RECEIVED', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST'].includes(po.status));
+                // Filter POs that are ACTIVE or APPROVED_PENDING_CONCUR (if they have lines to show)
+                const activePos = pos.filter(po => ['ACTIVE', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST'].includes(po.status));
                 
                 activePos.forEach(po => {
                     po.lines.forEach(line => {
@@ -113,6 +113,7 @@ const ReportingView = () => {
                     <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-2">
                         <div className="flex flex-col sm:flex-row xl:flex-col gap-2">
                             <button 
+                                type="button"
                                 onClick={() => { setActiveReport('OUTSTANDING_DELIVERIES'); setReportData([]); }}
                                 className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'OUTSTANDING_DELIVERIES' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
@@ -120,6 +121,7 @@ const ReportingView = () => {
                                 Outstanding Deliveries
                             </button>
                             <button 
+                                type="button"
                                 onClick={() => { setActiveReport('FINANCE_SUMMARY'); setReportData([]); }}
                                 className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'FINANCE_SUMMARY' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
@@ -127,6 +129,7 @@ const ReportingView = () => {
                                 Finance Summary
                             </button>
                             <button 
+                                type="button"
                                 onClick={() => { setActiveReport('PO_STATUS'); setReportData([]); }}
                                 className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'PO_STATUS' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
@@ -159,11 +162,11 @@ const ReportingView = () => {
                                 {lastRun && <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 flex items-center gap-1"><CheckCircle2 size={10}/> Data updated at: {lastRun}</p>}
                             </div>
                             <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
-                                <button onClick={runReport} disabled={isLoading} className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto">
+                                <button type="button" onClick={runReport} disabled={isLoading} className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto">
                                     {isLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <BarChart3 size={16}/>}
                                     Run Report
                                 </button>
-                                <button onClick={exportCSV} className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto" disabled={reportData.length === 0}>
+                                <button type="button" onClick={exportCSV} className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto" disabled={reportData.length === 0}>
                                     <Download size={16}/> Export CSV
                                 </button>
                             </div>

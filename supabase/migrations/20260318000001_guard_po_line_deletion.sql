@@ -59,12 +59,8 @@ declare
     v_is_admin boolean;
     v_received_line_count integer;
 begin
-    -- Check if user is an ADMIN
-    select exists (
-        select 1 from public.users u
-        join public.roles r on u.role_id = r.id
-        where u.auth_user_id = auth.uid() and r.id = 'ADMIN'
-    ) into v_is_admin;
+    -- Check permissions: standardize using the legacy-resilient is_admin function
+    v_is_admin := public.is_admin();
 
     -- Verify request exists and get details
     select status, requester_id

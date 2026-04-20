@@ -140,7 +140,7 @@ declare
     v_po_request_id uuid;
     v_total_received numeric;
     v_variance_triggered boolean := false;
-    v_new_status text := 'PARTIALLY_RECEIVED';
+    v_new_status text := 'ACTIVE';
     l_line record;
     v_is_admin boolean;
 begin
@@ -184,7 +184,7 @@ begin
         end if;
 
         if l_line.quantity_received < l_line.quantity_ordered and not coalesce(l_line.is_force_closed, false) then
-            v_new_status := 'PARTIALLY_RECEIVED';
+            v_new_status := 'ACTIVE';
         end if;
     end loop;
 

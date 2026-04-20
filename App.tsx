@@ -32,6 +32,8 @@ const HelpGuide = lazy(() => import('./components/HelpGuide'));
 const ReportingView = lazy(() => import('./components/ReportingView'));
 const HistoryView = lazy(() => import('./components/HistoryView'));
 const ActiveRequestsView = lazy(() => import('./components/ActiveRequestsView'));
+const SmartBuyingDashboard = lazy(() => import('./components/SmartBuyingDashboard'));
+const DataIngestion = lazy(() => import('./components/DataIngestion'));
 
 const LoadingSpinner = () => (
     <div className="h-full w-full flex items-center justify-center p-20">
@@ -64,34 +66,34 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <AppProvider>
-
       <ErrorBoundary>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/invite" element={<InviteLanding />} />
-          <Route path="/pending-approval" element={<PendingApproval />} />
-          
-          <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
-            <Route index element={<Suspense fallback={<LoadingSpinner />}><Dashboard /></Suspense>} />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/invite" element={<InviteLanding />} />
+            <Route path="/pending-approval" element={<PendingApproval />} />
             
-            <Route path="requests" element={<Suspense fallback={<LoadingSpinner />}><POList filter="ALL" /></Suspense>} />
-            <Route path="approvals" element={<Suspense fallback={<LoadingSpinner />}><POList filter="PENDING" /></Suspense>} />
-            <Route path="active-requests" element={<Suspense fallback={<LoadingSpinner />}><ActiveRequestsView /></Suspense>} />
-            <Route path="completed" element={<Suspense fallback={<LoadingSpinner />}><POList filter="COMPLETED" /></Suspense>} />
-            <Route path="requests/:id" element={<Suspense fallback={<LoadingSpinner />}><PODetail /></Suspense>} />
-            <Route path="create" element={<Suspense fallback={<LoadingSpinner />}><POCreate /></Suspense>} />
-            <Route path="finance" element={<Suspense fallback={<LoadingSpinner />}><FinanceView /></Suspense>} />
-            <Route path="settings" element={<Suspense fallback={<LoadingSpinner />}><Settings /></Suspense>} />
-            <Route path="reports" element={<Suspense fallback={<LoadingSpinner />}><ReportingView /></Suspense>} />
-            <Route path="history" element={<Suspense fallback={<LoadingSpinner />}><HistoryView /></Suspense>} />
-            <Route path="help" element={<Suspense fallback={<LoadingSpinner />}><HelpGuide /></Suspense>} />
-            
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+            <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
+              <Route index element={<Suspense fallback={<LoadingSpinner />}><Dashboard /></Suspense>} />
+              
+              <Route path="requests" element={<Suspense fallback={<LoadingSpinner />}><POList filter="ALL" /></Suspense>} />
+              <Route path="approvals" element={<Suspense fallback={<LoadingSpinner />}><POList filter="PENDING" /></Suspense>} />
+              <Route path="active-requests" element={<Suspense fallback={<LoadingSpinner />}><ActiveRequestsView /></Suspense>} />
+              <Route path="completed" element={<Suspense fallback={<LoadingSpinner />}><POList filter="COMPLETED" /></Suspense>} />
+              <Route path="requests/:id" element={<Suspense fallback={<LoadingSpinner />}><PODetail /></Suspense>} />
+              <Route path="create" element={<Suspense fallback={<LoadingSpinner />}><POCreate /></Suspense>} />
+              <Route path="finance" element={<Suspense fallback={<LoadingSpinner />}><FinanceView /></Suspense>} />
+              <Route path="settings" element={<Suspense fallback={<LoadingSpinner />}><Settings /></Suspense>} />
+              <Route path="reports" element={<Suspense fallback={<LoadingSpinner />}><ReportingView /></Suspense>} />
+              <Route path="history" element={<Suspense fallback={<LoadingSpinner />}><HistoryView /></Suspense>} />
+              <Route path="help" element={<Suspense fallback={<LoadingSpinner />}><HelpGuide /></Suspense>} />
+              <Route path="smart-buying" element={<Suspense fallback={<LoadingSpinner />}><SmartBuyingDashboard /></Suspense>} />
+              <Route path="data-ingest" element={<Suspense fallback={<LoadingSpinner />}><DataIngestion /></Suspense>} />
+              
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
       </ErrorBoundary>
     </AppProvider>
   );

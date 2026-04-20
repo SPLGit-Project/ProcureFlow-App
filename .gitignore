@@ -1,22 +1,28 @@
-# Logs
+# --- MANDATORY PROJECT EXCLUSIONS ---
+ProcureFlow Expansion/
+
+# --- LOGS & TEMP ---
 logs
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+proof/
+tmp/
+.chrome-headless/
 
-# Dependencies
-node_modules
+# --- BUILD ARTIFACTS ---
+dist/
+dist-ssr/
+.next/
+out/
+build/
+
+# --- DEPENDENCIES ---
+node_modules/
 .pnp
 .pnp.js
 
-# Build Output
-dist
-dist-ssr
-
-# Environment Variables (CRITICAL SECURITY)
+# --- ENVIRONMENT & SECRETS ---
 .env
 .env.local
 .env.staging
@@ -25,17 +31,20 @@ dist-ssr
 .env.test
 *.local
 
-# Editor directories and files
-.vscode/*
+# --- OS & IDE JUNK ---
+.vscode/
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Supabase (Optional but recommended)
-supabase/.branches
-supabase/.temp
+# --- PROJECT SPECIFIC JUNK ---
+*.bak
+*.old
+*_v[0-9]*
+raw_hierarchy_data.txt

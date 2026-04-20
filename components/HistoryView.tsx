@@ -26,7 +26,6 @@ const HistoryView = () => {
     const StatusBadge = ({ status }: { status: string }) => {
         let color = 'bg-gray-100 text-gray-600';
         if (status === 'RECEIVED' || status === 'CLOSED') color = 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-        if (status === 'PARTIALLY_RECEIVED') color = 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
         
         return (
             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border border-transparent ${color}`}>
@@ -84,7 +83,7 @@ const HistoryView = () => {
         });
 
         // 3. Concur (Simulated if status passed)
-        if (['APPROVED_PENDING_CONCUR_REQUEST', 'APPROVED_PENDING_CONCUR', 'ACTIVE', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CLOSED'].includes(po.status)) {
+        if (['APPROVED_PENDING_CONCUR_REQUEST', 'APPROVED_PENDING_CONCUR', 'ACTIVE', 'RECEIVED', 'CLOSED'].includes(po.status)) {
              // In a real app we'd have a date for this
              if (po.status !== 'APPROVED_PENDING_CONCUR' && po.status !== 'APPROVED_PENDING_CONCUR_REQUEST') {
                  events.push({

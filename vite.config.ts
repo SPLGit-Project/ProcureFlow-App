@@ -1,8 +1,10 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import fs from 'fs';
 import { execSync } from 'child_process';
+import process from 'node:process';
 
 // Generate timestamp once per build
 const BUILD_TIMESTAMP = Date.now().toString();
@@ -11,7 +13,7 @@ const BUILD_TIMESTAMP = Date.now().toString();
 function getGitHash(): string {
   try {
     return execSync('git rev-parse --short HEAD').toString().trim();
-  } catch (error) {
+  } catch (_error) {
     console.warn('Vite: Could not get git hash, using fallback');
     return 'unknown';
   }
@@ -54,7 +56,7 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
       },
-      plugins: [react(), versionGenerator()],
+      plugins: [react(), versionGenerator(), basicSsl()],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || ''),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || ''),

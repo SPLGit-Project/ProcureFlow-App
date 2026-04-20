@@ -1,13 +1,13 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useDropzone, DropzoneOptions } from 'react-dropzone';
 import * as XLSX from 'xlsx';
-import { useApp } from '../context/AppContext';
-import { supabase } from '../lib/supabaseClient';
-import { db } from '../services/db';
+import { useApp } from '../context/AppContext.tsx';
+import { supabase } from '../lib/supabaseClient.ts';
+import { db } from '../services/db.ts';
 import { Upload, FileSpreadsheet, CheckCircle, AlertTriangle, Loader2, Edit2, Search, X, Calendar, Wand2, ArrowRight, ArrowLeft, Settings, Database, Truck, Link as LinkIcon, Save, Trash2, History } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { ItemWizard } from './ItemWizard';
-import { Item } from '../types';
+import { ItemWizard } from './ItemWizard.tsx';
+import { Item } from '../types.ts';
 
 // --- Types ---
 
@@ -477,11 +477,6 @@ const AdminMigration = () => {
              let newStatus = 'APPROVED_PENDING_CONCUR_REQUEST';
              if (po.approvalStatus?.toLowerCase().includes('approved')) newStatus = 'APPROVED_PENDING_CONCUR_REQUEST'; 
              
-             if (totalReceived >= totalOrdered && totalOrdered > 0) {
-                newStatus = 'CLOSED';
-             } else if (totalReceived > 0) {
-                 newStatus = 'PARTIALLY_RECEIVED';
-             }
              po.status = newStatus;
         });
 
