@@ -3154,6 +3154,7 @@ if __name__ == "__main__":
                                                           <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold">
                                                               <Loader2 size={12} className="animate-spin" /> Saving...
                                                           </span>
+                                                      )}
                                                       <span className="px-2 py-1 rounded bg-[var(--color-brand)]/10 text-[var(--color-brand)] text-[10px] font-bold">{activeRole.permissions.length} Active Rules</span>
                                                   </div>
                                               </div>

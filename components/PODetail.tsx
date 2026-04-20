@@ -419,12 +419,11 @@ const PODetail = () => {
   ];
 
 
-  const handleApproval = (approved: boolean) => {
-      updatePOStatus(po.id, approved ? 'APPROVED_PENDING_CONCUR_REQUEST' : 'REJECTED', {
+  const handleApproval = async (approved: boolean) => {
+      await updatePOStatus(po.id, approved ? 'APPROVED_PENDING_CONCUR_REQUEST' : 'REJECTED', {
           id: `ev-${Date.now()}`,
           action: approved ? 'APPROVED' : 'REJECTED',
           approverName: currentUser?.name || 'Unknown',
-
           date: new Date().toISOString().split('T')[0],
           comments: approved ? 'Approved via web portal' : 'Rejected via web portal'
       });
@@ -779,10 +778,10 @@ const PODetail = () => {
                )}
               {canApprove && (
                   <>
-                    <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(() => handleApproval(false))} className="flex-1 lg:flex-none justify-center px-4 py-2.5 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-2 font-medium disabled:opacity-50">
+                    <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(async () => await handleApproval(false))} className="flex-1 lg:flex-none justify-center px-4 py-2.5 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-2 font-medium disabled:opacity-50">
                         <XCircle size={18} /> Reject
                     </button>
-                    <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(() => handleApproval(true))} className="flex-1 lg:flex-none justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium disabled:opacity-50">
+                    <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(async () => await handleApproval(true))} className="flex-1 lg:flex-none justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium disabled:opacity-50">
                         <CheckCircle size={18} /> Approve
                     </button>
                   </>
@@ -818,13 +817,15 @@ const PODetail = () => {
               )}
 
               {po.status === 'VARIANCE_PENDING' && hasPermission('approve_requests') && (
-                   <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(() => updatePOStatus(po.id, 'RECEIVED', {
-                       id: `ev-${Date.now()}`,
-                       action: 'APPROVED',
-                       approverName: currentUser?.name || 'Admin',
-                       date: new Date().toISOString().split('T')[0],
-                       comments: 'Variance Approved'
-                   }))} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 flex items-center gap-2 shadow-lg shadow-amber-500/20 font-medium animate-pulse disabled:opacity-50 disabled:animate-none">
+                   <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(async () => {
+                       await updatePOStatus(po.id, 'RECEIVED', {
+                           id: `ev-${Date.now()}`,
+                           action: 'APPROVED',
+                           approverName: currentUser?.name || 'Admin',
+                           date: new Date().toISOString().split('T')[0],
+                           comments: 'Variance Approved'
+                       });
+                   })} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 flex items-center gap-2 shadow-lg shadow-amber-500/20 font-medium animate-pulse disabled:opacity-50 disabled:animate-none">
                        <CheckCircle size={18} /> Approve Variance
                    </button>
               )}

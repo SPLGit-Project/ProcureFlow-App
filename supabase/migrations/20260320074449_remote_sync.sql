@@ -1,0 +1,3 @@
+-- Placeholder for remote-only migration 20260320074449
+-- This file exists to satisfy the Supabase CLI's history check.
+-- The actual changes for this version were applied directly to the remote database.

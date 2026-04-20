@@ -1,10 +1,10 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { useDropzone, DropzoneOptions } from 'react-dropzone';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useDropzone } from 'react-dropzone';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext.tsx';
 import { supabase } from '../lib/supabaseClient.ts';
 import { db } from '../services/db.ts';
-import { Upload, FileSpreadsheet, CheckCircle, AlertTriangle, Loader2, Edit2, Search, X, Calendar, Wand2, ArrowRight, ArrowLeft, Settings, Database, Truck, Link as LinkIcon, Save, Trash2, History } from 'lucide-react';
+import { Upload, CheckCircle, AlertTriangle, Loader2, Search, X, Calendar, Wand2, ArrowRight, ArrowLeft, Database, Truck, Save, Trash2, History } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { ItemWizard } from './ItemWizard.tsx';
 import { Item } from '../types.ts';
@@ -126,9 +126,9 @@ const AdminMigration = () => {
     const [step, setStep] = useState<MigrationStep>('UPLOAD');
     
     // Upload State
-    const [file, setFile] = useState<File | null>(null);
+    const [_file, setFile] = useState<File | null>(null);
     const [rawHeaders, setRawHeaders] = useState<string[]>([]);
-    const [rawRows, setRawRows] = useState<any[]>([]); // Initial JSON parse before logic
+    const [rawRows, setRawRows] = useState<Record<string, unknown>[]>([]);
     
     // Mapping State
     const [columnMapping, setColumnMapping] = useState<ColumnMapping>({});
@@ -142,7 +142,7 @@ const AdminMigration = () => {
     // Resolution State
     const [unknownSkus, setUnknownSkus] = useState<Set<string>>(new Set());
     const [resolutionMap, setResolutionMap] = useState<Record<string, string>>({}); // ExcelSku -> ItemId
-    const [searchTerm, setSearchTerm] = useState('');
+    const [_searchTerm, _setSearchTerm] = useState('');
     
     // Resolution UI State (Lifted from Resolver)
     const [activeSku, setActiveSku] = useState<string>('');
@@ -155,9 +155,33 @@ const AdminMigration = () => {
     const [savedMappings, setSavedMappings] = useState<Record<string, string>>({});
     const [managerLoading, setManagerLoading] = useState(false);
 
-    // Item Wizard State
+    const handleDeleteMapping = async (variant: string) => {
+        if (!globalThis.confirm(`Remove saved mapping for "${variant}"?`)) return;
+        setManagerLoading(true);
+        try {
+            // @ts-ignore: db.deleteMigrationMapping is dynamically checked
+            if (db.deleteMigrationMapping) {
+                // @ts-ignore: db.deleteMigrationMapping is dynamically checked
+                await db.deleteMigrationMapping(variant);
+                setSavedMappings(prev => {
+                    const next = { ...prev };
+                    delete next[variant];
+                    return next;
+                });
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Failed to delete mapping');
+        }
+        setManagerLoading(false);
+    };
+
     const [isWizardOpen, setIsWizardOpen] = useState(false);
     const [wizardInitialData, setWizardInitialData] = useState<Partial<Item>>({});
+
+    // Health Check State
+    const [isRepairing, setIsRepairing] = useState(false);
+    const [healthStats, setHealthStats] = useState<{ duplicateDeliveries: number } | null>(null);
 
     // Debounce Search Logic
     useEffect(() => {
@@ -228,29 +252,87 @@ const AdminMigration = () => {
         setShowManager(true);
         setManagerLoading(true);
         try {
-            // @ts-ignore
+            // @ts-ignore: db.getMigrationMappings is dynamically checked
             if (db.getMigrationMappings) {
-                // @ts-ignore
+                // @ts-ignore: db.getMigrationMappings is dynamically checked
                 const m = await db.getMigrationMappings();
-                setSavedMappings(m);
+                setSavedMappings(m || {});
             }
         } catch (e) { console.error(e); }
         setManagerLoading(false);
     };
 
-    const handleDeleteMapping = async (excelVariant: string) => {
+    const checkSystemHealth = async () => {
+        setManagerLoading(true);
         try {
-            // @ts-ignore
-            if (db.deleteMigrationMapping) await db.deleteMigrationMapping(excelVariant);
-            setSavedMappings(prev => {
-                const next = { ...prev };
-                delete next[excelVariant];
-                return next;
+            // Check for duplicate deliveries
+            const { data, error } = await supabase.from('delivery_headers').select('po_request_id, docket_number');
+            if (error) throw error;
+
+            const counts: Record<string, number> = {};
+            let duplicates = 0;
+            data.forEach(d => {
+                const key = `${d.po_request_id}|${d.docket_number}`;
+                counts[key] = (counts[key] || 0) + 1;
+                if (counts[key] > 1) duplicates++;
             });
+
+            setHealthStats({ duplicateDeliveries: duplicates });
+            addLog(`Health Check: Found ${duplicates} duplicate delivery headers.`);
         } catch (e) {
             console.error(e);
-            alert('Failed to delete mapping');
+            addLog('Health check failed: ' + (e as Error).message);
         }
+        setManagerLoading(false);
+    };
+
+    const repairDuplicates = async () => {
+        if (!globalThis.confirm('This will delete duplicate delivery records (keeping the earliest entry). This action cannot be undone. Proceed?')) return;
+        
+        setIsRepairing(true);
+        addLog('Starting deduplication repair...');
+        
+        try {
+            // 1. Find duplicates
+            const { data, error } = await supabase.from('delivery_headers').select('id, po_request_id, docket_number, created_at').order('created_at', { ascending: true });
+            if (error) throw error;
+
+            const seen = new Set<string>();
+            const toDelete: string[] = [];
+
+            data.forEach(d => {
+                const key = `${d.po_request_id}|${d.docket_number}`;
+                if (seen.has(key)) {
+                    toDelete.push(d.id);
+                } else {
+                    seen.add(key);
+                }
+            });
+
+            if (toDelete.length === 0) {
+                addLog('No duplicates found.');
+                setHealthStats({ duplicateDeliveries: 0 });
+            } else {
+                addLog(`Found ${toDelete.length} records to remove. Deleting...`);
+                
+                // Delete in batches to avoid URL length issues
+                for (let i = 0; i < toDelete.length; i += 50) {
+                    const batch = toDelete.slice(i, i + 50);
+                    const { error: delErr } = await supabase.from('delivery_headers').delete().in('id', batch);
+                    if (delErr) throw delErr;
+                }
+
+                addLog(`Successfully removed ${toDelete.length} duplicate delivery records.`);
+                setHealthStats({ duplicateDeliveries: 0 });
+                alert(`Deduplication successful. Removed ${toDelete.length} records.`);
+            }
+        } catch (e) {
+            console.error(e);
+            addLog('Repair failed: ' + (e as Error).message);
+            alert('Repair failed: ' + (e as Error).message);
+        }
+        
+        setIsRepairing(false);
     };
 
     const addLog = (msg: string) => setLogs(prev => [`${new Date().toLocaleTimeString()} - ${msg}`, ...prev]);
@@ -264,11 +346,10 @@ const AdminMigration = () => {
         }
     }, []);
 
-    const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
-        onDrop, 
-        accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
+    const { getRootProps, getInputProps } = useDropzone({ 
+        onDrop,
         multiple: false 
-    } as unknown as DropzoneOptions);
+    });
 
     const preParseHeaders = (file: File) => {
         const reader = new FileReader();
@@ -281,7 +362,7 @@ const AdminMigration = () => {
             if (json.length > 0) {
                 const headers = Object.keys(json[0]);
                 setRawHeaders(headers);
-                setRawRows(json); // Store raw data for next step
+                setRawRows(json as Record<string, unknown>[]);
                 
                 // Trigger Auto-Map
                 const autoMap = {};
@@ -303,12 +384,12 @@ const AdminMigration = () => {
     };
 
     // --- STEP 2: PARSE & RESOLVE ---
-    const excelDateToJSDate = (serial: any) => {
+    const excelDateToJSDate = (serial: unknown) => {
        if (!serial) return undefined;
        if (typeof serial === 'string') return new Date(serial); 
        if (!serial && serial !== 0) return undefined;
        
-       const num = parseFloat(serial);
+       const num = parseFloat(String(serial));
        if (!isNaN(num) && num > 1000) {
            const utc_days  = Math.floor(num - 25569);
            const utc_value = utc_days * 86400;                                        
@@ -325,11 +406,11 @@ const AdminMigration = () => {
         // Fetch Global Mappings
         let knownMappings: Record<string, string> = {};
         try {
-            // @ts-ignore
-            if (db.getMigrationMappings) knownMappings = await db.getMigrationMappings();
+            // @ts-ignore: db.getMigrationMappings is dynamically checked
+            if (db.getMigrationMappings) knownMappings = await db.getMigrationMappings() as Record<string, string>;
         } catch (err) { console.error('Error fetching mappings', err); }
 
-        const getVal = (row: any, fieldId: string) => {
+        const getVal = (row: Record<string, unknown>, fieldId: string) => {
             const header = columnMapping[fieldId];
             return header ? row[header] : undefined;
         };
@@ -369,8 +450,8 @@ const AdminMigration = () => {
         constructPreviewData(rawRows, workingResolutionMap);
     };
 
-    const constructPreviewData = (rows: any[], resolutions: Record<string, string>) => {
-        const getVal = (row: any, fieldId: string) => {
+    const constructPreviewData = (rows: Record<string, unknown>[], resolutions: Record<string, string>) => {
+        const getVal = (row: Record<string, unknown>, fieldId: string) => {
             const header = columnMapping[fieldId];
             return header ? row[header] : undefined;
         };
@@ -378,8 +459,9 @@ const AdminMigration = () => {
         const poGroups: Record<string, ParsedPO> = {};
         
         rows.forEach((row, idx) => {
-             const poNum = getVal(row, 'poNum');
-             if (!poNum) return;
+             const poNumVal = getVal(row, 'poNum');
+             if (!poNumVal) return;
+             const poNum = String(poNumVal);
 
              if (!poGroups[poNum]) {
                 poGroups[poNum] = {
@@ -389,13 +471,13 @@ const AdminMigration = () => {
                     lines: [],
                     isValid: true,
                     errors: [],
-                    customerName: getVal(row, 'customerName'),
-                    comments: getVal(row, 'comments'),
+                    customerName: String(getVal(row, 'customerName') || ''),
+                    comments: String(getVal(row, 'comments') || ''),
                     reason: undefined,
-                    approver: getVal(row, 'approver'),
-                    siteName: getVal(row, 'site'),
-                    approvalComments: getVal(row, 'approvalComments'),
-                    approvalStatus: getVal(row, 'approvalStatus')
+                    approver: String(getVal(row, 'approver') || ''),
+                    siteName: String(getVal(row, 'site') || ''),
+                    approvalComments: String(getVal(row, 'approvalComments') || ''),
+                    approvalStatus: String(getVal(row, 'approvalStatus') || '')
                 };
             }
 
@@ -404,7 +486,7 @@ const AdminMigration = () => {
             // Auto-detect description header if not explicit
             // This is only for fallback/new item creation
             const descHeader = rawHeaders.find(h => h.toLowerCase().includes('desc') || h.toLowerCase().includes('name') || h.toLowerCase().includes('product'));
-            let description = descHeader ? row[descHeader] : '';
+            let description = descHeader ? String(row[descHeader] || '') : '';
 
             let finalItemId: string | undefined;
             let finalMappedSku: string | undefined;
@@ -448,14 +530,14 @@ const AdminMigration = () => {
                 unitPrice: Number(getVal(row, 'unitPrice')) || 0,
                 totalPrice: Number(getVal(row, 'totalPrice')) || 0,
                 capDate,
-                capComments: getVal(row, 'capComments'),
-                assetTag: getVal(row, 'assetTag'),
+                capComments: String(getVal(row, 'capComments') || ''),
+                assetTag: String(getVal(row, 'assetTag') || ''),
                 isValid,
                 error: isValid ? undefined : `Unknown SKU: ${sku}`,
                 mappedItemId: finalItemId,
                 mappedSku: finalMappedSku,
-                docketNum: getVal(row, 'docketNum'),
-                invoiceNum: getVal(row, 'invoiceNum'),
+                docketNum: String(getVal(row, 'docketNum') || ''),
+                invoiceNum: String(getVal(row, 'invoiceNum') || ''),
                 goodsReceiptDate,
                 includeDelivery: (qtyReceived > 0),
                 includeCap: !!capDate,
@@ -471,8 +553,8 @@ const AdminMigration = () => {
                 po.errors.push(`${invalidLines.length} invalid lines`);
             }
              // Status logic
-             const totalOrdered = po.lines.reduce((s, l) => s + (l.qtyOrdered || 0), 0);
-             const totalReceived = po.lines.reduce((s, l) => s + (l.qtyReceived || 0), 0);
+             const _totalOrdered = po.lines.reduce((s, l) => s + (l.qtyOrdered || 0), 0);
+             const _totalReceived = po.lines.reduce((s, l) => s + (l.qtyReceived || 0), 0);
              
              let newStatus = 'APPROVED_PENDING_CONCUR_REQUEST';
              if (po.approvalStatus?.toLowerCase().includes('approved')) newStatus = 'APPROVED_PENDING_CONCUR_REQUEST'; 
@@ -502,7 +584,7 @@ const AdminMigration = () => {
             if (itemId === 'CREATE_NEW') return;
 
             // 'SKIP' is saved as a special UUID in db.saveMigrationMapping
-            // @ts-ignore
+            // @ts-ignore: db.saveMigrationMapping is dynamically checked
             if (db.saveMigrationMapping) db.saveMigrationMapping(excelSku, itemId);
         });
 
@@ -587,7 +669,7 @@ const AdminMigration = () => {
                                 finalItemId = newItem.id;
                                 createdItemCache[cacheKey] = newItem.id;
                                 // Save this link for future runs too!
-                                // @ts-ignore
+                                // @ts-ignore: db.saveMigrationMapping is dynamically checked
                                 if (db.saveMigrationMapping) db.saveMigrationMapping(line.sku, newItem.id);
                             }
                         }
@@ -652,9 +734,10 @@ const AdminMigration = () => {
                     }
                  }
                  successCount++;
-            } catch (err: any) {
-                console.error(err);
-                addLog(`Failed PO ${po.poNum}: ${err.message}`);
+            } catch (err) {
+                const error = err as Error;
+                console.error(error);
+                addLog(`Failed PO ${po.poNum}: ${error.message}`);
                 failCount++;
             }
         }
@@ -729,7 +812,7 @@ const AdminMigration = () => {
                             <div className="text-3xl font-bold text-[var(--color-brand)] break-all mb-4">{activeSku}</div>
                             <div className="flex flex-col gap-1 text-sm text-gray-600 dark:text-gray-300">
                                 <span className="font-bold text-xs uppercase text-gray-400">Description from File</span>
-                                <span className="p-2 bg-white dark:bg-black/40 rounded border border-gray-100 dark:border-gray-700 block whitespace-pre-wrap break-words" title={String(contextDesc)}>{contextDesc}</span>
+                                <span className="p-2 bg-white dark:bg-black/40 rounded border border-gray-100 dark:border-gray-700 block whitespace-pre-wrap break-words" title={String(contextDesc)}>{String(contextDesc)}</span>
                             </div>
                         </div>
 
@@ -749,14 +832,14 @@ const AdminMigration = () => {
                         </div>
 
                         <div className="flex flex-col gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-                            <button 
+                            <button type="button" 
                                 onClick={() => handleOpenWizard(activeSku, String(contextDesc))}
                                 className="w-full py-4 rounded-xl border-2 border-dashed border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-bold hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors flex items-center justify-center gap-2"
                             >
                                 <div className="w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-100 flex items-center justify-center">+</div>
                                 Create New Master Item
                             </button>
-                            <button 
+                            <button type="button" 
                                 onClick={() => handleMap('SKIP')}
                                 className="w-full py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm font-medium"
                             >
@@ -769,12 +852,12 @@ const AdminMigration = () => {
                      <div className="space-y-4">
                          <div className="flex justify-between items-center">
                             <div className="text-xs font-bold uppercase text-gray-500">{debouncedTerm ? 'Search Results' : 'Suggested Matches'}</div>
-                            {debouncedTerm && <button onClick={() => { setInputValue(''); setDebouncedTerm(''); }} className="text-xs text-[var(--color-brand)]">Clear</button>}
+                            {debouncedTerm && <button type="button" onClick={() => { setInputValue(''); setDebouncedTerm(''); }} className="text-xs text-[var(--color-brand)]">Clear</button>}
                          </div>
                          
                          <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                             {suggestions.map(({item, score}) => (
-                                <button 
+                                <button type="button" 
                                     key={item.id}
                                     onClick={() => handleMap(item.id)}
                                     className="w-full text-left p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)] hover:bg-[var(--color-brand)]/5 transition-all group bg-white dark:bg-black/20"
@@ -846,7 +929,7 @@ const AdminMigration = () => {
                  <h1 className="text-2xl font-bold bg-gradient-to-r from-[var(--color-brand)] to-blue-600 bg-clip-text text-transparent">
                      Data Migration Wizard
                  </h1>
-                 <button 
+                 <button type="button" 
                     onClick={openManager}
                     className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-[var(--color-brand)] transition-colors px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
                  >
@@ -886,7 +969,7 @@ const AdminMigration = () => {
                         </div>
                         <h2 className="text-xl font-bold mb-2">Upload Migration File</h2>
                         <p className="text-gray-500 mb-6">Drag & drop your Excel file here, or click to browse</p>
-                        <button className="px-6 py-3 bg-[var(--color-brand)] text-white font-bold rounded-xl hover:opacity-90 transition-opacity">
+                        <button type="button" className="px-6 py-3 bg-[var(--color-brand)] text-white font-bold rounded-xl hover:opacity-90 transition-opacity">
                             Select File
                         </button>
                     </div>
@@ -902,8 +985,8 @@ const AdminMigration = () => {
                             <p className="text-gray-500">Connect your Excel column headers to the correct App fields. Use the sample data to verify.</p>
                         </div>
                         <div className="flex gap-3">
-                             <button onClick={() => setStep('UPLOAD')} className="px-4 py-2 text-gray-500 hover:text-gray-700 font-bold text-sm">Cancel</button>
-                             <button onClick={runDetailedParse} className="px-6 py-2 bg-[var(--color-brand)] text-white font-bold rounded-lg flex items-center gap-2 shadow-lg hover:shadow-xl hover:opacity-90 transition-all">
+                             <button type="button" onClick={() => setStep('UPLOAD')} className="px-4 py-2 text-gray-500 hover:text-gray-700 font-bold text-sm">Cancel</button>
+                             <button type="button" onClick={runDetailedParse} className="px-6 py-2 bg-[var(--color-brand)] text-white font-bold rounded-lg flex items-center gap-2 shadow-lg hover:shadow-xl hover:opacity-90 transition-all">
                                  {isProcessing ? <Loader2 className="animate-spin" /> : 'Next: Analyze Data'} <ArrowRight size={16} />
                              </button>
                         </div>
@@ -1012,7 +1095,7 @@ const AdminMigration = () => {
                 <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col h-[600px] animate-fade-in">
                     <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50 dark:bg-[#15171e]">
                          <div className="flex items-center gap-4 w-full md:w-auto">
-                             <button onClick={() => setStep('MAP')} className="text-gray-500 hover:text-gray-900 transition-colors p-2 hover:bg-gray-200 rounded-lg"><ArrowLeft size={20} /></button>
+                             <button type="button" onClick={() => setStep('MAP')} className="text-gray-500 hover:text-gray-900 transition-colors p-2 hover:bg-gray-200 rounded-lg"><ArrowLeft size={20} /></button>
                              <div>
                                  <h2 className="text-lg font-bold flex items-center gap-2">Import Preview <span className="text-xs font-normal text-gray-500 px-2 py-1 bg-white border rounded-full hidden sm:inline-flex">{previewData.length} Orders</span></h2>
                                  <p className="text-xs text-gray-500 hidden sm:block">
@@ -1026,7 +1109,7 @@ const AdminMigration = () => {
                                     <input type="checkbox" checked={allowImportErrors} onChange={e => setAllowImportErrors(e.target.checked)} className="rounded text-[var(--color-brand)] focus:ring-[var(--color-brand)]" />
                                     Force Import Unknowns
                                 </label>
-                                <button 
+                                <button type="button" 
                                     onClick={handleCommit}
                                     disabled={step === 'IMPORTING' || step === 'DONE'}
                                     className="px-6 py-2 bg-[var(--color-brand)] text-white font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 w-full sm:w-auto shadow-lg shadow-blue-500/20"
@@ -1091,7 +1174,7 @@ const AdminMigration = () => {
                                                 <div className="flex gap-1 bg-gray-50 dark:bg-black/20 p-1 rounded-lg border border-gray-100 dark:border-gray-800">
                                                     {/* Delivery Toggle */}
                                                     {line.goodsReceiptDate ? (
-                                                        <button 
+                                                        <button type="button" 
                                                             onClick={() => toggleDelivery(poIdx, lIdx)}
                                                             title={`Delivery on ${line.goodsReceiptDate.toLocaleDateString()}`}
                                                             className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
@@ -1106,7 +1189,7 @@ const AdminMigration = () => {
 
                                                     {/* Cap Toggle */}
                                                     {line.capDate ? (
-                                                        <button 
+                                                        <button type="button" 
                                                             onClick={() => toggleCap(poIdx, lIdx)}
                                                             title={`Capitalize: ${line.capDate.toLocaleDateString()}`}
                                                             className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
@@ -1141,45 +1224,87 @@ const AdminMigration = () => {
                     <div className="bg-white dark:bg-[#1e2029] w-full max-w-2xl rounded-2xl shadow-2xl max-h-[80vh] flex flex-col">
                         <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
                             <h3 className="text-xl font-bold">Migration Memory Manager</h3>
-                            <button onClick={() => setShowManager(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><X size={20}/></button>
+                            <button type="button" onClick={() => setShowManager(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><X size={20}/></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-6">
-                            {managerLoading ? (
-                                <div className="flex justify-center py-12"><Loader2 className="animate-spin text-blue-500" size={32} /></div>
-                            ) : Object.keys(savedMappings).length === 0 ? (
-                                <div className="text-center py-12 text-gray-400">No saved mappings found.</div>
-                            ) : (
-                                <table className="w-full text-left text-sm">
-                                    <thead className="text-gray-500 border-b border-gray-200 dark:border-gray-800">
-                                        <tr>
-                                            <th className="pb-3">Excel Variant</th>
-                                            <th className="pb-3">Mapped To Item</th>
-                                            <th className="pb-3 text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                                        {Object.entries(savedMappings).map(([variant, itemId]) => {
-                                            const item = items.find(i => i.id === itemId);
-                                            return (
-                                                <tr key={variant}>
-                                                    <td className="py-3 font-medium">{variant}</td>
-                                                    <td className="py-3 text-gray-500">
-                                                        {item ? (
-                                                            <div className="flex flex-col">
-                                                                <span className="font-bold text-gray-900 dark:text-gray-100">{item.sku}</span>
-                                                                <span className="text-xs">{item.name}</span>
-                                                            </div>
-                                                        ) : <span className="text-red-500">Unknown Item ({itemId})</span>}
-                                                    </td>
-                                                    <td className="py-3 text-right">
-                                                        <button onClick={() => handleDeleteMapping(variant)} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={16}/></button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            )}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                            {/* Health Check Section */}
+                            <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                                <h4 className="font-bold mb-2 flex items-center gap-2">
+                                    <Database size={16} className="text-blue-500" />
+                                    System Health & Data Integrity
+                                </h4>
+                                <p className="text-sm text-gray-500 mb-4">Validate database consistency and repair duplicate entries caused by submission race conditions.</p>
+                                
+                                <div className="flex items-center gap-4">
+                                    <button type="button" 
+                                        disabled={managerLoading || isRepairing}
+                                        onClick={checkSystemHealth}
+                                        className="px-4 py-2 bg-white dark:bg-black/20 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 rounded-lg text-sm font-bold hover:bg-blue-50 transition-colors disabled:opacity-50"
+                                    >
+                                        {managerLoading ? <Loader2 size={16} className="animate-spin" /> : 'Run Health Check'}
+                                    </button>
+                                    
+                                    {healthStats && healthStats.duplicateDeliveries > 0 && (
+                                        <button type="button" 
+                                            disabled={isRepairing}
+                                            onClick={repairDuplicates}
+                                            className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            <Wand2 size={16} /> 
+                                            {isRepairing ? 'Repairing...' : `Repair ${healthStats.duplicateDeliveries} Duplicates`}
+                                        </button>
+                                    )}
+                                    
+                                    {healthStats && healthStats.duplicateDeliveries === 0 && (
+                                        <div className="text-sm text-green-600 font-bold flex items-center gap-2">
+                                            <CheckCircle size={16} /> Database Healthy
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
+                                <h4 className="font-bold mb-4 flex items-center gap-2">
+                                    <History size={16} className="text-gray-400" />
+                                    Migration Memory
+                                </h4>
+                                {managerLoading && !healthStats ? (
+                                    <div className="flex justify-center py-12"><Loader2 className="animate-spin text-blue-500" size={32} /></div>
+                                ) : Object.keys(savedMappings).length === 0 ? (
+                                    <div className="text-center py-12 text-gray-400">No saved mappings found.</div>
+                                ) : (
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="text-gray-500 border-b border-gray-200 dark:border-gray-800">
+                                            <tr>
+                                                <th className="pb-3">Excel Variant</th>
+                                                <th className="pb-3">Mapped To Item</th>
+                                                <th className="pb-3 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                            {Object.entries(savedMappings).map(([variant, itemId]) => {
+                                                const item = items.find(i => i.id === itemId);
+                                                return (
+                                                    <tr key={variant}>
+                                                        <td className="py-3 font-medium">{variant}</td>
+                                                        <td className="py-3 text-gray-500">
+                                                            {item ? (
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-bold text-gray-900 dark:text-gray-100">{item.sku}</span>
+                                                                    <span className="text-xs">{item.name}</span>
+                                                                </div>
+                                                            ) : <span className="text-red-500">Unknown Item ({itemId})</span>}
+                                                        </td>
+                                                        <td className="py-3 text-right">
+                                                            <button type="button" onClick={() => handleDeleteMapping(variant)} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={16}/></button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

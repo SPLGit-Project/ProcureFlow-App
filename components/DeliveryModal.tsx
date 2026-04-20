@@ -107,7 +107,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        guardedSubmit(() => {
+        guardedSubmit(async () => {
             const deliveryLines: DeliveryLineItem[] = Object.entries(receipts)
                 .filter(([_, qty]) => (qty as number) > 0)
                 .map(([lineId, qty]) => ({
@@ -129,7 +129,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                 lines: deliveryLines
             };
             
-            onSubmit(header, Array.from(closedLines), additionalLines);
+            await onSubmit(header, Array.from(closedLines), additionalLines);
         });
     };
 

@@ -84,7 +84,6 @@ const isSameCartPriceLine = (
 
 const POCreate = () => {
   const { items, suppliers, userSites, mappings, stockSnapshots, currentUser, createPO, getEffectiveStock, reloadData } = useApp();
-  // Use userSites for the dropdown so request creation only shows permitted locations.
   const sites = userSites;
   const navigate = useNavigate();
   const draftKey = currentUser ? `pf_draft:${currentUser.id}:po-create` : '';
@@ -98,40 +97,33 @@ const POCreate = () => {
     [draftKey]
   );
   
-  // Auto-Refresh Data on Mount
   useEffect(() => {
       reloadData();
   }, [reloadData]);
 
   const { isSubmitting, guardedSubmit } = useSubmitGuard();
 
-  // Header State
   const [selectedSiteId, setSelectedSiteId] = useState(initialDraft?.selectedSiteId || '');
   const [selectedSupplierId, setSelectedSupplierId] = useState(initialDraft?.selectedSupplierId || '');
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(initialDraft?.isHeaderExpanded ?? true);
   
-  // New Header Fields
   const [customerName, setCustomerName] = useState(initialDraft?.customerName || '');
   const [reasonForRequest, setReasonForRequest] = useState<'Depletion' | 'New Customer' | 'Other'>(initialDraft?.reasonForRequest || 'Depletion');
   const [comments, setComments] = useState(initialDraft?.comments || '');
   const [requestDate, setRequestDate] = useState(initialDraft?.requestDate || getLocalDateInputValue());
 
-  
-  // Cart & Item State
   const [cart, setCart] = useState<POLineItem[]>(initialDraft?.cart || []);
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>(initialDraft?.quantityDrafts || {});
   const [isCartExpanded, setIsCartExpanded] = useState(initialDraft?.isCartExpanded ?? true);
-  const [isCatalogExpanded, setIsCatalogExpanded] = useState(initialDraft?.isCatalogExpanded ?? true); // Default open
+  const [isCatalogExpanded, setIsCatalogExpanded] = useState(initialDraft?.isCatalogExpanded ?? true);
   const [searchTerm, setSearchTerm] = useState(initialDraft?.searchTerm || '');
   
-  // Mobile Cart Drawer State
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   
-  // Modal State
   const [selectedDetailItem, setSelectedDetailItem] = useState<POCreateCatalogItem | null>(null);
   const [modalQuantity, setModalQuantity] = useState(1);
   const [modalPrice, setModalPrice] = useState('');
-  const [modalUpq, setModalUpq] = useState(1); // Default UPQ
+  const [modalUpq, setModalUpq] = useState(1);
   const [modalPriceOptionId, setModalPriceOptionId] = useState('');
   const [modalPriceOptions, setModalPriceOptions] = useState<ItemPriceOption[]>([]);
 
@@ -205,7 +197,6 @@ const POCreate = () => {
     isEmpty: isCreateDraftEmpty
   });
 
-  // Only active master items should be available for request creation.
   const activeMasterItems = useMemo(() => {
     return (items || []).filter(item => item.activeFlag !== false);
   }, [items]);
@@ -218,7 +209,6 @@ const POCreate = () => {
     );
   }, [activeMasterItems]);
 
-  // Determine available items from active master list.
   const displayItems = useMemo(() => {
     if (!activeMasterItems.length) return [];
 
@@ -237,7 +227,6 @@ const POCreate = () => {
         let isMapped = false;
 
         if (selectedSupplierId && mappings) {
-             // Find mapping for THIS supplier
              const mapping = mappings.find(m => m.supplierId === selectedSupplierId && m.productId === internalItem.id && m.mappingStatus === 'CONFIRMED');
              
              if (mapping) {
@@ -245,7 +234,6 @@ const POCreate = () => {
                  supplierSku = mapping.supplierSku;
                  supplierCode = mapping.supplierCustomerStockCode || 'N/A';
 
-                 // Look up Stock
                  const safeSnapshots = Array.isArray(stockSnapshots) ? stockSnapshots : [];
                  const latestSnapshot = safeSnapshots
                     .filter(s => s.supplierId === selectedSupplierId && s.supplierSku === mapping.supplierSku)
@@ -263,11 +251,11 @@ const POCreate = () => {
             ...internalItem,
             priceOptions,
             priceOptionCount: priceOptions.length,
-            supplierSku, // Now might be 'N/A'
+            supplierSku,
             supplierCode, 
             price: estimatedPrice,
             effectiveStock,
-            isMapped // Helper flag for UI if needed
+            isMapped
         };
     });
   }, [selectedSupplierId, mappings, activeMasterItems, stockSnapshots, searchTerm, getEffectiveStock]);
@@ -344,12 +332,8 @@ const POCreate = () => {
   // Modal Handlers
   const openItemDetail = (item: POCreateCatalogItem) => {
       setSelectedDetailItem(item);
-      setModalQuantity(1); // Default to 1, or check cart?
-      // Check if already in cart
-      const existingLine = cart.find(l => l.itemId === item.id);
-      if (existingLine) {
-          setModalQuantity(1); // Keep 1? Or pre-fill with extra? User said "select quantity". Usually means "add X".
-      }
+      setModalQuantity(1);
+      
       const baseOptions = normalizeItemPriceOptions(item);
       const hasEstimatedMatch = baseOptions.some(opt => Math.abs(opt.price - Number(item.price || 0)) < 0.0001);
       const effectiveOptions = (!hasEstimatedMatch && Number(item.price || 0) > 0)
@@ -375,7 +359,6 @@ const POCreate = () => {
       
       if (qty <= 0) return;
 
-      // Add to cart logic (similar to addToCart but specific values)
       setCart(prev => {
           const existing = prev.find(line =>
               isSameCartPriceLine(
@@ -418,8 +401,14 @@ const POCreate = () => {
       setSelectedDetailItem(null);
   };
 
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
+
   const handleSubmit = async () => {
     if (!currentUser || !selectedSupplier || !selectedSite || cart.length === 0) return;
+
+    // Stable submission ID to prevent duplicates if UI lock is bypassed
+    const currentSubmissionId = submissionId || uuidv4();
+    if (!submissionId) setSubmissionId(currentSubmissionId);
 
     const archivedCartLines = cart.filter(line => !activeItemIds.has(line.itemId));
     if (archivedCartLines.length > 0) {
@@ -435,7 +424,6 @@ const POCreate = () => {
     }
 
     // Commit any uncommitted quantity drafts before submitting
-    // This handles the case where a user typed a quantity but clicked Submit without blurring
     const finalCart = cart.map(line => {
         const draft = quantityDrafts[line.id];
         if (draft !== undefined && draft !== String(line.quantityOrdered)) {
@@ -448,10 +436,9 @@ const POCreate = () => {
     setQuantityDrafts({});
 
     const newPO: PORequest = {
-      id: uuidv4(),
+      id: currentSubmissionId,
       requestDate: requestDate,
       requesterId: currentUser.id,
-
       requesterName: currentUser.name,
       siteId: selectedSite.id,
       site: selectedSite.name,
@@ -488,7 +475,7 @@ const POCreate = () => {
                 <div className="text-center py-12 text-gray-500 dark:text-gray-600 text-sm flex flex-col items-center">
                     <ShoppingCart size={48} className="mb-3 opacity-20" />
                     <p>Your cart is empty.</p>
-                    <p className="text-xs">Add items from the catalog.</p>
+                    <p className="text-xs text-gray-400">Add items from the catalog.</p>
                 </div>
             ) : (
                 cart.map(line => (
@@ -795,7 +782,6 @@ const POCreate = () => {
                         onClick={() => openItemDetail(item)}
                         className="group flex items-center justify-between gap-4 border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#15171e] rounded-xl p-3 hover:border-[var(--color-brand)] hover:shadow-md transition-all cursor-pointer"
                     >
-                       {/* Left: Info */}
                        <div className="flex-1 min-w-0 flex items-center gap-4">
                            <div className="shrink-0 flex flex-col items-center gap-1 w-12">
                                 <span className="text-[10px] font-mono bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-transparent">
@@ -813,7 +799,6 @@ const POCreate = () => {
                            </div>
                        </div>
                        
-                       {/* Right: Price & Action */}
                        <div className="flex items-center gap-4 shrink-0">
                            <div className="text-right">
                                <span className="block text-sm font-bold text-gray-900 dark:text-white">${item.price.toFixed(2)}</span>
@@ -855,7 +840,6 @@ const POCreate = () => {
                     </div>
                     
                     <div className="p-6 overflow-y-auto space-y-6">
-                        {/* Details Grid */}
                         <div className="grid grid-cols-2 gap-4 text-sm">
                             <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-100 dark:border-gray-800">
                                 <span className="block text-xs uppercase font-bold text-gray-400 mb-1">Supplier Ref</span>
@@ -918,7 +902,6 @@ const POCreate = () => {
                                 </div>
                              </div>
 
-                             
                              <div className="w-1/4">
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">UPQ</label>
                                 <div className="relative">

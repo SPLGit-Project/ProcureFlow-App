@@ -1,7 +1,7 @@
 import { useMemo, FC } from 'react';
 import { 
   X, CheckCircle2, Package, ChevronRight, ArrowRight,
-  ClipboardList
+  ClipboardList, Link as LinkIcon
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
