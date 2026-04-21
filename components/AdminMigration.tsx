@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext.tsx';
@@ -149,6 +149,24 @@ const AdminMigration = () => {
     const [inputValue, setInputValue] = useState(''); // Immediate input
     const [debouncedTerm, setDebouncedTerm] = useState(''); // Search term
     const [isSearching, setIsSearching] = useState(false);
+    const [isStuck, setIsStuck] = useState(false);
+    const sentinelRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                setIsStuck(!entry.isIntersecting);
+            },
+            { threshold: [0] }
+        );
+        
+        const current = sentinelRef.current;
+        if (current) observer.observe(current);
+        
+        return () => {
+            if (current) observer.unobserve(current);
+        };
+    }, []);
 
     // Management State
     const [showManager, setShowManager] = useState(false);
@@ -924,17 +942,21 @@ const AdminMigration = () => {
     
     return (
         <div className="space-y-6 max-w-7xl mx-auto">
+            <div ref={sentinelRef} className="h-px w-full" />
+            
             {/* Header & Controls */}
-            <div className="flex justify-between items-center px-4">
-                 <h1 className="text-2xl font-bold bg-gradient-to-r from-[var(--color-brand)] to-blue-600 bg-clip-text text-transparent">
-                     Data Migration Wizard
-                 </h1>
-                 <button type="button" 
-                    onClick={openManager}
-                    className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-[var(--color-brand)] transition-colors px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
-                 >
-                     <History size={16} /> Manage Saved Memory
-                 </button>
+            <div className={`sticky top-[-1px] z-30 transition-all duration-300 ${isStuck ? 'py-3 px-6 bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-md shadow-lg border-b border-gray-100 dark:border-gray-800 rounded-none w-[calc(100%+3rem)] -ml-6' : 'py-0 px-4'}`}>
+                <div className="flex justify-between items-center max-w-7xl mx-auto">
+                     <h1 className={`font-bold transition-all ${isStuck ? 'text-lg' : 'text-2xl'} bg-gradient-to-r from-[var(--color-brand)] to-blue-600 bg-clip-text text-transparent`}>
+                         Data Migration Wizard
+                     </h1>
+                     <button type="button" 
+                        onClick={openManager}
+                        className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-[var(--color-brand)] transition-colors px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                     >
+                         <History size={16} /> Manage Saved Memory
+                     </button>
+                </div>
             </div>
 
             {/* Stepper */}
