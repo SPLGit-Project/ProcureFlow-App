@@ -1857,10 +1857,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
              logAction('PO_STATUS_CHANGE', { id: poId, status });
         }
         
-    } catch (e) {
+    } catch (e: any) {
         console.error("Failed to update status", e);
         reloadData();
         logAction('PO_STATUS_UPDATE_FAILED', { poId, status, error: (e as Error).message });
+        throw e; // Re-throw to allow component-level error handling
     }
   };
 

@@ -122,7 +122,7 @@ const levenshtein = (a: string, b: string): number => {
 };
 
 const AdminMigration = () => {
-    const { items, sites, addItem, suppliers, attributeOptions, upsertAttributeOption } = useApp();
+    const { items, sites, addItem, suppliers, attributeOptions, upsertAttributeOption, users, roles } = useApp();
     const [step, setStep] = useState<MigrationStep>('UPLOAD');
     
     // Upload State
@@ -1248,42 +1248,96 @@ const AdminMigration = () => {
                             <h3 className="text-xl font-bold">Migration Memory Manager</h3>
                             <button type="button" onClick={() => setShowManager(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><X size={20}/></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                            {/* Health Check Section */}
-                            <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-xl border border-blue-100 dark:border-blue-900/30">
-                                <h4 className="font-bold mb-2 flex items-center gap-2">
-                                    <Database size={16} className="text-blue-500" />
-                                    System Health & Data Integrity
-                                </h4>
-                                <p className="text-sm text-gray-500 mb-4">Validate database consistency and repair duplicate entries caused by submission race conditions.</p>
-                                
-                                <div className="flex items-center gap-4">
-                                    <button type="button" 
-                                        disabled={managerLoading || isRepairing}
-                                        onClick={checkSystemHealth}
-                                        className="px-4 py-2 bg-white dark:bg-black/20 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 rounded-lg text-sm font-bold hover:bg-blue-50 transition-colors disabled:opacity-50"
-                                    >
-                                        {managerLoading ? <Loader2 size={16} className="animate-spin" /> : 'Run Health Check'}
-                                    </button>
+                            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                                {/* Health Check Section */}
+                                <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                                    <h4 className="font-bold mb-2 flex items-center gap-2">
+                                        <Database size={16} className="text-blue-500" />
+                                        System Health & Data Integrity
+                                    </h4>
+                                    <p className="text-sm text-gray-500 mb-4">Validate database consistency and repair duplicate entries caused by submission race conditions.</p>
                                     
-                                    {healthStats && healthStats.duplicateDeliveries > 0 && (
+                                    <div className="flex items-center gap-4">
                                         <button type="button" 
-                                            disabled={isRepairing}
-                                            onClick={repairDuplicates}
-                                            className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+                                            disabled={managerLoading || isRepairing}
+                                            onClick={checkSystemHealth}
+                                            className="px-4 py-2 bg-white dark:bg-black/20 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 rounded-lg text-sm font-bold hover:bg-blue-50 transition-colors disabled:opacity-50"
                                         >
-                                            <Wand2 size={16} /> 
-                                            {isRepairing ? 'Repairing...' : `Repair ${healthStats.duplicateDeliveries} Duplicates`}
+                                            {managerLoading ? <Loader2 size={16} className="animate-spin" /> : 'Run Health Check'}
                                         </button>
-                                    )}
-                                    
-                                    {healthStats && healthStats.duplicateDeliveries === 0 && (
-                                        <div className="text-sm text-green-600 font-bold flex items-center gap-2">
-                                            <CheckCircle size={16} /> Database Healthy
-                                        </div>
-                                    )}
+                                        
+                                        {healthStats && healthStats.duplicateDeliveries > 0 && (
+                                            <button type="button" 
+                                                disabled={isRepairing}
+                                                onClick={repairDuplicates}
+                                                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+                                            >
+                                                <Wand2 size={16} /> 
+                                                {isRepairing ? 'Repairing...' : `Repair ${healthStats.duplicateDeliveries} Duplicates`}
+                                            </button>
+                                        )}
+                                        
+                                        {healthStats && healthStats.duplicateDeliveries === 0 && (
+                                            <div className="text-sm text-green-600 font-bold flex items-center gap-2">
+                                                <CheckCircle size={16} /> Database Healthy
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+
+                                {/* Security & Permissions Sweep */}
+                                <div className="bg-amber-50 dark:bg-amber-900/10 p-6 rounded-xl border border-amber-100 dark:border-amber-900/30">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h4 className="font-bold flex items-center gap-2">
+                                            <Shield size={16} className="text-amber-600" />
+                                            Security & Permissions Audit
+                                        </h4>
+                                        <p className="text-sm text-gray-500">Detect users missing the <code className="bg-amber-100 dark:bg-amber-900/30 px-1 rounded">receive_goods</code> permission (required for PO completion).</p>
+                                    </div>
+                                    <div className="px-3 py-1 bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-xs font-black rounded-lg uppercase tracking-tighter">
+                                        Sweep Active
+                                    </div>
+                                </div>
+                                
+                                {(() => {
+                                    const mismatchedUsers = (users || []).filter(u => {
+                                        const userRole = roles.find(r => r.id === u.role_id || r.id === u.role);
+                                        if (u.role === 'ADMIN' || u.role_id === 'ADMIN') return false;
+                                        if (u.status === 'REJECTED' || u.status === 'ARCHIVED') return false;
+                                        return userRole && !userRole.permissions.includes('receive_goods');
+                                    });
+
+                                    if (mismatchedUsers.length === 0) {
+                                        return (
+                                            <div className="text-sm text-green-600 font-bold flex items-center gap-2 bg-white dark:bg-black/20 p-4 rounded-lg border border-green-100 dark:border-green-900/20">
+                                                <CheckCircle size={16} /> All relevant users have valid completion permissions.
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-xs font-black uppercase mb-1">
+                                                <AlertTriangle size={14}/> {mismatchedUsers.length} Users with limited access
+                                            </div>
+                                            <div className="max-h-[200px] overflow-y-auto divide-y divide-amber-100 dark:divide-amber-900/20 border border-amber-100 dark:border-amber-900/20 rounded-lg bg-white dark:bg-black/10">
+                                                {mismatchedUsers.map(user => (
+                                                    <div key={user.id} className="p-3 flex justify-between items-center text-sm">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold text-gray-900 dark:text-white uppercase tracking-tight">{user.name}</span>
+                                                            <span className="text-[10px] text-gray-400 font-medium uppercase">{user.email}</span>
+                                                        </div>
+                                                        <div className="text-[10px] font-black bg-gray-50 dark:bg-white/5 border dark:border-gray-800 px-2 py-1 rounded text-gray-500">
+                                                            {user.role_id || user.role}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <p className="text-[10px] text-gray-400 italic">Adjust role permissions in Settings → Security to resolve.</p>
+                                        </div>
+                                    );
+                                })()}
 
                             <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
                                 <h4 className="font-bold mb-4 flex items-center gap-2">

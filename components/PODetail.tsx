@@ -420,13 +420,19 @@ const PODetail = () => {
 
 
   const handleApproval = async (approved: boolean) => {
-      await updatePOStatus(po.id, approved ? 'APPROVED_PENDING_CONCUR_REQUEST' : 'REJECTED', {
-          id: `ev-${Date.now()}`,
-          action: approved ? 'APPROVED' : 'REJECTED',
-          approverName: currentUser?.name || 'Unknown',
-          date: new Date().toISOString().split('T')[0],
-          comments: approved ? 'Approved via web portal' : 'Rejected via web portal'
-      });
+      try {
+          await updatePOStatus(po.id, approved ? 'APPROVED_PENDING_CONCUR_REQUEST' : 'REJECTED', {
+              id: `ev-${Date.now()}`,
+              action: approved ? 'APPROVED' : 'REJECTED',
+              approverName: currentUser?.name || 'Unknown',
+              date: new Date().toISOString().split('T')[0],
+              comments: approved ? 'Approved via web portal' : 'Rejected via web portal'
+          });
+          globalThis.alert(approved ? 'Order approved.' : 'Order rejected.');
+      } catch (e: any) {
+          console.error("Approval action failed:", e);
+          globalThis.alert(`Failed to process approval: ${e.message || 'Unknown error'}`);
+      }
   };
 
   const handleConcurRequestLink = () => {
@@ -435,15 +441,20 @@ const PODetail = () => {
       setIsConcurRequestModalOpen(false);
   };
 
-  const handleSkipConcurRequest = () => {
-      updatePOStatus(po.id, 'APPROVED_PENDING_CONCUR', {
-          id: `ev-${Date.now()}`,
-          action: 'ADMIN_OVERRIDE',
-          approverName: currentUser?.name || 'System',
-          date: new Date().toISOString().split('T')[0],
-          comments: 'Concur Request step skipped'
-      });
-      setIsConcurRequestModalOpen(false);
+  const handleSkipConcurRequest = async () => {
+      try {
+          await updatePOStatus(po.id, 'APPROVED_PENDING_CONCUR', {
+              id: `ev-${Date.now()}`,
+              action: 'ADMIN_OVERRIDE',
+              approverName: currentUser?.name || 'System',
+              date: new Date().toISOString().split('T')[0],
+              comments: 'Concur Request step skipped'
+          });
+          setIsConcurRequestModalOpen(false);
+      } catch (e: any) {
+          console.error("Skip action failed:", e);
+          globalThis.alert(`Failed to skip step: ${e.message || 'Unknown error'}`);
+      }
   };
 
   const handleConcurLink = () => {
@@ -464,13 +475,20 @@ const PODetail = () => {
   const handleCompletePO = async () => {
       if (!globalThis.confirm('Are you sure you want to mark this order as complete? This will finalize all lines and move it to history.')) return;
       
-      await updatePOStatus(po.id, 'CLOSED', {
-          id: uuidv4(),
-          action: 'ADMIN_OVERRIDE', // Or add 'COMPLETED' action? Types say 'ADMIN_OVERRIDE' is available
-          approverName: currentUser?.name || 'User',
-          date: new Date().toISOString().split('T')[0],
-          comments: 'Order marked as complete by user'
-      });
+      try {
+          await updatePOStatus(po.id, 'CLOSED', {
+              id: uuidv4(),
+              action: 'ADMIN_OVERRIDE', 
+              approverName: currentUser?.name || 'User',
+              date: new Date().toISOString().split('T')[0],
+              comments: 'Order marked as complete by user'
+          });
+          globalThis.alert('Order completed successfully.');
+          navigate('/pos'); // Go back to list on success
+      } catch (e: any) {
+          console.error("Completion failed:", e);
+          globalThis.alert(`Failed to complete order. Permission denied or system error: ${e.message || 'Unknown error'}`);
+      }
   };
 
 
@@ -818,13 +836,19 @@ const PODetail = () => {
 
               {po.status === 'VARIANCE_PENDING' && hasPermission('approve_requests') && (
                    <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(async () => {
-                       await updatePOStatus(po.id, 'RECEIVED', {
-                           id: `ev-${Date.now()}`,
-                           action: 'APPROVED',
-                           approverName: currentUser?.name || 'Admin',
-                           date: new Date().toISOString().split('T')[0],
-                           comments: 'Variance Approved'
-                       });
+                       try {
+                           await updatePOStatus(po.id, 'RECEIVED', {
+                               id: `ev-${Date.now()}`,
+                               action: 'APPROVED',
+                               approverName: currentUser?.name || 'Admin',
+                               date: new Date().toISOString().split('T')[0],
+                               comments: 'Variance Approved'
+                           });
+                           globalThis.alert('Variance approved.');
+                       } catch (e: any) {
+                           console.error("Variance approval failed:", e);
+                           globalThis.alert(`Failed to approve variance: ${e.message || 'Unknown error'}`);
+                       }
                    })} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 flex items-center gap-2 shadow-lg shadow-amber-500/20 font-medium animate-pulse disabled:opacity-50 disabled:animate-none">
                        <CheckCircle size={18} /> Approve Variance
                    </button>
