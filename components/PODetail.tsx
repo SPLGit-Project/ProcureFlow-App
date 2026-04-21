@@ -710,13 +710,13 @@ const PODetail = () => {
               state: {
                   deletedRequest: {
                       id: po.id,
-                      displayId: deletedRef
+                      displayId: po.displayId || po.id
                   }
               }
           });
       } catch (e: unknown) {
           console.error(e);
-          alert("Failed to delete PO: " + (e as Error).message);
+          globalThis.alert(`Failed to delete PO: ${e instanceof Error ? e.message : 'Unknown error'}`);
       } finally {
           setIsDeletingRequest(false);
       }
