@@ -712,57 +712,53 @@ export const db = {
     },
 
     createPO: async (po: PORequest): Promise<string> => {
-        // 1. Insert Header
-        const { data, error } = await supabase.from('po_requests').insert({
-             id: po.id,
-             request_date: po.requestDate,
-             requester_id: po.requesterId,
-             site_id: po.siteId,
-             supplier_id: po.supplierId,
-             status: po.status,
-             total_amount: po.totalAmount,
-             customer_name: po.customerName,
-             reason_for_request: po.reasonForRequest,
-             comments: po.comments
-        }).select('display_id').single();
-        
+        // Use the atomic RPC to ensure all parts of the PO are created in a single transaction (Fix F2).
+        // This also bypasses RLS restrictions on po_lines for non-admin users via SECURITY DEFINER.
+        const header = {
+            request_date: po.requestDate,
+            requester_id: po.requesterId,
+            site_id: po.siteId,
+            supplier_id: po.supplierId,
+            status: po.status,
+            total_amount: po.totalAmount,
+            customer_name: po.customerName,
+            reason_for_request: po.reasonForRequest,
+            comments: po.comments
+        };
+
+        const lines_data = po.lines.map(l => ({
+            id: l.id,
+            item_id: l.itemId,
+            sku: l.sku,
+            item_name: l.itemName,
+            quantity_ordered: l.quantityOrdered,
+            quantity_received: l.quantityReceived || 0,
+            unit_price: l.unitPrice,
+            total_price: l.totalPrice,
+            concur_po_number: l.concurPoNumber
+        }));
+
+        const approval = po.approvalHistory && po.approvalHistory.length > 0 ? {
+            approver_id: po.requesterId, 
+            approver_name: po.approvalHistory[0].approverName,
+            action: po.approvalHistory[0].action,
+            date: po.approvalHistory[0].date,
+            comments: po.approvalHistory[0].comments
+        } : null;
+
+        const { data, error } = await supabase.rpc('create_po_atomic', {
+            p_request_id: po.id,
+            p_header: header,
+            p_lines: lines_data,
+            p_approval: approval
+        });
+
         if (error) {
-            console.error('PO Header Insert Error', error);
+            console.error('Failed to create PO atomic:', error);
             throw error;
         }
 
-        // 2. Insert Lines
-        if (po.lines.length > 0) {
-            const linesToInsert = po.lines.map(l => ({
-                id: l.id,
-                po_request_id: po.id,
-                item_id: l.itemId,
-                sku: l.sku,
-                item_name: l.itemName,
-                quantity_ordered: l.quantityOrdered,
-                quantity_received: l.quantityReceived,
-                unit_price: l.unitPrice,
-                total_price: l.totalPrice,
-                concur_po_number: l.concurPoNumber
-            }));
-            const { error: lErr } = await supabase.from('po_lines').insert(linesToInsert);
-            if (lErr) throw lErr;
-        }
-
-        // 3. Insert History (Fix F2: error is now checked — was silently dropped before)
-        if (po.approvalHistory && po.approvalHistory.length > 0) {
-             const approval = po.approvalHistory[0];
-             const { error: aErr } = await supabase.from('po_approvals').insert({
-                 po_request_id: po.id,
-                 approver_name: approval.approverName,
-                 action: approval.action,
-                 date: approval.date,
-                 comments: approval.comments
-             });
-             if (aErr) throw aErr;
-        }
-        
-        return data?.display_id || po.id;
+        return data || po.id;
     },
     
 

@@ -1750,7 +1750,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         return true;
     } catch (error) {
         console.error('Failed to create PO:', error);
-        alert('Failed to create PO order.');
+        alert(`Failed to create PO order: ${(error as Error).message}`);
         logAction('PO_CREATE_FAILED', { requesterId: po.requesterId, error: (error as Error).message });
         return false;
     }
