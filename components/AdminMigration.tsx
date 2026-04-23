@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext.tsx';
 import { supabase } from '../lib/supabaseClient.ts';
 import { db } from '../services/db.ts';
-import { Upload, CheckCircle, AlertTriangle, Loader2, Search, X, Calendar, Wand2, ArrowRight, ArrowLeft, Database, Truck, Save, Trash2, History } from 'lucide-react';
+import { Upload, CheckCircle, AlertTriangle, Loader2, Search, X, Calendar, Wand2, ArrowRight, ArrowLeft, Database, Truck, Save, Trash2, History, Shield } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { ItemWizard } from './ItemWizard.tsx';
 import { Item } from '../types.ts';
@@ -1302,8 +1302,8 @@ const AdminMigration = () => {
                                 
                                 {(() => {
                                     const mismatchedUsers = (users || []).filter(u => {
-                                        const userRole = roles.find(r => r.id === u.role_id || r.id === u.role);
-                                        if (u.role === 'ADMIN' || u.role_id === 'ADMIN') return false;
+                                        const userRole = roles.find(r => r.id === u.role);
+                                        if (u.role === 'ADMIN') return false;
                                         if (u.status === 'REJECTED' || u.status === 'ARCHIVED') return false;
                                         return userRole && !userRole.permissions.includes('receive_goods');
                                     });
@@ -1329,7 +1329,7 @@ const AdminMigration = () => {
                                                             <span className="text-[10px] text-gray-400 font-medium uppercase">{user.email}</span>
                                                         </div>
                                                         <div className="text-[10px] font-black bg-gray-50 dark:bg-white/5 border dark:border-gray-800 px-2 py-1 rounded text-gray-500">
-                                                            {user.role_id || user.role}
+                                                            {user.role}
                                                         </div>
                                                     </div>
                                                 ))}
@@ -1338,6 +1338,7 @@ const AdminMigration = () => {
                                         </div>
                                     );
                                 })()}
+                            </div>
 
                             <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
                                 <h4 className="font-bold mb-4 flex items-center gap-2">
