@@ -365,6 +365,7 @@ export interface DeliveryLineItem {
   quantity: number;
   // Finance Fields
   invoiceNumber?: string;
+  invoiceDate?: string;
   isCapitalised: boolean;
   capitalisedDate?: string; // Changed from capitalisedMonth to full date
   freightAmount?: number;

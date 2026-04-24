@@ -8,8 +8,8 @@ import ConcurExportModal from './ConcurExportModal.tsx';
 import { db } from '../services/db.ts';
 import { supabase } from '../lib/supabaseClient.ts';
 import { v4 as uuidv4 } from 'uuid';
-import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
-import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage';
+import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
+import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 
 const PO_DETAIL_EDIT_DRAFT_VERSION = 1;
@@ -429,16 +429,21 @@ const PODetail = () => {
               comments: approved ? 'Approved via web portal' : 'Rejected via web portal'
           });
           globalThis.alert(approved ? 'Order approved.' : 'Order rejected.');
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error("Approval action failed:", e);
-          globalThis.alert(`Failed to process approval: ${e.message || 'Unknown error'}`);
+          const msg = e instanceof Error ? e.message : 'Unknown error';
+          globalThis.alert(`Failed to process approval: ${msg}`);
       }
   };
 
-  const handleConcurRequestLink = () => {
+  const handleConcurRequestLink = async () => {
       if(!concurRequestInput) return;
-      linkConcurRequest(po.id, concurRequestInput);
-      setIsConcurRequestModalOpen(false);
+      try {
+          await linkConcurRequest(po.id, concurRequestInput);
+          setIsConcurRequestModalOpen(false);
+      } catch (_e) {
+          // AppContext handles alert
+      }
   };
 
   const handleSkipConcurRequest = async () => {
@@ -451,16 +456,21 @@ const PODetail = () => {
               comments: 'Concur Request step skipped'
           });
           setIsConcurRequestModalOpen(false);
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error("Skip action failed:", e);
-          globalThis.alert(`Failed to skip step: ${e.message || 'Unknown error'}`);
+          const msg = e instanceof Error ? e.message : 'Unknown error';
+          globalThis.alert(`Failed to skip step: ${msg}`);
       }
   };
 
-  const handleConcurLink = () => {
+  const handleConcurLink = async () => {
       if(!concurInput) return;
-      linkConcurPO(po.id, concurInput);
-      setIsConcurModalOpen(false);
+      try {
+          await linkConcurPO(po.id, concurInput);
+          setIsConcurModalOpen(false);
+      } catch (_e) {
+          // AppContext handles alert
+      }
   };
 
   const handleDeliverySubmit = async (delivery: DeliveryHeader, closedLineIds: string[], newLines: POLineItem[]) => {
@@ -485,9 +495,10 @@ const PODetail = () => {
           });
           globalThis.alert('Order completed successfully.');
           navigate('/pos'); // Go back to list on success
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error("Completion failed:", e);
-          globalThis.alert(`Failed to complete order. Permission denied or system error: ${e.message || 'Unknown error'}`);
+          const msg = e instanceof Error ? e.message : 'Unknown error';
+          globalThis.alert(`Failed to complete order. Permission denied or system error: ${msg}`);
       }
   };
 
@@ -590,7 +601,7 @@ const PODetail = () => {
   };
 
   const handleSavePendingEdits = async () => {
-       if (!po) return;
+        if (!po) return;
         try {
             const validReason = (['Depletion', 'New Customer', 'Other'] as const).includes(headerEdits.reason as 'Depletion' | 'New Customer' | 'Other')
                 ? (headerEdits.reason as 'Depletion' | 'New Customer' | 'Other')
@@ -604,14 +615,15 @@ const PODetail = () => {
                 concurPoNumber: headerEdits.concurPoNumber,
                 lines: editableLines
             });
+            
             clearDraft(editDraftKey);
             setIsEditing(false);
             setEditableLines([]);
             await reloadData(true);
-       } catch (err: unknown) {
-           console.error(err);
-           alert('Failed to save changes: ' + (err as Error).message);
-       }
+        } catch (err: unknown) {
+            console.error(err);
+            alert('Failed to save changes: ' + (err as Error).message);
+        }
   };
 
   const handleUpdateDeliveryHeader = async (delId: string, field: string, val: string) => {
@@ -703,7 +715,6 @@ const PODetail = () => {
                 comments: `Admin forced status to ${newStatus}`
             });
             setIsStatusModalOpen(false);
-            // updatePOStatus triggers context reload, but slight delay might be needed or just let UI react
       } catch (e: unknown) {
           console.error(e);
           alert("Failed to update status: " + (e as Error).message);
@@ -721,7 +732,6 @@ const PODetail = () => {
       
       try {
           setIsDeletingRequest(true);
-          const deletedRef = po.displayId || po.id;
           await deletePO(po.id);
           navigate('/requests', {
               replace: true,
@@ -785,7 +795,7 @@ const PODetail = () => {
                    )
                )}
                {canDeletePendingRequest && !isEditing && (
-                    <button type="button" onClick={handleDeletePO} className="p-2.5 text-red-600 hover:text-red-700 border border-red-200 rounded-xl hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:text-red-300 transition-colors" title="Delete pending request">
+                    <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(handleDeletePO)} className="p-2.5 text-red-600 hover:text-red-700 border border-red-200 rounded-xl hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:text-red-300 transition-colors disabled:opacity-50" title="Delete pending request">
                         <Trash2 size={18} />
                     </button>
                )}
@@ -810,23 +820,23 @@ const PODetail = () => {
                    </button>
                )}
               {canLinkConcurRequest && (
-                   <button type="button" onClick={() => setIsConcurRequestModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium">
-                      <LinkIcon size={18} /> Enter Request #
-                   </button>
+                    <button disabled={isSubmitting} type="button" onClick={() => setIsConcurRequestModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium disabled:opacity-50 disabled:animate-none">
+                       <LinkIcon size={18} /> Enter Request #
+                    </button>
               )}
               {canLinkConcur && (
-                   <button type="button" onClick={() => setIsConcurModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium">
-                      <LinkIcon size={18} /> Link Concur PO
-                   </button>
+                    <button disabled={isSubmitting} type="button" onClick={() => setIsConcurModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium disabled:opacity-50 disabled:animate-none">
+                       <LinkIcon size={18} /> Link Concur PO
+                    </button>
               )}
               {canReceive && (
-                  <button type="button" onClick={() => setIsDeliveryModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 rounded-xl flex items-center gap-2 font-medium shadow-lg transition-all ${
-                      po.status === 'RECEIVED' 
-                        ? 'bg-gray-600 text-white hover:bg-gray-700 shadow-gray-600/20' 
-                        : 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-600/20'
-                  }`}>
-                      <Truck size={18} /> {po.status === 'RECEIVED' ? 'Record Extra Delivery' : 'Record Delivery'}
-                  </button>
+                   <button disabled={isSubmitting} type="button" onClick={() => setIsDeliveryModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 rounded-xl flex items-center gap-2 font-medium shadow-lg transition-all disabled:opacity-50 ${
+                       po.status === 'RECEIVED' 
+                         ? 'bg-gray-600 text-white hover:bg-gray-700 shadow-gray-600/20' 
+                         : 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-600/20'
+                   }`}>
+                       <Truck size={18} /> {po.status === 'RECEIVED' ? 'Record Extra Delivery' : 'Record Delivery'}
+                   </button>
               )}
               {canClose && (
                   <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(handleCompletePO)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 flex items-center gap-2 shadow-lg shadow-green-600/20 font-medium disabled:opacity-50">
@@ -845,10 +855,11 @@ const PODetail = () => {
                                comments: 'Variance Approved'
                            });
                            globalThis.alert('Variance approved.');
-                       } catch (e: any) {
-                           console.error("Variance approval failed:", e);
-                           globalThis.alert(`Failed to approve variance: ${e.message || 'Unknown error'}`);
-                       }
+                        } catch (e: unknown) {
+                            console.error("Variance approval failed:", e);
+                            const msg = e instanceof Error ? e.message : 'Unknown error';
+                            globalThis.alert(`Failed to approve variance: ${msg}`);
+                        }
                    })} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 flex items-center gap-2 shadow-lg shadow-amber-500/20 font-medium animate-pulse disabled:opacity-50 disabled:animate-none">
                        <CheckCircle size={18} /> Approve Variance
                    </button>
@@ -1447,9 +1458,9 @@ const PODetail = () => {
                     onChange={e => setConcurRequestInput(e.target.value)}
                 />
                 <div className="flex justify-end gap-3">
-                    <button type="button" onClick={() => setIsConcurRequestModalOpen(false)} className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg font-medium">Cancel</button>
-                    <button type="button" onClick={handleSkipConcurRequest} className="px-4 py-2.5 text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 rounded-lg font-medium">Skip</button>
-                    <button type="button" onClick={handleConcurRequestLink} disabled={!concurRequestInput} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 font-bold shadow-lg shadow-indigo-500/20">Submit</button>
+                    <button disabled={isSubmitting} type="button" onClick={() => setIsConcurRequestModalOpen(false)} className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg font-medium disabled:opacity-50">Cancel</button>
+                    <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(handleSkipConcurRequest)} className="px-4 py-2.5 text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 rounded-lg font-medium disabled:opacity-50">Skip</button>
+                    <button type="button" onClick={() => guardedSubmit(handleConcurRequestLink)} disabled={!concurRequestInput || isSubmitting} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 font-bold shadow-lg shadow-indigo-500/20">Submit</button>
                 </div>
             </div>
         </div>
@@ -1473,8 +1484,8 @@ const PODetail = () => {
                     onChange={e => setConcurInput(e.target.value)}
                 />
                 <div className="flex justify-end gap-3">
-                    <button type="button" onClick={() => setIsConcurModalOpen(false)} className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg font-medium">Cancel</button>
-                    <button type="button" onClick={handleConcurLink} disabled={!concurInput} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 font-bold shadow-lg shadow-indigo-500/20">Sync & Activate</button>
+                    <button disabled={isSubmitting} type="button" onClick={() => setIsConcurModalOpen(false)} className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg font-medium disabled:opacity-50">Cancel</button>
+                    <button type="button" onClick={() => guardedSubmit(handleConcurLink)} disabled={!concurInput || isSubmitting} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 font-bold shadow-lg shadow-indigo-500/20">Sync & Activate</button>
                 </div>
             </div>
         </div>
@@ -1501,11 +1512,11 @@ const PODetail = () => {
                         <button 
                             type="button"
                             key={s}
-                            onClick={() => handleForceStatusUpdate(s)}
-                            disabled={isDeletingRequest}
+                            onClick={() => guardedSubmit(() => handleForceStatusUpdate(s))}
+                            disabled={isDeletingRequest || isSubmitting}
                             className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors
                                 ${po.status === s ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-500/30' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'}
-                                ${isDeletingRequest ? 'opacity-50 cursor-not-allowed' : ''}
+                                ${(isDeletingRequest || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''}
                             `}
                         >
                             {s}
@@ -1515,8 +1526,8 @@ const PODetail = () => {
                     <div className="pt-4 mt-4 border-t border-gray-100 dark:border-gray-800">
                         <button 
                             type="button"
-                            onClick={handleDeletePO}
-                            disabled={isDeletingRequest}
+                            onClick={() => guardedSubmit(handleDeletePO)}
+                            disabled={isDeletingRequest || isSubmitting}
                             className="w-full text-left px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                             {isDeletingRequest ? 'Deleting Request...' : 'DELETE REQUEST'}

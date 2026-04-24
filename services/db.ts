@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog } from '../types';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 
@@ -7,12 +7,12 @@ export const db = {
     getRoles: async (): Promise<RoleDefinition[]> => {
         const { data, error } = await supabase.from('roles').select('*');
         if (error) throw error;
-        return data.map((r: any) => ({
+        return (data || []).map((r: { id: string; name: string; description: string; is_system: boolean; permissions: string[] }) => ({
             id: r.id,
             name: r.name,
             description: r.description,
             isSystem: r.is_system,
-            permissions: r.permissions || []
+            permissions: (r.permissions || []) as PermissionId[]
         }));
     },
     
@@ -35,7 +35,7 @@ export const db = {
     getUsers: async (): Promise<User[]> => {
         const { data, error } = await supabase.from('users').select('*');
         if (error) throw error;
-        return data.map((u: any) => ({
+        return (data || []).map((u: { id: string; name: string; email: string; role_id: string; avatar: string; job_title: string; status: any; created_at: string; site_ids: string[]; invited_at: string; invitation_expires_at: string }) => ({
             id: u.id,
             name: u.name,
             email: u.email,
@@ -157,7 +157,7 @@ export const db = {
     getSites: async (): Promise<Site[]> => {
         const { data, error } = await supabase.from('sites').select('*');
         if (error) throw error;
-        return data.map((s: any) => ({
+        return (data || []).map((s: { id: string; name: string; suburb: string; address: string; state: string; zip: string; contact_person: string }) => ({
             id: s.id,
             name: s.name,
             suburb: s.suburb,
@@ -864,8 +864,14 @@ export const db = {
         if (updates.date !== undefined) payload.date = updates.date;
         if (updates.receivedBy !== undefined) payload.received_by = updates.receivedBy;
 
-        const { error } = await supabase.from('deliveries').update(payload).eq('id', id);
+        const { error, count } = await (supabase
+            .from('deliveries')
+            .update(payload)
+            .eq('id', id) as any)
+            .select('*', { count: 'exact', head: true });
+
         if (error) throw error;
+        if (count === 0) throw new Error('Failed to update delivery header. Permission denied or record not found.');
     },
 
     updateApprovalHistory: async (poId: string, approvalId: string, updates: { approverName?: string, date?: string, comments?: string }): Promise<void> => {
@@ -874,18 +880,32 @@ export const db = {
         if (updates.date !== undefined) payload.date = updates.date;
         if (updates.comments !== undefined) payload.comments = updates.comments;
 
-        const { error } = await supabase.from('po_approvals').update(payload).eq('id', approvalId).eq('po_request_id', poId);
+        const { error, count } = await (supabase
+            .from('po_approvals')
+            .update(payload)
+            .eq('id', approvalId)
+            .eq('po_request_id', poId) as any)
+            .select('*', { count: 'exact', head: true });
+
         if (error) throw error;
+        if (count === 0) throw new Error('Failed to update approval history. Record not found or permission denied.');
     },
 
     updateDeliveryLineFinanceInfo: async (lineId: string, updates: Partial<DeliveryLineItem>): Promise<void> => {
-        const { error } = await supabase.from('delivery_lines').update({
-            invoice_number: updates.invoiceNumber,
-            is_capitalised: updates.isCapitalised,
-            capitalised_date: updates.capitalisedDate,
-            freight_amount: updates.freightAmount
-        }).eq('id', lineId);
+        const payload: any = {};
+        if (updates.invoiceNumber !== undefined) payload.invoice_number = updates.invoiceNumber;
+        if (updates.invoiceDate !== undefined) payload.invoice_date = updates.invoiceDate;
+        if (updates.isCapitalised !== undefined) payload.is_capitalised = updates.isCapitalised;
+        if (updates.capitalisedDate !== undefined) payload.capitalised_date = updates.capitalisedDate;
+
+        const { error, count } = await (supabase
+            .from('delivery_lines')
+            .update(payload)
+            .eq('id', lineId) as any)
+            .select('*', { count: 'exact', head: true });
+            
         if (error) throw error;
+        if (count === 0) throw new Error('Failed to update finance info. Permission denied.');
     },
 
     updateDeliveryLineQty: async (lineId: string, quantity: number): Promise<void> => {
@@ -1223,7 +1243,7 @@ export const db = {
         const specsWithPricing = buildItemSpecsWithPriceOptions(item);
         const priceOptions = normalizeItemPriceOptions({ ...item, specs: specsWithPricing });
         const defaultPrice = getDefaultItemPriceOption({ ...item, specs: specsWithPricing, priceOptions }).price;
-        const { error } = await supabase.from('items').update({
+        const { error, count } = await (supabase.from('items').update({
             sku: item.sku,
             name: item.name,
             description: item.description,
@@ -1255,8 +1275,11 @@ export const db = {
             cog_flag: item.cogFlag,
             cog_customer: item.cogCustomer,
             specs: specsWithPricing
-        }).eq('id', item.id);
+        }).eq('id', item.id) as any)
+        .select('*', { count: 'exact', head: true });
+
         if (error) throw error;
+        if (count === 0) throw new Error('Failed to update item. Permission denied or item not found.');
     },
 
     deleteItem: async (itemId: string): Promise<void> => {
@@ -1476,8 +1499,14 @@ export const db = {
     },
 
     updatePOStatus: async (poId: string, status: string): Promise<void> => {
-        const { error } = await supabase.from('po_requests').update({ status }).eq('id', poId);
+        const { error, count } = await (supabase
+            .from('po_requests')
+            .update({ status })
+            .eq('id', poId) as any)
+            .select('*', { count: 'exact', head: true });
+        
         if (error) throw error;
+        if (count === 0) throw new Error('Permission denied or PO not found. You may not have the rights to update this order in its current status.');
     },
 
     linkConcurRequest: async (poId: string, concurRequestNumber: string): Promise<void> => {
@@ -1498,9 +1527,20 @@ export const db = {
         if (error) throw new Error(error.message || 'Failed to link Concur PO');
     },
 
-    updatePOLines: async (lines: any[]): Promise<void> => {
-        const { error } = await supabase.from('po_lines').upsert(lines);
+    updatePOLines: async (lines: Partial<POLineItem>[]): Promise<void> => {
+        const { error, count } = await (supabase
+            .from('po_lines')
+            .upsert(lines) as any)
+            .select('*', { count: 'exact', head: true });
+            
         if (error) throw error;
+        // For upsert, we expect at least one row if lines is non-empty
+        if (lines.length > 0 && (count === null || count < lines.length)) {
+             console.warn(`updatePOLines: Expected ${lines.length} rows, but got ${count}. RLS might be blocking some updates.`);
+             // We don't throw if at least some succeeded, but we should be aware.
+             // Actually, for consistency, if ANY fail, it's a problem.
+             if (count === 0) throw new Error('Failed to update line items. Permission denied.');
+        }
     },
 
     updatePOLine: async (id: string, updates: Partial<POLineItem>): Promise<void> => {
@@ -1509,8 +1549,14 @@ export const db = {
         if (updates.unitPrice !== undefined) payload.unit_price = updates.unitPrice;
         if (updates.totalPrice !== undefined) payload.total_price = updates.totalPrice;
 
-        const { error } = await supabase.from('po_lines').update(payload).eq('id', id);
+        const { error, count } = await (supabase
+            .from('po_lines')
+            .update(payload)
+            .eq('id', id) as any)
+            .select('*', { count: 'exact', head: true });
+            
         if (error) throw error;
+        if (count === 0) throw new Error('Failed to update line item. Permission denied.');
     },
 
     getMigrationMappings: async (): Promise<Record<string, string>> => {
@@ -1522,7 +1568,7 @@ export const db = {
         
         const SKIP_ITEM_ID = '00000000-0000-0000-0000-000000000000';
         const lookup: Record<string, string> = {};
-        data?.forEach((row: any) => {
+        data?.forEach((row: { excel_variant: string; item_id: string }) => {
             if (row.excel_variant) {
                 const key = row.excel_variant.toLowerCase().trim();
                 if (row.item_id === SKIP_ITEM_ID) {
@@ -1695,7 +1741,7 @@ export const db = {
         
         if (error) throw error;
         
-        return data.map((l: any) => ({
+        return (data || []).map((l: { id: string; action_type: string; performed_by: string; performer: { name: string } | null; summary: any; details: any; created_at: string }) => ({
             id: l.id,
             actionType: l.action_type,
             performedBy: l.performed_by,

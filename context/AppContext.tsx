@@ -1521,7 +1521,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           try {
               await db.createOrUpdateUserByEmail(userWithExpiry);
               logAction('USER_CREATED', { userId: userWithExpiry.id, email: userWithExpiry.email, role: userWithExpiry.role, siteIds: userWithExpiry.siteIds });
-          } catch (e) {
+          } catch (e: unknown) {
               console.error("Failed to add user", e);
               reloadData();
               logAction('USER_CREATE_FAILED', { email: userWithExpiry.email, error: (e as Error).message });
@@ -1824,15 +1824,18 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               };
           }));
 
-          logAction(
-              'PO_UPDATED',
-              { poId, lineCount: normalizedLines.length, totalAmount },
-              { status: existing.status, requesterId: existing.requesterId }
-          );
-      } catch (e) {
-          logAction('PO_UPDATE_FAILED', { poId, error: (e as Error).message });
-          throw e;
-      }
+            await reloadData(true, true);
+
+            logAction(
+                'PO_UPDATED',
+                { poId, lineCount: normalizedLines.length, totalAmount },
+                { status: existing.status, requesterId: existing.requesterId }
+            );
+        } catch (e) {
+            logAction('PO_UPDATE_FAILED', { poId, error: (e as Error).message });
+            reloadData(); // Force revert to DB state on failure
+            throw e;
+        }
   };
 
   const updatePOStatus = async (poId: string, status: POStatus, event: ApprovalEvent) => {
@@ -1857,7 +1860,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
              logAction('PO_STATUS_CHANGE', { id: poId, status });
         }
         
-    } catch (e: any) {
+        await reloadData(true, true);
+    } catch (e: unknown) {
         console.error("Failed to update status", e);
         reloadData();
         logAction('PO_STATUS_UPDATE_FAILED', { poId, status, error: (e as Error).message });
@@ -1913,9 +1917,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           await db.linkConcurRequest(poId, trimmedRequestNumber);
           await reloadData(true, true);
           logAction('PO_CONCUR_REQUEST_LINKED', { poId, concurRequestNumber: trimmedRequestNumber });
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error('Failed to link Concur Request:', e);
-          const msg = e instanceof Error ? e.message : (e.message || 'Unknown error');
+          const msg = e instanceof Error ? e.message : 'Unknown error';
           alert(`Failed to link Concur Request: ${msg}`);
           reloadData(true, true);
           logAction('PO_CONCUR_REQUEST_LINK_FAILED', { poId, concurRequestNumber: trimmedRequestNumber, error: msg });
@@ -1942,9 +1946,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           await reloadData(true, true);
           console.log(`Successfully linked Concur PO ${trimmedPoNumber} to PO ${poId}`);
           logAction('PO_CONCUR_LINKED', { poId, concurPoNumber: trimmedPoNumber });
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error("Failed to link Concur PO:", e);
-          const msg = e instanceof Error ? e.message : (e.message || 'Unknown error');
+          const msg = e instanceof Error ? e.message : 'Unknown error';
           alert(`Failed to link Concur PO: ${msg}`);
           // Revert state
           reloadData();
@@ -2046,7 +2050,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         // NOTIFICATION TRIGGER
         sendNotification('DELIVERY_RECEIVED', { poId: poId, deliveryId: delivery.id, receivedBy: delivery.receivedBy });
         logAction('DELIVERY_ADDED', { poId, deliveryId: delivery.id, receivedBy: delivery.receivedBy, newStatus });
-
+        
+        await reloadData(true, true);
     } catch (e) {
         console.error("Failed to add delivery", e);
         reloadData();
