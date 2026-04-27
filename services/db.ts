@@ -1708,6 +1708,40 @@ export const db = {
         if (error) throw error;
     },
 
+    getAuditLogsForRecord: async (recordId: string, relatedIds: string[] = [], tableFilter?: string[]): Promise<SystemAuditLog[]> => {
+        const allIds = [recordId, ...relatedIds].filter(Boolean);
+        let query = supabase
+            .from('system_audit_logs')
+            .select(`
+                *,
+                performer:users(name)
+            `)
+            .order('created_at', { ascending: false })
+            .limit(300);
+
+        if (allIds.length === 1) {
+            query = (query as any).filter('summary->>recordId', 'eq', allIds[0]);
+        } else {
+            query = (query as any).filter('summary->>recordId', 'in', `(${allIds.map(id => `"${id}"`).join(',')})`);
+        }
+
+        if (tableFilter && tableFilter.length > 0) {
+            query = (query as any).filter('summary->>table', 'in', `(${tableFilter.map(t => `"${t}"`).join(',')})`);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        return (data || []).map((l: any) => ({
+            id: l.id,
+            actionType: l.action_type,
+            performedBy: l.performed_by,
+            performedByName: l.performer?.name || 'System',
+            summary: l.summary,
+            details: l.details,
+            createdAt: l.created_at
+        }));
+    },
+
     getAuditLogs: async (filters?: { startDate?: string, endDate?: string, userId?: string, actionType?: string }): Promise<SystemAuditLog[]> => {
         let query = supabase
             .from('system_audit_logs')

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
     X, Check, ChevronRight, Package, Tag, 
-    Truck, BarChart2, AlertCircle, Plus, Layers, Trash2
+    Truck, BarChart2, AlertCircle, Plus, Layers, Trash2, History
 } from 'lucide-react';
 import { Item, AttributeOption, Supplier, ItemPriceOption } from '../types.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { HierarchyManager } from '../utils/hierarchyManager.ts';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
+import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 
 interface ItemWizardProps {
     isOpen: boolean;
@@ -202,7 +203,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
 
     const handleNext = () => {
         if (validateStep(currentStep)) {
-            setCurrentStep(prev => Math.min(prev + 1, STEPS.length - 1));
+            setCurrentStep(prev => Math.min(prev + 1, activeSteps.length - 1));
         }
     };
 
@@ -243,7 +244,11 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
     const priceOptions = normalizeItemPriceOptions(formData);
 
     // UI Helpers
-    const StepIcon = STEPS[currentStep].icon;
+    const activeSteps = [...STEPS];
+    if (existingItem?.id) {
+        activeSteps.push({ id: 'AUDIT', label: 'Audit History', icon: History });
+    }
+    const StepIcon = activeSteps[currentStep]?.icon || STEPS[0].icon;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
@@ -259,7 +264,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                             {existingItem ? 'Edit Item' : 'New Item Wizard'}
                         </h2>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-14">
-                            Step {currentStep + 1} of {STEPS.length}: {STEPS[currentStep].label}
+                            Step {currentStep + 1} of {activeSteps.length}: {activeSteps[currentStep].label}
                         </p>
                     </div>
                     <button type="button" onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors">
@@ -269,7 +274,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
 
                 {/* Progress Bar */}
                 <div className="flex w-full h-1 bg-gray-200 dark:bg-gray-800">
-                    {STEPS.map((step, idx) => (
+                    {activeSteps.map((step, idx) => (
                         <div 
                             key={step.id}
                             className={`flex-1 h-full transition-all duration-500 ${
@@ -757,9 +762,18 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                 </div>
                             </div>
                         )}
+                        {/* STEP: AUDIT HISTORY (edit mode only) */}
+                        {activeSteps[currentStep]?.id === 'AUDIT' && existingItem?.id && (
+                            <div>
+                                <div className="mb-4">
+                                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Item Change Log</h3>
+                                    <p className="text-xs text-gray-400">Every modification to this item is recorded below, including who made the change and what fields were updated.</p>
+                                </div>
+                                <EntityAuditPanel recordId={existingItem.id} tableFilter={['items']} entityLabel="item" />
+                            </div>
+                        )}
                     </div>
                 </div>
-
                 {/* Footer */}
                 <div className="p-6 border-t border-gray-200 dark:border-gray-800 flex justify-between bg-gray-50 dark:bg-[#181a21]/50">
                     <button type="button" 
@@ -770,14 +784,14 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                     </button>
                     
                     <button type="button" 
-                        onClick={currentStep === STEPS.length - 1 ? handleSave : handleNext}
+                        onClick={currentStep === activeSteps.length - 1 ? handleSave : handleNext}
                         disabled={isSubmitting}
                         className={`px-8 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20 ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
                         {isSubmitting ? (
                             <>Saving...</>
-                        ) : currentStep === STEPS.length - 1 ? (
-                            <>Create Item <Check size={18} /></>
+                        ) : currentStep === activeSteps.length - 1 ? (
+                            <>{existingItem ? 'Save Changes' : 'Create Item'} <Check size={18} /></>
                         ) : (
                             <>Next Step <ChevronRight size={18} /></>
                         )}

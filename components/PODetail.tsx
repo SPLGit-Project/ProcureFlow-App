@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
 import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search } from 'lucide-react';
@@ -37,7 +38,7 @@ const PODetail = () => {
   const navigate = useNavigate();
   const { pos, suppliers, items, updatePOStatus, updatePendingPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO } = useApp();
   
-  const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY'>('LINES');
+  const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
   const [isConcurModalOpen, setIsConcurModalOpen] = useState(false);
   const [isConcurRequestModalOpen, setIsConcurRequestModalOpen] = useState(false);
@@ -1004,6 +1005,7 @@ const PODetail = () => {
           <button type="button" onClick={() => setActiveTab('LINES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'LINES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Order Lines</button>
           <button type="button" onClick={() => setActiveTab('DELIVERIES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'DELIVERIES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Deliveries ({po.deliveries.length})</button>
           <button type="button" onClick={() => setActiveTab('HISTORY')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'HISTORY' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>History</button>
+          <button type="button" onClick={() => setActiveTab('AUDIT')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'AUDIT' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Audit Log</button>
       </div>
       
       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[300px]">
@@ -1427,6 +1429,28 @@ const PODetail = () => {
                         <div className="text-tertiary text-sm italic pl-8">No history recorded.</div>
                     )}
                 </div>
+              </div>
+          )}
+
+          {activeTab === 'AUDIT' && (
+              <div className="p-6">
+                  <div className="mb-4">
+                      <h3 className="text-base font-bold text-gray-900 dark:text-white">Request Audit Trail</h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          A complete chronological record of all changes to this request, its lines, approvals, and deliveries.
+                      </p>
+                  </div>
+                  <EntityAuditPanel
+                      recordId={po.id}
+                      relatedIds={[
+                          ...po.lines.map(l => l.id),
+                          ...po.deliveries.map(d => d.id),
+                          ...po.deliveries.flatMap(d => d.lines.map(l => l.id)),
+                          ...po.approvalHistory.map(h => h.id)
+                      ].filter(Boolean)}
+                      tableFilter={['po_requests', 'po_lines', 'po_approvals', 'deliveries', 'delivery_lines']}
+                      entityLabel="request"
+                  />
               </div>
           )}
       </div>
