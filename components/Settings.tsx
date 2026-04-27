@@ -30,6 +30,7 @@ import * as XLSX from 'xlsx';
 import CatalogManagement from './CatalogManagement.tsx'; // Import CatalogManagement
 import MenuEditor from './MenuEditor.tsx';
 import { ItemWizard } from './ItemWizard.tsx';
+import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { HierarchyManager } from '../utils/hierarchyManager.ts';
 import { seedCatalogData } from '../utils/catalogSeeder.ts';
 import SimpleWorkflowConfig from './SimpleWorkflowConfig.tsx';
@@ -244,6 +245,8 @@ const Settings = () => {
        }
    };
 
+  const [selectedAuditItem, setSelectedAuditItem] = useState<Item | null>(null);
+  
   // --- Workflow Configurations State ---
   const [workflowConfigs, setWorkflowConfigs] = useState<any[]>([
       {
@@ -1674,6 +1677,9 @@ if __name__ == "__main__":
                                             }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-secondary dark:text-gray-500">
                                                 <Edit2 size={16} />
                                             </button>
+                                            <button type="button" onClick={() => setSelectedAuditItem(item)} className="p-1 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded text-blue-500" title="View Audit History">
+                                                <History size={16} />
+                                            </button>
                                             <button type="button" onClick={() => requestDelete(item)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500" title="Archive Item">
                                                 <Archive size={16} />
                                             </button>
@@ -1695,7 +1701,7 @@ if __name__ == "__main__":
             </div>
              
              {/* --- Modals and Forms --- */}
-             {isItemFormOpen && (
+              {isItemFormOpen && (
                 <ItemWizard
                     isOpen={isItemFormOpen}
                     onClose={() => setIsItemFormOpen(false)}
@@ -1706,6 +1712,40 @@ if __name__ == "__main__":
                     attributeOptions={attributeOptions}
                     upsertAttributeOption={upsertAttributeOption}
                 />
+             )}
+
+             {/* Item Audit Modal */}
+             {selectedAuditItem && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
+                        <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    <History className="text-blue-600" size={24} />
+                                    Item Audit History
+                                </h2>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                    Viewing changes for <span className="font-semibold text-gray-900 dark:text-gray-200">{selectedAuditItem.name}</span> ({selectedAuditItem.sku})
+                                </p>
+                            </div>
+                            <button type="button" onClick={() => setSelectedAuditItem(null)} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+                            <EntityAuditPanel recordId={selectedAuditItem.id} tableFilter={['items']} entityLabel="item" />
+                        </div>
+                        <div className="p-6 border-t border-gray-200 dark:border-gray-800 flex justify-end bg-gray-50 dark:bg-white/5">
+                            <button 
+                                type="button" 
+                                onClick={() => setSelectedAuditItem(null)}
+                                className="px-6 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors font-medium"
+                            >
+                                Close History
+                            </button>
+                        </div>
+                    </div>
+                </div>
              )}
      
              <ConfirmDialog 
