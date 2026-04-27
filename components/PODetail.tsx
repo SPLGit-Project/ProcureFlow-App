@@ -1004,7 +1004,7 @@ const PODetail = () => {
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-6 overflow-x-auto scrollbar-hide">
           <button type="button" onClick={() => setActiveTab('LINES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'LINES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Order Lines</button>
           <button type="button" onClick={() => setActiveTab('DELIVERIES')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'DELIVERIES' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Deliveries ({po.deliveries.length})</button>
-          <button type="button" onClick={() => setActiveTab('HISTORY')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'HISTORY' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>History</button>
+          <button type="button" onClick={() => setActiveTab('HISTORY')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'HISTORY' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Actions</button>
           <button type="button" onClick={() => setActiveTab('AUDIT')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'AUDIT' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Audit Log</button>
       </div>
       
@@ -1426,7 +1426,7 @@ const PODetail = () => {
                         </div>
                     ))}
                     {timelineEvents.length === 0 && (
-                        <div className="text-tertiary text-sm italic pl-8">No history recorded.</div>
+                        <div className="text-tertiary text-sm italic pl-8">No actions recorded.</div>
                     )}
                 </div>
               </div>
