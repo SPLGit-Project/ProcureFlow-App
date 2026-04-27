@@ -192,34 +192,51 @@ export const EntityAuditPanel: React.FC<EntityAuditPanelProps> = ({
             // Supabase PostgREST supports filter on JSONB with the ->> operator via `.filter()`
             let query = supabase
                 .from('system_audit_logs')
-                .select(`
-                    id,
-                    action_type,
-                    performed_by,
-                    summary,
-                    details,
-                    created_at,
-                    performer:users(name)
-                `)
-                .order('created_at', { ascending: false })
-                .limit(200);
+                .select('*')
+                .order('created_at', { ascending: false });
 
-            // Filter where summary->>'recordId' matches any of our IDs
-            // Supabase supports `cs` (contains) but for ->> we need `filter`
+            // Apply filters
+            const allIds = [recordId, ...relatedIds].filter(Boolean);
             if (allIds.length === 1) {
-                query = (query as any).filter('summary->>recordId', 'eq', allIds[0]);
-            } else {
-                // For multiple IDs we use `in` operator on jsonb text extract
-                query = (query as any).filter('summary->>recordId', 'in', `(${allIds.map(id => `"${id}"`).join(',')})`);
+                query = query.filter('summary->>recordId', 'eq', allIds[0]);
+            } else if (allIds.length > 1) {
+                query = query.in('summary->>recordId', allIds);
             }
 
             if (tableFilter && tableFilter.length > 0) {
-                query = (query as any).filter('summary->>table', 'in', `(${tableFilter.map(t => `"${t}"`).join(',')})`);
+                query = query.in('summary->>table', tableFilter);
             }
 
-            const { data, error: fetchError } = await query;
+            const { data, error: fetchError } = await query.limit(200);
             if (fetchError) throw fetchError;
-            setLogs((data as any) || []);
+
+            const logsData = (data as RawAuditLog[]) || [];
+
+            // 2. Manually resolve performer names to avoid join issues
+            const performerIds = [...new Set(logsData.map(l => l.performed_by).filter(Boolean))];
+            
+            if (performerIds.length > 0) {
+                const { data: userData } = await supabase
+                    .from('users')
+                    .select('id, auth_user_id, name')
+                    .or(`id.in.(${performerIds.join(',')}),auth_user_id.in.(${performerIds.join(',')})`);
+                
+                if (userData) {
+                    const userMap = new Map();
+                    userData.forEach(u => {
+                        if (u.id) userMap.set(u.id, u.name);
+                        if (u.auth_user_id) userMap.set(u.auth_user_id, u.name);
+                    });
+                    
+                    logsData.forEach(l => {
+                        if (l.performed_by && userMap.has(l.performed_by)) {
+                            l.performer = { name: userMap.get(l.performed_by) };
+                        }
+                    });
+                }
+            }
+
+            setLogs(logsData);
         } catch (e: unknown) {
             console.error('EntityAuditPanel: fetch failed', e);
             setError(e instanceof Error ? e.message : 'Failed to load audit history.');

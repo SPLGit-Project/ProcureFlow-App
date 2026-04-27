@@ -1712,30 +1712,52 @@ export const db = {
         const allIds = [recordId, ...relatedIds].filter(Boolean);
         let query = supabase
             .from('system_audit_logs')
-            .select(`
-                *,
-                performer:users(name)
-            `)
+            .select('*')
             .order('created_at', { ascending: false })
             .limit(300);
 
         if (allIds.length === 1) {
-            query = (query as any).filter('summary->>recordId', 'eq', allIds[0]);
-        } else {
-            query = (query as any).filter('summary->>recordId', 'in', `(${allIds.map(id => `"${id}"`).join(',')})`);
+            query = query.filter('summary->>recordId', 'eq', allIds[0]);
+        } else if (allIds.length > 1) {
+            query = query.in('summary->>recordId', allIds);
         }
 
         if (tableFilter && tableFilter.length > 0) {
-            query = (query as any).filter('summary->>table', 'in', `(${tableFilter.map(t => `"${t}"`).join(',')})`);
+            query = query.in('summary->>table', tableFilter);
         }
 
         const { data, error } = await query;
         if (error) throw error;
-        return (data || []).map((l: any) => ({
+
+        const logs = data || [];
+        
+        // Resolve performer names manually
+        const performerIds = [...new Set(logs.map((l: any) => l.performed_by).filter(Boolean))];
+        if (performerIds.length > 0) {
+            const { data: userData } = await supabase
+                .from('users')
+                .select('id, auth_user_id, name')
+                .or(`id.in.(${performerIds.join(',')}),auth_user_id.in.(${performerIds.join(',')})`);
+            
+            if (userData) {
+                const userMap = new Map();
+                userData.forEach((u: any) => {
+                    if (u.id) userMap.set(u.id, u.name);
+                    if (u.auth_user_id) userMap.set(u.auth_user_id, u.name);
+                });
+                logs.forEach((l: any) => {
+                    if (l.performed_by && userMap.has(l.performed_by)) {
+                        l.performedByName = userMap.get(l.performed_by);
+                    }
+                });
+            }
+        }
+
+        return logs.map((l: any) => ({
             id: l.id,
             actionType: l.action_type,
             performedBy: l.performed_by,
-            performedByName: l.performer?.name || 'System',
+            performedByName: l.performedByName || 'System',
             summary: l.summary,
             details: l.details,
             createdAt: l.created_at
@@ -1745,10 +1767,7 @@ export const db = {
     getAuditLogs: async (filters?: { startDate?: string, endDate?: string, userId?: string, actionType?: string }): Promise<SystemAuditLog[]> => {
         let query = supabase
             .from('system_audit_logs')
-            .select(`
-                *,
-                performer:users(name)
-            `)
+            .select('*')
             .order('created_at', { ascending: false })
             .limit(500);
 
@@ -1756,30 +1775,49 @@ export const db = {
             query = query.gte('created_at', filters.startDate);
         }
         if (filters?.endDate) {
-            // Add 1 day to include the end date fully
             const end = new Date(filters.endDate);
-            end.setDate(end.getDate() + 1);
-            query = query.lt('created_at', end.toISOString());
+            end.setHours(23, 59, 59, 999);
+            query = query.lte('created_at', end.toISOString());
         }
         if (filters?.userId) {
-            // Search by name needs a join filter, but easiest is to filter by ID if we have it.
-            // If the UI is filtering by text name, we might need a different approach or client-side filtering.
-            // For now, let's assume strict ID filtering if provided, or we can rely on client-side text search.
-             query = query.eq('performed_by', filters.userId);
+            query = query.eq('performed_by', filters.userId);
         }
         if (filters?.actionType) {
-            query = query.ilike('action_type', `%${filters.actionType}%`);
+            query = query.eq('action_type', filters.actionType);
         }
-            
+
         const { data, error } = await query;
-        
         if (error) throw error;
+
+        const logs = data || [];
         
-        return (data || []).map((l: { id: string; action_type: string; performed_by: string; performer: { name: string } | null; summary: any; details: any; created_at: string }) => ({
+        // Resolve performer names manually
+        const performerIds = [...new Set(logs.map((l: any) => l.performed_by).filter(Boolean))];
+        if (performerIds.length > 0) {
+            const { data: userData } = await supabase
+                .from('users')
+                .select('id, auth_user_id, name')
+                .or(`id.in.(${performerIds.join(',')}),auth_user_id.in.(${performerIds.join(',')})`);
+            
+            if (userData) {
+                const userMap = new Map();
+                userData.forEach((u: any) => {
+                    if (u.id) userMap.set(u.id, u.name);
+                    if (u.auth_user_id) userMap.set(u.auth_user_id, u.name);
+                });
+                logs.forEach((l: any) => {
+                    if (l.performed_by && userMap.has(l.performed_by)) {
+                        l.performedByName = userMap.get(l.performed_by);
+                    }
+                });
+            }
+        }
+
+        return logs.map((l: any) => ({
             id: l.id,
             actionType: l.action_type,
             performedBy: l.performed_by,
-            performedByName: l.performer?.name || 'Unknown',
+            performedByName: l.performedByName || 'System',
             summary: l.summary,
             details: l.details,
             createdAt: l.created_at
