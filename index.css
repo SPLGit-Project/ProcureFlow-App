@@ -1,6 +1,34 @@
 /* Main CSS - Enhanced Theme System */
 
 /* ============================================
+   EXPANSION DESIGN TOKENS — Phase 1
+   Nocturne / Cotton / Tranquil palette.
+   Active when ui_revamp_enabled = true.
+   ============================================ */
+
+:root {
+  --color-nocturne: #120a0b;
+  --color-cotton:   #E4E1DC;
+  --color-tranquil: #129DC0;
+  --color-tranquil-rgb: 18, 157, 192;
+}
+
+/* Floating rail dimensions */
+:root {
+  --rail-width: 64px;
+  --rail-gap:   16px;   /* left offset from viewport edge */
+}
+
+/* Page entry animation (used by revamped routes) */
+@keyframes page-entry {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-page-entry {
+  animation: page-entry 0.2s ease-out both;
+}
+
+/* ============================================
    CSS VARIABLES - Design Token System
    ============================================ */
 
