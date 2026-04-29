@@ -456,7 +456,11 @@ export type AttributeType =
     | 'PREVIEW_BUSINESS_UNIT'
     | 'PREVIEW_BUSINESS_REASON'
     | 'PREVIEW_PRICE_TYPE'
-    | 'PREVIEW_TAX_CODE';
+    | 'PREVIEW_TAX_CODE'
+    | 'PREVIEW_CUSTOMER_PRICING_GROUP'
+    | 'PREVIEW_APPROVAL_RULE_TYPE'
+    | 'PREVIEW_SAP_MAPPING'
+    | 'PREVIEW_SUPPLIER_EXT';
 
 
 export interface AttributeOption {

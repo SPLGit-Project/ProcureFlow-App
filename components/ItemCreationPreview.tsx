@@ -1,13 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertCircle,
   AlertTriangle,
   Check,
+  ChevronDown,
+  ChevronRight,
   ClipboardCheck,
   Copy,
+  ExternalLink,
+  FileText,
   FlaskConical,
+  Info,
   Package,
   PlayCircle,
   RefreshCw,
+  RotateCcw,
   Save,
   Search,
   Send,
@@ -27,6 +34,7 @@ import {
   PreviewSellPriceDraft
 } from '../types';
 import { ToastContainer, useToast } from './ToastNotification';
+import ItemApprovalReview from './ItemApprovalReview';
 import {
   calculatePreviewPricing,
   findPreviewDuplicateCandidates,
@@ -89,6 +97,9 @@ interface PreviewFormState {
   publishToSalesforce: boolean;
   publishToBundle: boolean;
   publishToLinenHub: boolean;
+  customerGroupReference: string;
+  branchSiteId: string;
+  sapMapping: string;
   duplicateOutcome: PreviewDuplicateOutcome;
   duplicateJustification: string;
 }
@@ -146,6 +157,9 @@ const createEmptyForm = (): PreviewFormState => ({
   publishToSalesforce: true,
   publishToBundle: true,
   publishToLinenHub: false,
+  customerGroupReference: '',
+  branchSiteId: '',
+  sapMapping: '',
   duplicateOutcome: 'NoDuplicate',
   duplicateJustification: ''
 });
@@ -181,6 +195,7 @@ const ItemCreationPreview = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [catalogueMode, setCatalogueMode] = useState<'COMBINED' | 'LIVE' | 'PREVIEW'>('COMBINED');
+  const [reviewBundleId, setReviewBundleId] = useState<string>('');
 
   const canUsePreview = hasPermission('manage_development') || currentUser?.role === 'ADMIN';
 
@@ -218,6 +233,15 @@ const ItemCreationPreview = () => {
   const uomOptions = useMemo(() => getPreviewOptionValues(attributeOptions, 'UOM', previewDefaults('UOM')), [attributeOptions]);
   const priceTypeOptions = useMemo(() => getPreviewOptionValues(attributeOptions, 'PREVIEW_PRICE_TYPE', previewDefaults('PREVIEW_PRICE_TYPE')), [attributeOptions]);
   const taxCodeOptions = useMemo(() => getPreviewOptionValues(attributeOptions, 'PREVIEW_TAX_CODE', previewDefaults('PREVIEW_TAX_CODE')), [attributeOptions]);
+  const customerPricingGroupOptions = useMemo(() => getPreviewOptionValues(attributeOptions, 'PREVIEW_CUSTOMER_PRICING_GROUP', previewDefaults('PREVIEW_CUSTOMER_PRICING_GROUP')), [attributeOptions]);
+  const sapMappingOptions = useMemo(() => getPreviewOptionValues(attributeOptions, 'PREVIEW_SAP_MAPPING', previewDefaults('PREVIEW_SAP_MAPPING')), [attributeOptions]);
+
+  // Conditional field visibility based on request type
+  const isReplacement = form.requestType === 'Replacement Item';
+  const isCog = form.requestType === 'Customer Own Goods Item' || form.cogFlag;
+  const needsCustomerRef = ['Customer Own Goods Item', 'Bundle-Only Item', 'LinenHub-Only Item'].includes(form.requestType) || isCog;
+  const isGroupPrice = form.priceType === 'Group';
+  const isCustomerSpecificPrice = ['Customer-Specific', 'Contract'].includes(form.priceType);
 
   const categoryOptions = useMemo(() => {
     const values = new Set<string>();
@@ -274,6 +298,8 @@ const ItemCreationPreview = () => {
       sellPriceExGst: toNumber(form.sellPriceExGst)
     }
   ), [form.purchasePriceExGst, form.freightHandlingCost, form.sellPriceExGst]);
+
+  const showApprovalWarning = form.saleEnabled && pricing.marginPercent < 25 && (pricing.marginPercent !== 0 || form.sellPriceExGst !== '');
 
   const latestDuplicateCheck = selectedBundle?.duplicateChecks[0];
 
@@ -333,6 +359,9 @@ const ItemCreationPreview = () => {
       publishToSalesforce: sell?.publishToSalesforce ?? request.salesforceVisible,
       publishToBundle: sell?.publishToBundle ?? request.bundleEnabled,
       publishToLinenHub: sell?.publishToLinenHub ?? request.linenhubEnabled,
+      customerGroupReference: sell?.customerGroupReference || '',
+      branchSiteId: request.branchSiteId || '',
+      sapMapping: (request.draftPayload?.sapMapping as string) || '',
       duplicateOutcome: bundle.duplicateChecks[0]?.selectedOutcome || 'NoDuplicate',
       duplicateJustification: bundle.duplicateChecks[0]?.justification || ''
     });
@@ -365,7 +394,8 @@ const ItemCreationPreview = () => {
     const sellDraft: PreviewSellPriceDraft | undefined = form.saleEnabled ? {
       requestId: form.id,
       priceType: form.priceType,
-      customerReference: form.customerReference,
+      customerReference: isCustomerSpecificPrice ? form.customerReference : undefined,
+      customerGroupReference: isGroupPrice ? form.customerGroupReference : undefined,
       saleUom: form.saleUom,
       sellPriceExGst: toNumber(form.sellPriceExGst),
       taxCode: form.taxCode,
@@ -410,12 +440,13 @@ const ItemCreationPreview = () => {
       requestorName: currentUser?.name,
       department: form.department,
       businessUnit: form.businessUnit,
+      branchSiteId: form.branchSiteId || undefined,
       requiredActivationDate: form.requiredActivationDate,
       businessReason: form.businessReason,
       businessReasonDetail: form.businessReasonDetail,
       newOrReplacement: form.newOrReplacement,
-      existingItemId: form.existingItemId || undefined,
-      customerReference: form.customerReference,
+      existingItemId: isReplacement ? (form.existingItemId || undefined) : undefined,
+      customerReference: needsCustomerRef ? form.customerReference : undefined,
       proposedDescription: form.proposedDescription,
       itemGroup: form.itemGroup,
       division: form.division,
@@ -430,7 +461,8 @@ const ItemCreationPreview = () => {
         proposedSku,
         previewOnly: true,
         skuValidation,
-        pricing
+        pricing,
+        sapMapping: form.sapMapping || undefined
       },
       createdBy: currentUser?.id
     };
@@ -716,6 +748,60 @@ const ItemCreationPreview = () => {
                     {businessReasonOptions.map(reason => <option key={reason} value={reason}>{reason}</option>)}
                   </select>
                 </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-bold text-gray-500 uppercase">New / Replacement</span>
+                  <select className="input-field w-full" value={form.newOrReplacement} onChange={e => setForm(prev => ({ ...prev, newOrReplacement: e.target.value as 'New Item' | 'Replacement', existingItemId: e.target.value === 'New Item' ? '' : prev.existingItemId }))}>
+                    <option value="New Item">New Item</option>
+                    <option value="Replacement">Replacement</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {isReplacement && (
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Existing Item ID <span className="text-red-500">*</span></span>
+                      <input
+                        list="existing-item-options"
+                        className="input-field w-full"
+                        placeholder="Search existing items..."
+                        value={form.existingItemId}
+                        onChange={e => setForm(prev => ({ ...prev, existingItemId: e.target.value }))}
+                      />
+                      <datalist id="existing-item-options">
+                        {items.map(item => <option key={item.id} value={item.id}>{item.sku} — {item.name}</option>)}
+                      </datalist>
+                    </label>
+                  )}
+                  {needsCustomerRef && (
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Customer Reference <span className="text-red-500">*</span></span>
+                      <input
+                        className="input-field w-full"
+                        placeholder="Customer code or name"
+                        value={form.customerReference}
+                        onChange={e => setForm(prev => ({ ...prev, customerReference: e.target.value }))}
+                      />
+                    </label>
+                  )}
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-bold text-gray-500 uppercase">Branch / Site</span>
+                    <input
+                      className="input-field w-full"
+                      placeholder="e.g. MEL, SYD, PER"
+                      value={form.branchSiteId}
+                      onChange={e => setForm(prev => ({ ...prev, branchSiteId: e.target.value }))}
+                    />
+                  </label>
+                  <label className="space-y-1.5 md:col-span-3">
+                    <span className="text-xs font-bold text-gray-500 uppercase">Business Reason Detail</span>
+                    <textarea
+                      className="input-field w-full min-h-16"
+                      placeholder="Additional context or justification for this request..."
+                      value={form.businessReasonDetail}
+                      onChange={e => setForm(prev => ({ ...prev, businessReasonDetail: e.target.value }))}
+                    />
+                  </label>
               </div>
             </div>
 
@@ -756,6 +842,13 @@ const ItemCreationPreview = () => {
                   <span className="text-xs font-bold text-gray-500 uppercase">GSM / Weight Class</span>
                   <input className="input-field w-full" value={form.gsmCode} onChange={e => setForm(prev => ({ ...prev, gsmCode: e.target.value }))} />
                 </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-bold text-gray-500 uppercase">SAP Financial Mapping</span>
+                  <select className="input-field w-full" value={form.sapMapping} onChange={e => setForm(prev => ({ ...prev, sapMapping: e.target.value }))}>
+                    <option value="">— None —</option>
+                    {sapMappingOptions.map(code => <option key={code} value={code}>{code}</option>)}
+                  </select>
+                </label>
               </div>
 
               <div className="mt-5 grid grid-cols-1 md:grid-cols-[1fr_220px] gap-4 items-start">
@@ -788,19 +881,46 @@ const ItemCreationPreview = () => {
                     <input type="checkbox" checked={form.purchaseEnabled} onChange={e => setForm(prev => ({ ...prev, purchaseEnabled: e.target.checked }))} />
                     Purchase pricing
                   </label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 opacity-100">
-                    <select className="input-field w-full md:col-span-2" value={form.supplierId} disabled={!form.purchaseEnabled} onChange={e => setForm(prev => ({ ...prev, supplierId: e.target.value }))}>
-                      <option value="">Select supplier</option>
-                      {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
-                    </select>
-                    <input className="input-field w-full" placeholder="Supplier item code" disabled={!form.purchaseEnabled} value={form.supplierItemCode} onChange={e => setForm(prev => ({ ...prev, supplierItemCode: e.target.value }))} />
-                    <select className="input-field w-full" disabled={!form.purchaseEnabled} value={form.purchaseUom} onChange={e => setForm(prev => ({ ...prev, purchaseUom: e.target.value }))}>
-                      {uomOptions.map(uom => <option key={uom} value={uom}>{uom}</option>)}
-                    </select>
-                    <input className="input-field w-full" placeholder="Purchase price ex GST" type="number" min="0" step="0.01" disabled={!form.purchaseEnabled} value={form.purchasePriceExGst} onChange={e => setForm(prev => ({ ...prev, purchasePriceExGst: e.target.value }))} />
-                    <input className="input-field w-full" placeholder="Freight / handling" type="number" min="0" step="0.01" disabled={!form.purchaseEnabled} value={form.freightHandlingCost} onChange={e => setForm(prev => ({ ...prev, freightHandlingCost: e.target.value }))} />
-                    <input className="input-field w-full" type="date" disabled={!form.purchaseEnabled} value={form.purchaseEffectiveFrom} onChange={e => setForm(prev => ({ ...prev, purchaseEffectiveFrom: e.target.value }))} />
-                    <input className="input-field w-full" type="date" disabled={!form.purchaseEnabled} value={form.purchaseEffectiveTo} onChange={e => setForm(prev => ({ ...prev, purchaseEffectiveTo: e.target.value }))} />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label className="space-y-1 md:col-span-2">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Supplier</span>
+                      <select className="input-field w-full" value={form.supplierId} disabled={!form.purchaseEnabled} onChange={e => setForm(prev => ({ ...prev, supplierId: e.target.value }))}>
+                        <option value="">Select supplier</option>
+                        {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Supplier Item Code</span>
+                      <input className="input-field w-full" placeholder="Supplier item code" disabled={!form.purchaseEnabled} value={form.supplierItemCode} onChange={e => setForm(prev => ({ ...prev, supplierItemCode: e.target.value }))} />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Purchase UOM</span>
+                      <select className="input-field w-full" disabled={!form.purchaseEnabled} value={form.purchaseUom} onChange={e => setForm(prev => ({ ...prev, purchaseUom: e.target.value }))}>
+                        {uomOptions.map(uom => <option key={uom} value={uom}>{uom}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Price Ex GST</span>
+                      <input className="input-field w-full" placeholder="0.00" type="number" min="0" step="0.01" disabled={!form.purchaseEnabled} value={form.purchasePriceExGst} onChange={e => setForm(prev => ({ ...prev, purchasePriceExGst: e.target.value }))} />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Freight / Handling</span>
+                      <input className="input-field w-full" placeholder="0.00" type="number" min="0" step="0.01" disabled={!form.purchaseEnabled} value={form.freightHandlingCost} onChange={e => setForm(prev => ({ ...prev, freightHandlingCost: e.target.value }))} />
+                    </label>
+                    {pricing.landedCost !== undefined && form.purchaseEnabled && (
+                      <div className="md:col-span-2 rounded-lg bg-gray-50 dark:bg-white/5 px-3 py-2 flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-500 uppercase">Landed Cost</span>
+                        <span className="font-black text-gray-900 dark:text-white">${pricing.landedCost.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <label className="space-y-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Effective From</span>
+                      <input className="input-field w-full" type="date" disabled={!form.purchaseEnabled} value={form.purchaseEffectiveFrom} onChange={e => setForm(prev => ({ ...prev, purchaseEffectiveFrom: e.target.value }))} />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Effective To</span>
+                      <input className="input-field w-full" type="date" disabled={!form.purchaseEnabled} value={form.purchaseEffectiveTo} onChange={e => setForm(prev => ({ ...prev, purchaseEffectiveTo: e.target.value }))} />
+                    </label>
                   </div>
                 </div>
 
@@ -810,18 +930,51 @@ const ItemCreationPreview = () => {
                     Sell pricing
                   </label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <select className="input-field w-full" disabled={!form.saleEnabled} value={form.priceType} onChange={e => setForm(prev => ({ ...prev, priceType: e.target.value }))}>
+                    <select className="input-field w-full" disabled={!form.saleEnabled} value={form.priceType} onChange={e => setForm(prev => ({ ...prev, priceType: e.target.value, customerGroupReference: '', customerReference: '' }))}>
                       {priceTypeOptions.map(type => <option key={type} value={type}>{type}</option>)}
                     </select>
                     <select className="input-field w-full" disabled={!form.saleEnabled} value={form.saleUom} onChange={e => setForm(prev => ({ ...prev, saleUom: e.target.value }))}>
                       {uomOptions.map(uom => <option key={uom} value={uom}>{uom}</option>)}
                     </select>
-                    <input className="input-field w-full" placeholder="Sell price ex GST" type="number" min="0" step="0.01" disabled={!form.saleEnabled} value={form.sellPriceExGst} onChange={e => setForm(prev => ({ ...prev, sellPriceExGst: e.target.value }))} />
-                    <select className="input-field w-full" disabled={!form.saleEnabled} value={form.taxCode} onChange={e => setForm(prev => ({ ...prev, taxCode: e.target.value }))}>
-                      {taxCodeOptions.map(taxCode => <option key={taxCode} value={taxCode}>{taxCode}</option>)}
-                    </select>
-                    <input className="input-field w-full" type="date" disabled={!form.saleEnabled} value={form.sellEffectiveFrom} onChange={e => setForm(prev => ({ ...prev, sellEffectiveFrom: e.target.value }))} />
-                    <input className="input-field w-full" type="date" disabled={!form.saleEnabled} value={form.sellEffectiveTo} onChange={e => setForm(prev => ({ ...prev, sellEffectiveTo: e.target.value }))} />
+                    {isGroupPrice && (
+                      <label className="space-y-1 md:col-span-2">
+                        <span className="text-xs font-bold text-gray-500 uppercase">Customer Pricing Group <span className="text-red-500">*</span></span>
+                        <select className="input-field w-full" disabled={!form.saleEnabled} value={form.customerGroupReference} onChange={e => setForm(prev => ({ ...prev, customerGroupReference: e.target.value }))}>
+                          <option value="">— Select group —</option>
+                          {customerPricingGroupOptions.map(group => <option key={group} value={group}>{group}</option>)}
+                        </select>
+                      </label>
+                    )}
+                    {isCustomerSpecificPrice && (
+                      <label className="space-y-1 md:col-span-2">
+                        <span className="text-xs font-bold text-gray-500 uppercase">Customer Reference <span className="text-red-500">*</span></span>
+                        <input
+                          className="input-field w-full"
+                          placeholder="Customer code or contract number"
+                          disabled={!form.saleEnabled}
+                          value={form.customerReference}
+                          onChange={e => setForm(prev => ({ ...prev, customerReference: e.target.value }))}
+                        />
+                      </label>
+                    )}
+                    <label className="space-y-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Sell Price Ex GST</span>
+                      <input className="input-field w-full" placeholder="0.00" type="number" min="0" step="0.01" disabled={!form.saleEnabled} value={form.sellPriceExGst} onChange={e => setForm(prev => ({ ...prev, sellPriceExGst: e.target.value }))} />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Tax Code</span>
+                      <select className="input-field w-full" disabled={!form.saleEnabled} value={form.taxCode} onChange={e => setForm(prev => ({ ...prev, taxCode: e.target.value }))}>
+                        {taxCodeOptions.map(taxCode => <option key={taxCode} value={taxCode}>{taxCode}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Effective From</span>
+                      <input className="input-field w-full" type="date" disabled={!form.saleEnabled} value={form.sellEffectiveFrom} onChange={e => setForm(prev => ({ ...prev, sellEffectiveFrom: e.target.value }))} />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Effective To</span>
+                      <input className="input-field w-full" type="date" disabled={!form.saleEnabled} value={form.sellEffectiveTo} onChange={e => setForm(prev => ({ ...prev, sellEffectiveTo: e.target.value }))} />
+                    </label>
                   </div>
                 </div>
               </div>
@@ -835,6 +988,18 @@ const ItemCreationPreview = () => {
                   <div className="font-black">{form.saleEnabled ? `${pricing.marginPercent.toFixed(2)}% / $${pricing.marginAmount.toFixed(2)}` : 'N/A'}</div>
                 </div>
               </div>
+
+              {showApprovalWarning && (
+                <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10 p-4 flex items-start gap-3">
+                  <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                  <div>
+                    <div className="text-sm font-bold text-amber-800 dark:text-amber-300">Approval required — margin below threshold</div>
+                    <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                      Current margin {pricing.marginPercent.toFixed(2)}% is below the 25% threshold. This request will be routed for commercial approval before publication.
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
@@ -936,54 +1101,83 @@ const ItemCreationPreview = () => {
         </div>
       )}
 
-      {activeTab === 'REQUESTS' && (
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] overflow-hidden">
-          <div className="p-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+      {activeTab === 'REQUESTS' && (() => {
+        const reviewBundle = bundles.find(b => b.request.id === reviewBundleId);
+        return (
+          <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-6">
+            <div className="space-y-3">
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-4">
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Preview Request Queue</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Select a request to review and record an approval decision.</p>
+                <div className="space-y-2 max-h-[640px] overflow-y-auto">
+                  {bundles.map(bundle => (
+                    <button
+                      key={bundle.request.id}
+                      type="button"
+                      onClick={() => setReviewBundleId(bundle.request.id)}
+                      className={`w-full text-left rounded-lg border p-3 transition-colors ${bundle.request.id === reviewBundleId ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/10' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-bold text-sm text-gray-900 dark:text-white truncate">{bundle.request.proposedDescription || 'Untitled'}</div>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0 ${statusClass(bundle.request.lifecycleStatus)}`}>{bundle.request.lifecycleStatus}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 font-mono mt-0.5">{bundle.masterDraft?.proposedSku || bundle.request.requestNumber}</div>
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
+                        {bundle.sellDraft && <span>{(bundle.sellDraft.marginPercent || 0).toFixed(1)}% margin</span>}
+                        {bundle.sellDraft?.approvalRequired && <span className="text-amber-600 font-bold">Approval req.</span>}
+                      </div>
+                    </button>
+                  ))}
+                  {bundles.length === 0 && <div className="text-sm text-gray-500">No preview requests yet.</div>}
+                </div>
+              </div>
+            </div>
+
             <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Preview Request Queue</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Approval and publication actions are simulated preview operations.</p>
+              {reviewBundle ? (
+                <ItemApprovalReview
+                  bundle={reviewBundle}
+                  isSaving={isSaving}
+                  onApprove={async (id, comments) => {
+                    setIsSaving(true);
+                    try {
+                      await itemCreationPreviewService.recordApprovalDecision(id, 'Approve', currentUser?.id, currentUser?.name, comments);
+                      success('Preview request approved.');
+                      await loadPreview();
+                    } catch (err) { error((err as Error).message); }
+                    finally { setIsSaving(false); }
+                  }}
+                  onReject={async (id, comments) => {
+                    setIsSaving(true);
+                    try {
+                      await itemCreationPreviewService.recordApprovalDecision(id, 'Reject', currentUser?.id, currentUser?.name, comments);
+                      success('Preview request rejected.');
+                      await loadPreview();
+                    } catch (err) { error((err as Error).message); }
+                    finally { setIsSaving(false); }
+                  }}
+                  onRequestRevision={async (id, comments) => {
+                    setIsSaving(true);
+                    try {
+                      await itemCreationPreviewService.recordApprovalDecision(id, 'Escalate', currentUser?.id, currentUser?.name, comments);
+                      success('Revision requested.');
+                      await loadPreview();
+                    } catch (err) { error((err as Error).message); }
+                    finally { setIsSaving(false); }
+                  }}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-12">
+                  <div className="text-center">
+                    <FileText className="mx-auto text-gray-300 dark:text-gray-600 mb-3" size={36} />
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Select a request from the queue to review it.</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 dark:bg-white/5 text-xs uppercase text-gray-500">
-                <tr>
-                  <th className="px-4 py-3">Request</th>
-                  <th className="px-4 py-3">SKU</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Margin</th>
-                  <th className="px-4 py-3">Targets</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                {bundles.map(bundle => (
-                  <tr key={bundle.request.id}>
-                    <td className="px-4 py-3">
-                      <div className="font-bold text-gray-900 dark:text-white">{bundle.request.proposedDescription}</div>
-                      <div className="text-xs text-gray-500">{bundle.request.requestNumber}</div>
-                    </td>
-                    <td className="px-4 py-3 font-mono">{bundle.masterDraft?.proposedSku || '-'}</td>
-                    <td className="px-4 py-3"><span className={`rounded-full border px-2 py-1 text-xs font-bold ${statusClass(bundle.request.lifecycleStatus)}`}>{bundle.request.lifecycleStatus}</span></td>
-                    <td className="px-4 py-3">{bundle.sellDraft ? `${(bundle.sellDraft.marginPercent || 0).toFixed(2)}%` : 'N/A'}</td>
-                    <td className="px-4 py-3 text-xs">
-                      {[bundle.request.bundleEnabled ? 'Bundle' : '', bundle.request.linenhubEnabled ? 'LinenHub' : '', bundle.request.salesforceVisible ? 'Salesforce' : ''].filter(Boolean).join(', ') || 'Internal'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <button type="button" onClick={() => populateFromBundle(bundle)} className="p-2 rounded-lg border border-gray-200 dark:border-gray-700" title="Open"><Copy size={15} /></button>
-                        <button type="button" onClick={() => handleApproval(bundle, 'Approve')} className="p-2 rounded-lg bg-emerald-600 text-white" title="Approve preview"><Check size={15} /></button>
-                        <button type="button" onClick={() => handleApproval(bundle, 'Reject')} className="p-2 rounded-lg bg-red-600 text-white" title="Return for revision"><XCircle size={15} /></button>
-                        <button type="button" onClick={() => handleSimulatePublication(bundle, 'Bundle', 'success')} className="p-2 rounded-lg bg-blue-600 text-white" title="Simulate Bundle publish"><PlayCircle size={15} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {activeTab === 'CATALOGUE' && (
         <div className="space-y-4">
@@ -1024,6 +1218,91 @@ const ItemCreationPreview = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] overflow-hidden">
+            <div className="p-5 border-b border-gray-200 dark:border-gray-800">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Publication Event Queue</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Per-request simulation of publication events across external targets.</p>
+            </div>
+            <div className="divide-y divide-gray-200 dark:divide-gray-800">
+              {bundles.filter(b => b.publicationEvents.length > 0).map(bundle => (
+                <div key={bundle.request.id} className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="font-bold text-sm text-gray-900 dark:text-white">{bundle.request.proposedDescription || 'Untitled'}</div>
+                      <div className="text-xs text-gray-500 font-mono">{bundle.masterDraft?.proposedSku || bundle.request.requestNumber}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      {(['Bundle', 'LinenHub', 'Salesforce', 'Internal Catalogue'] as const).map(target => (
+                        <button
+                          key={target}
+                          type="button"
+                          onClick={() => handleSimulatePublication(bundle, target, 'success')}
+                          className="text-xs font-bold rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1 hover:bg-gray-50 dark:hover:bg-white/5"
+                        >
+                          + {target}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {bundle.publicationEvents.slice(0, 10).map(event => (
+                      <div key={event.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-gray-900 dark:text-white">{event.targetSystem}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              event.status === 'Acknowledged' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' :
+                              event.status === 'Failed' ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300' :
+                              event.status === 'Retrying' ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' :
+                              'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
+                            }`}>{event.status}</span>
+                            <span className="text-xs text-gray-400 font-mono">{event.eventType}</span>
+                          </div>
+                          {event.lastError && (
+                            <div className="mt-1 text-xs text-red-600 dark:text-red-400 truncate">{event.lastError}</div>
+                          )}
+                          {event.externalItemId && (
+                            <div className="mt-1 text-xs text-gray-500">External ID: {event.externalItemId}</div>
+                          )}
+                          <div className="text-xs text-gray-400 mt-1">
+                            {event.createdAt ? new Date(event.createdAt).toLocaleString() : ''} · Retries: {event.retryCount}
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          {event.status === 'Failed' && (
+                            <button
+                              type="button"
+                              onClick={() => handleSimulatePublication(bundle, event.targetSystem as 'Bundle' | 'LinenHub' | 'Salesforce' | 'Internal Catalogue', 'retry')}
+                              className="p-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+                              title="Retry"
+                            >
+                              <RefreshCw size={13} />
+                            </button>
+                          )}
+                          {event.status !== 'Acknowledged' && (
+                            <button
+                              type="button"
+                              onClick={() => handleSimulatePublication(bundle, event.targetSystem as 'Bundle' | 'LinenHub' | 'Salesforce' | 'Internal Catalogue', 'success')}
+                              className="p-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                              title="Mark acknowledged"
+                            >
+                              <Check size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {bundles.every(b => b.publicationEvents.length === 0) && (
+                <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                  No publication events yet. Approve a request and simulate publication using the buttons above.
+                </div>
+              )}
             </div>
           </div>
         </div>

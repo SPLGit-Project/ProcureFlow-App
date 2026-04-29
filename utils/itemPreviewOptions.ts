@@ -58,6 +58,24 @@ export const ITEM_PREVIEW_OPTION_GROUPS: ItemPreviewOptionGroup[] = [
         label: 'Unit of measure',
         description: 'Shared item UOM list used by current item management and Item Preview.',
         defaults: ['Each', 'Pack', 'Dozen', 'Kg', 'Carton']
+    },
+    {
+        type: 'PREVIEW_CUSTOMER_PRICING_GROUP',
+        label: 'Customer pricing group',
+        description: 'Customer groups used for Group sell price type on item requests.',
+        defaults: ['Standard', 'Healthcare', 'Accommodation', 'Key Account', 'Government', 'Not for Profit']
+    },
+    {
+        type: 'PREVIEW_SAP_MAPPING',
+        label: 'SAP financial mapping',
+        description: 'Revenue and GL classification codes for SAP financial posting.',
+        defaults: ['LAUNDRY_REV', 'HIRE_REV', 'COG_REV', 'LINEN_HUB_REV', 'ACCOM_REV', 'HEALTH_REV']
+    },
+    {
+        type: 'PREVIEW_SUPPLIER_EXT',
+        label: 'Extended supplier categories',
+        description: 'Supplementary supplier classification values for item requests.',
+        defaults: ['Tier 1 – Core', 'Tier 2 – Preferred', 'Tier 3 – Approved', 'Direct Import', 'Local', 'International']
     }
 ];
 
