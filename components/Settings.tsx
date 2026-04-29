@@ -26,6 +26,7 @@ import StockMappingConfirmation from './StockMappingConfirmation.tsx';
 import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { AuditLogViewer } from './AuditLogViewer.tsx';
+import DataSyncPanel from './DataSyncPanel';
 import * as XLSX from 'xlsx';
 import ItemSetupManagement from './ItemSetupManagement.tsx';
 import MenuEditor from './MenuEditor.tsx';
@@ -69,7 +70,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_development', label: 'Development Admin', description: 'Access to Smart Buying and Data Ingest tools', icon: Code, category: 'Development' }
 ];
 
-type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT';
+type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC';
 
 const MASTER_ITEM_COLUMNS = [
     { key: 'sku', label: 'SKU' },
@@ -795,7 +796,8 @@ const Settings = () => {
       { id: 'MENU', label: 'Menu Config', icon: ListFilter, permission: 'manage_settings' },
       { id: 'MIGRATION', label: 'Data Migration', icon: Upload, permission: 'manage_settings' },
       { id: 'EMAIL', label: 'Email Templates', icon: Mail, permission: 'manage_settings' },
-      { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'manage_settings' }
+      { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'manage_settings' },
+      { id: 'DATA_SYNC', label: 'Data Sync', icon: Database, permission: 'manage_settings' }
   ];
 
   const visibleTabs: { id: AdminTab, icon: React.ElementType, label: string }[] = [
@@ -3730,6 +3732,11 @@ if __name__ == "__main__":
              {activeTab === 'AUDIT' && (
                  <div className="animate-fade-in">
                      <AuditLogViewer />
+                 </div>
+             )}
+             {activeTab === 'DATA_SYNC' && (
+                 <div className="animate-fade-in">
+                     <DataSyncPanel />
                  </div>
              )}
              {/* WORKFLOW STEP MODAL */}
