@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags } from '../types';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 
@@ -402,6 +402,28 @@ export const db = {
             key: dbKeyMap[key],
             value,
             updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+    },
+
+    getMarginThresholds: async (): Promise<MarginThresholds> => {
+        const DEFAULT: MarginThresholds = {
+            defaultPercent: 25, standard: 25, contract: 20,
+            customerSpecific: 20, promotional: 15, customerGroup: 25,
+        };
+        const { data } = await supabase
+            .from('app_config').select('value').eq('key', 'margin_thresholds').maybeSingle();
+        if (!data?.value) return DEFAULT;
+        const v = data.value as Partial<MarginThresholds>;
+        return { ...DEFAULT, ...v };
+    },
+
+    updateMarginThresholds: async (thresholds: Partial<MarginThresholds>): Promise<void> => {
+        const existing = await db.getMarginThresholds();
+        const { error } = await supabase.from('app_config').upsert({
+            key: 'margin_thresholds',
+            value: { ...existing, ...thresholds },
+            updated_at: new Date().toISOString(),
         });
         if (error) throw error;
     },

@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags } from '../types.ts';
+import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags, MarginThresholds } from '../types.ts';
 import { db } from '../services/db.ts';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
@@ -199,6 +199,10 @@ interface AppContextType {
   // Feature Flags
   featureFlags: FeatureFlags;
   updateFeatureFlag: (key: keyof FeatureFlags, value: boolean) => Promise<void>;
+
+  // Margin Thresholds
+  marginThresholds: MarginThresholds;
+  updateMarginThresholds: (thresholds: Partial<MarginThresholds>) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -251,6 +255,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     integrationsEnabled: false,
   };
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(DEFAULT_FEATURE_FLAGS);
+
+  const DEFAULT_MARGIN_THRESHOLDS: MarginThresholds = {
+    defaultPercent: 25, standard: 25, contract: 20,
+    customerSpecific: 20, promotional: 15, customerGroup: 25,
+  };
+  const [marginThresholds, setMarginThresholds] = useState<MarginThresholds>(DEFAULT_MARGIN_THRESHOLDS);
 
   // Auth Config is now managed in the backend (env vars/Azure)
 
@@ -496,7 +506,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 fetchedTeamsUrl,
                 fetchedBranding,
                 fetchedOptions,
-                fetchedFeatureFlags
+                fetchedFeatureFlags,
+                fetchedMarginThresholds
             ] = await Promise.all([
                 safeFetch(db.getRoles(), [], 'roles'),
                 safeFetch(db.getUsers(), [], 'users'),
@@ -513,7 +524,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getTeamsConfig(), '', 'teamsConfig'),
                 safeFetch(db.getBranding(), null, 'branding'),
                 safeFetch(db.getAttributeOptions(), [], 'attributeOptions'),
-                safeFetch(db.getFeatureFlags(), DEFAULT_FEATURE_FLAGS, 'featureFlags')
+                safeFetch(db.getFeatureFlags(), DEFAULT_FEATURE_FLAGS, 'featureFlags'),
+                safeFetch(db.getMarginThresholds(), DEFAULT_MARGIN_THRESHOLDS, 'marginThresholds')
             ]);
 
             setRoles(fetchedRoles);
@@ -532,6 +544,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             if (fetchedBranding) setBranding(fetchedBranding);
             setAttributeOptions(fetchedOptions);
             if (fetchedFeatureFlags) setFeatureFlags(fetchedFeatureFlags);
+            if (fetchedMarginThresholds) setMarginThresholds(fetchedMarginThresholds);
             
             lastFetchTime.current = Date.now();
         } catch (error) {
@@ -2581,12 +2594,18 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         await db.updateFeatureFlag(key, value);
         setFeatureFlags(prev => ({ ...prev, [key]: value }));
     },
+
+    marginThresholds,
+    updateMarginThresholds: async (thresholds: Partial<MarginThresholds>) => {
+        await db.updateMarginThresholds(thresholds);
+        setMarginThresholds(prev => ({ ...prev, ...thresholds }));
+    },
   }), [
     currentUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
-    reloadData, siteName, featureFlags
+    reloadData, siteName, featureFlags, marginThresholds
   ]);
 
   return (

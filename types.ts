@@ -38,6 +38,15 @@ export interface FeatureFlags {
   integrationsEnabled: boolean;
 }
 
+export interface MarginThresholds {
+  defaultPercent:   number;
+  standard:         number;
+  contract:         number;
+  customerSpecific: number;
+  promotional:      number;
+  customerGroup:    number;
+}
+
 export interface Permission {
     id: PermissionId;
     label: string;
