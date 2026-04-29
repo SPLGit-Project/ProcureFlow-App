@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog } from '../types.ts';
+import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags } from '../types.ts';
 import { db } from '../services/db.ts';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
@@ -195,6 +195,10 @@ interface AppContextType {
   addSite: (s: Site) => Promise<void>;
   updateSite: (s: Site) => Promise<void>;
   deleteSite: (id: string) => Promise<void>;
+
+  // Feature Flags
+  featureFlags: FeatureFlags;
+  updateFeatureFlag: (key: keyof FeatureFlags, value: boolean) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -237,9 +241,17 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [isLoadingData, setIsLoadingData] = useState(() => !qaMode);
   
   const [roles, setRoles] = useState<RoleDefinition[]>(() => qaMode ? [...MOCK_ROLES] : []);
-  
 
-  
+  const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
+    previewEnabled: false,
+    previewWriteBlock: true,
+    goLiveEnabled: false,
+    uiRevampEnabled: false,
+    smartBuyingV2Enabled: false,
+    integrationsEnabled: false,
+  };
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(DEFAULT_FEATURE_FLAGS);
+
   // Auth Config is now managed in the backend (env vars/Azure)
 
   // Theme State
@@ -483,7 +495,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 fetchedAvailability,
                 fetchedTeamsUrl,
                 fetchedBranding,
-                fetchedOptions
+                fetchedOptions,
+                fetchedFeatureFlags
             ] = await Promise.all([
                 safeFetch(db.getRoles(), [], 'roles'),
                 safeFetch(db.getUsers(), [], 'users'),
@@ -499,7 +512,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getProductAvailability(), [], 'availability'),
                 safeFetch(db.getTeamsConfig(), '', 'teamsConfig'),
                 safeFetch(db.getBranding(), null, 'branding'),
-                safeFetch(db.getAttributeOptions(), [], 'attributeOptions')
+                safeFetch(db.getAttributeOptions(), [], 'attributeOptions'),
+                safeFetch(db.getFeatureFlags(), DEFAULT_FEATURE_FLAGS, 'featureFlags')
             ]);
 
             setRoles(fetchedRoles);
@@ -517,6 +531,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setTeamsWebhookUrl(fetchedTeamsUrl);
             if (fetchedBranding) setBranding(fetchedBranding);
             setAttributeOptions(fetchedOptions);
+            if (fetchedFeatureFlags) setFeatureFlags(fetchedFeatureFlags);
             
             lastFetchTime.current = Date.now();
         } catch (error) {
@@ -2559,13 +2574,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     },
     linkConcurRequest,
     sendNotification,
-    deletePO
+    deletePO,
+
+    featureFlags,
+    updateFeatureFlag: async (key: keyof FeatureFlags, value: boolean) => {
+        await db.updateFeatureFlag(key, value);
+        setFeatureFlags(prev => ({ ...prev, [key]: value }));
+    },
   }), [
     currentUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
-    reloadData, siteName
+    reloadData, siteName, featureFlags
   ]);
 
   return (

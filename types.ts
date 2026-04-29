@@ -3,7 +3,7 @@
 
 export type UserRole = string; // Was union, now string to support dynamic roles
 
-export type PermissionId = 
+export type PermissionId =
   | 'view_dashboard'
   | 'view_items'
   | 'view_stock'
@@ -19,6 +19,7 @@ export type PermissionId =
   | 'create_request'
   | 'view_all_requests'
   | 'approve_requests'
+  | 'approve_item_requests'
   | 'link_concur'
   | 'receive_goods'
   | 'view_finance'
@@ -27,6 +28,15 @@ export type PermissionId =
   | 'manage_items'
   | 'manage_suppliers'
   | 'manage_development';
+
+export interface FeatureFlags {
+  previewEnabled: boolean;
+  previewWriteBlock: boolean;
+  goLiveEnabled: boolean;
+  uiRevampEnabled: boolean;
+  smartBuyingV2Enabled: boolean;
+  integrationsEnabled: boolean;
+}
 
 export interface Permission {
     id: PermissionId;

@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId } from '../types';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 
@@ -360,6 +360,47 @@ export const db = {
         const { error } = await supabase.from('app_config').upsert({
             key: 'teams_config',
             value: { webhookUrl },
+            updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+    },
+
+    getFeatureFlags: async (): Promise<FeatureFlags> => {
+        const keys = [
+            'preview_enabled', 'preview_write_block', 'go_live_enabled',
+            'ui_revamp_enabled', 'smart_buying_v2_enabled', 'integrations_enabled'
+        ];
+        const { data, error } = await supabase
+            .from('app_config')
+            .select('key, value')
+            .in('key', keys);
+        if (error && error.code !== 'PGRST116') throw error;
+        const map: Record<string, boolean> = {};
+        (data || []).forEach((row: { key: string; value: unknown }) => {
+            map[row.key] = row.value === true || row.value === 'true';
+        });
+        return {
+            previewEnabled:        map['preview_enabled']         ?? false,
+            previewWriteBlock:     map['preview_write_block']     ?? true,
+            goLiveEnabled:         map['go_live_enabled']         ?? false,
+            uiRevampEnabled:       map['ui_revamp_enabled']       ?? false,
+            smartBuyingV2Enabled:  map['smart_buying_v2_enabled'] ?? false,
+            integrationsEnabled:   map['integrations_enabled']    ?? false,
+        };
+    },
+
+    updateFeatureFlag: async (key: keyof FeatureFlags, value: boolean): Promise<void> => {
+        const dbKeyMap: Record<keyof FeatureFlags, string> = {
+            previewEnabled:       'preview_enabled',
+            previewWriteBlock:    'preview_write_block',
+            goLiveEnabled:        'go_live_enabled',
+            uiRevampEnabled:      'ui_revamp_enabled',
+            smartBuyingV2Enabled: 'smart_buying_v2_enabled',
+            integrationsEnabled:  'integrations_enabled',
+        };
+        const { error } = await supabase.from('app_config').upsert({
+            key: dbKeyMap[key],
+            value,
             updated_at: new Date().toISOString()
         });
         if (error) throw error;
