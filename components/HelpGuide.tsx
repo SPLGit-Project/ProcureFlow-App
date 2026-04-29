@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { 
-    FileText, CheckCircle, Database, Truck, DollarSign, ArrowRight, 
-    Search, HelpCircle, BookOpen, MessageSquare, PlayCircle, 
+import {
+    FileText, CheckCircle, Database, Truck, DollarSign, ArrowRight,
+    Search, HelpCircle, BookOpen, MessageSquare, PlayCircle,
     Settings, Users, Shield, CreditCard, Box, Zap, ChevronDown, ChevronRight,
-    MousePointer, Link as LinkIcon, X
+    MousePointer, Link as LinkIcon, X, Package, ClipboardCheck, BarChart3
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -147,6 +147,177 @@ const HelpGuide = () => {
             'Create rules (e.g., "When PO is approved, notify Requester via Email").',
             'Customize message templates with dynamic tags like {app_name} or {po_id}.',
             'Enable or disable channels (Email, Dashboard, Push) for each rule.'
+          ]
+        }
+      ]
+    },
+    {
+      id: 'item-creation',
+      title: 'Item Creation',
+      icon: Package,
+      color: 'purple',
+      guides: [
+        {
+          id: 'creating-item-request',
+          title: 'Creating an Item Request',
+          steps: [
+            'Navigate to "Item Preview" in the sidebar to open the Item Creation Workbench.',
+            'Select the request type (e.g., New Item, Replacement, Customer-Specific) — conditional fields will appear based on your selection.',
+            'Fill in the item description, business unit, division, and any required reference fields.',
+            'Attach a spec sheet via the attachment section if one is available.',
+            'Click "Submit Request" to start the approval workflow.'
+          ]
+        },
+        {
+          id: 'duplicate-check',
+          title: 'Duplicate Check',
+          steps: [
+            'After completing the item details, click "Check for Duplicates" to scan the existing catalogue.',
+            'Results are shown as a scored candidate table — higher scores indicate stronger similarity.',
+            'Review each candidate\'s match reasons (description similarity, SKU overlap, category match).',
+            'Select an outcome: Use Existing, Similar New Required, or Proceed as New.',
+            'If overriding a warning, a justification note is required before submitting.'
+          ]
+        },
+        {
+          id: 'sku-generation',
+          title: 'SKU Generation',
+          steps: [
+            'SKUs are automatically generated from the category code + product type code + a sequential suffix.',
+            'The generated SKU is shown as a live preview in the WORKBENCH form.',
+            'Manual SKU override is available only to users with manage_development permission and requires a justification.',
+            'SKU code maps (category and product type codes) are managed in Settings → Item Creation.'
+          ]
+        },
+        {
+          id: 'approval-routing',
+          title: 'Understanding Approval Routing',
+          steps: [
+            'When a request is submitted, the system evaluates configured approval rules against the request details.',
+            'Rules can fire based on conditions like margin threshold, request type (purchase-only, contract, COG), or urgency.',
+            'Each matched rule creates an approval stage with an assigned approver and SLA countdown.',
+            'SLA countdowns appear in the Item Approval Queue — amber means < 25% of SLA remaining, red means overdue.',
+            'Decision outcomes: Approve advances the request, Reject closes it, Request Revision returns it to the requestor.'
+          ]
+        }
+      ]
+    },
+    {
+      id: 'item-approvals',
+      title: 'Item Approvals',
+      icon: ClipboardCheck,
+      color: 'amber',
+      guides: [
+        {
+          id: 'reviewing-request',
+          title: 'Reviewing an Item Request',
+          steps: [
+            'Navigate to "Item Approvals" in the sidebar (requires approve_item_requests permission).',
+            'The left panel shows all requests pending your review, sorted oldest-first with SLA indicators.',
+            'Click a request to open the review panel on the right — it shows item details, duplicate outcome, pricing, and history.',
+            'The Pricing section shows purchase cost, sell price, and calculated margin % with colour-coding (green > 25%, amber 20–25%, red < 20%).',
+            'The Audit Trail at the bottom shows every change made to the request since submission.'
+          ]
+        },
+        {
+          id: 'making-decision',
+          title: 'Making an Approval Decision',
+          steps: [
+            'After reviewing, scroll to the Decision section at the bottom of the review panel.',
+            'Add comments to explain your decision (required for Reject and Request Revision).',
+            'Approve: moves the request to the next approval stage or to Approved status if it is the final stage.',
+            'Request Revision: returns the request to the requestor with your comments — status becomes Revision Required.',
+            'Reject: permanently closes the request — status becomes Rejected.'
+          ]
+        },
+        {
+          id: 'publication-targets',
+          title: 'Publication Targets',
+          steps: [
+            'Approved items can be published to external catalogues based on the publication targets set during pricing.',
+            'Salesforce: item and pricing data is made available for CRM quoting and contract pricing.',
+            'Bundle: item is added to the BundleConnect laundry catalogue for order fulfilment.',
+            'LinenHub: item is published to the LinenHub portal for customer-facing visibility.',
+            'Publication status badges (Salesforce / Bundle / LinenHub) appear in the Item Catalogue view.'
+          ]
+        }
+      ]
+    },
+    {
+      id: 'smart-buying-v2',
+      title: 'Smart Buying',
+      icon: BarChart3,
+      color: 'teal',
+      guides: [
+        {
+          id: 'live-vs-manual',
+          title: 'Live vs Manual Data Mode',
+          steps: [
+            'Smart Buying has two data modes: Live (from BundleConnect Azure database) and Manual (from uploaded Excel files).',
+            'Live mode is enabled when the smartBuyingV2Enabled feature flag is on — the Live Data toggle will appear at the top of the dashboard.',
+            'In Live mode, select one or more sites and click "Refresh" to pull current stock, orders, and STAR metrics from the Azure database.',
+            'Manual mode uses data uploaded via the Data Ingestion screen — use this as a fallback when the Azure proxy is unavailable.',
+            'The Azure DB proxy must be deployed and reachable for live mode to function — contact your administrator if the toggle is greyed out.'
+          ]
+        },
+        {
+          id: 'star-days',
+          title: 'STAR Days Explained',
+          steps: [
+            'STAR (Stock Turn And Replenishment) days measure how quickly a linen item cycles through the laundry workflow.',
+            'It is calculated from the rfidtrans table: average days between a "soiled" scan (type 1) and the next "clean" scan (type 2) per item.',
+            'High STAR days = slow cycle = items spend longer in the laundry, meaning you need more stock on hand.',
+            'Low STAR days = fast cycle = items turn quickly, so a smaller par level is sufficient.',
+            'The buy quantity calculation uses STAR days to adjust the recommended order — high STAR items get a higher multiplier.'
+          ]
+        },
+        {
+          id: 'saving-plans',
+          title: 'Saving and Tracking Plans',
+          steps: [
+            'After adjusting budget sliders and reviewing the allocation table, click "Save Plan" to store the current plan.',
+            'Saved plans appear in the History tab with their date, total budget, and item count.',
+            'Click any history entry to reload that plan\'s parameters for comparison or resubmission.',
+            'The planned vs actual columns in the allocation table update as purchase orders are created against the plan.'
+          ]
+        }
+      ]
+    },
+    {
+      id: 'data-sync',
+      title: 'Data Sync',
+      icon: Database,
+      color: 'slate',
+      guides: [
+        {
+          id: 'reading-sync-panel',
+          title: 'Reading the Data Sync Panel',
+          steps: [
+            'Navigate to Settings → Data Sync to view the current sync health for all active sites.',
+            'Each site card shows: last synced timestamp, lag hours (time since the latest record was written), and current job status.',
+            'Status legend: Active (sync running), Idle (no pending jobs), Error (last job failed), Pending (job queued but not yet started).',
+            'Lag hours above the configured threshold are highlighted in amber — this means the Azure database may be behind the source.'
+          ]
+        },
+        {
+          id: 'forcing-resync',
+          title: 'Forcing a Resync',
+          steps: [
+            'In Settings → Data Sync, locate the site card you want to resync.',
+            'Click "Force Sync" — this inserts a new sync job row for that site into the job queue.',
+            'The status will change to Pending, then Active as the sync worker picks it up.',
+            'Monitor completion by watching the last synced timestamp update — a successful sync will reset the lag counter.',
+            'Use Force Sync sparingly: it is intended for recovering from errors, not for routine refresh (the sync runs automatically on a schedule).'
+          ]
+        },
+        {
+          id: 'site-exclusions',
+          title: 'Site Exclusions Explained',
+          steps: [
+            'SYD (Sydney) is currently excluded from the active sync sites.',
+            'The exclusion is due to the BundleConnect MySQL replication from port 3306 (master) to port 3307 (replica) not being restored at the Sydney site.',
+            'Querying the Sydney replica while replication is stopped would return stale or incomplete data.',
+            'Once the 3306→3307 replication is confirmed restored at SYD, re-enable the site by adding it to BC_ACTIVE_SITES in bundleConnectSyncService.ts and removing the exclusion in the Data Sync panel config.'
           ]
         }
       ]
