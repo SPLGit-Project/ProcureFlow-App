@@ -31,6 +31,13 @@ export async function injectTestUser(page: Page, permissions: string[] = DEFAULT
     }, permissions);
 }
 
+/** Navigate and wait for React to mount before assertions. */
+export async function gotoAndWait(page: Page, path: string) {
+    await page.goto(path);
+    // Wait for React to mount and replace the empty root
+    await page.waitForSelector('#root:not(:empty)', { timeout: 20000 });
+}
+
 export async function injectTestUserWithFlags(
     page: Page,
     permissions: string[] = DEFAULT_PERMISSIONS,

@@ -450,6 +450,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // Data Loading
   const lastFetchTime = React.useRef<number>(0);
   const reloadData = useCallback(async (silent: boolean = false, force: boolean = false) => {
+        // DEV-only: test user is active — skip mock data so synthetic roles stay intact
+        if (import.meta.env.DEV && localStorage.getItem('pf_test_user')) {
+            if (!silent) setIsLoadingData(false);
+            return;
+        }
         if (qaMode) {
             setRoles([...MOCK_ROLES]);
             setUsers([...MOCK_USERS]);
@@ -576,6 +581,28 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   useEffect(() => {
     let mounted = true;
 
+    // DEV-only: Playwright test auth bypass — must run before QA mode check
+    if (import.meta.env.DEV) {
+        const testUserJson = localStorage.getItem('pf_test_user');
+        if (testUserJson) {
+            try {
+                const raw = JSON.parse(testUserJson) as User & { permissions?: PermissionId[] };
+                const { permissions: perms, ...mockUser } = raw;
+                if (perms) {
+                    // Synthesise a role so hasPermission() works without Supabase roles
+                    setRoles([{ id: mockUser.role, name: 'Test Role', description: '', permissions: perms, isSystem: false }]);
+                }
+                setCurrentUser(mockUser as User);
+                setIsAuthenticated(true);
+                setIsPendingApproval(false);
+                setIsLoadingAuth(false);
+                return () => { mounted = false; };
+            } catch {
+                // malformed test user — fall through to normal auth
+            }
+        }
+    }
+
     if (qaMode) {
         setCurrentUser(qaUser);
         setIsAuthenticated(true);
@@ -585,24 +612,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         return () => {
             mounted = false;
         };
-    }
-
-    // DEV-only: Playwright test auth bypass via localStorage pf_test_user
-    if (import.meta.env.DEV) {
-        const testUserJson = localStorage.getItem('pf_test_user');
-        if (testUserJson) {
-            try {
-                const mockUser = JSON.parse(testUserJson) as User;
-                setCurrentUser(mockUser);
-                setIsAuthenticated(true);
-                setIsPendingApproval(false);
-                setIsLoadingAuth(false);
-                reloadData(true);
-                return () => { mounted = false; };
-            } catch {
-                // malformed test user — fall through to normal auth
-            }
-        }
     }
 
     // Safety timeout to ensure we don't get stuck on loading forever

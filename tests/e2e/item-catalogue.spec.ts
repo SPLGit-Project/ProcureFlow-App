@@ -1,20 +1,18 @@
 import { test, expect } from '@playwright/test';
-import { injectTestUser } from './helpers/auth';
+import { injectTestUser, gotoAndWait } from './helpers/auth';
 
 test.describe('Item Catalogue', () => {
 
     test('route loads correctly', async ({ page }) => {
         await injectTestUser(page, ['view_dashboard', 'view_items']);
-        await page.goto('/item-catalogue');
-        await page.waitForLoadState('networkidle');
+        await gotoAndWait(page, '/item-catalogue');
         await expect(page.locator('h1:has-text("Item Catalogue")')).toBeVisible();
         await page.screenshot({ path: 'test-results/item-catalogue.png', fullPage: true });
     });
 
     test('shows Preview badge (pre-go-live)', async ({ page }) => {
         await injectTestUser(page, ['view_dashboard', 'view_items']);
-        await page.goto('/item-catalogue');
-        await page.waitForLoadState('networkidle');
+        await gotoAndWait(page, '/item-catalogue');
         // Should show either Preview or Live badge
         const badge = page.locator('span:has-text("Preview"), span:has-text("Live")');
         await expect(badge).toBeVisible();
@@ -22,15 +20,13 @@ test.describe('Item Catalogue', () => {
 
     test('search input is visible', async ({ page }) => {
         await injectTestUser(page, ['view_dashboard', 'view_items']);
-        await page.goto('/item-catalogue');
-        await page.waitForLoadState('networkidle');
+        await gotoAndWait(page, '/item-catalogue');
         await expect(page.locator('input[placeholder*="Search"]')).toBeVisible();
     });
 
     test('empty state shows correct message when no items', async ({ page }) => {
         await injectTestUser(page, ['view_dashboard', 'view_items']);
-        await page.goto('/item-catalogue');
-        await page.waitForLoadState('networkidle');
+        await gotoAndWait(page, '/item-catalogue');
         // Either items table or empty state should be visible
         const hasItems = await page.locator('table').isVisible().catch(() => false);
         const hasEmptyState = await page.locator('text=No approved items yet').isVisible().catch(() => false);
@@ -39,8 +35,7 @@ test.describe('Item Catalogue', () => {
 
     test('search filters the list', async ({ page }) => {
         await injectTestUser(page, ['view_dashboard', 'view_items']);
-        await page.goto('/item-catalogue');
-        await page.waitForLoadState('networkidle');
+        await gotoAndWait(page, '/item-catalogue');
         const searchInput = page.locator('input[placeholder*="Search"]');
         await searchInput.fill('ZZZNOMATCH_ZZZTEST');
         await page.waitForTimeout(300);
@@ -52,8 +47,7 @@ test.describe('Item Catalogue', () => {
 
     test('clear filters button appears when search is active', async ({ page }) => {
         await injectTestUser(page, ['view_dashboard', 'view_items']);
-        await page.goto('/item-catalogue');
-        await page.waitForLoadState('networkidle');
+        await gotoAndWait(page, '/item-catalogue');
         const searchInput = page.locator('input[placeholder*="Search"]');
         await searchInput.fill('test');
         await expect(page.locator('button:has-text("Clear filters")')).toBeVisible();
@@ -61,9 +55,8 @@ test.describe('Item Catalogue', () => {
 
     test('refresh button works', async ({ page }) => {
         await injectTestUser(page, ['view_dashboard', 'view_items']);
-        await page.goto('/item-catalogue');
-        await page.waitForLoadState('networkidle');
-        const refreshBtn = page.locator('button:has([data-lucide="refresh-cw"])').first();
+        await gotoAndWait(page, '/item-catalogue');
+        const refreshBtn = page.locator('button:has(svg[class*="lucide-refresh-cw"])').first();
         await expect(refreshBtn).toBeVisible();
         await refreshBtn.click();
     });
