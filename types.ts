@@ -434,7 +434,19 @@ export interface AppNotification {
     createdAt: string;
 }
 
-export type AttributeType = 'CATEGORY' | 'SUB_CATEGORY' | 'POOL' | 'CATALOG' | 'UOM' | 'TYPE';
+export type AttributeType =
+    | 'CATEGORY'
+    | 'SUB_CATEGORY'
+    | 'POOL'
+    | 'CATALOG'
+    | 'UOM'
+    | 'TYPE'
+    | 'PREVIEW_REQUEST_TYPE'
+    | 'PREVIEW_DEPARTMENT'
+    | 'PREVIEW_BUSINESS_UNIT'
+    | 'PREVIEW_BUSINESS_REASON'
+    | 'PREVIEW_PRICE_TYPE'
+    | 'PREVIEW_TAX_CODE';
 
 
 export interface AttributeOption {
@@ -456,6 +468,204 @@ export interface SystemAuditLog {
     summary: Record<string, unknown>; // JSONB
     details: Record<string, unknown>; // JSONB
     createdAt: string;
+}
+
+// --- Item Creation Preview / Research Types ---
+
+export type PreviewItemRequestStatus =
+    | 'Draft'
+    | 'Submitted'
+    | 'Duplicate Review Required'
+    | 'Data Review'
+    | 'Pricing Review'
+    | 'Approval Pending'
+    | 'Revision Required'
+    | 'Approved'
+    | 'Publishing'
+    | 'Partially Published'
+    | 'Fully Published'
+    | 'Active'
+    | 'Replaced'
+    | 'Retired'
+    | 'Rejected / On Hold';
+
+export type PreviewItemRequestType =
+    | 'New Purchase Item'
+    | 'New Sale Item'
+    | 'Purchase + Sale Item'
+    | 'Replacement Item'
+    | 'Customer Own Goods Item'
+    | 'Bundle-Only Item'
+    | 'LinenHub-Only Item'
+    | 'Shared Operational Item';
+
+export type PreviewDuplicateOutcome = 'NoDuplicate' | 'UseExisting' | 'SimilarNewRequired';
+
+export type PreviewPublicationStatus = 'Pending' | 'Published' | 'Acknowledged' | 'Failed' | 'Retrying';
+
+export interface PreviewValidationSummary {
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+}
+
+export interface PreviewDuplicateCandidate {
+    source: 'LIVE_ITEM' | 'PREVIEW_REQUEST' | 'SUPPLIER_MAPPING' | 'STOCK_SNAPSHOT';
+    sourceId: string;
+    sku?: string;
+    name: string;
+    supplierName?: string;
+    category?: string;
+    score: number;
+    matchType: string;
+    reasons: string[];
+}
+
+export interface PreviewItemRequest {
+    id: string;
+    requestNumber: string;
+    requestType: PreviewItemRequestType | string;
+    lifecycleStatus: PreviewItemRequestStatus;
+    requestorUserId?: string;
+    requestorName?: string;
+    department?: string;
+    businessUnit?: string;
+    branchSiteId?: string;
+    branchSiteName?: string;
+    requiredActivationDate?: string;
+    businessReason?: string;
+    businessReasonDetail?: string;
+    newOrReplacement: 'New Item' | 'Replacement';
+    existingItemId?: string;
+    customerReference?: string;
+    proposedDescription: string;
+    itemGroup?: string;
+    division?: string;
+    purchaseEnabled: boolean;
+    saleEnabled: boolean;
+    bundleEnabled: boolean;
+    linenhubEnabled: boolean;
+    salesforceVisible: boolean;
+    duplicateCheckId?: string;
+    currentMarginPercent?: number;
+    currentMarginAmount?: number;
+    validationSummary?: PreviewValidationSummary;
+    draftPayload?: Record<string, unknown>;
+    createdBy?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface PreviewItemMasterDraft {
+    id?: string;
+    requestId: string;
+    proposedSku: string;
+    skuValidation?: PreviewValidationSummary & { collisionSources?: string[] };
+    skuOverrideReason?: string;
+    confirmedDescription?: string;
+    itemCategory?: string;
+    productType?: string;
+    sizeCode?: string;
+    varietyCode?: string;
+    colourCode?: string;
+    gsmCode?: string;
+    rfidFlag: boolean;
+    cogFlag: boolean;
+    cogCustomer?: string;
+    itemWeight?: number;
+    purchaseUom?: string;
+    saleUom?: string;
+    metadata?: Record<string, unknown>;
+    lockedAt?: string;
+}
+
+export interface PreviewPurchasePriceDraft {
+    id?: string;
+    requestId: string;
+    supplierId?: string;
+    supplierName?: string;
+    supplierItemCode?: string;
+    purchaseUom?: string;
+    purchasePriceExGst?: number;
+    purchaseCurrency?: string;
+    minimumOrderQuantity?: number;
+    leadTimeDays?: number;
+    freightHandlingCost?: number;
+    landedCost?: number;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    validationSummary?: PreviewValidationSummary;
+    lockedAt?: string;
+}
+
+export interface PreviewSellPriceDraft {
+    id?: string;
+    requestId: string;
+    priceType: 'Standard' | 'Group' | 'Customer-Specific' | 'Contract' | 'Promotional' | string;
+    customerReference?: string;
+    customerGroupReference?: string;
+    saleUom?: string;
+    sellPriceExGst?: number;
+    taxCode?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    marginPercent?: number;
+    marginAmount?: number;
+    approvalRequired?: boolean;
+    publishToSalesforce: boolean;
+    publishToBundle: boolean;
+    publishToLinenHub: boolean;
+    validationSummary?: PreviewValidationSummary;
+    lockedAt?: string;
+}
+
+export interface PreviewDuplicateCheck {
+    id: string;
+    requestId: string;
+    searchTimestamp: string;
+    searchTerms: Record<string, unknown>;
+    candidates: PreviewDuplicateCandidate[];
+    matchCount: number;
+    highestMatchScore: number;
+    selectedOutcome: PreviewDuplicateOutcome;
+    justification?: string;
+    performedBy?: string;
+}
+
+export interface PreviewPublicationEvent {
+    id: string;
+    requestId: string;
+    eventType: string;
+    eventVersion: string;
+    correlationId: string;
+    sourceSystem: string;
+    targetSystem: 'Bundle' | 'LinenHub' | 'Salesforce' | 'Internal Catalogue' | string;
+    payloadHash: string;
+    payload: Record<string, unknown>;
+    status: PreviewPublicationStatus;
+    retryCount: number;
+    lastError?: string;
+    externalItemId?: string;
+    externalPriceId?: string;
+    publishedAt?: string;
+    acknowledgedAt?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface PreviewItemRequestBundle {
+    request: PreviewItemRequest;
+    masterDraft?: PreviewItemMasterDraft;
+    purchaseDraft?: PreviewPurchasePriceDraft;
+    sellDraft?: PreviewSellPriceDraft;
+    duplicateChecks: PreviewDuplicateCheck[];
+    publicationEvents: PreviewPublicationEvent[];
+}
+
+export interface ItemCreationPreviewConfig {
+    previewEnabled: boolean;
+    previewWriteBlock: boolean;
+    goLiveEnabled: boolean;
 }
 
 // --- Simplified Workflow System Types ---

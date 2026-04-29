@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog } from '../types.ts';
 import { db } from '../services/db.ts';
-import { supabase } from '../lib/supabaseClient.ts';
+import { isSupabaseConfigured, supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
 import { DirectoryService } from '../services/graphService.ts';
 import {
@@ -49,7 +49,18 @@ const isLocalQaMode = (): boolean => {
     if (!isLocalhost) return false;
 
     const params = new URLSearchParams(globalThis.location.search);
+    if (params.get('qa') === '0') {
+        localStorage.removeItem('pf_qa_mode');
+        return false;
+    }
+
     if (params.get('qa') === '1') {
+        localStorage.setItem('pf_qa_mode', '1');
+        return true;
+    }
+
+    const envQaMode = import.meta.env.VITE_QA_MODE === '1';
+    if (envQaMode || !isSupabaseConfigured) {
         localStorage.setItem('pf_qa_mode', '1');
         return true;
     }
@@ -1171,6 +1182,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // --- Auth Operations ---
   const login = async () => {
       if (qaMode) {
+          setCurrentUser(qaUser);
+          setIsAuthenticated(true);
+          setIsPendingApproval(false);
+          setIsLoadingAuth(false);
+          reloadData(true);
+          return;
+      }
+
+      if (!isSupabaseConfigured) {
+          localStorage.setItem('pf_qa_mode', '1');
           setCurrentUser(qaUser);
           setIsAuthenticated(true);
           setIsPendingApproval(false);

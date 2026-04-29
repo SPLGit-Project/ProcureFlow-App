@@ -20,6 +20,7 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     { id: 'finance', path: '/finance', label: 'Finance Review', iconName: 'DollarSign', permission: 'view_finance' },
     { id: 'reports', path: '/reports', label: 'Reports', iconName: 'BarChart3', permission: 'view_finance' },
     { id: 'completed', path: '/completed', label: 'Completed', iconName: 'Clock', permission: 'view_completed_requests' },
+    { id: 'item-creation-preview', path: '/item-creation-preview', label: 'Item Preview', iconName: 'FlaskConical', permission: 'manage_development' },
     { id: 'data-ingest', path: '/data-ingest', label: 'Data Ingestion', iconName: 'FileText', permission: 'manage_development' },
     { id: 'settings', path: '/settings', label: 'Admin Panel', iconName: 'Settings', permission: 'manage_settings', isSystem: true },
     { id: 'help', path: '/help', label: 'Help & Support', iconName: 'HelpCircle', isSystem: true },

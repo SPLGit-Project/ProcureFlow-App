@@ -34,6 +34,7 @@ const HistoryView = lazy(() => import('./components/HistoryView'));
 const ActiveRequestsView = lazy(() => import('./components/ActiveRequestsView'));
 const SmartBuyingDashboard = lazy(() => import('./components/SmartBuyingDashboard'));
 const DataIngestion = lazy(() => import('./components/DataIngestion'));
+const ItemCreationPreview = lazy(() => import('./components/ItemCreationPreview'));
 
 const LoadingSpinner = () => (
     <div className="h-full w-full flex items-center justify-center p-20">
@@ -89,6 +90,7 @@ function App() {
               <Route path="help" element={<Suspense fallback={<LoadingSpinner />}><HelpGuide /></Suspense>} />
               <Route path="smart-buying" element={<Suspense fallback={<LoadingSpinner />}><SmartBuyingDashboard /></Suspense>} />
               <Route path="data-ingest" element={<Suspense fallback={<LoadingSpinner />}><DataIngestion /></Suspense>} />
+              <Route path="item-creation-preview" element={<Suspense fallback={<LoadingSpinner />}><ItemCreationPreview /></Suspense>} />
               
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

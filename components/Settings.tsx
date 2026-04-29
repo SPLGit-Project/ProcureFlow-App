@@ -27,7 +27,7 @@ import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/filePar
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { AuditLogViewer } from './AuditLogViewer.tsx';
 import * as XLSX from 'xlsx';
-import CatalogManagement from './CatalogManagement.tsx'; // Import CatalogManagement
+import ItemSetupManagement from './ItemSetupManagement.tsx';
 import MenuEditor from './MenuEditor.tsx';
 import { ItemWizard } from './ItemWizard.tsx';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
@@ -159,10 +159,13 @@ const Settings = () => {
 
   useEffect(() => {
     const state = location.state as { activeTab?: AdminTab };
+    const queryTab = new URLSearchParams(location.search).get('tab') as AdminTab | null;
     if (state?.activeTab) {
       setActiveTab(state.activeTab);
+    } else if (queryTab) {
+      setActiveTab(queryTab);
     }
-  }, [location.state]);
+  }, [location.state, location.search]);
 
   // --- Smart Sticky Header Logic ---
   const [isStuck, setIsStuck] = useState(false);
@@ -779,7 +782,7 @@ const Settings = () => {
 
   const allTabs: { id: AdminTab, icon: React.ElementType, label: string, permission?: PermissionId }[] = [
       { id: 'ITEMS', icon: Box, label: 'Items', permission: 'view_items' },
-      { id: 'CATALOG', icon: BookOpen, label: 'Catalog', permission: 'view_items' },
+      { id: 'CATALOG', icon: BookOpen, label: 'Item Setup', permission: 'view_items' },
       { id: 'STOCK', icon: Database, label: 'Stock', permission: 'view_stock' },
       { id: 'MAPPING', label: 'Mapping', icon: GitMerge, permission: 'view_mapping' },
       { id: 'SUPPLIERS', label: 'Suppliers', icon: Truck, permission: 'view_suppliers' },
@@ -1767,18 +1770,20 @@ if __name__ == "__main__":
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                             <BookOpen className="text-blue-600" size={24} />
-                            Catalog Management
+                            Item Taxonomy & Preview Dropdowns
                         </h2>
-                        <p className="text-secondary dark:text-gray-400 mt-1">Manage dynamic attributes for your items including Categories, Groups, and Units of Measure.</p>
+                        <p className="text-secondary dark:text-gray-400 mt-1">Manage item categorisation and the selectable values used by the item creation preview workflow.</p>
                     </div>
                 </div>
                 
-                <CatalogManagement 
-                    options={attributeOptions}
-                    items={items}
-                    upsertOption={upsertAttributeOption}
-                    deleteOption={deleteAttributeOption}
-                />
+                <div className="space-y-8">
+                    <ItemSetupManagement
+                        options={attributeOptions}
+                        items={items}
+                        upsertOption={upsertAttributeOption}
+                        deleteOption={deleteAttributeOption}
+                    />
+                </div>
             </div>
         </div>
       )}
