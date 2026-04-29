@@ -11,7 +11,7 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3
 } from 'lucide-react';
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
@@ -27,6 +27,7 @@ import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/filePar
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { AuditLogViewer } from './AuditLogViewer.tsx';
 import DataSyncPanel from './DataSyncPanel';
+import SmartBuyingSettings from './SmartBuyingSettings';
 import * as XLSX from 'xlsx';
 import ItemSetupManagement from './ItemSetupManagement.tsx';
 import MenuEditor from './MenuEditor.tsx';
@@ -70,7 +71,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_development', label: 'Development Admin', description: 'Access to Smart Buying and Data Ingest tools', icon: Code, category: 'Development' }
 ];
 
-type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC';
+type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC' | 'SMART_BUYING';
 
 const MASTER_ITEM_COLUMNS = [
     { key: 'sku', label: 'SKU' },
@@ -797,7 +798,8 @@ const Settings = () => {
       { id: 'MIGRATION', label: 'Data Migration', icon: Upload, permission: 'manage_settings' },
       { id: 'EMAIL', label: 'Email Templates', icon: Mail, permission: 'manage_settings' },
       { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'manage_settings' },
-      { id: 'DATA_SYNC', label: 'Data Sync', icon: Database, permission: 'manage_settings' }
+      { id: 'DATA_SYNC', label: 'Data Sync', icon: Database, permission: 'manage_settings' },
+      { id: 'SMART_BUYING', label: 'Smart Buying', icon: BarChart3, permission: 'manage_settings' }
   ];
 
   const visibleTabs: { id: AdminTab, icon: React.ElementType, label: string }[] = [
@@ -3737,6 +3739,11 @@ if __name__ == "__main__":
              {activeTab === 'DATA_SYNC' && (
                  <div className="animate-fade-in">
                      <DataSyncPanel />
+                 </div>
+             )}
+             {activeTab === 'SMART_BUYING' && (
+                 <div className="animate-fade-in">
+                     <SmartBuyingSettings />
                  </div>
              )}
              {/* WORKFLOW STEP MODAL */}
