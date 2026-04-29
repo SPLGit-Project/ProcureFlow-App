@@ -184,8 +184,10 @@ const ItemCreationPreview = () => {
     suppliers,
     attributeOptions,
     mappings,
-    stockSnapshots
+    stockSnapshots,
+    marginThresholds
   } = useApp();
+  const marginThreshold = marginThresholds?.defaultPercent ?? 25;
   const { toasts, dismissToast, success, error, warning, info } = useToast();
   const [activeTab, setActiveTab] = useState<PreviewTab>('WORKBENCH');
   const [config, setConfig] = useState<ItemCreationPreviewConfig | null>(null);
@@ -299,7 +301,7 @@ const ItemCreationPreview = () => {
     }
   ), [form.purchasePriceExGst, form.freightHandlingCost, form.sellPriceExGst]);
 
-  const showApprovalWarning = form.saleEnabled && pricing.marginPercent < 25 && (pricing.marginPercent !== 0 || form.sellPriceExGst !== '');
+  const showApprovalWarning = form.saleEnabled && pricing.marginPercent < marginThreshold && (pricing.marginPercent !== 0 || form.sellPriceExGst !== '');
 
   const latestDuplicateCheck = selectedBundle?.duplicateChecks[0];
 
@@ -983,7 +985,7 @@ const ItemCreationPreview = () => {
                 <label className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm font-semibold"><input type="checkbox" checked={form.bundleEnabled} onChange={e => setForm(prev => ({ ...prev, bundleEnabled: e.target.checked, publishToBundle: e.target.checked }))} /> Bundle</label>
                 <label className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm font-semibold"><input type="checkbox" checked={form.linenhubEnabled} onChange={e => setForm(prev => ({ ...prev, linenhubEnabled: e.target.checked, publishToLinenHub: e.target.checked }))} /> LinenHub</label>
                 <label className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm font-semibold"><input type="checkbox" checked={form.salesforceVisible} onChange={e => setForm(prev => ({ ...prev, salesforceVisible: e.target.checked, publishToSalesforce: e.target.checked }))} /> Salesforce</label>
-                <div className={`rounded-lg border p-3 text-sm ${pricing.marginPercent < 25 && form.saleEnabled ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300' : 'border-gray-200 dark:border-gray-700'}`}>
+                <div className={`rounded-lg border p-3 text-sm ${pricing.marginPercent < marginThreshold && form.saleEnabled ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300' : 'border-gray-200 dark:border-gray-700'}`}>
                   <div className="text-xs font-bold uppercase">Margin</div>
                   <div className="font-black">{form.saleEnabled ? `${pricing.marginPercent.toFixed(2)}% / $${pricing.marginAmount.toFixed(2)}` : 'N/A'}</div>
                 </div>
@@ -995,7 +997,7 @@ const ItemCreationPreview = () => {
                   <div>
                     <div className="text-sm font-bold text-amber-800 dark:text-amber-300">Approval required — margin below threshold</div>
                     <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                      Current margin {pricing.marginPercent.toFixed(2)}% is below the 25% threshold. This request will be routed for commercial approval before publication.
+                      Current margin {pricing.marginPercent.toFixed(2)}% is below the {marginThreshold}% threshold. This request will be routed for commercial approval before publication.
                     </div>
                   </div>
                 </div>

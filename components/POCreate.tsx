@@ -83,7 +83,7 @@ const isSameCartPriceLine = (
 };
 
 const POCreate = () => {
-  const { items, suppliers, userSites, mappings, stockSnapshots, currentUser, createPO, getEffectiveStock, reloadData } = useApp();
+  const { items, suppliers, userSites, mappings, stockSnapshots, currentUser, createPO, getEffectiveStock, reloadData, featureFlags } = useApp();
   const sites = userSites;
   const navigate = useNavigate();
   const draftKey = currentUser ? `pf_draft:${currentUser.id}:po-create` : '';
@@ -817,8 +817,19 @@ const POCreate = () => {
                     </div>
                  ))}
                  {displayItems.length === 0 && (
-                     <div className="py-12 text-center text-gray-400">
-                         No items found matching your search.
+                     <div className="py-10 text-center text-gray-400 space-y-3">
+                         <p className="text-sm">No items found matching your search.</p>
+                         {featureFlags?.previewEnabled && searchTerm && (
+                             <div className="mx-auto max-w-xs text-xs text-amber-600 border border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 rounded-xl p-3">
+                                 <p className="font-medium mb-1">Item not in the approved catalogue?</p>
+                                 <button
+                                     onClick={() => navigate(`/item-creation-preview?prefill=${encodeURIComponent(searchTerm)}`)}
+                                     className="underline text-amber-700 dark:text-amber-400"
+                                 >
+                                     Create an item request →
+                                 </button>
+                             </div>
+                         )}
                      </div>
                  )}
                </div>
