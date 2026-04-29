@@ -587,6 +587,24 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         };
     }
 
+    // DEV-only: Playwright test auth bypass via localStorage pf_test_user
+    if (import.meta.env.DEV) {
+        const testUserJson = localStorage.getItem('pf_test_user');
+        if (testUserJson) {
+            try {
+                const mockUser = JSON.parse(testUserJson) as User;
+                setCurrentUser(mockUser);
+                setIsAuthenticated(true);
+                setIsPendingApproval(false);
+                setIsLoadingAuth(false);
+                reloadData(true);
+                return () => { mounted = false; };
+            } catch {
+                // malformed test user — fall through to normal auth
+            }
+        }
+    }
+
     // Safety timeout to ensure we don't get stuck on loading forever
     const safetyTimeout = setTimeout(() => {
         if (mounted && isLoadingAuth) {
