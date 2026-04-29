@@ -35,6 +35,8 @@ const ActiveRequestsView = lazy(() => import('./components/ActiveRequestsView'))
 const SmartBuyingDashboard = lazy(() => import('./components/SmartBuyingDashboard'));
 const DataIngestion = lazy(() => import('./components/DataIngestion'));
 const ItemCreationPreview = lazy(() => import('./components/ItemCreationPreview'));
+const ItemApprovalQueue   = lazy(() => import('./components/ItemApprovalQueue'));
+const ItemCatalogue       = lazy(() => import('./components/ItemCatalogue'));
 
 const LoadingSpinner = () => (
     <div className="h-full w-full flex items-center justify-center p-20">
@@ -91,7 +93,9 @@ function App() {
               <Route path="smart-buying" element={<Suspense fallback={<LoadingSpinner />}><SmartBuyingDashboard /></Suspense>} />
               <Route path="data-ingest" element={<Suspense fallback={<LoadingSpinner />}><DataIngestion /></Suspense>} />
               <Route path="item-creation-preview" element={<Suspense fallback={<LoadingSpinner />}><ItemCreationPreview /></Suspense>} />
-              
+              <Route path="item-approval-queue"   element={<Suspense fallback={<LoadingSpinner />}><ItemApprovalQueue /></Suspense>} />
+              <Route path="item-catalogue"        element={<Suspense fallback={<LoadingSpinner />}><ItemCatalogue /></Suspense>} />
+
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>

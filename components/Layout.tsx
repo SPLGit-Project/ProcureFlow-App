@@ -5,10 +5,12 @@ import {
   Activity,
   BarChart3,
   Bell,
+  BookOpen,
   CheckCircle,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  ClipboardCheck,
   ClipboardList as TaskIcon,
   Clock,
   DollarSign,
@@ -88,6 +90,8 @@ const Layout = () => {
     FileText,
     FlaskConical,
     CheckCircle,
+    ClipboardCheck,
+    BookOpen,
     Activity,
     DollarSign,
     BarChart3,
@@ -110,7 +114,10 @@ const Layout = () => {
     })
       .filter(item => item.isVisible)
       .sort((a, b) => a.order - b.order)
-      .filter(item => !item.permission || hasPermission(item.permission));
+      .filter(item => {
+        if (item.id === 'item-creation-preview' && !(featureFlags?.previewEnabled ?? false)) return false;
+        return !item.permission || hasPermission(item.permission);
+      });
   }, [branding.menuConfig, hasPermission]);
 
   const pageTitle = React.useMemo(() => {
