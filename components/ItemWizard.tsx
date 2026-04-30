@@ -543,7 +543,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                         <button
                                             type="button"
                                             onClick={handleAddPriceOption}
-                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700"
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-tranquil text-white text-xs font-bold hover:bg-[#0f87a8]"
                                         >
                                             <Plus size={14}/> Add Option
                                         </button>
@@ -773,7 +773,7 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                     <button type="button" 
                         onClick={currentStep === STEPS.length - 1 ? handleSave : handleNext}
                         disabled={isSubmitting}
-                        className={`px-8 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20 ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        className={`px-8 py-2.5 rounded-lg bg-tranquil hover:bg-[#0f87a8] text-white font-medium flex items-center gap-2 transition-all shadow-lg shadow-tranquil/20 ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
                         {isSubmitting ? (
                             <>Saving...</>

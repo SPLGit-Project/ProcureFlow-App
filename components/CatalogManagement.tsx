@@ -559,7 +559,7 @@ const CatalogManagement = ({
                                                 
                                                 scrollToRight();
                                             }}
-                                            className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedPoolId === pool.id ? 'bg-blue-600 text-white shadow-lg scale-105 z-10' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+                                            className={`group relative p-3 rounded-xl cursor-pointer text-sm font-bold flex justify-between items-center transition-all ${selectedPoolId === pool.id ? 'bg-tranquil text-white shadow-lg scale-105 z-10' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
                                         >
                                             <span>{pool.value}</span>
                                             <div className="flex items-center gap-2">
@@ -797,7 +797,7 @@ const CatalogManagement = ({
                             <button
                                 type="button"
                                 onClick={() => handleOpenModal()}
-                                className="w-full md:w-auto flex items-center justify-center space-x-2 px-6 md:px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl transition-all shadow-lg shadow-blue-500/30 font-black uppercase text-xs tracking-widest active:scale-95"
+                                className="w-full md:w-auto flex items-center justify-center space-x-2 px-6 md:px-8 py-3 bg-tranquil hover:bg-[#0f87a8] text-white rounded-2xl transition-all shadow-lg shadow-tranquil/30 font-black uppercase text-xs tracking-widest active:scale-95"
                             >
                                 <Plus size={18} />
                                 <span>Add New</span>

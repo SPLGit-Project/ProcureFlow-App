@@ -338,7 +338,7 @@ const DataSyncPanel: React.FC = () => {
             type="button"
             disabled={syncingAll || activeSites.length === 0}
             onClick={handleSyncAll}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-40"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-tranquil text-white text-sm font-bold hover:bg-[#0f87a8] disabled:opacity-40"
           >
             <Play size={15} /> Sync All Active
           </button>
