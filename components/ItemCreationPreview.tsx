@@ -35,6 +35,7 @@ import {
 } from '../types';
 import { ToastContainer, useToast } from './ToastNotification';
 import ItemApprovalReview from './ItemApprovalReview';
+import PageHeader from './PageHeader';
 import {
   calculatePreviewPricing,
   findPreviewDuplicateCandidates,
@@ -659,17 +660,10 @@ const ItemCreationPreview = () => {
 
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
-              <FlaskConical size={22} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Item Creation Preview</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Isolated research workflow. Live operational tables remain untouched.
-              </p>
-            </div>
-          </div>
+          <PageHeader
+            title="Item Creation Preview"
+            subtitle="Isolated research workflow. Live operational tables remain untouched."
+          />
         </div>
         <div className="flex flex-wrap gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">

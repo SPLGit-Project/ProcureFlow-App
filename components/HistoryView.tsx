@@ -6,6 +6,7 @@ import {
     Calendar, User as UserIcon, Building, ArrowRight
 } from 'lucide-react';
 import { PORequest, ApprovalEvent, DeliveryHeader } from '../types';
+import PageHeader from './PageHeader';
 
 const HistoryView = () => {
     const { pos } = useApp();
@@ -135,10 +136,7 @@ const HistoryView = () => {
     return (
         <div className="space-y-6 pb-20 animate-fade-in max-w-5xl mx-auto">
             <div className="flex items-end justify-between border-b border-gray-200 dark:border-gray-800 pb-4">
-                <div>
-                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Order History</h1>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Audit trail of completed and capitalized requests.</p>
-                </div>
+                <PageHeader title="Order History" subtitle="Audit trail of completed and capitalized requests." />
                 <div className="text-right hidden sm:block">
                      <div className="text-3xl font-bold text-gray-900 dark:text-white">{historyPos.length}</div>
                      <div className="text-xs text-gray-500 uppercase tracking-wider font-medium">Records Found</div>

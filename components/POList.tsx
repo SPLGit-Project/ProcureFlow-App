@@ -17,6 +17,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import type { POStatus } from '../types.ts';
 import ContextHelp from './ContextHelp';
+import PageHeader from './PageHeader';
 import { ToastContainer, useToast } from './ToastNotification';
 
 type BaseFilter = 'ALL' | 'PENDING' | 'COMPLETED';
@@ -371,15 +372,13 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     <div className="space-y-6 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
-            {filter === 'PENDING' ? 'Pending Approvals' : filter === 'COMPLETED' ? 'Completed Requests' : 'Requests'}
-            <ContextHelp
-              title="Approval Process"
-              description="Understand the phases of approval and how to manage requests."
-              linkTarget="approval-workflow"
-            />
-          </h1>
-          <p className="text-secondary dark:text-gray-400 text-sm mt-1">Manage purchase orders and approvals</p>
+          <PageHeader
+            title={filter === 'PENDING' ? 'Pending Approvals' : filter === 'COMPLETED' ? 'Completed Requests' : 'Requests'}
+            subtitle="Manage purchase orders and approvals"
+            helpTitle="Approval Process"
+            helpDescription="Understand the phases of approval and how to manage requests."
+            helpLinkTarget="approval-workflow"
+          />
         </div>
         {filter === 'ALL' && hasPermission('create_request') && (
           <Link

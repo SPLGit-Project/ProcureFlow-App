@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import CostImpactModal from './CostImpactModal.tsx';
+import PageHeader from './PageHeader';
 
 const Dashboard = () => {
   const { pos, currentUser, hasPermission, isLoadingData, activeSiteIds, siteName, featureFlags } = useApp();
@@ -224,12 +225,7 @@ const Dashboard = () => {
       
       {/* Welcome & Site Filter */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 pb-2">
-         <div>
-             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Dashboard</h1>
-             <p className="text-secondary dark:text-gray-400 mt-1 text-sm md:text-base">
-                 Overview for <span className="font-semibold text-gray-700 dark:text-gray-200">{currentUser.name}</span>
-             </p>
-         </div>
+         <PageHeader title="Dashboard" subtitle={`Overview for ${currentUser.name}`} />
          
          <div className="flex gap-3 w-full md:w-auto">
              <button type="button" onClick={() => navigate('/create')} className="whitespace-nowrap bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-semibold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">

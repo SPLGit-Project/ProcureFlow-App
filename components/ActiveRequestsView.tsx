@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin, Download, CalendarRange, FunnelX } from 'lucide-react';
+import PageHeader from './PageHeader';
 import { PORequest, POStatus } from '../types.ts';
 import {
     buildActiveRequestsCsv,
@@ -158,13 +159,7 @@ const ActiveRequestsView = () => {
     return (
         <div className="max-w-7xl mx-auto px-0 sm:px-2 md:px-4 pb-24 animate-fade-in">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
-                        <Activity className="text-[var(--color-brand)]" />
-                        Active Requests
-                    </h1>
-                    <p className="text-gray-500 dark:text-gray-400">Monitor active Purchase Orders and manage SAP Concur links.</p>
-                </div>
+                <PageHeader title="Active Requests" subtitle="Monitor active Purchase Orders and manage SAP Concur links." />
                 
                 <div className="w-full md:w-auto overflow-x-auto pb-1">
                     <div className="inline-flex min-w-max items-center gap-1 bg-white dark:bg-[#1e2029] p-1 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">

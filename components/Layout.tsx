@@ -1,12 +1,14 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import PageMetaContext, { type PageMeta } from '../context/PageMetaContext';
 import {
   Activity,
   BarChart3,
   Bell,
   BookOpen,
   CheckCircle,
+  ChevronDown,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
@@ -35,6 +37,7 @@ import TaskDrawer from './TaskDrawer';
 import AccountDrawer from './AccountDrawer';
 
 const SIDEBAR_COLLAPSED_KEY = 'pf-sidebar-collapsed';
+const REVAMP_EXPANDED_KEY = 'pf-revamp-sidebar-expanded';
 
 const toTitleCase = (value: string) =>
   value
@@ -63,6 +66,13 @@ const Layout = () => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
   });
+  const [isRevampExpanded, setIsRevampExpanded] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(REVAMP_EXPANDED_KEY) === 'true';
+  });
+  const [pageMeta, setPageMeta] = React.useState<PageMeta>({});
+  const [navCanScrollDown, setNavCanScrollDown] = React.useState(false);
+  const navRef = React.useRef<HTMLElement>(null);
   const location = useLocation();
 
   React.useEffect(() => {
@@ -74,6 +84,28 @@ const Layout = () => {
       localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isSidebarCollapsed));
     }
   }, [isSidebarCollapsed]);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REVAMP_EXPANDED_KEY, String(isRevampExpanded));
+    }
+  }, [isRevampExpanded]);
+
+  const checkNavScroll = React.useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    setNavCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+  }, []);
+
+  React.useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    checkNavScroll();
+    el.addEventListener('scroll', checkNavScroll);
+    const ro = new ResizeObserver(checkNavScroll);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', checkNavScroll); ro.disconnect(); };
+  }, [checkNavScroll]);
 
   React.useEffect(() => {
     if (!isMobileMenuOpen) return;
@@ -159,193 +191,238 @@ const Layout = () => {
 
   // ─── REVAMPED LAYOUT (floating rail) ────────────────────────────────────────
   if (uiRevamp) {
+    const sidebarW = isRevampExpanded ? '212px' : '64px';
+
     return (
-      <div
-        className="flex h-[100dvh] bg-app text-secondary dark:text-slate-300 font-sans selection:bg-tranquil selection:text-white transition-colors duration-200"
-        style={{ fontFamily: 'var(--font-family)' }}
-      >
-        <PwaInstaller />
-        <UpdateToast />
-
-        {/* Mobile overlay */}
-        {isMobileMenuOpen && (
-          <div
-            className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm md:hidden"
-            onClick={() => setIsMobileMenuOpen(false)}
-          />
-        )}
-
-        {/* ── Floating rail — desktop ── */}
-        <aside
-          className={`hidden md:flex fixed left-4 top-4 bottom-4 w-16 z-50 flex-col items-center rounded-2xl shadow-xl overflow-hidden transition-all duration-300
-            ${isMobileMenuOpen ? 'translate-x-0' : ''}
-            bg-nocturne text-white`}
+      <PageMetaContext.Provider value={{ setMeta: setPageMeta }}>
+        <div
+          className="flex h-[100dvh] bg-app text-secondary dark:text-slate-300 font-sans selection:bg-tranquil selection:text-white transition-colors duration-200"
+          style={{ fontFamily: 'var(--font-family)' }}
         >
-          {/* Logo mark */}
-          <div className="pt-5 pb-4 flex items-center justify-center shrink-0">
-            {branding.logoUrl ? (
-              <img src={branding.logoUrl} alt="Logo" className="w-8 h-8 object-contain rounded-lg" />
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-tranquil flex items-center justify-center font-bold text-white shadow-md text-sm">
-                {branding.appName.charAt(0)}
-              </div>
-            )}
-          </div>
+          <PwaInstaller />
+          <UpdateToast />
 
-          {/* Nav items */}
-          <nav className="flex-1 flex flex-col items-center gap-1 w-full px-2 py-2 overflow-y-auto scrollbar-hide">
-            {navItems.map(item => {
+          {/* Mobile overlay */}
+          {isMobileMenuOpen && (
+            <div
+              className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm md:hidden"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+          )}
+
+          {/* ── Floating rail — desktop ── */}
+          <aside
+            className="hidden md:flex fixed left-4 top-4 bottom-4 z-50 flex-col rounded-2xl shadow-xl overflow-hidden transition-all duration-300 bg-nocturne text-white"
+            style={{ width: sidebarW }}
+          >
+            {/* Logo / app name */}
+            <div
+              className={`pt-5 pb-4 shrink-0 flex items-center transition-all duration-300 ${isRevampExpanded ? 'px-4 gap-3' : 'justify-center'}`}
+            >
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt="Logo" className="w-8 h-8 object-contain rounded-lg shrink-0" />
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-tranquil flex items-center justify-center font-bold text-white shadow-md text-sm shrink-0">
+                  {branding.appName.charAt(0)}
+                </div>
+              )}
+              {isRevampExpanded && (
+                <span className="text-white font-bold text-sm truncate">{branding.appName}</span>
+              )}
+            </div>
+
+            {/* Nav items + scroll indicator */}
+            <div className="relative flex-1 min-h-0">
+              <nav
+                ref={navRef}
+                className={`h-full flex flex-col gap-1 w-full py-2 overflow-y-auto scrollbar-hide transition-all duration-300 ${isRevampExpanded ? 'px-3' : 'px-2 items-center'}`}
+              >
+                {navItems.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      title={isRevampExpanded ? undefined : item.label}
+                      className={({ isActive }) =>
+                        `relative flex items-center rounded-xl transition-all duration-150 group w-full
+                        ${isRevampExpanded ? 'px-3 py-2.5 gap-3' : 'justify-center p-3'}
+                        ${isActive
+                          ? 'bg-tranquil text-white shadow-md shadow-tranquil/30'
+                          : 'text-white/50 hover:bg-white/10 hover:text-white'}`
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <Icon size={18} className="shrink-0" />
+                          {isRevampExpanded && (
+                            <span className="text-sm font-medium truncate">{item.label}</span>
+                          )}
+                          {isActive && !isRevampExpanded && (
+                            <span className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-tranquil rounded-l-full opacity-80" />
+                          )}
+                        </>
+                      )}
+                    </NavLink>
+                  );
+                })}
+              </nav>
+
+              {/* Scroll indicator — fades in when more items exist below */}
+              {navCanScrollDown && (
+                <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-nocturne to-transparent flex items-end justify-center pb-1">
+                  <ChevronDown size={14} className="text-white/40 animate-bounce" />
+                </div>
+              )}
+            </div>
+
+            {/* Bottom — expand toggle + theme + avatar */}
+            <div className={`flex flex-col gap-2 pb-4 pt-2 shrink-0 ${isRevampExpanded ? 'px-3 items-stretch' : 'items-center'}`}>
+              <button
+                onClick={() => setIsRevampExpanded(prev => !prev)}
+                className={`p-2.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all flex items-center ${isRevampExpanded ? 'gap-2' : 'justify-center'}`}
+                title={isRevampExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+              >
+                {isRevampExpanded ? <ChevronsLeft size={17} /> : <ChevronsRight size={17} />}
+                {isRevampExpanded && <span className="text-xs font-medium">Collapse</span>}
+              </button>
+              <button
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className={`p-2.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all flex items-center ${isRevampExpanded ? 'gap-2' : 'justify-center'}`}
+                title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+              >
+                {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+                {isRevampExpanded && <span className="text-xs font-medium">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
+              </button>
+              <button
+                onClick={() => setIsAccountDrawerOpen(true)}
+                className={`flex items-center rounded-xl transition-all hover:bg-white/10 ${isRevampExpanded ? 'gap-2 px-1 py-1' : 'justify-center p-0.5'}`}
+              >
+                <img
+                  src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`}
+                  alt={currentUser.name}
+                  className="w-9 h-9 rounded-full border-2 border-white/10 hover:border-tranquil transition-colors object-cover shrink-0"
+                />
+                {isRevampExpanded && (
+                  <span className="text-xs font-medium text-white/70 truncate">{currentUser.name.split(' ')[0]}</span>
+                )}
+              </button>
+            </div>
+          </aside>
+
+          {/* ── Bottom tab bar — mobile ── */}
+          <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-nocturne/95 backdrop-blur border-t border-white/5 flex items-center justify-around px-2 pb-safe pt-2">
+            {navItems.slice(0, 5).map(item => {
               const Icon = item.icon;
               return (
                 <NavLink
                   key={item.path}
                   to={item.path}
-                  title={item.label}
                   className={({ isActive }) =>
-                    `relative w-full flex items-center justify-center rounded-xl p-3 transition-all duration-150 group
-                    ${isActive
-                      ? 'bg-tranquil text-white shadow-md shadow-tranquil/30'
-                      : 'text-white/50 hover:bg-white/10 hover:text-white'}`
+                    `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all text-[10px] font-bold uppercase tracking-wide
+                    ${isActive ? 'text-tranquil' : 'text-white/40 hover:text-white'}`
                   }
                 >
                   {({ isActive }) => (
                     <>
-                      <Icon size={18} className="shrink-0" />
-                      {isActive && (
-                        <span className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-tranquil rounded-l-full opacity-80" />
-                      )}
+                      <Icon size={20} className={isActive ? 'text-tranquil' : ''} />
+                      <span className="truncate max-w-[48px]">{item.label.split(' ')[0]}</span>
                     </>
                   )}
                 </NavLink>
               );
             })}
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-white/40 hover:text-white text-[10px] font-bold uppercase tracking-wide"
+            >
+              <Menu size={20} />
+              More
+            </button>
           </nav>
 
-          {/* Bottom — theme toggle + avatar */}
-          <div className="flex flex-col items-center gap-2 pb-4 pt-2 shrink-0">
-            <button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="p-2.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all"
-              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            >
-              {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-            </button>
-            <button
-              onClick={() => setIsAccountDrawerOpen(true)}
-              className="w-9 h-9 rounded-full overflow-hidden border-2 border-white/10 hover:border-tranquil transition-colors"
-            >
-              <img
-                src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`}
-                alt={currentUser.name}
-                className="w-full h-full object-cover"
-              />
-            </button>
-          </div>
-        </aside>
+          {/* Mobile drawer (all nav items) */}
+          {isMobileMenuOpen && (
+            <div className="md:hidden fixed inset-y-0 left-0 w-64 z-50 bg-nocturne flex flex-col shadow-2xl rounded-r-2xl animate-slide-in-right">
+              <div className="flex items-center justify-between p-5 border-b border-white/10">
+                <span className="text-white font-bold text-sm">{branding.appName}</span>
+                <button onClick={() => setIsMobileMenuOpen(false)} className="text-white/50 hover:text-white p-1">
+                  <X size={20} />
+                </button>
+              </div>
+              <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+                {navItems.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all
+                        ${isActive ? 'bg-tranquil text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'}`
+                      }
+                    >
+                      <Icon size={18} className="shrink-0" />
+                      {item.label}
+                    </NavLink>
+                  );
+                })}
+              </nav>
+            </div>
+          )}
 
-        {/* ── Bottom tab bar — mobile ── */}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-nocturne/95 backdrop-blur border-t border-white/5 flex items-center justify-around px-2 pb-safe pt-2">
-          {navItems.slice(0, 5).map(item => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all text-[10px] font-bold uppercase tracking-wide
-                  ${isActive ? 'text-tranquil' : 'text-white/40 hover:text-white'}`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <Icon size={20} className={isActive ? 'text-tranquil' : ''} />
-                    <span className="truncate max-w-[48px]">{item.label.split(' ')[0]}</span>
-                  </>
-                )}
-              </NavLink>
-            );
-          })}
-          <button
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-white/40 hover:text-white text-[10px] font-bold uppercase tracking-wide"
+          {/* ── Main content area ── */}
+          <div
+            className={`flex-1 min-w-0 flex flex-col h-[100dvh] overflow-hidden transition-all duration-300 ${isRevampExpanded ? 'md:pl-[232px]' : 'md:pl-[88px]'}`}
           >
-            <Menu size={20} />
-            More
-          </button>
-        </nav>
-
-        {/* Mobile drawer (all nav items) */}
-        {isMobileMenuOpen && (
-          <div className="md:hidden fixed inset-y-0 left-0 w-64 z-50 bg-nocturne flex flex-col shadow-2xl rounded-r-2xl animate-slide-in-right">
-            <div className="flex items-center justify-between p-5 border-b border-white/10">
-              <span className="text-white font-bold text-sm">{branding.appName}</span>
-              <button onClick={() => setIsMobileMenuOpen(false)} className="text-white/50 hover:text-white p-1">
-                <X size={20} />
-              </button>
-            </div>
-            <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-              {navItems.map(item => {
-                const Icon = item.icon;
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all
-                      ${isActive ? 'bg-tranquil text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'}`
-                    }
+            {/* Floating top header */}
+            <div className="sticky top-0 z-20 shrink-0 px-4 pt-4 pointer-events-none">
+              <header className="pointer-events-auto bg-white/90 dark:bg-[#1a1d27]/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center justify-between px-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <button
+                    onClick={() => setIsMobileMenuOpen(true)}
+                    className="md:hidden p-2 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"
                   >
-                    <Icon size={18} className="shrink-0" />
-                    {item.label}
-                  </NavLink>
-                );
-              })}
-            </nav>
+                    <Menu size={20} />
+                  </button>
+                  <div className="min-w-0">
+                    <span className="text-sm font-bold text-gray-900 dark:text-white truncate block leading-tight">{pageTitle}</span>
+                    {pageMeta.subtitle && (
+                      <span className="text-xs text-secondary dark:text-slate-400 truncate block leading-tight">{pageMeta.subtitle}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsTaskDrawerOpen(true)}
+                    className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
+                    title="Task Center"
+                  >
+                    <TaskIcon size={19} />
+                    <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#1a1d27] animate-pulse" />
+                  </button>
+                  <button
+                    className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
+                    title="Notifications"
+                  >
+                    <Bell size={19} />
+                  </button>
+                </div>
+              </header>
+            </div>
+
+            <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 scroll-smooth pb-20 md:pb-8">
+              <div className="animate-page-entry">
+                <Outlet />
+              </div>
+            </main>
           </div>
-        )}
 
-        {/* ── Main content area ── */}
-        <div className="flex-1 min-w-0 flex flex-col h-[100dvh] overflow-hidden md:pl-24">
-          {/* Slim top bar */}
-          <header className="bg-white/80 dark:bg-[#15171e]/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-14 flex items-center justify-between px-4 md:px-6 z-20 shrink-0 sticky top-0">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                onClick={() => setIsMobileMenuOpen(true)}
-                className="md:hidden p-2 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"
-              >
-                <Menu size={20} />
-              </button>
-              <span className="text-sm font-bold text-gray-900 dark:text-white truncate">{pageTitle}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsTaskDrawerOpen(true)}
-                className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
-                title="Task Center"
-              >
-                <TaskIcon size={19} />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#15171e] animate-pulse" />
-              </button>
-              <button
-                className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
-                title="Notifications"
-              >
-                <Bell size={19} />
-              </button>
-            </div>
-          </header>
-
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 scroll-smooth pb-20 md:pb-8">
-            <div className="animate-page-entry">
-              <Outlet />
-            </div>
-          </main>
+          <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
+          <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
         </div>
-
-        <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
-        <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
-      </div>
+      </PageMetaContext.Provider>
     );
   }
   // ─── END REVAMPED LAYOUT ────────────────────────────────────────────────────

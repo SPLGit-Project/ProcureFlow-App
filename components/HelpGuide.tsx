@@ -6,6 +6,7 @@ import {
     MousePointer, Link as LinkIcon, X, Package, ClipboardCheck, BarChart3
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import PageHeader from './PageHeader';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const HelpGuide = () => {
@@ -349,8 +350,7 @@ const HelpGuide = () => {
       {/* Search Header */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
         <div>
-          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-[var(--color-brand)] to-indigo-600">Help & Support</h1>
-          <p className="text-gray-500 mt-1">Master every feature of {branding.appName || 'ProcureFlow'}.</p>
+          <PageHeader title="Help & Support" subtitle={`Master every feature of ${branding.appName || 'ProcureFlow'}.`} />
         </div>
         <div className="relative w-full md:w-96 group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[var(--color-brand)] transition-colors" size={20}/>

@@ -29,6 +29,7 @@ import { AuditLogViewer } from './AuditLogViewer.tsx';
 import DataSyncPanel from './DataSyncPanel';
 import SmartBuyingSettings from './SmartBuyingSettings';
 import ItemCreationSettings from './ItemCreationSettings';
+import PageHeader from './PageHeader';
 import * as XLSX from 'xlsx';
 import ItemSetupManagement from './ItemSetupManagement.tsx';
 import MenuEditor from './MenuEditor.tsx';
@@ -1298,12 +1299,8 @@ if __name__ == "__main__":
 
   return (
     <div className="max-w-7xl mx-auto pb-12 px-4 md:px-8">
-      <div className="flex items-center gap-3 py-6 md:py-8">
-         <SettingsIcon className="text-gray-900 dark:text-white" size={32} />
-         <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Admin Portal</h1>
-            <p className="text-secondary dark:text-gray-400 text-sm">System Configuration</p>
-         </div>
+      <div className="py-6 md:py-8">
+        <PageHeader title="Admin Portal" subtitle="System Configuration" />
       </div>
 
       <div ref={sentinelRef} className="h-px w-full pointer-events-none absolute" />

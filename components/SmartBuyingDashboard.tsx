@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { calculateBuyingPlan, ItemContext, AllocatedItem } from '../utils/shortSupplyEngine.ts';
 import { azureDbService, ShortSupplyRow, StarMetric } from '../services/azureDbService.ts';
 import { BC_ACTIVE_SITES, BcSiteCode } from '../services/bundleConnectSyncService.ts';
+import PageHeader from './PageHeader';
 import {
     DollarSign, BarChart3, Package, TrendingUp, Save, Clock,
     RefreshCw, Database, Upload, History, AlertCircle, CheckCircle2
@@ -306,13 +307,10 @@ export default function SmartBuyingDashboard() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
-                        Smart Buying
-                        {v2Enabled && (
-                            <span className="text-xs font-bold bg-[var(--color-tranquil,#129DC0)] text-white px-2 py-0.5 rounded-full">v2</span>
-                        )}
-                    </h1>
-                    <p className="text-gray-500 dark:text-slate-400 mt-1">Predictive procurement based on short supply facts &amp; efficiency</p>
+                    <PageHeader
+                        title={v2Enabled ? 'Smart Buying v2' : 'Smart Buying'}
+                        subtitle="Predictive procurement based on short supply facts & efficiency"
+                    />
                 </div>
                 <div className="flex items-center gap-3">
                     {/* View toggle */}

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { supabase } from '../lib/supabaseClient.ts';
 import { BookOpen, Search, RefreshCw, AlertCircle, Package } from 'lucide-react';
+import PageHeader from './PageHeader';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -126,21 +127,12 @@ export default function ItemCatalogue() {
         <div className="flex flex-col h-full gap-6">
             {/* Header */}
             <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
-                        <BookOpen size={24} className="text-[var(--color-tranquil,#129DC0)]" />
-                        Item Catalogue
-                        {featureFlags?.goLiveEnabled
-                            ? <span className="text-xs font-bold bg-emerald-500 text-white px-2 py-0.5 rounded-full">Live</span>
-                            : <span className="text-xs font-bold bg-amber-400 text-white px-2 py-0.5 rounded-full">Preview</span>
-                        }
-                    </h1>
-                    <p className="text-gray-500 dark:text-slate-400 mt-1">
-                        {featureFlags?.goLiveEnabled
-                            ? 'All active items in the approved catalogue.'
-                            : 'Approved items from the item creation preview. Showing pre-go-live records.'}
-                    </p>
-                </div>
+                <PageHeader
+                    title={`Item Catalogue${featureFlags?.goLiveEnabled ? '' : ' (Preview)'}`}
+                    subtitle={featureFlags?.goLiveEnabled
+                        ? 'All active items in the approved catalogue.'
+                        : 'Approved items from the item creation preview. Showing pre-go-live records.'}
+                />
                 <button
                     onClick={loadItems}
                     disabled={isLoading}

@@ -5,6 +5,7 @@ import { itemCreationPreviewService } from '../services/itemCreationPreviewServi
 import { PreviewItemRequestBundle } from '../types.ts';
 import ItemApprovalReview from './ItemApprovalReview.tsx';
 import { ClipboardCheck, RefreshCw, Clock, AlertCircle, ChevronRight } from 'lucide-react';
+import PageHeader from './PageHeader';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -161,15 +162,10 @@ export default function ItemApprovalQueue() {
     return (
         <div className="flex flex-col h-full gap-6">
             <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
-                        <ClipboardCheck size={24} className="text-amber-500" />
-                        Item Approval Queue
-                    </h1>
-                    <p className="text-gray-500 dark:text-slate-400 mt-1">
-                        {queue.length} request{queue.length !== 1 ? 's' : ''} pending approval
-                    </p>
-                </div>
+                <PageHeader
+                    title="Item Approval Queue"
+                    subtitle={`${queue.length} request${queue.length !== 1 ? 's' : ''} pending approval`}
+                />
                 <button
                     onClick={loadQueue}
                     disabled={isLoading}

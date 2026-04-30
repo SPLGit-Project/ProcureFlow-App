@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Search, Calendar, Filter, FileText, ChevronDown, ChevronRight, CheckCircle2, DollarSign, Copy, MapPin, X } from 'lucide-react';
 import ContextHelp from './ContextHelp';
+import PageHeader from './PageHeader';
 
 const FinanceView = () => {
   const { pos, updateFinanceInfo } = useApp();
@@ -165,17 +166,13 @@ const FinanceView = () => {
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
-      <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Finance Review</h1>
-            <ContextHelp 
-                title="Finance & Capitalization" 
-                description="Learn how to match invoices and capitalise assets correctly." 
-                linkTarget="finance-capitalization"
-            />
-          </div>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Manage capitalization and invoices for received goods.</p>
-      </div>
+      <PageHeader
+        title="Finance Review"
+        subtitle="Manage capitalization and invoices for received goods."
+        helpTitle="Finance & Capitalization"
+        helpDescription="Learn how to match invoices and capitalise assets correctly."
+        helpLinkTarget="finance-capitalization"
+      />
 
       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
          {/* Filters */}

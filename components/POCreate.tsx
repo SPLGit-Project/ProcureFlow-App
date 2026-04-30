@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp.tsx';
+import PageHeader from './PageHeader';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 
@@ -560,15 +561,13 @@ const POCreate = () => {
       {/* Top Header */}
       <div className="shrink-0 flex justify-between items-start md:items-center">
         <div>
-            <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">New Request</h1>
-                <ContextHelp 
-                    title="Creating Requests" 
-                    description="Learn how to select suppliers, add items, and submit orders for approval." 
-                    linkTarget="creating-requests"
-                />
-            </div>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Build your order from supplier catalogs.</p>
+            <PageHeader
+              title="New Request"
+              subtitle="Build your order from supplier catalogs."
+              helpTitle="Creating Requests"
+              helpDescription="Learn how to select suppliers, add items, and submit orders for approval."
+              helpLinkTarget="creating-requests"
+            />
         </div>
       </div>
 
