@@ -7,7 +7,7 @@
 -- ─────────────────────────────────────────────────────
 INSERT INTO app_config (key, value, updated_at)
 VALUES
-  ('ui_revamp_enabled',      'false', NOW()),
+  ('ui_revamp_enabled',      'true',  NOW()),
   ('smart_buying_v2_enabled','false', NOW()),
   ('integrations_enabled',   'false', NOW())
 ON CONFLICT (key) DO NOTHING;

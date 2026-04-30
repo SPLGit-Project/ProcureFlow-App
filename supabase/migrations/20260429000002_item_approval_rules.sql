@@ -50,23 +50,6 @@ CREATE POLICY "item_approval_rules_read" ON item_approval_rules
 
 CREATE POLICY "item_approval_rules_write" ON item_approval_rules
     FOR ALL TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM user_roles ur
-            JOIN roles r ON r.id = ur.role_id
-            JOIN role_permissions rp ON rp.role_id = r.id
-            JOIN permissions p ON p.id = rp.permission_id
-            WHERE ur.user_id = auth.uid()
-              AND p.name IN ('manage_development', 'system_admin')
-        )
-    );
+    USING (public.is_admin() OR public.has_permission('manage_development'));
 
--- approve_item_requests permission (referenced in types.ts)
-INSERT INTO permissions (id, name, description, category)
-VALUES (
-    gen_random_uuid(),
-    'approve_item_requests',
-    'Review and approve or reject item creation requests',
-    'Item Creation'
-)
-ON CONFLICT (name) DO NOTHING;
+-- approve_item_requests permission is added to roles.permissions text array in phase0

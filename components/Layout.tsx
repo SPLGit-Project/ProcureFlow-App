@@ -227,12 +227,16 @@ const Layout = () => {
           >
             {/* Logo / app name */}
             <div
-              className={`pt-5 pb-4 shrink-0 flex items-center transition-all duration-300 ${isRevampExpanded ? 'px-4 gap-3' : 'justify-center'}`}
+              className={`pt-4 pb-3 shrink-0 flex items-center transition-all duration-300 ${isRevampExpanded ? 'px-2 gap-3' : 'px-2 justify-center'}`}
             >
               {branding.logoUrl ? (
-                <img src={branding.logoUrl} alt="Logo" className="w-8 h-8 object-contain rounded-lg shrink-0" />
+                <img
+                  src={branding.logoUrl}
+                  alt="Logo"
+                  className="w-12 h-12 object-contain rounded-xl shrink-0"
+                />
               ) : (
-                <div className="w-9 h-9 rounded-xl bg-tranquil flex items-center justify-center font-bold text-white shadow-md text-sm shrink-0">
+                <div className="w-12 h-12 rounded-xl bg-tranquil flex items-center justify-center font-bold text-white shadow-md shadow-tranquil/30 text-[20px] leading-none shrink-0">
                   {branding.appName.charAt(0)}
                 </div>
               )}
@@ -391,18 +395,18 @@ const Layout = () => {
               {(() => {
                 const PageTitleIcon = currentNavItem?.icon ?? null;
                 return (
-                <header className="pointer-events-auto bg-white/90 dark:bg-[#1a1d27]/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center justify-between px-4">
-                  <div className="flex items-center gap-3 min-w-0">
+                <header className="pointer-events-auto bg-white/90 dark:bg-[#1f1718]/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center gap-3 px-4">
+                  {/* Left: page identity */}
+                  <div className="flex items-center gap-3 min-w-0 shrink-0">
                     <button
                       onClick={() => setIsMobileMenuOpen(true)}
                       className="md:hidden p-2 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"
                     >
                       <Menu size={20} />
                     </button>
-                    {/* Page icon */}
                     {PageTitleIcon && (
-                      <div className="shrink-0 w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-                        <PageTitleIcon size={16} className="text-tranquil" />
+                      <div className="shrink-0 w-8 h-8 rounded-xl bg-tranquil flex items-center justify-center shadow-sm shadow-tranquil/30">
+                        <PageTitleIcon size={16} className="text-white" />
                       </div>
                     )}
                     <div className="min-w-0">
@@ -420,18 +424,21 @@ const Layout = () => {
                         <span className="text-xs text-secondary dark:text-slate-400 truncate block leading-tight">{pageMeta.subtitle}</span>
                       )}
                     </div>
-                    </div>
-                  <div className="flex items-center gap-2">
+                  </div>
+                  {/* Center: admin tab bar portaled here by Settings when on /settings */}
+                  <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0" />
+                  {/* Right: actions */}
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => setIsTaskDrawerOpen(true)}
-                      className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
+                      className="relative bg-tranquil text-white p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
                       title="Task Center"
                     >
                       <TaskIcon size={19} />
-                      <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#1a1d27] animate-pulse" />
+                      <span className="absolute top-1 right-1 w-2 h-2 bg-red-400 rounded-full border-2 border-tranquil animate-pulse" />
                     </button>
                     <button
-                      className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
+                      className="bg-tranquil text-white p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
                       title="Notifications"
                     >
                       <Bell size={19} />

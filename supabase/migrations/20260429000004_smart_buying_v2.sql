@@ -39,9 +39,11 @@ create table if not exists ref_short_supply_item_properties (
     item_group           text,
     is_active            boolean not null default true,
     updated_at           timestamptz not null default now(),
-    updated_by           uuid references auth.users(id),
-    unique (stk_key, coalesce(site_code, ''))
+    updated_by           uuid references auth.users(id)
 );
+
+create unique index if not exists ref_ss_props_stk_site_idx
+    on ref_short_supply_item_properties (stk_key, coalesce(site_code, ''));
 
 create index if not exists ref_ss_props_stk_key_idx
     on ref_short_supply_item_properties (stk_key);
@@ -73,15 +75,7 @@ alter table ref_short_supply_pricing enable row level security;
 -- Helper: check manage_development or system_admin permission
 create or replace function has_smart_buying_access()
 returns boolean language sql security definer stable as $$
-    select exists (
-        select 1
-        from user_roles ur
-        join roles r on ur.role_id = r.id
-        join role_permissions rp on r.id = rp.role_id
-        join permissions p on rp.permission_id = p.id
-        where ur.user_id = auth.uid()
-          and p.name in ('manage_development', 'system_admin')
-    )
+    select public.is_admin() or public.has_permission('manage_development')
 $$;
 
 create policy "sb_plans_select" on short_supply_plans

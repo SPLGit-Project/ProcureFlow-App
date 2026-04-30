@@ -100,11 +100,7 @@ CREATE POLICY "bc_sync_jobs_read"    ON bundle_connect_sync_jobs        FOR SELE
 CREATE POLICY "bc_sync_lag_read"     ON bundle_connect_replica_lag      FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY "bc_sync_admin_write" ON bundle_connect_sync_config FOR ALL TO authenticated
-    USING (EXISTS (
-        SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
-        JOIN role_permissions rp ON rp.role_id = r.id JOIN permissions p ON p.id = rp.permission_id
-        WHERE ur.user_id = auth.uid() AND p.name IN ('manage_development', 'system_admin', 'manage_settings')
-    ));
+    USING (public.is_admin() OR public.has_permission('manage_development') OR public.has_permission('manage_settings'));
 
 CREATE POLICY "bc_sync_jobs_write" ON bundle_connect_sync_jobs FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "bc_sync_lag_write"  ON bundle_connect_replica_lag FOR INSERT TO authenticated WITH CHECK (true);

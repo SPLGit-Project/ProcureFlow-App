@@ -7,28 +7,14 @@ DROP POLICY IF EXISTS "preview_requests_select" ON preview_item_requests;
 CREATE POLICY "preview_requests_select" ON preview_item_requests
     FOR SELECT TO authenticated USING (
         created_by = auth.uid()
-        OR exists (
-            SELECT 1 FROM user_roles ur
-            JOIN roles r ON ur.role_id = r.id
-            JOIN role_permissions rp ON r.id = rp.role_id
-            JOIN permissions p ON rp.permission_id = p.id
-            WHERE ur.user_id = auth.uid()
-              AND p.name IN ('approve_item_requests', 'manage_development', 'system_admin')
-        )
+        OR public.has_permission('approve_item_requests') OR public.has_permission('manage_development') OR public.is_admin()
     );
 
 -- ── 2. Preview approval instances — restrict insert ───────────────────────────
 DROP POLICY IF EXISTS "preview_approval_instances_insert" ON preview_item_approval_instances;
 CREATE POLICY "preview_approval_instances_insert" ON preview_item_approval_instances
     FOR INSERT TO authenticated WITH CHECK (
-        exists (
-            SELECT 1 FROM user_roles ur
-            JOIN roles r ON ur.role_id = r.id
-            JOIN role_permissions rp ON r.id = rp.role_id
-            JOIN permissions p ON rp.permission_id = p.id
-            WHERE ur.user_id = auth.uid()
-              AND p.name IN ('approve_item_requests', 'manage_development', 'system_admin')
-        )
+        public.has_permission('approve_item_requests') OR public.has_permission('manage_development') OR public.is_admin()
     );
 
 -- ── 3. Approved items view ────────────────────────────────────────────────────

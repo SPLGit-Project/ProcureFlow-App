@@ -61,32 +61,47 @@
 }
 
 .dark {
-  /* Dark Mode - Enhanced Depth */
-  --bg-primary: #15171e;           /* Main background */
-  --bg-secondary: #1e2029;         /* Tiles and cards */
-  --bg-tertiary: #252831;          /* Nested elements */
-  --bg-elevated: #2b2d3b;          /* Elevated/important cards */
-  
-  --border-subtle: #2b2d3b;
-  --border-default: #363945;
-  --border-strong: #4a4d5e;
-  
+  /* Dark Mode - Warm Nocturne Palette */
+  --bg-primary: #191213;           /* Main background — warm maroon-black */
+  --bg-secondary: #211a1b;         /* Tiles and cards */
+  --bg-tertiary: #251e1f;          /* Nested elements */
+  --bg-elevated: #302829;          /* Elevated/important cards */
+
+  --border-subtle: rgba(255,255,255,0.05);
+  --border-default: rgba(255,255,255,0.08);
+  --border-strong: rgba(255,255,255,0.15);
+
   /* Elevation System - Dark Mode (stronger shadows) */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 8px 10px -6px rgb(0 0 0 / 0.6);
-  
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.6), 0 4px 6px -4px rgb(0 0 0 / 0.6);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.7), 0 8px 10px -6px rgb(0 0 0 / 0.7);
+
   --elevation-0: var(--shadow-sm);
   --elevation-1: var(--shadow-md);
   --elevation-2: var(--shadow-lg);
   --elevation-3: var(--shadow-xl);
-  
-  /* Text Colors */
-  --text-primary: #f8f9fa;
-  --text-secondary: #adb5bd;
-  --text-tertiary: #6c757d;
+
+  /* Text Colors — warm off-white tones */
+  --text-primary: #eedfe0;
+  --text-secondary: #d1c3c4;
+  --text-tertiary: #9a8e8f;
 }
+
+/* ============================================
+   DARK MODE — Remap hardcoded cool-gray values
+   to the warm nocturne palette without touching
+   individual component files.
+   ============================================ */
+.dark .dark\:bg-\[\#15171e\]  { background-color: #191213 !important; }
+.dark .dark\:bg-\[\#1e2029\]  { background-color: #211a1b !important; }
+.dark .dark\:bg-\[\#1a1d27\]  { background-color: #1f1718 !important; }
+.dark .dark\:bg-\[\#252831\]  { background-color: #251e1f !important; }
+.dark .dark\:bg-\[\#2b2d3b\]  { background-color: #302829 !important; }
+.dark .dark\:border-gray-800  { border-color: rgba(255,255,255,0.08) !important; }
+.dark .dark\:border-gray-700  { border-color: rgba(255,255,255,0.12) !important; }
+.dark .dark\:text-gray-400    { color: #d1c3c4 !important; }
+.dark .dark\:text-gray-500    { color: #9a8e8f !important; }
 
 /* ============================================
    UTILITY CLASSES
@@ -192,9 +207,9 @@
 
 /* Dark Mode Input Styles */
 .dark .input-field {
-  background-color: #15171e;
-  border-color: #374151;
-  color: #ffffff !important;
+  background-color: #191213;
+  border-color: rgba(255,255,255,0.12);
+  color: #eedfe0 !important;
 }
 
 .dark .input-field::placeholder {
@@ -215,7 +230,7 @@ select.input-field {
 .dark input.input-field,
 .dark textarea.input-field,
 .dark select.input-field {
-  color: #ffffff !important;
+  color: #eedfe0 !important;
 }
 @keyframes fade-in {
   from { opacity: 0; }
