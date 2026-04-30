@@ -1,6 +1,5 @@
 // deno-lint-ignore-file no-unused-vars no-explicit-any
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
 import AvatarPicker from './AvatarPicker.tsx';
@@ -124,11 +123,8 @@ const Settings = () => {
     archiveItem, getAuditLogs,
     // Catalog Management
     attributeOptions, upsertAttributeOption, deleteAttributeOption,
-    activeSiteIds,
-    featureFlags
+    activeSiteIds
   } = useApp();
-
-  const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
 
 
     const handleWizardSave = async (itemData: Partial<Item>) => {
@@ -195,13 +191,6 @@ const Settings = () => {
      };
   }, []);
   
-  // Find Layout's header slot for the admin tab bar portal (revamp mode only)
-  const [adminTabSlot, setAdminTabSlot] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    const slot = document.getElementById('admin-tab-slot');
-    if (slot) setAdminTabSlot(slot);
-  }, []);
-
   // --- Security: Permission-based Guard ---
   useEffect(() => {
       if (activeTab === 'PROFILE') return;
@@ -1310,78 +1299,44 @@ if __name__ == "__main__":
 
   return (
     <div className="max-w-7xl mx-auto pb-12 px-4 md:px-8">
-      {/* Page header — only shown in classic mode; revamp header handles title */}
-      {!uiRevamp && (
-        <div className="py-6 md:py-8">
-          <PageHeader title="Admin Portal" subtitle="System Configuration" />
-        </div>
-      )}
-      {uiRevamp && <PageHeader title="Admin Portal" subtitle="System Configuration" />}
+      <div className="py-6 md:py-8">
+        <PageHeader title="Admin Portal" subtitle="System Configuration" />
+      </div>
 
-      {/* Sticky tab bar — only in classic mode; revamp portals it to the floating header */}
-      {!uiRevamp && (
-        <>
-          <div ref={sentinelRef} className="h-px w-full pointer-events-none absolute" />
-          <div className={`sticky top-[-1px] z-30 transition-all duration-300 ${isStuck ? '-mx-4 sm:-mx-4 md:-mx-8 px-4 sm:px-4 md:px-8 bg-white/95 dark:bg-[#15171e]/95 border-b border-gray-200 dark:border-gray-800 shadow-md py-3' : '-mx-4 px-4 md:mx-0 md:px-0 pt-2 pb-2'}`}>
-            <div className={`transition-all duration-300 ${isStuck ? 'rounded-none border-0 bg-transparent p-0 shadow-none backdrop-blur-none max-w-7xl mx-auto' : 'rounded-2xl border border-gray-200/80 bg-white/75 p-2 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-[#15171e]/90'}`}>
+      <div ref={sentinelRef} className="h-px w-full pointer-events-none absolute" />
+      <div className={`sticky top-[-1px] z-30 transition-all duration-300 ${isStuck ? '-mx-4 sm:-mx-4 md:-mx-8 px-4 sm:px-4 md:px-8 bg-white/95 dark:bg-[#15171e]/95 border-b border-gray-200 dark:border-gray-800 shadow-md py-3' : '-mx-4 px-4 md:mx-0 md:px-0 pt-2 pb-2'}`}>
+          <div className={`transition-all duration-300 ${isStuck ? 'rounded-none border-0 bg-transparent p-0 shadow-none backdrop-blur-none max-w-7xl mx-auto' : 'rounded-2xl border border-gray-200/80 bg-white/75 p-2 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-[#15171e]/90'}`}>
               <div className="flex items-center gap-2 overflow-x-auto">
-                {visibleTabs.map(tab => {
-                  const isActive = activeTab === tab.id;
-                  const TabIcon = tab.icon;
-                  return (
-                    <button type="button"
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      aria-current={isActive ? 'page' : undefined}
-                      aria-label={tab.label}
-                      title={tab.label}
-                      className={`group flex h-10 shrink-0 items-center rounded-full border transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/40 ${
-                        isActive
-                          ? 'bg-[var(--color-brand)]/10 border-[var(--color-brand)]/30 text-[var(--color-brand)] pl-3 pr-4 shadow-sm'
-                          : 'border-transparent pl-3 pr-3 text-secondary hover:bg-gray-100 hover:text-primary dark:text-gray-500 dark:hover:bg-white/5 dark:hover:text-gray-200'
-                      }`}
-                    >
-                      <TabIcon size={16} className={`transition-transform duration-300 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`} />
-                      <span className={`overflow-hidden whitespace-nowrap text-sm font-semibold transition-all duration-300 ${
-                        isActive ? 'ml-2 max-w-[11rem] opacity-100' : 'ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[11rem] group-hover:opacity-100'
-                      }`}>
-                        {tab.label}
-                      </span>
-                    </button>
-                  );
-                })}
+                  {visibleTabs.map(tab => {
+                      const isActive = activeTab === tab.id;
+                      const TabIcon = tab.icon;
+                      return (
+                          <button type="button"
+                              key={tab.id}
+                              onClick={() => setActiveTab(tab.id)}
+                              aria-current={isActive ? 'page' : undefined}
+                              aria-label={tab.label}
+                              title={tab.label}
+                              className={`group flex h-10 shrink-0 items-center rounded-full border transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/40 ${
+                                  isActive
+                                      ? 'bg-[var(--color-brand)]/10 border-[var(--color-brand)]/30 text-[var(--color-brand)] pl-3 pr-4 shadow-sm'
+                                      : 'border-transparent pl-3 pr-3 text-secondary hover:bg-gray-100 hover:text-primary dark:text-gray-500 dark:hover:bg-white/5 dark:hover:text-gray-200'
+                              }`}
+                          >
+                              <TabIcon size={16} className={`transition-transform duration-300 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`} />
+                              <span
+                                  className={`overflow-hidden whitespace-nowrap text-sm font-semibold transition-all duration-300 ${
+                                      isActive ? 'ml-2 max-w-[11rem] opacity-100' : 'ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[11rem] group-hover:opacity-100'
+                                  }`}
+                              >
+                                  {tab.label}
+                              </span>
+                          </button>
+                      );
+                  })}
               </div>
-            </div>
           </div>
-        </>
-      )}
-
-      {/* Revamp mode: portal the tab bar into the floating header's center slot */}
-      {uiRevamp && adminTabSlot && createPortal(
-        <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide py-0.5">
-          {visibleTabs.map(tab => {
-            const isActive = activeTab === tab.id;
-            const TabIcon = tab.icon;
-            return (
-              <button
-                type="button"
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                title={tab.label}
-                className={`flex items-center rounded-xl transition-all duration-150 h-9 shrink-0 ${
-                  isActive
-                    ? 'bg-tranquil text-white shadow-md shadow-tranquil/30 px-3 gap-2'
-                    : 'text-secondary dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-primary dark:hover:text-white p-2.5'
-                }`}
-              >
-                <TabIcon size={16} className="shrink-0" />
-                {isActive && <span className="text-xs font-semibold whitespace-nowrap">{tab.label}</span>}
-              </button>
-            );
-          })}
-        </div>,
-        adminTabSlot
-      )}
+      </div>
 
       <div className="mt-6">
 

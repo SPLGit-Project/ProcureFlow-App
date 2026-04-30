@@ -33,15 +33,10 @@
         theme: {
           extend: {
             colors: {
-              primary:  '#191213',
+              primary: '#15171e',
               nocturne: '#120a0b',
               cotton:   '#E4E1DC',
               tranquil: '#129DC0',
-              /* Warm dark surface scale */
-              'surface-dim': '#191213',
-              'surface-low': '#211a1b',
-              'surface-mid': '#251e1f',
-              'surface-high':'#302829',
             },
             fontFamily: {
               sans: ['var(--font-family)', 'sans-serif'],
@@ -99,16 +94,16 @@
     border-radius: 4px;
   }
   .dark ::-webkit-scrollbar-track {
-    background: #191213;
+    background: #15171e;
   }
   .dark ::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.10);
+    background: #2b2d3b;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: #94a3b8; 
   }
   .dark ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255,255,255,0.20);
+    background: #3e4152;
   }
 
   /* Utility to hide scrollbar but allow scrolling */
@@ -127,7 +122,7 @@
 </style>
 <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-gray-50 dark:bg-[#191213] text-slate-700 dark:text-[#eedfe0] antialiased transition-colors duration-200">
+  <body class="bg-gray-50 dark:bg-[#15171e] text-slate-700 dark:text-slate-200 antialiased transition-colors duration-200">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

@@ -821,12 +821,12 @@ const PODetail = () => {
                    </button>
                )}
               {canLinkConcurRequest && (
-                    <button disabled={isSubmitting} type="button" onClick={() => setIsConcurRequestModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-tranquil text-white rounded-xl hover:bg-[#0f87a8] flex items-center gap-2 shadow-lg shadow-tranquil/20 animate-pulse font-medium disabled:opacity-50 disabled:animate-none">
+                    <button disabled={isSubmitting} type="button" onClick={() => setIsConcurRequestModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium disabled:opacity-50 disabled:animate-none">
                        <LinkIcon size={18} /> Enter Request #
                     </button>
               )}
               {canLinkConcur && (
-                    <button disabled={isSubmitting} type="button" onClick={() => setIsConcurModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-tranquil text-white rounded-xl hover:bg-[#0f87a8] flex items-center gap-2 shadow-lg shadow-tranquil/20 animate-pulse font-medium disabled:opacity-50 disabled:animate-none">
+                    <button disabled={isSubmitting} type="button" onClick={() => setIsConcurModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium disabled:opacity-50 disabled:animate-none">
                        <LinkIcon size={18} /> Link Concur PO
                     </button>
               )}

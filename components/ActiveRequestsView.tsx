@@ -393,7 +393,7 @@ const ActiveRequestsView = () => {
                                         {po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? (
                                              <button 
                                                 onClick={() => handleOpenConcurRequestModal(po)}
-                                                className="px-3 py-1.5 bg-tranquil text-white text-xs font-bold rounded-lg hover:bg-[#0f87a8] transition-all shadow-sm flex items-center justify-center gap-1 w-full"
+                                                className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-sm flex items-center justify-center gap-1 w-full"
                                             >
                                                 <LinkIcon size={14} /> Enter Req #
                                             </button>
@@ -499,7 +499,7 @@ const ActiveRequestsView = () => {
                                                     event.stopPropagation();
                                                     handleOpenConcurRequestModal(po);
                                                 }}
-                                                className="w-full px-3 py-1.5 bg-tranquil text-white text-xs font-bold rounded-lg hover:bg-[#0f87a8] transition-all shadow-sm flex items-center justify-center gap-1"
+                                                className="w-full px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-sm flex items-center justify-center gap-1"
                                             >
                                                 <LinkIcon size={13} />
                                                 Link Req #

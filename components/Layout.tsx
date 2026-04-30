@@ -174,8 +174,8 @@ const Layout = () => {
   const sidebarBaseClass =
     'fixed inset-y-0 left-0 z-50 w-72 transform transition-all duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto flex flex-col border-r border-gray-200 dark:border-gray-800 backdrop-blur-xl';
 
-  let sidebarThemeClass = 'bg-white/95 dark:bg-[#211a1b]/95';
-  if (branding.sidebarTheme === 'dark') sidebarThemeClass = 'bg-[#211a1b] text-white border-r-0';
+  let sidebarThemeClass = 'bg-white/95 dark:bg-[#1e2029]/95';
+  if (branding.sidebarTheme === 'dark') sidebarThemeClass = 'bg-[#1e2029] text-white border-r-0';
   else if (branding.sidebarTheme === 'light') sidebarThemeClass = 'bg-white text-gray-800';
   else if (branding.sidebarTheme === 'brand') sidebarThemeClass = 'bg-[var(--color-brand)] text-white border-r-0';
 
@@ -227,16 +227,12 @@ const Layout = () => {
           >
             {/* Logo / app name */}
             <div
-              className={`pt-4 pb-3 shrink-0 flex items-center transition-all duration-300 ${isRevampExpanded ? 'px-2 gap-3' : 'px-2 justify-center'}`}
+              className={`pt-5 pb-4 shrink-0 flex items-center transition-all duration-300 ${isRevampExpanded ? 'px-4 gap-3' : 'justify-center'}`}
             >
               {branding.logoUrl ? (
-                <img
-                  src={branding.logoUrl}
-                  alt="Logo"
-                  className="w-12 h-12 object-contain rounded-xl shrink-0"
-                />
+                <img src={branding.logoUrl} alt="Logo" className="w-8 h-8 object-contain rounded-lg shrink-0" />
               ) : (
-                <div className="w-12 h-12 rounded-xl bg-tranquil flex items-center justify-center font-bold text-white shadow-md shadow-tranquil/30 text-[20px] leading-none shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-tranquil flex items-center justify-center font-bold text-white shadow-md text-sm shrink-0">
                   {branding.appName.charAt(0)}
                 </div>
               )}
@@ -395,18 +391,18 @@ const Layout = () => {
               {(() => {
                 const PageTitleIcon = currentNavItem?.icon ?? null;
                 return (
-                <header className="pointer-events-auto bg-white/90 dark:bg-[#1f1718]/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center gap-3 px-4">
-                  {/* Left: page identity */}
-                  <div className="flex items-center gap-3 min-w-0 shrink-0">
+                <header className="pointer-events-auto bg-white/90 dark:bg-[#1a1d27]/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center justify-between px-4">
+                  <div className="flex items-center gap-3 min-w-0">
                     <button
                       onClick={() => setIsMobileMenuOpen(true)}
                       className="md:hidden p-2 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"
                     >
                       <Menu size={20} />
                     </button>
+                    {/* Page icon */}
                     {PageTitleIcon && (
-                      <div className="shrink-0 w-8 h-8 rounded-xl bg-tranquil flex items-center justify-center shadow-sm shadow-tranquil/30">
-                        <PageTitleIcon size={16} className="text-white" />
+                      <div className="shrink-0 w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+                        <PageTitleIcon size={16} className="text-tranquil" />
                       </div>
                     )}
                     <div className="min-w-0">
@@ -424,21 +420,18 @@ const Layout = () => {
                         <span className="text-xs text-secondary dark:text-slate-400 truncate block leading-tight">{pageMeta.subtitle}</span>
                       )}
                     </div>
-                  </div>
-                  {/* Center: admin tab bar portaled here by Settings when on /settings */}
-                  <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0" />
-                  {/* Right: actions */}
-                  <div className="flex items-center gap-2 shrink-0">
+                    </div>
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => setIsTaskDrawerOpen(true)}
-                      className="relative bg-tranquil text-white p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
+                      className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
                       title="Task Center"
                     >
                       <TaskIcon size={19} />
-                      <span className="absolute top-1 right-1 w-2 h-2 bg-red-400 rounded-full border-2 border-tranquil animate-pulse" />
+                      <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#1a1d27] animate-pulse" />
                     </button>
                     <button
-                      className="bg-tranquil text-white p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
+                      className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
                       title="Notifications"
                     >
                       <Bell size={19} />
@@ -588,7 +581,7 @@ const Layout = () => {
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col h-[100dvh] overflow-hidden relative w-full">
-        <header className="bg-white/80 dark:bg-[#191213]/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 z-20 shrink-0 sticky top-0 transition-all">
+        <header className="bg-white/80 dark:bg-[#15171e]/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 z-20 shrink-0 sticky top-0 transition-all">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={() => setIsMobileMenuOpen(open => !open)}
@@ -614,7 +607,7 @@ const Layout = () => {
               title="Task Center"
             >
               <TaskIcon size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#191213] animate-pulse" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#15171e] animate-pulse" />
             </button>
 
             <button
