@@ -1011,7 +1011,7 @@ const ItemCreationPreview = () => {
                   <button type="button" disabled={isSaving} onClick={() => handleSave('Draft')} className="px-4 py-2 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-bold inline-flex items-center gap-2">
                     <Save size={16} /> Save Draft
                   </button>
-                  <button type="button" disabled={isSaving} onClick={handleDuplicateCheck} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold inline-flex items-center gap-2">
+                  <button type="button" disabled={isSaving} onClick={handleDuplicateCheck} className="px-4 py-2 rounded-lg bg-[var(--color-tranquil,#129DC0)] text-white text-sm font-bold inline-flex items-center gap-2">
                     <Search size={16} /> Duplicate Check
                   </button>
                   <button type="button" disabled={isSaving} onClick={handleSubmit} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold inline-flex items-center gap-2">

@@ -21,7 +21,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   const { featureFlags } = useApp();
   const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
 
-  useSetPageMeta(uiRevamp ? { subtitle } : {});
+  useSetPageMeta(uiRevamp ? { subtitle, helpTitle, helpDescription, helpLinkTarget } : {});
 
   if (uiRevamp) return null;
 

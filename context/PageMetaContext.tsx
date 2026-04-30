@@ -2,6 +2,9 @@ import React from 'react';
 
 export interface PageMeta {
   subtitle?: string;
+  helpTitle?: string;
+  helpDescription?: string;
+  helpLinkTarget?: string;
 }
 
 const PageMetaContext = React.createContext<{
@@ -12,7 +15,7 @@ export default PageMetaContext;
 
 export const useSetPageMeta = (meta: PageMeta) => {
   const { setMeta } = React.useContext(PageMetaContext);
-  const key = `${meta.subtitle ?? ''}`;
+  const key = `${meta.subtitle ?? ''}|${meta.helpTitle ?? ''}|${meta.helpLinkTarget ?? ''}`;
   React.useEffect(() => {
     setMeta(meta);
     return () => setMeta({});

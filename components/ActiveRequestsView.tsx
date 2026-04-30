@@ -549,7 +549,7 @@ const ActiveRequestsView = () => {
                             />
                             <div className="flex justify-end gap-3">
                                 <button type="button" onClick={() => setIsConcurRequestModalOpen(false)} className="px-4 py-2 text-gray-500 font-bold hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg">Cancel</button>
-                                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-opacity-90">Link Request</button>
+                                <button type="submit" className="px-4 py-2 bg-[var(--color-tranquil,#129DC0)] text-white font-bold rounded-lg hover:bg-opacity-90">Link Request</button>
                             </div>
                         </form>
                      </div>

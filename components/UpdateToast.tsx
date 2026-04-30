@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { RefreshCw, X, Download, CheckCircle, Sparkles } from 'lucide-react';
+import { RefreshCw, X, Download, Zap } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
 import {
@@ -190,9 +190,9 @@ export default function UpdateToast() {
 
   const getIcon = () => {
     if (isUpdating) {
-      return <RefreshCw size={20} className="animate-spin text-blue-500" />;
+      return <RefreshCw size={18} className="animate-spin text-[#129DC0]" />;
     }
-    return <Sparkles size={20} className="text-blue-500" />;
+    return <Zap size={18} className="text-[#129DC0]" />;
   };
 
   return (
@@ -204,26 +204,17 @@ export default function UpdateToast() {
       role="alert"
       aria-live="polite"
     >
-      <div 
-        className={`
-          rounded-xl overflow-hidden shadow-2xl border
-          ${isDark 
-            ? 'bg-[#1e2029] border-gray-700/50' 
-            : 'bg-white border-gray-200'
-          }
-        `}
+      <div
+        className={`rounded-2xl overflow-hidden shadow-2xl border ${isDark ? 'bg-[#1a1d27] border-white/10' : 'bg-white border-gray-200'}`}
       >
         {/* Progress Bar */}
-        <div className="h-1 bg-gray-200 dark:bg-gray-700 relative overflow-hidden">
-          <div 
-            className={`
-              h-full bg-gradient-to-r from-blue-500 to-purple-500
-              transition-all duration-500 ease-out
-            `}
+        <div className="h-1 bg-gray-200 dark:bg-white/10 relative overflow-hidden">
+          <div
+            className="h-full bg-[#129DC0] transition-all duration-500 ease-out"
             style={{ width: isUpdating ? `${progress}%` : '0%' }}
           />
           {state === 'available' && (
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 animate-pulse" />
+            <div className="absolute inset-0 bg-[#129DC0]/30 animate-pulse" />
           )}
         </div>
 
@@ -231,10 +222,7 @@ export default function UpdateToast() {
         <div className="p-4">
           <div className="flex items-start gap-3">
             {/* Icon */}
-            <div className={`
-              p-2 rounded-lg shrink-0
-              ${isDark ? 'bg-blue-500/20' : 'bg-blue-50'}
-            `}>
+            <div className="p-2 rounded-xl shrink-0 bg-[#129DC0]/15">
               {getIcon()}
             </div>
 
@@ -263,15 +251,7 @@ export default function UpdateToast() {
                 <div className="flex gap-2">
                   <button
                     onClick={performUpdate}
-                    className={`
-                      flex-1 flex items-center justify-center gap-2
-                      px-4 py-2 rounded-lg text-sm font-bold
-                      bg-gradient-to-r from-blue-500 to-blue-600
-                      text-white shadow-sm
-                      hover:from-blue-600 hover:to-blue-700
-                      transition-all duration-200
-                      focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-                    `}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-[#129DC0] text-white shadow-sm hover:bg-[#0f87a8] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#129DC0] focus:ring-offset-2"
                   >
                     <Download size={14} />
                     Update Now
@@ -300,7 +280,7 @@ export default function UpdateToast() {
                 `}>
                   <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                     <div 
-                      className="h-full bg-blue-500 transition-all duration-300 rounded-full"
+                      className="h-full bg-[#129DC0] transition-all duration-300 rounded-full"
                       style={{ width: `${progress}%` }}
                     />
                   </div>

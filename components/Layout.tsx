@@ -29,6 +29,7 @@ import {
   X
 } from 'lucide-react';
 import { DEFAULT_NAV_ITEMS } from '../constants/navigation';
+import ContextHelp from './ContextHelp';
 import PwaInstaller from './PwaInstaller';
 import UpdateToast from './UpdateToast';
 import VersionBadge from './VersionBadge';
@@ -152,9 +153,13 @@ const Layout = () => {
       });
   }, [branding.menuConfig, hasPermission]);
 
+  const currentNavItem = React.useMemo(
+    () => navItems.find(item => item.path === location.pathname),
+    [navItems, location.pathname]
+  );
+
   const pageTitle = React.useMemo(() => {
-    const directMatch = navItems.find(item => item.path === location.pathname);
-    if (directMatch) return directMatch.label;
+    if (currentNavItem) return currentNavItem.label;
     if (location.pathname.startsWith('/requests/')) return 'Request Details';
     const fallback = location.pathname
       .split('/')
@@ -162,7 +167,7 @@ const Layout = () => {
       .map(segment => toTitleCase(segment))
       .join(' / ');
     return fallback || 'Dashboard';
-  }, [location.pathname, navItems]);
+  }, [location.pathname, currentNavItem]);
 
   const isSidebarDark = branding.sidebarTheme === 'brand' || branding.sidebarTheme === 'dark';
   const sidebarWidthClass = isSidebarCollapsed ? 'md:w-20' : 'md:w-72';
@@ -197,7 +202,12 @@ const Layout = () => {
       <PageMetaContext.Provider value={{ setMeta: setPageMeta }}>
         <div
           className="flex h-[100dvh] bg-app text-secondary dark:text-slate-300 font-sans selection:bg-tranquil selection:text-white transition-colors duration-200"
-          style={{ fontFamily: 'var(--font-family)' }}
+          style={{
+            fontFamily: 'var(--font-family)',
+            // Override brand color with tranquil teal for all var(--color-brand) usages in revamp mode
+            '--color-brand': '#129DC0',
+            '--color-brand-rgb': '18,157,192',
+          } as React.CSSProperties}
         >
           <PwaInstaller />
           <UpdateToast />
@@ -378,38 +388,58 @@ const Layout = () => {
           >
             {/* Floating top header */}
             <div className="sticky top-0 z-20 shrink-0 px-4 pt-4 pointer-events-none">
-              <header className="pointer-events-auto bg-white/90 dark:bg-[#1a1d27]/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center justify-between px-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <button
-                    onClick={() => setIsMobileMenuOpen(true)}
-                    className="md:hidden p-2 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"
-                  >
-                    <Menu size={20} />
-                  </button>
-                  <div className="min-w-0">
-                    <span className="text-sm font-bold text-gray-900 dark:text-white truncate block leading-tight">{pageTitle}</span>
-                    {pageMeta.subtitle && (
-                      <span className="text-xs text-secondary dark:text-slate-400 truncate block leading-tight">{pageMeta.subtitle}</span>
+              {(() => {
+                const PageTitleIcon = currentNavItem?.icon ?? null;
+                return (
+                <header className="pointer-events-auto bg-white/90 dark:bg-[#1a1d27]/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center justify-between px-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      onClick={() => setIsMobileMenuOpen(true)}
+                      className="md:hidden p-2 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"
+                    >
+                      <Menu size={20} />
+                    </button>
+                    {/* Page icon */}
+                    {PageTitleIcon && (
+                      <div className="shrink-0 w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+                        <PageTitleIcon size={16} className="text-tranquil" />
+                      </div>
                     )}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">{pageTitle}</span>
+                        {pageMeta.helpTitle && pageMeta.helpDescription && pageMeta.helpLinkTarget && (
+                          <ContextHelp
+                            title={pageMeta.helpTitle}
+                            description={pageMeta.helpDescription}
+                            linkTarget={pageMeta.helpLinkTarget}
+                          />
+                        )}
+                      </div>
+                      {pageMeta.subtitle && (
+                        <span className="text-xs text-secondary dark:text-slate-400 truncate block leading-tight">{pageMeta.subtitle}</span>
+                      )}
+                    </div>
+                    </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsTaskDrawerOpen(true)}
+                      className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
+                      title="Task Center"
+                    >
+                      <TaskIcon size={19} />
+                      <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#1a1d27] animate-pulse" />
+                    </button>
+                    <button
+                      className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
+                      title="Notifications"
+                    >
+                      <Bell size={19} />
+                    </button>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setIsTaskDrawerOpen(true)}
-                    className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
-                    title="Task Center"
-                  >
-                    <TaskIcon size={19} />
-                    <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#1a1d27] animate-pulse" />
-                  </button>
-                  <button
-                    className="relative p-2.5 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
-                    title="Notifications"
-                  >
-                    <Bell size={19} />
-                  </button>
-                </div>
-              </header>
+                </header>
+                );
+              })()}
             </div>
 
             <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 scroll-smooth pb-20 md:pb-8">
