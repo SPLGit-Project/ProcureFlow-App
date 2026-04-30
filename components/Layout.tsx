@@ -174,8 +174,8 @@ const Layout = () => {
   const sidebarBaseClass =
     'fixed inset-y-0 left-0 z-50 w-72 transform transition-all duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto flex flex-col border-r border-gray-200 dark:border-gray-800 backdrop-blur-xl';
 
-  let sidebarThemeClass = 'bg-white/95 dark:bg-[#1e2029]/95';
-  if (branding.sidebarTheme === 'dark') sidebarThemeClass = 'bg-[#1e2029] text-white border-r-0';
+  let sidebarThemeClass = 'bg-white/95 dark:bg-[#211a1b]/95';
+  if (branding.sidebarTheme === 'dark') sidebarThemeClass = 'bg-[#211a1b] text-white border-r-0';
   else if (branding.sidebarTheme === 'light') sidebarThemeClass = 'bg-white text-gray-800';
   else if (branding.sidebarTheme === 'brand') sidebarThemeClass = 'bg-[var(--color-brand)] text-white border-r-0';
 
@@ -588,7 +588,7 @@ const Layout = () => {
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col h-[100dvh] overflow-hidden relative w-full">
-        <header className="bg-white/80 dark:bg-[#15171e]/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 z-20 shrink-0 sticky top-0 transition-all">
+        <header className="bg-white/80 dark:bg-[#191213]/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 z-20 shrink-0 sticky top-0 transition-all">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={() => setIsMobileMenuOpen(open => !open)}
@@ -614,7 +614,7 @@ const Layout = () => {
               title="Task Center"
             >
               <TaskIcon size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#15171e] animate-pulse" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#191213] animate-pulse" />
             </button>
 
             <button
