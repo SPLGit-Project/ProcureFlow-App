@@ -247,11 +247,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [roles, setRoles] = useState<RoleDefinition[]>(() => qaMode ? [...MOCK_ROLES] : []);
 
   const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
-    previewEnabled: false,
+    previewEnabled: true,
     previewWriteBlock: true,
     goLiveEnabled: false,
-    uiRevampEnabled: false,
-    smartBuyingV2Enabled: false,
+    uiRevampEnabled: true,
+    smartBuyingV2Enabled: true,
     integrationsEnabled: false,
   };
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(DEFAULT_FEATURE_FLAGS);
@@ -470,6 +470,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setAvailability([]);
             setTeamsWebhookUrl('');
             setAttributeOptions([]);
+            setFeatureFlags(DEFAULT_FEATURE_FLAGS);
             if (!silent) setIsLoadingData(false);
             return;
         }
