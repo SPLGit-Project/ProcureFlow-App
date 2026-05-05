@@ -780,14 +780,14 @@ const PODetail = () => {
             </div>
             
             <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-               {(canEditRequest || canEditDeliveries) && (
+               {canEditRequest && (
                    !isEditing ? (
-                       <button type="button" onClick={handleStartEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors" title={canEditRequest ? "Edit request" : "Edit deliveries"}>
+                       <button type="button" onClick={handleStartEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors" title="Edit request">
                            <Edit2 size={18} />
                        </button>
                    ) : (
                        <>
-                       <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(canEditRequest ? handleSavePendingEdits : handleCancelEdit)} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm disabled:opacity-50" title={canEditRequest ? "Save changes" : "Finish editing"}>
+                       <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(handleSavePendingEdits)} className="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-colors shadow-sm disabled:opacity-50" title="Save changes">
                            <Save size={18} />
                        </button>
                        <button disabled={isSubmitting} type="button" onClick={handleCancelEdit} className="p-2.5 text-secondary hover:text-primary border border-gray-200 rounded-xl hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors disabled:opacity-50" title="Cancel edit">
@@ -876,7 +876,7 @@ const PODetail = () => {
                     <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-secondary"><User size={16}/></div>
                     <div className="w-full">
                         <p className="text-xs text-secondary uppercase font-bold">Customer</p>
-                        {isEditing ? (
+                        {isEditing && canEditRequest ? (
                             <input 
                                 className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
                                 value={headerEdits.clientName}
@@ -900,7 +900,7 @@ const PODetail = () => {
                     <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg"><LinkIcon size={16}/></div>
                     <div className="w-full">
                         <p className="text-xs text-secondary uppercase font-bold">Concur Request #</p>
-                        {isEditing ? (
+                        {isEditing && canEditRequest ? (
                             <input 
                                 className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
                                 value={headerEdits.concurRequestNumber}
