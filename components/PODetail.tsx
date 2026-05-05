@@ -80,9 +80,9 @@ const PODetail = () => {
     (currentUser.role === 'ADMIN' || (po.status === 'PENDING_APPROVAL' && currentUser.id === po.requesterId))
   );
 
-  const canDeletePendingRequest = Boolean(
+  const canDelete = Boolean(
     po &&
-    po.status === 'PENDING_APPROVAL' &&
+    ['DRAFT', 'PENDING_APPROVAL', 'REJECTED'].includes(po.status) &&
     currentUser &&
     (currentUser.id === po.requesterId || currentUser.role === 'ADMIN')
   );
@@ -724,7 +724,7 @@ const PODetail = () => {
 
   const handleDeletePO = async () => {
       if (!po) return;
-      if (!isAdmin && !canDeletePendingRequest) {
+      if (!isAdmin && !canDelete) {
           alert('Only the requester can delete while pending approval.');
           return;
       }
@@ -795,7 +795,7 @@ const PODetail = () => {
                        </>
                    )
                )}
-               {canDeletePendingRequest && !isEditing && (
+               {canDelete && !isEditing && (
                     <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(handleDeletePO)} className="p-2.5 text-red-600 hover:text-red-700 border border-red-200 rounded-xl hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:text-red-300 transition-colors disabled:opacity-50" title="Delete pending request">
                         <Trash2 size={18} />
                     </button>
