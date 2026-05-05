@@ -74,17 +74,18 @@ const PODetail = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _supplier = po ? suppliers.find(s => s.id === po.supplierId) : undefined;
 
+  const isAdmin = currentUser?.role === 'ADMIN';
+
   const canEditRequest = Boolean(
     po &&
     currentUser &&
-    (currentUser.role === 'ADMIN' || (po.status === 'PENDING_APPROVAL' && currentUser.id === po.requesterId))
+    (isAdmin || (po.status === 'PENDING_APPROVAL' && currentUser.id === po.requesterId))
   );
 
   const canDelete = Boolean(
     po &&
-    ['DRAFT', 'PENDING_APPROVAL', 'REJECTED'].includes(po.status) &&
     currentUser &&
-    (currentUser.id === po.requesterId || currentUser.role === 'ADMIN')
+    (isAdmin || (['DRAFT', 'PENDING_APPROVAL', 'REJECTED'].includes(po.status) && currentUser.id === po.requesterId))
   );
 
   useEffect(() => {
@@ -348,7 +349,7 @@ const PODetail = () => {
   const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR';
   const canReceive = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
   const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED');
-  const isAdmin = currentUser?.role === 'ADMIN';
+  // isAdmin is defined at the top of the component
   const canEditDeliveries = Boolean(
     po &&
     currentUser &&
@@ -505,7 +506,7 @@ const PODetail = () => {
 
 
   const handleStartEdit = () => {
-       if (!po || !canEditRequest) return;
+       if (!po || (!canEditRequest && !canEditDeliveries)) return;
         setHeaderEdits({
             clientName: po.customerName || '',
             reason: po.reasonForRequest || 'Depletion',
