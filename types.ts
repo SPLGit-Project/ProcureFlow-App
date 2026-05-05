@@ -27,15 +27,23 @@ export type PermissionId =
   | 'manage_settings'
   | 'manage_items'
   | 'manage_suppliers'
-  | 'manage_development';
+  | 'manage_development'
+  | 'manage_item_requests'
+  | 'manage_item_definition'
+  | 'manage_purchase_pricing'
+  | 'view_purchase_pricing'
+  | 'manage_sell_pricing'
+  | 'view_sell_pricing'
+  | 'override_margin_threshold'
+  | 'manage_pricing_schedules'
+  | 'publish_items';
 
 export interface FeatureFlags {
-  previewEnabled: boolean;
-  previewWriteBlock: boolean;
   goLiveEnabled: boolean;
   uiRevampEnabled: boolean;
   smartBuyingV2Enabled: boolean;
   integrationsEnabled: boolean;
+  approvedCatalogueEnforced: boolean;
 }
 
 export interface MarginThresholds {
@@ -211,6 +219,11 @@ export interface Item {
   cogCustomer?: string;
   minLevel?: number;
   maxLevel?: number;
+
+  // Governed Pricing & Workflow
+  workflowStatus?: string;
+  currentLandedCost?: number;
+  preferredSupplierId?: string;
 }
 
 export interface SupplierCatalogItem {
@@ -359,6 +372,10 @@ export interface POLineItem {
   // Concur Linkage
   concurPoNumber?: string; // The external PO number from Concur
   isForceClosed?: boolean; // If true, line is considered complete even if qty < ordered
+  
+  // Governed Pricing
+  sellPriceRecordId?: string; // Links to the specific item_sell_prices record used
+  priceAtOrderTime?: number; // Snapshot of the price at the time of order creation
 }
 
 export interface ApprovalEvent {
@@ -685,12 +702,6 @@ export interface PreviewItemRequestBundle {
     publicationEvents: PreviewPublicationEvent[];
 }
 
-export interface ItemCreationPreviewConfig {
-    previewEnabled: boolean;
-    previewWriteBlock: boolean;
-    goLiveEnabled: boolean;
-}
-
 // --- Simplified Workflow System Types ---
 
 export type WorkflowType = 'APPROVAL' | 'POST_APPROVAL' | 'POST_DELIVERY' | 'POST_CAPITALIZATION';
@@ -728,7 +739,8 @@ export interface InAppNotification {
     userId: string;
     title: string;
     message: string;
-    type: WorkflowType;
+    type: string;
+    relatedRequestId?: string;
     relatedPoId?: string;
     isRead: boolean;
     createdAt: string;
@@ -772,3 +784,137 @@ export interface WorkflowPreviewData {
 
 
 
+
+// ── Item Lifecycle Types ──────────────────────────────────────────────────────
+
+export type ItemWorkflowStatus =
+  | 'LEGACY' | 'DRAFT' | 'DATA_REVIEW' | 'PRICING_REVIEW'
+  | 'APPROVAL_PENDING' | 'APPROVED' | 'ACTIVE' | 'REPLACED' | 'RETIRED';
+
+export type ItemRequestStatus =
+  | 'DRAFT' | 'SUBMITTED' | 'DUPLICATE_REVIEW' | 'DATA_REVIEW'
+  | 'PRICING_REVIEW' | 'APPROVAL_PENDING' | 'REVISION_REQUIRED'
+  | 'APPROVED' | 'PUBLISHING' | 'PARTIALLY_PUBLISHED' | 'FULLY_PUBLISHED'
+  | 'ACTIVE' | 'REPLACED' | 'RETIRED' | 'REJECTED';
+
+export type ItemRequestType =
+  | 'PURCHASE_AND_SALE' | 'PURCHASE_ONLY' | 'SALE_ONLY' | 'COG'
+  | 'BUNDLE_LINENHUB_ONLY' | 'REPLACEMENT' | 'CUSTOMER_SPECIFIC' | 'SHARED_CATALOGUE';
+
+export type SellPriceType =
+  | 'STANDARD' | 'GROUP' | 'CUSTOMER_SPECIFIC' | 'CONTRACT' | 'PROMOTIONAL';
+
+export type PurchasePriceStatus =
+  | 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED_FUTURE' | 'ACTIVE' | 'SUPERSEDED' | 'EXPIRED' | 'REJECTED';
+
+export interface ItemRequest {
+  id: string;
+  request_number: string;
+  request_type: ItemRequestType;
+  status: ItemRequestStatus;
+  requestor_id: string;
+  department?: string;
+  business_unit?: string;
+  item_description: string;
+  business_reason: string;
+  required_activation_date?: string;
+  replacement_for_item_id?: string;
+  customer_reference?: string;
+  contract_reference?: string;
+  target_bundle: boolean;
+  target_linenhub: boolean;
+  target_salesforce: boolean;
+  target_sap: boolean;
+  resulting_item_id?: string;
+  revision_number: number;
+  revision_reason?: string;
+  is_urgent: boolean;
+  attachments: Array<{ name: string; url: string; uploaded_at: string }>;
+  submitted_at?: string;
+  approved_at?: string;
+  activated_at?: string;
+  created_at: string;
+  updated_at: string;
+  // Wizard & workflow fields (added in migration item_requests_wizard_columns)
+  wizard_draft?: Record<string, unknown>;
+  assigned_to?: string;
+  assigned_at?: string;
+  status_changed_at?: string;
+  status_changed_by?: string;
+  revision_requested_by?: string;
+}
+
+export interface ItemPurchasePrice {
+  id: string;
+  item_id: string;
+  supplier_id: string;
+  supplier_item_code?: string;
+  purchase_price_ex_gst: number;
+  currency: string;
+  purchase_uom: string;
+  pack_conversion_factor: number;
+  moq?: number;
+  lead_time_days?: number;
+  freight_handling_cost: number;
+  landed_cost: number;  // generated
+  is_preferred_supplier: boolean;
+  effective_from: string;
+  effective_to?: string;
+  status: PurchasePriceStatus;
+  notes?: string;
+  created_at: string;
+}
+
+export interface ItemSellPrice {
+  id: string;
+  item_id: string;
+  price_type: SellPriceType;
+  customer_id?: string;
+  customer_group_id?: string;
+  contract_id?: string;
+  sale_uom: string;
+  sell_price_ex_gst: number;
+  tax_code: string;
+  cost_basis: number;
+  margin_percent: number;  // generated
+  margin_amount: number;   // generated
+  requires_margin_approval: boolean;
+  publish_to_salesforce: boolean;
+  publish_to_bundle: boolean;
+  publish_to_linenhub: boolean;
+  effective_from: string;
+  effective_to?: string;
+  status: PurchasePriceStatus;
+  notes?: string;
+  created_at: string;
+}
+
+export interface PricingSchedule {
+  id: string;
+  schedule_number: string;
+  schedule_name: string;
+  basis: 'CPI' | 'MWA' | 'BUSINESS_DECISION';
+  basis_reference?: string;
+  justification?: string;
+  uplift_method: 'PERCENTAGE_INCREASE' | 'PERCENTAGE_DECREASE' | 'FIXED_AMOUNT_INCREASE' | 'FIXED_AMOUNT_DECREASE' | 'REPLACE_WITH_NEW_PRICE';
+  uplift_value: number;
+  price_type_filter?: string[];
+  item_category_filter?: string[];
+  new_effective_from: string;
+  rounding_rule: string;
+  minimum_margin_floor?: number;
+  status: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'SCHEDULED' | 'EXECUTING' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+  preview_item_count?: number;
+  preview_prices_to_create?: number;
+  preview_flagged_count?: number;
+  preview_sample?: any;
+  executed_at?: string;
+  executed_by?: string;
+  prices_created?: number;
+  execution_errors?: any;
+  created_by?: string;
+  approved_by?: string;
+  approved_at?: string;
+  created_at: string;
+  updated_at: string;
+}
