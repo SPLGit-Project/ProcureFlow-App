@@ -87,8 +87,8 @@ export default function PricingReviewQueue() {
                     </div>
                     <div>
                       <div className="flex items-center gap-3 mb-1">
-                        <span className="text-xs font-black text-[var(--color-brand)] uppercase tracking-widest">
-                          {request.request_number || `#${request.id.substring(0, 8)}`}
+                        <span className="text-xs font-mono text-gray-400 dark:text-gray-600">
+                          {request.id.substring(0, 8).toUpperCase()}
                         </span>
                         <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border bg-amber-50 text-amber-600 border-amber-100">
                           Pricing Review

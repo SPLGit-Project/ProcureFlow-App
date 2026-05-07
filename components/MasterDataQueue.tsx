@@ -126,11 +126,11 @@ const MasterDataQueue = () => {
             </div>
             <div>
               <div className="flex items-center gap-3 mb-1">
-                <span className="text-xs font-black text-[var(--color-brand)] uppercase tracking-widest">
-                  {request.request_number || `#${request.id.substring(0, 8)}`}
+                <span className="text-xs font-mono text-gray-400 dark:text-gray-600">
+                  {request.id.substring(0, 8).toUpperCase()}
                 </span>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${getSLAColor(request.created_at)}`}>
-                  {request.status.replace('_', ' ')}
+                  {request.status.replace(/_/g, ' ')}
                 </span>
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white line-clamp-1">
