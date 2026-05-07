@@ -73,6 +73,14 @@ const PRODUCT_TYPE_MAP: Record<string, string> = {
   uniform: 'UN',
   shirt: 'SR',
   scrub: 'SC',
+  // Table linen
+  tablecloth: 'TC', 'table cloth': 'TC',
+  'table napkin': 'TN', napkin: 'TN',
+  'table runner': 'TK',
+  // Pool / gym
+  'pool towel': 'PT', 'gym towel': 'GT',
+  // Duvet insert
+  'duvet insert': 'DI', 'duvet inner': 'DI', 'duvet insert / inner': 'DI',
   // Equipment
   hood: 'HD',
   bag: 'BG',
@@ -93,6 +101,7 @@ const SIZE_CODE_MAP: Record<string, string> = {
   twin: 'T',
   'king single': 'KS',
   'super king': 'SK',
+  standard: 'ST',
   // Generic sizes
   small: '01',
   medium: '02',

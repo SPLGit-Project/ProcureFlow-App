@@ -1,173 +1,409 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ShoppingCart, Tag, Star, Package, Layers, RefreshCw,
-  User, Globe, Check, CheckCircle2, ChevronRight, AlertTriangle,
-  Clock, FileText, Zap, Calendar, Building2, Users
+  ShoppingCart, Tag, Package, RefreshCw, User, Check, CheckCircle2,
+  AlertTriangle, Clock, FileText, Zap, Users, Search, AlertCircle,
+  Wifi, WifiOff, ChevronRight, Layers,
 } from 'lucide-react';
 import ItemRequestWizardShell, { WizardStep } from '../ItemRequestWizardShell';
-import { createItemRequest } from '../../services/itemRequestService';
+import { createItemRequest, searchExistingItems } from '../../services/itemRequestService';
+import { useApp } from '../../context/AppContext';
 import { transitionRequest } from '../../services/itemWorkflowService';
 import { ItemRequestType } from '../../types';
 import { ToastContainer, useToast } from '../ToastNotification';
+import { buildItemCode, SkuSegments } from '../../utils/itemNameGenerator';
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+// ── Steps ─────────────────────────────────────────────────────────────────────
 
 const STEPS: WizardStep[] = [
-  { id: 'type',    label: 'Item Type',       description: 'What kind of item is this?' },
-  { id: 'details', label: 'What You Need',   description: 'Describe what you need' },
-  { id: 'systems', label: 'Where It\'s Needed', description: 'Target systems and scope' },
-  { id: 'review',  label: 'Review & Submit', description: 'Confirm and send for review' },
-];
-
-interface TypeCard {
-  value: ItemRequestType;
-  label: string;
-  description: string;
-  icon: React.ElementType;
-  color: string;
-}
-
-const TYPE_CARDS: TypeCard[] = [
-  {
-    value: 'PURCHASE_AND_SALE',
-    label: 'Purchase & Sale',
-    description: 'Item bought from a supplier and sold to customers.',
-    icon: ShoppingCart,
-    color: 'text-blue-600 dark:text-blue-400',
-  },
-  {
-    value: 'PURCHASE_ONLY',
-    label: 'Purchase Only',
-    description: 'Item purchased internally — not listed for sale.',
-    icon: Package,
-    color: 'text-violet-600 dark:text-violet-400',
-  },
-  {
-    value: 'SALE_ONLY',
-    label: 'Sale Only',
-    description: 'Item sold to customers but not purchased via standard PO.',
-    icon: Tag,
-    color: 'text-emerald-600 dark:text-emerald-400',
-  },
-  {
-    value: 'COG',
-    label: 'COG',
-    description: 'Customer-owned goods managed and tracked on behalf of a client.',
-    icon: Users,
-    color: 'text-amber-600 dark:text-amber-400',
-  },
-  {
-    value: 'BUNDLE_LINENHUB_ONLY',
-    label: 'Bundle / LinenHub',
-    description: 'A kit or bundle item, or an item exclusive to the LinenHub platform.',
-    icon: Layers,
-    color: 'text-sky-600 dark:text-sky-400',
-  },
-  {
-    value: 'REPLACEMENT',
-    label: 'Replacement',
-    description: 'Replaces an existing item that is being retired or superseded.',
-    icon: RefreshCw,
-    color: 'text-rose-600 dark:text-rose-400',
-  },
-  {
-    value: 'CUSTOMER_SPECIFIC',
-    label: 'Customer-Specific',
-    description: 'Item created exclusively for a single customer or contract.',
-    icon: User,
-    color: 'text-indigo-600 dark:text-indigo-400',
-  },
-  {
-    value: 'SHARED_CATALOGUE',
-    label: 'Shared Catalogue',
-    description: 'Item shared across multiple customers from a common catalogue.',
-    icon: Globe,
-    color: 'text-teal-600 dark:text-teal-400',
-  },
+  { id: 'type',    label: 'Transaction Type',  description: 'What kind of transaction is this?' },
+  { id: 'code',    label: 'Build Item Code',   description: 'Define attributes and build the code' },
+  { id: 'context', label: 'Business Context',  description: 'Why is this item needed?' },
+  { id: 'review',  label: 'Review & Submit',   description: 'Confirm and send for review' },
 ];
 
 const URGENCY_SLA_HOURS: Record<ItemRequestType, number> = {
-  PURCHASE_AND_SALE: 48,
-  PURCHASE_ONLY: 48,
-  SALE_ONLY: 48,
-  COG: 72,
-  BUNDLE_LINENHUB_ONLY: 72,
-  REPLACEMENT: 24,
-  CUSTOMER_SPECIFIC: 72,
-  SHARED_CATALOGUE: 48,
+  PURCHASE_AND_SALE: 48, PURCHASE_ONLY: 48, SALE_ONLY: 48,
+  COG: 72, BUNDLE_LINENHUB_ONLY: 72, REPLACEMENT: 24,
+  CUSTOMER_SPECIFIC: 72, SHARED_CATALOGUE: 48,
 };
 
-// ── Step state shapes ──────────────────────────────────────────────────────────
+// ── Product type definitions ───────────────────────────────────────────────────
+
+interface ProductTypeDef {
+  label: string;
+  code: string;
+  group: string;
+  bedSizes: boolean;
+  bodySizes: boolean;
+  hasColour: boolean;
+  hasGSM: boolean;
+  hasDimensions: boolean;
+}
+
+const PRODUCT_TYPE_DEFS: ProductTypeDef[] = [
+  // Towelling
+  { label: 'Bath Towel',    code: 'BT', group: 'Towelling', bedSizes: false, bodySizes: true,  hasColour: true,  hasGSM: true,  hasDimensions: true  },
+  { label: 'Hand Towel',    code: 'HT', group: 'Towelling', bedSizes: false, bodySizes: false, hasColour: true,  hasGSM: true,  hasDimensions: true  },
+  { label: 'Face Washer',   code: 'FW', group: 'Towelling', bedSizes: false, bodySizes: false, hasColour: true,  hasGSM: true,  hasDimensions: true  },
+  { label: 'Bath Sheet',    code: 'BS', group: 'Towelling', bedSizes: false, bodySizes: false, hasColour: true,  hasGSM: true,  hasDimensions: true  },
+  { label: 'Bath Mat',      code: 'BM', group: 'Towelling', bedSizes: false, bodySizes: false, hasColour: true,  hasGSM: true,  hasDimensions: true  },
+  { label: 'Bath Robe',     code: 'RB', group: 'Towelling', bedSizes: false, bodySizes: true,  hasColour: true,  hasGSM: false, hasDimensions: false },
+  { label: 'Pool Towel',    code: 'PT', group: 'Towelling', bedSizes: false, bodySizes: false, hasColour: true,  hasGSM: true,  hasDimensions: true  },
+  { label: 'Gym Towel',     code: 'GT', group: 'Towelling', bedSizes: false, bodySizes: false, hasColour: true,  hasGSM: true,  hasDimensions: true  },
+  // Bedding
+  { label: 'Flat Sheet',    code: 'FS', group: 'Bedding',   bedSizes: true,  bodySizes: false, hasColour: true,  hasGSM: true,  hasDimensions: true  },
+  { label: 'Fitted Sheet',  code: 'FT', group: 'Bedding',   bedSizes: true,  bodySizes: false, hasColour: true,  hasGSM: true,  hasDimensions: false },
+  { label: 'Pillowcase',    code: 'PC', group: 'Bedding',   bedSizes: true,  bodySizes: false, hasColour: true,  hasGSM: true,  hasDimensions: true  },
+  { label: 'Duvet Cover',   code: 'DC', group: 'Bedding',   bedSizes: true,  bodySizes: false, hasColour: true,  hasGSM: false, hasDimensions: false },
+  { label: 'Duvet Insert',  code: 'DI', group: 'Bedding',   bedSizes: true,  bodySizes: false, hasColour: false, hasGSM: false, hasDimensions: false },
+  { label: 'Pillow',        code: 'PL', group: 'Bedding',   bedSizes: true,  bodySizes: false, hasColour: false, hasGSM: false, hasDimensions: false },
+  { label: 'Mattress Protector', code: 'MP', group: 'Bedding', bedSizes: true, bodySizes: false, hasColour: false, hasGSM: false, hasDimensions: false },
+  { label: 'Mattress Topper', code: 'MT', group: 'Bedding', bedSizes: true,  bodySizes: false, hasColour: false, hasGSM: false, hasDimensions: false },
+  { label: 'Blanket',       code: 'BL', group: 'Bedding',   bedSizes: true,  bodySizes: false, hasColour: true,  hasGSM: false, hasDimensions: false },
+  { label: 'Quilt Cover',   code: 'QC', group: 'Bedding',   bedSizes: true,  bodySizes: false, hasColour: true,  hasGSM: false, hasDimensions: false },
+  // Table Linen
+  { label: 'Tablecloth',    code: 'TC', group: 'Table Linen', bedSizes: false, bodySizes: false, hasColour: true, hasGSM: true,  hasDimensions: true  },
+  { label: 'Table Napkin',  code: 'TN', group: 'Table Linen', bedSizes: false, bodySizes: false, hasColour: true, hasGSM: true,  hasDimensions: true  },
+  // Clothing
+  { label: 'Uniform',       code: 'UN', group: 'Clothing',  bedSizes: false, bodySizes: true,  hasColour: true,  hasGSM: false, hasDimensions: false },
+  { label: 'Scrub',         code: 'SC', group: 'Clothing',  bedSizes: false, bodySizes: true,  hasColour: true,  hasGSM: false, hasDimensions: false },
+  { label: 'Shirt',         code: 'SR', group: 'Clothing',  bedSizes: false, bodySizes: true,  hasColour: true,  hasGSM: false, hasDimensions: false },
+  // Equipment
+  { label: 'Laundry Bag',   code: 'BG', group: 'Equipment', bedSizes: false, bodySizes: false, hasColour: false, hasGSM: false, hasDimensions: false },
+  { label: 'Trolley',       code: 'TL', group: 'Equipment', bedSizes: false, bodySizes: false, hasColour: false, hasGSM: false, hasDimensions: false },
+  { label: 'Container',     code: 'CN', group: 'Equipment', bedSizes: false, bodySizes: false, hasColour: false, hasGSM: false, hasDimensions: false },
+  { label: 'Cart',          code: 'CT', group: 'Equipment', bedSizes: false, bodySizes: false, hasColour: false, hasGSM: false, hasDimensions: false },
+  { label: 'Other',         code: 'IT', group: 'Other',     bedSizes: false, bodySizes: false, hasColour: false, hasGSM: false, hasDimensions: false },
+];
+
+const PRODUCT_GROUPS = [...new Set(PRODUCT_TYPE_DEFS.map(p => p.group))];
+
+// ── Categories ────────────────────────────────────────────────────────────────
+
+const CATEGORIES = [
+  { label: 'Accommodation',      code: 'A',  description: 'Hotels, resorts, and accommodation providers' },
+  { label: 'Healthcare',         code: 'H',  description: 'Hospitals, clinics, and medical facilities' },
+  { label: 'Linen Hub',          code: 'LH', description: 'LinenHub managed service programmes' },
+  { label: 'COG',                code: 'CG', description: 'Customer-owned goods, managed on their behalf' },
+  { label: 'Daily Hire',         code: 'DH', description: 'Short-term hire and rental items' },
+  { label: 'Mining',             code: 'MN', description: 'Mining camps and resource industry' },
+  { label: 'Transport',          code: 'TR', description: 'Transport and logistics industry' },
+  { label: 'Food & Beverages',   code: 'FB', description: 'Hospitality and food service operations' },
+];
+
+// ── Size options ──────────────────────────────────────────────────────────────
+
+const BED_SIZES = [
+  { label: 'Single',       code: 'S'  },
+  { label: 'Double',       code: 'D'  },
+  { label: 'Queen',        code: 'Q'  },
+  { label: 'King',         code: 'K'  },
+  { label: 'King Single',  code: 'KS' },
+  { label: 'Twin',         code: 'T'  },
+  { label: 'Super King',   code: 'SK' },
+  { label: 'Standard',     code: 'ST' },
+];
+
+const BODY_SIZES = [
+  { label: 'Small',       code: '01' },
+  { label: 'Medium',      code: '02' },
+  { label: 'Large',       code: '03' },
+  { label: 'Extra Large', code: '04' },
+  { label: 'XXL',         code: '05' },
+];
+
+// ── Colour options ────────────────────────────────────────────────────────────
+
+const COLOURS = [
+  { label: 'White',    code: 'W',  hex: '#FFFFFF' },
+  { label: 'Off-White',code: 'OW', hex: '#F5ECD7' },
+  { label: 'Cream',    code: 'CR', hex: '#FFFACD' },
+  { label: 'Ivory',    code: 'IV', hex: '#FFFFF0' },
+  { label: 'Natural',  code: 'NA', hex: '#E8DCC8' },
+  { label: 'Beige',    code: 'BG', hex: '#D4C5A9' },
+  { label: 'Stone',    code: 'ST', hex: '#B0A395' },
+  { label: 'Khaki',    code: 'KH', hex: '#C3B091' },
+  { label: 'Sand',     code: 'SD', hex: '#D2B48C' },
+  { label: 'Grey',     code: 'GY', hex: '#9E9E9E' },
+  { label: 'Charcoal', code: 'CH', hex: '#4A4A4A' },
+  { label: 'Black',    code: 'BK', hex: '#1A1A1A' },
+  { label: 'Navy',     code: 'NV', hex: '#1B2A4A' },
+  { label: 'Blue',     code: 'BL', hex: '#2196F3' },
+  { label: 'Teal',     code: 'TL', hex: '#008B8B' },
+  { label: 'Aqua',     code: 'AQ', hex: '#00BCD4' },
+  { label: 'Green',    code: 'GN', hex: '#4CAF50' },
+  { label: 'Sage',     code: 'SG', hex: '#87A878' },
+  { label: 'Red',      code: 'RD', hex: '#F44336' },
+  { label: 'Burgundy', code: 'BU', hex: '#800020' },
+  { label: 'Pink',     code: 'PK', hex: '#E91E96' },
+  { label: 'Coral',    code: 'CO', hex: '#FF6B6B' },
+  { label: 'Orange',   code: 'OR', hex: '#FF9800' },
+  { label: 'Gold',     code: 'GD', hex: '#FFD700' },
+  { label: 'Purple',   code: 'PU', hex: '#9C27B0' },
+  { label: 'Brown',    code: 'BR', hex: '#795548' },
+  { label: 'Other',    code: '',   hex: '#E0E0E0' },
+];
+
+// ── Materials & grades ────────────────────────────────────────────────────────
+
+const MATERIALS = [
+  '100% Cotton', 'Polyester / Cotton Blend', '100% Polyester',
+  'Bamboo Blend', 'Microfibre', 'Terry', 'Fleece', 'Other',
+];
+
+const GRADES = [
+  'Hotel Grade', 'Premium Hotel Grade', 'Commercial Grade',
+  'Economy Grade', 'Healthcare Grade', 'Other',
+];
+
+// ── Business reason options ───────────────────────────────────────────────────
+
+const BUSINESS_REASONS = [
+  { value: 'NEW_CUSTOMER_CONTRACT',   label: 'New customer contract or onboarding' },
+  { value: 'CONTRACT_RENEWAL',        label: 'Contract renewal or scope expansion' },
+  { value: 'ITEM_PHASEOUT',           label: 'Replaces an existing item being phased out' },
+  { value: 'RANGE_EXPANSION',         label: 'Product range expansion' },
+  { value: 'OPERATIONAL_REQUIREMENT', label: 'Internal operational requirement' },
+  { value: 'CUSTOMER_REQUIREMENT',    label: 'Specific customer or site requirement' },
+  { value: 'OTHER',                   label: 'Other reason not listed' },
+];
+
+// ── Data interfaces ───────────────────────────────────────────────────────────
 
 interface Step1Data {
   request_type: ItemRequestType | null;
 }
 
 interface Step2Data {
-  item_description: string;
-  business_reason: string;
-  required_activation_date: string;
-  is_urgent: boolean;
+  categoryLabel: string;
+  categoryCode: string;
+  productTypeLabel: string;
+  productTypeCode: string;
+  rfid: boolean | null;
+  sizeLabel: string;
+  sizeCode: string;
+  colourLabel: string;
+  colourCode: string;
+  colourCustom: string;
+  gsm: string;
+  gsmSkipped: boolean;
+  material: string;
+  width_cm: string;
+  height_cm: string;
+  grade: string;
+  additional_notes: string;
+  item_check_confirmed: boolean;
 }
 
 interface Step3Data {
+  business_reason_type: string;
+  business_reason_other: string;
+  is_urgent: boolean;
+  urgent_reason: string;
   target_sap: boolean;
   target_bundle: boolean;
   target_linenhub: boolean;
   target_salesforce: boolean;
-  department: string;
-  business_unit: string;
   customer_reference: string;
   contract_reference: string;
   replacement_for_item_id: string;
 }
 
-// ── Step 1: Item Type ──────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-interface Step1Props {
-  data: Step1Data;
-  onChange: (v: Step1Data) => void;
+const ITEM_TYPE_CODE: Record<ItemRequestType, 'P' | 'S' | 'B'> = {
+  PURCHASE_AND_SALE: 'B', PURCHASE_ONLY: 'P', SALE_ONLY: 'S',
+  COG: 'B', REPLACEMENT: 'B', CUSTOMER_SPECIFIC: 'B',
+  BUNDLE_LINENHUB_ONLY: 'S', SHARED_CATALOGUE: 'B',
+};
+
+const ITEM_TYPE_LABEL: Record<'P'|'S'|'B', string> = {
+  B: 'Both', P: 'Purchase', S: 'Sale',
+};
+
+function getSkuSegments(s1: Step1Data, s2: Step2Data): SkuSegments {
+  const hasVariants = !!(s2.sizeCode || s2.colourCode || s2.gsm);
+  return {
+    itemType: s1.request_type ? ITEM_TYPE_CODE[s1.request_type] : undefined,
+    rfid: s2.rfid ?? false,
+    categoryCode: s2.categoryCode || undefined,
+    productTypeCode: s2.productTypeCode || undefined,
+    sizeCode: s2.sizeCode || undefined,
+    varietyCode: hasVariants ? '01' : undefined,
+    colourCode: s2.colourCode || undefined,
+    gsm: s2.gsm ? parseInt(s2.gsm, 10) : null,
+  };
 }
+
+function buildItemDescription(s2: Step2Data): string {
+  const parts: string[] = [];
+  const effectiveColour = s2.colourCode ? s2.colourLabel : (s2.colourCustom || '');
+  if (effectiveColour && effectiveColour !== 'Other') parts.push(effectiveColour);
+  if (s2.material && s2.material !== 'Other') parts.push(s2.material);
+  if (s2.productTypeLabel && s2.productTypeLabel !== 'Other') parts.push(s2.productTypeLabel);
+  if (s2.sizeLabel) parts.push(s2.sizeLabel);
+  if (s2.gsm) parts.push(`${s2.gsm}gsm`);
+  if (s2.grade && s2.grade !== 'Other') parts.push(s2.grade);
+  if (s2.categoryLabel) parts.push(`${s2.categoryLabel} catalogue`);
+  if (s2.width_cm && s2.height_cm) parts.push(`${s2.width_cm}×${s2.height_cm}cm`);
+  if (s2.additional_notes) parts.push(s2.additional_notes);
+  return parts.join(', ');
+}
+
+function getProductDef(code: string): ProductTypeDef | null {
+  return PRODUCT_TYPE_DEFS.find(p => p.code === code) ?? null;
+}
+
+function buildBusinessReason(s3: Step3Data): string {
+  if (s3.business_reason_type === 'OTHER') return s3.business_reason_other;
+  return BUSINESS_REASONS.find(r => r.value === s3.business_reason_type)?.label ?? '';
+}
+
+// ── Code preview panel ────────────────────────────────────────────────────────
+
+interface CodePreviewPanelProps {
+  s1: Step1Data;
+  s2: Step2Data;
+  dupeStatus: 'idle' | 'searching' | 'found' | 'clear';
+  dupeCount: number;
+}
+
+function CodePreviewPanel({ s1, s2, dupeStatus, dupeCount }: CodePreviewPanelProps) {
+  const def = getProductDef(s2.productTypeCode);
+  const typeCode = s1.request_type ? ITEM_TYPE_CODE[s1.request_type] : null;
+  const rfidCode = s2.rfid !== null ? (s2.rfid ? 'R' : 'L') : null;
+  const hasVariants = !!(s2.sizeCode || s2.colourCode || s2.gsm);
+  const segments = getSkuSegments(s1, s2);
+  const code = buildItemCode(segments);
+  const codeReady = !!(typeCode && rfidCode && s2.categoryCode && s2.productTypeCode);
+
+  const noSize   = def !== null && !def.bedSizes && !def.bodySizes;
+  const noColour = def !== null && !def.hasColour;
+  const noGSM    = def !== null && !def.hasGSM;
+
+  type SegRow = { code: string|null; label: string; hint: string; na?: boolean };
+  const rows: SegRow[] = [
+    { code: typeCode,           label: typeCode ? ITEM_TYPE_LABEL[typeCode] : '',    hint: 'Transaction type' },
+    { code: rfidCode,           label: rfidCode ? (s2.rfid ? 'RFID tracked' : 'Non-RFID') : '', hint: 'RFID tracking' },
+    { code: s2.categoryCode,    label: s2.categoryLabel,  hint: 'Catalogue category' },
+    { code: s2.productTypeCode, label: s2.productTypeLabel, hint: 'Product type' },
+    noSize
+      ? { code: '—', label: 'No size', hint: 'Size', na: true }
+      : { code: s2.sizeCode, label: s2.sizeLabel, hint: 'Size' },
+    { code: hasVariants ? '01' : null, label: 'Variant 1', hint: 'Variant' },
+    noColour
+      ? { code: '—', label: 'No colour', hint: 'Colour', na: true }
+      : { code: s2.colourCode, label: s2.colourLabel === 'Other' ? `Other (${s2.colourCustom || 'TBD'})` : s2.colourLabel, hint: 'Colour' },
+    noGSM || s2.gsmSkipped
+      ? { code: '—', label: noGSM ? 'No GSM' : 'Skipped', hint: 'GSM', na: true }
+      : { code: s2.gsm || null, label: s2.gsm ? `${s2.gsm} gsm` : '', hint: 'GSM (g/m²)' },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Proposed Item Code</p>
+
+        <div className="bg-gray-50 dark:bg-[#12141b] rounded-xl px-4 py-3 mb-4 min-h-[52px] flex items-center">
+          {codeReady ? (
+            <p className="font-mono font-black text-lg text-gray-900 dark:text-white tracking-widest break-all">
+              {code}
+            </p>
+          ) : (
+            <p className="font-mono text-sm text-gray-300 dark:text-gray-700 tracking-widest">
+              Make selections to build your code
+            </p>
+          )}
+        </div>
+
+        <div className="divide-y divide-gray-50 dark:divide-gray-800/60">
+          {rows.map((row, i) => (
+            <div key={i} className="flex items-center gap-3 py-2">
+              <span className={`font-mono text-[11px] font-black w-9 text-right shrink-0 ${
+                row.na   ? 'text-gray-300 dark:text-gray-700' :
+                row.code ? 'text-[var(--color-brand)]'       :
+                           'text-gray-200 dark:text-gray-800'
+              }`}>
+                {row.na ? '—' : (row.code ?? '?')}
+              </span>
+              <span className={`text-xs truncate ${
+                row.na   ? 'text-gray-400 dark:text-gray-600 italic' :
+                row.code ? 'text-gray-700 dark:text-gray-300'        :
+                           'text-gray-300 dark:text-gray-700'
+              }`}>
+                {row.code || row.na ? (row.label || row.hint) : row.hint}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {dupeStatus !== 'idle' && (
+        <div className={`rounded-xl p-3 flex items-center gap-2 text-xs font-medium ${
+          dupeStatus === 'searching' ? 'bg-gray-50 dark:bg-gray-800/60 text-gray-500' :
+          dupeStatus === 'found'     ? 'bg-amber-50 dark:bg-amber-500/8 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-500/15' :
+                                       'bg-green-50 dark:bg-green-500/8 text-green-700 dark:text-green-400 border border-green-100 dark:border-green-500/15'
+        }`}>
+          {dupeStatus === 'searching' && <Search size={12} className="shrink-0 animate-pulse" />}
+          {dupeStatus === 'found'     && <AlertCircle size={12} className="shrink-0" />}
+          {dupeStatus === 'clear'     && <Check size={12} className="shrink-0" />}
+          <span>
+            {dupeStatus === 'searching' ? 'Checking master catalogue…' :
+             dupeStatus === 'found'     ? `${dupeCount} similar item${dupeCount !== 1 ? 's' : ''} found — review required` :
+                                          'No matching items found in catalogue'}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Step 1: Transaction Type ──────────────────────────────────────────────────
+
+const TYPE_CARDS = [
+  { value: 'PURCHASE_AND_SALE' as ItemRequestType, code: 'B', label: 'Purchase & Sale',   desc: 'Bought from supplier, sold to customers.',                icon: ShoppingCart, color: 'text-blue-500'   },
+  { value: 'PURCHASE_ONLY'     as ItemRequestType, code: 'P', label: 'Purchase Only',      desc: 'Purchased internally — not listed for sale.',             icon: Package,      color: 'text-violet-500' },
+  { value: 'SALE_ONLY'         as ItemRequestType, code: 'S', label: 'Sale Only',           desc: 'Sold to customers, not purchased via standard PO.',       icon: Tag,          color: 'text-emerald-500'},
+  { value: 'COG'               as ItemRequestType, code: 'B', label: 'COG',                 desc: 'Customer-owned goods managed on behalf of a client.',     icon: Users,        color: 'text-amber-500'  },
+  { value: 'REPLACEMENT'       as ItemRequestType, code: 'B', label: 'Replacement',         desc: 'Replaces an existing item being retired or superseded.',  icon: RefreshCw,    color: 'text-rose-500'   },
+  { value: 'CUSTOMER_SPECIFIC' as ItemRequestType, code: 'B', label: 'Customer-Specific',   desc: 'Created exclusively for a single customer or contract.',  icon: User,         color: 'text-indigo-500' },
+];
+
+interface Step1Props { data: Step1Data; onChange: (v: Step1Data) => void; }
 
 function Step1TypeSelector({ data, onChange }: Step1Props) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-black text-gray-900 dark:text-white">What type of item is this?</h2>
+        <h2 className="text-xl font-black text-gray-900 dark:text-white">What type of transaction is this?</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          The type determines which systems it flows through and what pricing is required.
+          This becomes the first character of your item code — <span className="font-bold">B</span> (Both), <span className="font-bold">P</span> (Purchase), or <span className="font-bold">S</span> (Sale).
         </p>
       </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {TYPE_CARDS.map(card => {
           const Icon = card.icon;
-          const isSelected = data.request_type === card.value;
+          const sel = data.request_type === card.value;
           return (
-            <button
-              key={card.value}
-              type="button"
-              onClick={() => onChange({ request_type: card.value })}
+            <button key={card.value} type="button" onClick={() => onChange({ request_type: card.value })}
               className={`text-left p-4 rounded-2xl border-2 transition-all flex items-start gap-4 ${
-                isSelected
-                  ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 shadow-lg shadow-[var(--color-brand)]/10'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
-              }`}
-            >
-              <div className={`mt-0.5 p-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 ${card.color} flex-shrink-0`}>
+                sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 shadow-lg shadow-[var(--color-brand)]/10'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+              }`}>
+              <div className={`mt-0.5 p-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 ${card.color} shrink-0`}>
                 <Icon size={18} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`font-bold text-sm ${isSelected ? 'text-[var(--color-brand)]' : 'text-gray-900 dark:text-white'}`}>
+                  <span className={`font-bold text-sm ${sel ? 'text-[var(--color-brand)]' : 'text-gray-900 dark:text-white'}`}>
                     {card.label}
                   </span>
-                  {isSelected && <Check size={14} className="text-[var(--color-brand)] flex-shrink-0" />}
+                  <span className={`font-mono text-xs font-black px-1.5 py-0.5 rounded ${
+                    sel ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                  }`}>{card.code}</span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
-                  {card.description}
-                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">{card.desc}</p>
               </div>
             </button>
           );
@@ -177,159 +413,359 @@ function Step1TypeSelector({ data, onChange }: Step1Props) {
   );
 }
 
-// ── Step 2: What You Need ──────────────────────────────────────────────────────
+// ── Step 2: Code builder ──────────────────────────────────────────────────────
 
 interface Step2Props {
   data: Step2Data;
   onChange: (v: Partial<Step2Data>) => void;
+  requestType: ItemRequestType | null;
+  onDupeStatusChange: (status: 'idle'|'searching'|'found'|'clear', count: number) => void;
 }
 
-const DESC_MIN = 20;
-const DESC_MAX = 500;
-const REASON_MIN = 20;
-const REASON_MAX = 1000;
+function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
+  const def = getProductDef(data.productTypeCode);
+  const hasSize   = def ? (def.bedSizes || def.bodySizes) : false;
+  const hasColour = def ? def.hasColour  : false;
+  const hasGSM    = def ? def.hasGSM     : false;
 
-function Step2Details({ data, onChange }: Step2Props) {
+  // Progressive reveal state
+  const showProductType = !!data.categoryCode;
+  const showRfid        = !!data.productTypeCode;
+  const showSize        = showRfid && data.rfid !== null;
+  const showColour      = showSize && (hasSize ? !!data.sizeCode : true);
+  const showGSM         = showColour && (hasColour ? (!!data.colourCode || data.colourCode === '') : true);
+  const showSpec        = showGSM && (hasGSM ? (!!data.gsm || data.gsmSkipped) : true);
+
+  // Duplicate search
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!data.productTypeCode || !data.categoryCode) {
+      onDupeStatusChange('idle', 0);
+      return;
+    }
+    const term = [data.colourLabel, data.productTypeLabel, data.sizeLabel].filter(Boolean).join(' ');
+    onDupeStatusChange('searching', 0);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const results = await searchExistingItems(term);
+        setSearchResults(results.slice(0, 5));
+        onDupeStatusChange(results.length > 0 ? 'found' : 'clear', results.length);
+      } catch {
+        onDupeStatusChange('idle', 0);
+      }
+    }, 700);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [data.productTypeCode, data.categoryCode, data.colourLabel, data.sizeLabel]);
+
+  // When product type changes, auto-reset dependent fields + set N/A flags
+  const handleProductTypeChange = (pt: ProductTypeDef) => {
+    onChange({
+      productTypeLabel: pt.label,
+      productTypeCode: pt.code,
+      sizeLabel: '',
+      sizeCode: '',
+      colourLabel: '',
+      colourCode: '',
+      colourCustom: '',
+      gsm: '',
+      gsmSkipped: !pt.hasGSM,
+      rfid: null,
+      item_check_confirmed: false,
+    });
+  };
+
+  const groupedProducts = PRODUCT_GROUPS.map(g => ({
+    group: g,
+    items: PRODUCT_TYPE_DEFS.filter(p => p.group === g),
+  }));
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-black text-gray-900 dark:text-white">Describe what you need</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          The more detail you provide, the faster the Master Data team can process your request.
-        </p>
-      </div>
+    <div className="space-y-8">
 
-      {/* Item Description */}
-      <div className="space-y-1.5">
-        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">
-          Item Description <span className="text-red-500">*</span>
-        </label>
-        <textarea
-          value={data.item_description}
-          onChange={e => onChange({ item_description: e.target.value })}
-          placeholder="e.g. White 100% cotton bath towel, 70×140cm, 500gsm, hotel-grade"
-          rows={4}
-          maxLength={DESC_MAX}
-          className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all resize-none"
-        />
-        <div className="flex justify-between text-xs text-gray-400">
-          <span className={data.item_description.length < DESC_MIN && data.item_description.length > 0 ? 'text-amber-500' : ''}>
-            {data.item_description.length < DESC_MIN
-              ? `${DESC_MIN - data.item_description.length} more characters needed`
-              : 'Looks good'}
-          </span>
-          <span>{data.item_description.length}/{DESC_MAX}</span>
+      {/* ── Section: Category ── */}
+      <section className="space-y-3">
+        <SectionLabel n={1} done={!!data.categoryCode} title="Catalogue Category" sub="Segment 3 of your code" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {CATEGORIES.map(cat => {
+            const sel = data.categoryCode === cat.code;
+            return (
+              <button key={cat.code} type="button"
+                onClick={() => onChange({ categoryLabel: cat.label, categoryCode: cat.code, item_check_confirmed: false })}
+                className={`text-left p-3.5 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                  sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                }`}>
+                <span className={`font-mono text-sm font-black w-8 text-center shrink-0 px-1 py-0.5 rounded ${
+                  sel ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                }`}>{cat.code}</span>
+                <div className="min-w-0">
+                  <p className={`text-sm font-bold ${sel ? 'text-[var(--color-brand)]' : 'text-gray-900 dark:text-white'}`}>{cat.label}</p>
+                  <p className="text-[11px] text-gray-400 truncate">{cat.description}</p>
+                </div>
+                {sel && <Check size={14} className="text-[var(--color-brand)] shrink-0 ml-auto" />}
+              </button>
+            );
+          })}
         </div>
-      </div>
+      </section>
 
-      {/* Business Reason */}
-      <div className="space-y-1.5">
-        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">
-          Business Reason <span className="text-red-500">*</span>
-        </label>
-        <textarea
-          value={data.business_reason}
-          onChange={e => onChange({ business_reason: e.target.value })}
-          placeholder="Why is this item needed? Which customer, contract, or operational requirement is driving this request?"
-          rows={4}
-          maxLength={REASON_MAX}
-          className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all resize-none"
-        />
-        <div className="flex justify-between text-xs text-gray-400">
-          <span className={data.business_reason.length < REASON_MIN && data.business_reason.length > 0 ? 'text-amber-500' : ''}>
-            {data.business_reason.length < REASON_MIN
-              ? `${REASON_MIN - data.business_reason.length} more characters needed`
-              : 'Looks good'}
-          </span>
-          <span>{data.business_reason.length}/{REASON_MAX}</span>
-        </div>
-      </div>
+      {/* ── Section: Product Type ── */}
+      {showProductType && (
+        <section className="space-y-3 animate-slide-up">
+          <SectionLabel n={2} done={!!data.productTypeCode} title="Product Type" sub="Segment 4 of your code" />
+          <div className="space-y-4">
+            {groupedProducts.map(({ group, items }) => (
+              <div key={group}>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{group}</p>
+                <div className="flex flex-wrap gap-2">
+                  {items.map(pt => {
+                    const sel = data.productTypeCode === pt.code;
+                    return (
+                      <button key={pt.code} type="button" onClick={() => handleProductTypeChange(pt)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm transition-all ${
+                          sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
+                              : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}>
+                        <span className={`font-mono text-[10px] font-black ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>{pt.code}</span>
+                        <span className="font-medium">{pt.label}</span>
+                        {sel && <Check size={12} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-      {/* Required Activation Date */}
-      <div className="space-y-1.5">
-        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">
-          Required Activation Date
-        </label>
-        <p className="text-xs text-gray-400 dark:text-gray-500">When do you need this item to be live in the system?</p>
-        <div className="relative">
-          <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input
-            type="date"
-            value={data.required_activation_date}
-            min={new Date().toISOString().split('T')[0]}
-            onChange={e => onChange({ required_activation_date: e.target.value })}
-            className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
-          />
-        </div>
-      </div>
+      {/* ── Section: RFID ── */}
+      {showRfid && (
+        <section className="space-y-3 animate-slide-up">
+          <SectionLabel n={3} done={data.rfid !== null} title="RFID Tracking" sub="Segment 2 of your code" />
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { val: true,  code: 'R', label: 'RFID Tracked',  desc: 'Item carries an RFID chip for automated tracking.', Icon: Wifi },
+              { val: false, code: 'L', label: 'Non-RFID',      desc: 'Standard item — no chip or automated tracking.',   Icon: WifiOff },
+            ].map(opt => {
+              const sel = data.rfid === opt.val;
+              const Icon = opt.Icon;
+              return (
+                <button key={String(opt.val)} type="button" onClick={() => onChange({ rfid: opt.val })}
+                  className={`text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${
+                    sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}>
+                  <Icon size={18} className={sel ? 'text-[var(--color-brand)] mt-0.5' : 'text-gray-400 mt-0.5'} />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-bold text-sm ${sel ? 'text-[var(--color-brand)]' : 'text-gray-900 dark:text-white'}`}>{opt.label}</span>
+                      <span className={`font-mono text-[10px] font-black px-1.5 py-0.5 rounded ${sel ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>{opt.code}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{opt.desc}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
-      {/* Urgency Toggle */}
-      <div className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer ${
-        data.is_urgent
-          ? 'border-red-400 bg-red-50 dark:bg-red-500/5'
-          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029]'
-      }`}
-        onClick={() => onChange({ is_urgent: !data.is_urgent })}
-        role="checkbox"
-        aria-checked={data.is_urgent}
-        tabIndex={0}
-        onKeyDown={e => e.key === ' ' && onChange({ is_urgent: !data.is_urgent })}
-      >
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-xl ${data.is_urgent ? 'bg-red-100 dark:bg-red-500/20 text-red-600' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
-            <Zap size={16} />
+      {/* ── Section: Size ── */}
+      {showSize && hasSize && (
+        <section className="space-y-3 animate-slide-up">
+          <SectionLabel n={4} done={!!data.sizeCode} title="Size" sub="Segment 5 of your code" />
+          <div className="flex flex-wrap gap-2">
+            {(def!.bedSizes ? BED_SIZES : BODY_SIZES).map(sz => {
+              const sel = data.sizeCode === sz.code;
+              return (
+                <button key={sz.code} type="button" onClick={() => onChange({ sizeLabel: sz.label, sizeCode: sz.code })}
+                  className={`flex flex-col items-center px-4 py-2.5 rounded-xl border-2 transition-all min-w-[64px] ${
+                    sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}>
+                  <span className={`font-mono text-sm font-black ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>{sz.code}</span>
+                  <span className={`text-xs mt-0.5 ${sel ? 'font-bold text-[var(--color-brand)]' : 'text-gray-600 dark:text-gray-400'}`}>{sz.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Section: Colour ── */}
+      {showColour && hasColour && (
+        <section className="space-y-3 animate-slide-up">
+          <SectionLabel n={4 + (hasSize ? 1 : 0)} done={!!data.colourCode || data.colourLabel === 'Other'} title="Colour" sub="Segment 7 of your code" />
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+            {COLOURS.map(col => {
+              const sel = data.colourLabel === col.label;
+              return (
+                <button key={col.label} type="button"
+                  onClick={() => onChange({ colourLabel: col.label, colourCode: col.code, colourCustom: '', item_check_confirmed: false })}
+                  className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all gap-1.5 ${
+                    sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}>
+                  <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 shrink-0"
+                    style={{ background: col.hex }} />
+                  <span className={`font-mono text-[9px] font-black leading-none ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>
+                    {col.code || '?'}
+                  </span>
+                  <span className={`text-[10px] text-center leading-tight ${sel ? 'font-bold text-[var(--color-brand)]' : 'text-gray-600 dark:text-gray-400'}`}>
+                    {col.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {data.colourLabel === 'Other' && (
+            <div className="space-y-1">
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Non-standard colours don't generate a colour code segment. Master Data will assign one during item definition.
+              </p>
+              <input type="text" value={data.colourCustom}
+                onChange={e => onChange({ colourCustom: e.target.value })}
+                placeholder="Describe the colour (e.g. Dusty Rose, Sage Green)…"
+                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Section: GSM ── */}
+      {showGSM && hasGSM && (
+        <section className="space-y-3 animate-slide-up">
+          <SectionLabel n={4 + (hasSize ? 1 : 0) + (hasColour ? 1 : 0)} done={!!data.gsm || data.gsmSkipped} title="GSM (grams per square metre)" sub="Segment 8 of your code" />
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-xs">
+              <input type="text" inputMode="numeric" value={data.gsm}
+                onChange={e => onChange({ gsm: e.target.value.replace(/[^0-9]/g, ''), gsmSkipped: false })}
+                placeholder="e.g. 500"
+                disabled={data.gsmSkipped}
+                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 pr-14 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all disabled:opacity-40" />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold pointer-events-none">g/m²</span>
+            </div>
+            <button type="button" onClick={() => onChange({ gsm: '', gsmSkipped: !data.gsmSkipped })}
+              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
+                data.gsmSkipped ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'
+              }`}>
+              {data.gsmSkipped ? <Check size={12} /> : null}
+              Not applicable
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">Typical values: cotton terry 400–600 g/m², percale sheets 200–300 g/m²</p>
+        </section>
+      )}
+
+      {/* ── Section: Specification ── */}
+      {showSpec && (
+        <section className="space-y-4 animate-slide-up">
+          <SectionLabel n={4 + (hasSize ? 1 : 0) + (hasColour ? 1 : 0) + (hasGSM ? 1 : 0)} done={!!data.material} title="Specification Details" sub="Non-code attributes for Master Data" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Material <span className="text-red-500">*</span></label>
+              <div className="flex flex-wrap gap-2">
+                {MATERIALS.map(m => (
+                  <button key={m} type="button" onClick={() => onChange({ material: m })}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                      data.material === m ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)] font-bold'
+                                         : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                    }`}>{m}</button>
+                ))}
+              </div>
+            </div>
+
+            {def?.hasDimensions && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Dimensions</label>
+                <div className="flex items-center gap-2">
+                  <input type="text" value={data.width_cm} onChange={e => onChange({ width_cm: e.target.value.replace(/[^0-9.]/g,'') })}
+                    placeholder="Width" className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
+                  <span className="text-gray-400 shrink-0">×</span>
+                  <input type="text" value={data.height_cm} onChange={e => onChange({ height_cm: e.target.value.replace(/[^0-9.]/g,'') })}
+                    placeholder="Length" className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
+                  <span className="text-xs text-gray-400 shrink-0">cm</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Grade / Standard</label>
+            <div className="flex flex-wrap gap-2">
+              {GRADES.map(g => (
+                <button key={g} type="button" onClick={() => onChange({ grade: g })}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                    data.grade === g ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)] font-bold'
+                                     : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                  }`}>{g}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Additional Notes <span className="font-normal text-gray-400 normal-case">(optional)</span></label>
+            <textarea value={data.additional_notes} onChange={e => onChange({ additional_notes: e.target.value })}
+              placeholder="Packaging requirements, special finish, branding specs, compliance notes…"
+              rows={2} className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all resize-none" />
+          </div>
+        </section>
+      )}
+
+      {/* ── Duplicate check results + confirmation ── */}
+      {showSpec && searchResults.length > 0 && (
+        <section className="space-y-3 animate-slide-up">
+          <div className="border border-amber-200 dark:border-amber-500/20 rounded-xl overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 dark:bg-amber-500/8 border-b border-amber-100 dark:border-amber-500/15">
+              <AlertCircle size={13} className="text-amber-500 shrink-0" />
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Similar Items Found — Review Before Continuing</span>
+            </div>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {searchResults.map(item => (
+                <div key={item.id} className="flex items-center gap-3 px-4 py-3">
+                  <Package size={13} className="text-gray-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{item.name}</p>
+                    <p className="text-xs text-gray-400">{item.sku}{item.category ? ` · ${item.category}` : ''}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-3 bg-amber-50/50 dark:bg-amber-500/5 border-t border-amber-100 dark:border-amber-500/10">
+              <p className="text-xs text-amber-700 dark:text-amber-400">If any of the above matches what you need, cancel this request and use the existing item.</p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {showSpec && (
+        <div className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+          data.item_check_confirmed ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-500/8' : 'border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]/40'
+        }`} onClick={() => onChange({ item_check_confirmed: !data.item_check_confirmed })} role="checkbox" aria-checked={data.item_check_confirmed} tabIndex={0}
+          onKeyDown={e => e.key === ' ' && onChange({ item_check_confirmed: !data.item_check_confirmed })}>
+          <div className={`w-5 h-5 rounded-md border-2 shrink-0 mt-0.5 flex items-center justify-center transition-all ${
+            data.item_check_confirmed ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 dark:border-gray-600'
+          }`}>
+            {data.item_check_confirmed && <Check size={11} strokeWidth={3} className="text-white" />}
           </div>
           <div>
-            <p className={`font-bold text-sm ${data.is_urgent ? 'text-red-700 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
-              Mark as urgent
+            <p className={`text-sm font-bold ${data.item_check_confirmed ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-700 dark:text-gray-300'}`}>
+              I've confirmed this item does not already exist in the master catalogue
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Urgent requests are prioritised in the review queue. Use for time-critical requirements only.
-            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">This confirmation is recorded as part of the audit trail for this request.</p>
           </div>
         </div>
-        <div className={`w-10 h-6 rounded-full transition-all flex-shrink-0 relative ${data.is_urgent ? 'bg-red-500' : 'bg-gray-200 dark:bg-gray-700'}`}>
-          <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${data.is_urgent ? 'left-5' : 'left-1'}`} />
-        </div>
-      </div>
+      )}
     </div>
   );
 }
 
-// ── Step 3: Where It's Needed ──────────────────────────────────────────────────
-
-interface SystemToggleProps {
-  label: string;
-  description: string;
-  active: boolean;
-  onToggle: () => void;
-  icon: React.ElementType;
-}
-
-function SystemToggle({ label, description, active, onToggle, icon: Icon }: SystemToggleProps) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`text-left p-4 rounded-2xl border-2 transition-all flex items-start gap-3 ${
-        active
-          ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
-          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
-      }`}
-    >
-      <div className={`p-2 rounded-xl flex-shrink-0 mt-0.5 ${active ? 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
-        <Icon size={16} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <span className={`font-bold text-sm ${active ? 'text-[var(--color-brand)]' : 'text-gray-700 dark:text-gray-300'}`}>{label}</span>
-          {active && <Check size={13} className="text-[var(--color-brand)] flex-shrink-0" />}
-        </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{description}</p>
-      </div>
-    </button>
-  );
-}
+// ── Step 3: Business Context & Systems ────────────────────────────────────────
 
 interface Step3Props {
   data: Step3Data;
@@ -337,462 +773,408 @@ interface Step3Props {
   requestType: ItemRequestType | null;
 }
 
-function Step3Systems({ data, onChange, requestType }: Step3Props) {
+function Step3Context({ data, onChange, requestType }: Step3Props) {
   const isCustomerSpecific = requestType === 'CUSTOMER_SPECIFIC';
-  const isReplacement = requestType === 'REPLACEMENT';
-  const showCOGNote = requestType === 'COG';
+  const isReplacement      = requestType === 'REPLACEMENT';
+  const isCOG              = requestType === 'COG';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h2 className="text-xl font-black text-gray-900 dark:text-white">Where does this item need to appear?</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Select every system this item must be active in. Each system adds setup steps during the Master Data review.
+        <h2 className="text-xl font-black text-gray-900 dark:text-white">Business context</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Why is this item needed, and where should it appear?</p>
+      </div>
+
+      {/* Business Reason */}
+      <section className="space-y-3">
+        <SectionLabel n={1} done={!!data.business_reason_type && (data.business_reason_type !== 'OTHER' || data.business_reason_other.length >= 20)} title="Business Reason" sub="Required for all requests" />
+        <div className="space-y-2">
+          {BUSINESS_REASONS.map(opt => {
+            const sel = data.business_reason_type === opt.value;
+            return (
+              <button key={opt.value} type="button"
+                onClick={() => onChange({ business_reason_type: opt.value, business_reason_other: opt.value !== 'OTHER' ? '' : data.business_reason_other })}
+                className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                  sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                }`}>
+                <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]' : 'border-gray-300 dark:border-gray-600'}`}>
+                  {sel && <Check size={9} strokeWidth={3} className="text-white" />}
+                </div>
+                <span className={`text-sm ${sel ? 'font-bold text-[var(--color-brand)]' : 'font-medium text-gray-700 dark:text-gray-300'}`}>{opt.label}</span>
+              </button>
+            );
+          })}
+          {data.business_reason_type === 'OTHER' && (
+            <div className="space-y-1">
+              <textarea value={data.business_reason_other} onChange={e => onChange({ business_reason_other: e.target.value })}
+                placeholder="Describe the business reason in detail (minimum 20 characters)…"
+                rows={3} maxLength={500}
+                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all resize-none" />
+              <div className="flex justify-between text-xs text-gray-400">
+                <span className={data.business_reason_other.length > 0 && data.business_reason_other.length < 20 ? 'text-amber-500' : ''}>
+                  {data.business_reason_other.length < 20 && data.business_reason_other.length > 0 ? `${20 - data.business_reason_other.length} more characters needed` : ''}
+                </span>
+                <span>{data.business_reason_other.length}/500</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Target Systems */}
+      <section className="space-y-3">
+        <SectionLabel n={2} done={true} title="Target Systems" sub="SAP is always included" />
+        <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-[#15171e]/50 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3">
+          SAP is required for all items. Select additional systems where this item must be active.
         </p>
-      </div>
-
-      {/* System toggle cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <SystemToggle
-          label="SAP"
-          description="Core ERP — required for purchasing, stock, and financials"
-          active={data.target_sap}
-          onToggle={() => onChange({ target_sap: !data.target_sap })}
-          icon={Package}
-        />
-        <SystemToggle
-          label="Bundle"
-          description="Included in kit or bundle configurations"
-          active={data.target_bundle}
-          onToggle={() => onChange({ target_bundle: !data.target_bundle })}
-          icon={Layers}
-        />
-        <SystemToggle
-          label="LinenHub"
-          description="Available in the LinenHub customer portal"
-          active={data.target_linenhub}
-          onToggle={() => onChange({ target_linenhub: !data.target_linenhub })}
-          icon={Globe}
-        />
-        <SystemToggle
-          label="Salesforce"
-          description="Visible to the sales team in Salesforce CRM"
-          active={data.target_salesforce}
-          onToggle={() => onChange({ target_salesforce: !data.target_salesforce })}
-          icon={Star}
-        />
-      </div>
-
-      {showCOGNote && (
-        <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 rounded-2xl text-sm text-amber-800 dark:text-amber-300">
-          <AlertTriangle size={16} className="flex-shrink-0 mt-0.5 text-amber-500" />
-          <p>COG items are managed on behalf of a specific customer and typically do not appear in the standard sales catalogue.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { key: 'target_bundle',    label: 'Bundle',     desc: 'Kit and bundle configurations', Icon: Package },
+            { key: 'target_linenhub',  label: 'LinenHub',   desc: 'LinenHub customer portal',       Icon: Layers  },
+            { key: 'target_salesforce',label: 'Salesforce', desc: 'Sales team CRM visibility',      Icon: Users   },
+          ].map(sys => {
+            const active = data[sys.key as keyof Step3Data] as boolean;
+            const Icon = sys.Icon;
+            return (
+              <button key={sys.key} type="button" onClick={() => onChange({ [sys.key]: !active } as any)}
+                className={`text-left p-4 rounded-2xl border-2 transition-all flex items-start gap-3 ${
+                  active ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                }`}>
+                <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${active ? 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
+                  <Icon size={16} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className={`font-bold text-sm ${active ? 'text-[var(--color-brand)]' : 'text-gray-700 dark:text-gray-300'}`}>{sys.label}</span>
+                    {active && <Check size={13} className="text-[var(--color-brand)]" />}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{sys.desc}</p>
+                </div>
+              </button>
+            );
+          })}
         </div>
-      )}
+        {isCOG && <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/20 rounded-xl px-4 py-3">COG items are customer-managed and typically do not appear in the standard sales catalogue.</p>}
+      </section>
 
-      {/* Department / BU */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Department</label>
-          <div className="relative">
-            <Building2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            <input
-              type="text"
-              value={data.department}
-              onChange={e => onChange({ department: e.target.value })}
-              placeholder="e.g. Housekeeping, F&B, Laundry"
-              className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
-            />
+      {/* Urgency */}
+      <section className="space-y-3">
+        <div className={`flex items-center justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all ${data.is_urgent ? 'border-red-400 bg-red-50 dark:bg-red-500/5' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029]'}`}
+          onClick={() => onChange({ is_urgent: !data.is_urgent, urgent_reason: '' })} role="checkbox" aria-checked={data.is_urgent} tabIndex={0}
+          onKeyDown={e => e.key === ' ' && onChange({ is_urgent: !data.is_urgent, urgent_reason: '' })}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-xl ${data.is_urgent ? 'bg-red-100 dark:bg-red-500/20 text-red-600' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}><Zap size={16} /></div>
+            <div>
+              <p className={`font-bold text-sm ${data.is_urgent ? 'text-red-700 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>Mark as urgent</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Prioritised in the review queue — for time-critical requirements only.</p>
+            </div>
+          </div>
+          <div className={`w-10 h-6 rounded-full transition-all shrink-0 relative ${data.is_urgent ? 'bg-red-500' : 'bg-gray-200 dark:bg-gray-700'}`}>
+            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${data.is_urgent ? 'left-5' : 'left-1'}`} />
           </div>
         </div>
-        <div className="space-y-1.5">
-          <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Business Unit</label>
-          <div className="relative">
-            <Users size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            <input
-              type="text"
-              value={data.business_unit}
-              onChange={e => onChange({ business_unit: e.target.value })}
-              placeholder="e.g. Hotels EMEA, Hospitality AU"
-              className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
-            />
-          </div>
-        </div>
-      </div>
+        {data.is_urgent && (
+          <textarea value={data.urgent_reason} onChange={e => onChange({ urgent_reason: e.target.value })}
+            placeholder="Explain the time-critical nature and any hard deadlines…"
+            rows={2} maxLength={500}
+            className="w-full bg-gray-50 dark:bg-[#15171e] border border-red-200 dark:border-red-500/30 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-400 transition-all resize-none" />
+        )}
+      </section>
 
-      {/* Conditional: Customer-Specific */}
-      {isCustomerSpecific && (
-        <div className="p-4 bg-indigo-50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl space-y-4">
-          <p className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Customer-Specific Details</p>
+      {/* Conditional: Customer / Replacement references */}
+      {(isCustomerSpecific || isReplacement) && (
+        <section className={`p-4 rounded-2xl border space-y-4 ${isReplacement ? 'border-rose-100 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/5' : 'border-indigo-100 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/5'}`}>
+          <p className={`text-xs font-black uppercase tracking-widest ${isReplacement ? 'text-rose-600 dark:text-rose-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+            {isReplacement ? 'Replacement Details' : 'Customer-Specific Details'}
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Customer Reference <span className="text-red-500">*</span></label>
-              <input
-                type="text"
-                value={data.customer_reference}
-                onChange={e => onChange({ customer_reference: e.target.value })}
-                placeholder="Customer name or ID"
-                className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Contract Reference</label>
-              <input
-                type="text"
-                value={data.contract_reference}
-                onChange={e => onChange({ contract_reference: e.target.value })}
-                placeholder="Contract number or name"
-                className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
-              />
-            </div>
+            {isCustomerSpecific && (
+              <>
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Customer Reference <span className="text-red-500">*</span></label>
+                  <input type="text" value={data.customer_reference} onChange={e => onChange({ customer_reference: e.target.value })} placeholder="Customer name or ID"
+                    className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Contract Reference</label>
+                  <input type="text" value={data.contract_reference} onChange={e => onChange({ contract_reference: e.target.value })} placeholder="Contract number"
+                    className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
+                </div>
+              </>
+            )}
+            {isReplacement && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Item Being Replaced <span className="text-red-500">*</span></label>
+                <input type="text" value={data.replacement_for_item_id} onChange={e => onChange({ replacement_for_item_id: e.target.value })} placeholder="SAP code or item description"
+                  className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
+              </div>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* Conditional: Replacement */}
-      {isReplacement && (
-        <div className="p-4 bg-rose-50 dark:bg-rose-500/5 border border-rose-100 dark:border-rose-500/20 rounded-2xl space-y-3">
-          <p className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">Replacement Details</p>
-          <div className="space-y-1.5">
-            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Item Being Replaced <span className="text-red-500">*</span></label>
-            <input
-              type="text"
-              value={data.replacement_for_item_id}
-              onChange={e => onChange({ replacement_for_item_id: e.target.value })}
-              placeholder="SAP item code or item name"
-              className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
-            />
-            <p className="text-xs text-gray-500 dark:text-gray-400">Enter the SAP code or description of the item this request will replace.</p>
-          </div>
-        </div>
+        </section>
       )}
     </div>
   );
 }
 
-// ── Step 4: Review & Submit ────────────────────────────────────────────────────
+// ── Step 4: Review ────────────────────────────────────────────────────────────
 
-interface ReviewRowProps {
-  label: string;
-  value: React.ReactNode;
-}
-function ReviewRow({ label, value }: ReviewRowProps) {
-  return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b border-gray-100 dark:border-gray-800 last:border-0">
-      <span className="text-xs font-black text-gray-400 uppercase tracking-widest flex-shrink-0 w-40">{label}</span>
-      <span className="text-sm text-gray-900 dark:text-white text-right font-medium">{value || <span className="italic text-gray-400">Not provided</span>}</span>
-    </div>
-  );
-}
-
-interface Step4Props {
-  step1: Step1Data;
-  step2: Step2Data;
-  step3: Step3Data;
-}
+interface Step4Props { step1: Step1Data; step2: Step2Data; step3: Step3Data; }
 
 function Step4Review({ step1, step2, step3 }: Step4Props) {
+  const segs  = getSkuSegments(step1, step2);
+  const code  = buildItemCode(segs);
   const typeCard = TYPE_CARDS.find(t => t.value === step1.request_type);
   const slaHours = step1.request_type ? URGENCY_SLA_HOURS[step1.request_type] : 48;
-  const urgentSla = step2.is_urgent ? Math.floor(slaHours / 2) : slaHours;
+  const urgentSla = step3.is_urgent ? Math.floor(slaHours / 2) : slaHours;
+  const activeSystems = ['SAP', step3.target_bundle && 'Bundle', step3.target_linenhub && 'LinenHub', step3.target_salesforce && 'Salesforce'].filter(Boolean) as string[];
+  const reasonLabel = buildBusinessReason(step3);
 
-  const activeSystems = [
-    step3.target_sap && 'SAP',
-    step3.target_bundle && 'Bundle',
-    step3.target_linenhub && 'LinenHub',
-    step3.target_salesforce && 'Salesforce',
-  ].filter(Boolean) as string[];
-
-  const WORKFLOW_STEPS = [
-    { label: 'Submitted', detail: 'Your request is received', icon: FileText, active: true },
-    { label: 'Duplicate Check', detail: 'Master Data verifies no existing item matches', icon: CheckCircle2, active: false },
-    { label: 'Item Definition', detail: 'Master Data completes SAP and catalogue setup', icon: Package, active: false },
-    { label: 'Pricing Review', detail: 'Pricing team sets buy and sell prices', icon: Tag, active: false },
-    { label: 'Approval', detail: 'Approver sign-off based on item type', icon: Check, active: false },
-    { label: 'Active', detail: 'Item live in selected systems', icon: CheckCircle2, active: false },
+  const WORKFLOW = [
+    { label: 'Submitted',       detail: 'Your request is received', done: true,  active: false },
+    { label: 'Duplicate Check', detail: 'Master Data verifies no existing item matches', done: false, active: true  },
+    { label: 'Item Definition', detail: 'Master Data completes SAP and catalogue setup', done: false, active: false },
+    { label: 'Pricing Review',  detail: 'Pricing team sets buy and sell prices',         done: false, active: false },
+    { label: 'Approval',        detail: 'Approver sign-off based on item type',          done: false, active: false },
+    { label: 'Active',          detail: 'Item live in selected systems',                 done: false, active: false },
   ];
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-black text-gray-900 dark:text-white">Review your request</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Check everything below before submitting. You can go back to make changes.
-        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Check everything below before submitting. Use Previous to make changes.</p>
       </div>
 
-      {/* Summary card */}
+      {/* Code summary */}
+      <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-6 space-y-3">
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Generated Item Code</p>
+        <p className="font-mono font-black text-2xl text-gray-900 dark:text-white tracking-widest">{code}</p>
+        <p className="text-sm text-gray-500">{buildItemDescription(step2)}</p>
+      </div>
+
+      {/* Summary table */}
       <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 bg-gray-50 dark:bg-[#15171e]/50 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3">
-          {typeCard && (
-            <div className={`p-2 rounded-xl bg-gray-100 dark:bg-gray-800 ${typeCard.color}`}>
-              <typeCard.icon size={16} />
-            </div>
-          )}
-          <div>
-            <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Item Type</p>
-            <p className="font-bold text-gray-900 dark:text-white text-sm">{typeCard?.label}</p>
-          </div>
-          {step2.is_urgent && (
-            <span className="ml-auto bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] font-black px-2 py-0.5 rounded border border-red-200 dark:border-red-500/20">
-              URGENT
-            </span>
-          )}
+        <div className="px-5 py-3.5 bg-gray-50 dark:bg-[#15171e]/50 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3">
+          {typeCard && <div className={`p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 ${typeCard.color}`}><typeCard.icon size={14} /></div>}
+          <span className="font-bold text-sm text-gray-900 dark:text-white">{typeCard?.label}</span>
+          {step3.is_urgent && <span className="ml-auto bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] font-black px-2 py-0.5 rounded border border-red-200 dark:border-red-500/20">URGENT</span>}
         </div>
-        <div className="px-6">
-          <ReviewRow label="Description" value={step2.item_description} />
-          <ReviewRow label="Business Reason" value={step2.business_reason} />
-          <ReviewRow
-            label="Activation Date"
-            value={step2.required_activation_date
-              ? new Date(step2.required_activation_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-              : undefined}
-          />
-          <ReviewRow label="Target Systems" value={activeSystems.length > 0 ? activeSystems.join(', ') : 'None selected'} />
-          {step3.department && <ReviewRow label="Department" value={step3.department} />}
-          {step3.business_unit && <ReviewRow label="Business Unit" value={step3.business_unit} />}
-          {step3.customer_reference && <ReviewRow label="Customer Ref" value={step3.customer_reference} />}
-          {step3.contract_reference && <ReviewRow label="Contract Ref" value={step3.contract_reference} />}
-          {step3.replacement_for_item_id && <ReviewRow label="Replacing" value={step3.replacement_for_item_id} />}
+        <div className="px-5 divide-y divide-gray-50 dark:divide-gray-800/60">
+          {[
+            { label: 'Category',      value: `${step2.categoryLabel} (${step2.categoryCode})` },
+            { label: 'Product Type',  value: `${step2.productTypeLabel} (${step2.productTypeCode})` },
+            step2.sizeLabel ? { label: 'Size',   value: `${step2.sizeLabel} (${step2.sizeCode})` } : null,
+            step2.colourLabel && step2.colourLabel !== 'Other' ? { label: 'Colour', value: `${step2.colourLabel} (${step2.colourCode})` } : null,
+            step2.gsm ? { label: 'GSM', value: `${step2.gsm} g/m²` } : null,
+            step2.material ? { label: 'Material', value: step2.material } : null,
+            { label: 'Business Reason', value: reasonLabel },
+            { label: 'Target Systems',  value: activeSystems.join(', ') },
+            step3.customer_reference ? { label: 'Customer Ref',   value: step3.customer_reference } : null,
+            step3.contract_reference ? { label: 'Contract Ref',   value: step3.contract_reference } : null,
+            step3.replacement_for_item_id ? { label: 'Replacing', value: step3.replacement_for_item_id } : null,
+          ].filter(Boolean).map((row: any) => (
+            <div key={row.label} className="flex items-start justify-between gap-4 py-3">
+              <span className="text-xs font-black text-gray-400 uppercase tracking-widest shrink-0 w-36">{row.label}</span>
+              <span className="text-sm text-gray-900 dark:text-white text-right font-medium">{row.value}</span>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* SLA estimate */}
       <div className="flex items-center gap-4 p-4 bg-blue-50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/20 rounded-2xl">
-        <div className="p-2.5 bg-blue-100 dark:bg-blue-500/20 rounded-xl text-blue-600 dark:text-blue-400 flex-shrink-0">
-          <Clock size={18} />
-        </div>
+        <div className="p-2.5 bg-blue-100 dark:bg-blue-500/20 rounded-xl text-blue-600 dark:text-blue-400 shrink-0"><Clock size={18} /></div>
         <div>
           <p className="font-bold text-blue-900 dark:text-blue-300 text-sm">Estimated review time</p>
-          <p className="text-sm text-blue-700 dark:text-blue-400">
-            {step2.is_urgent ? 'Urgent — ' : ''}{urgentSla} hours from submission ({Math.ceil(urgentSla / 8)} business days)
-          </p>
-        </div>
-      </div>
-
-      {/* What happens next */}
-      <div className="space-y-2">
-        <p className="text-xs font-black text-gray-400 uppercase tracking-widest">What happens next</p>
-        <div className="relative">
-          {/* Vertical connector line */}
-          <div className="absolute left-[19px] top-5 bottom-5 w-px bg-gray-200 dark:bg-gray-700" />
-
-          <div className="space-y-3">
-            {WORKFLOW_STEPS.map((step, idx) => {
-              const Icon = step.icon;
-              const isDone = idx === 0;
-              return (
-                <div key={step.label} className="flex items-center gap-4 relative">
-                  <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 z-10 ${
-                    isDone
-                      ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white'
-                      : 'bg-white dark:bg-[#1e2029] border-gray-200 dark:border-gray-700 text-gray-400'
-                  }`}>
-                    <Icon size={14} />
-                  </div>
-                  <div>
-                    <p className={`text-sm font-bold ${isDone ? 'text-[var(--color-brand)]' : 'text-gray-700 dark:text-gray-300'}`}>{step.label}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{step.detail}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <p className="text-sm text-blue-700 dark:text-blue-400">{step3.is_urgent ? 'Urgent — ' : ''}{urgentSla} hours ({Math.ceil(urgentSla / 8)} business days)</p>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Success screen ─────────────────────────────────────────────────────────────
+// ── Review context panel (what happens next) ──────────────────────────────────
+
+function ReviewContextPanel({ step1, step2 }: { step1: Step1Data; step2: Step2Data }) {
+  const segs = getSkuSegments(step1, step2);
+  const code = buildItemCode(segs);
+  const STAGES = [
+    { label: 'Submitted',      done: true, active: false },
+    { label: 'Duplicate Check', done: false, active: true  },
+    { label: 'Item Definition', done: false, active: false },
+    { label: 'Pricing Review',  done: false, active: false },
+    { label: 'Approval',        done: false, active: false },
+    { label: 'Active',          done: false, active: false },
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Your Item Code</p>
+        <p className="font-mono font-black text-xl text-gray-900 dark:text-white tracking-widest">{code}</p>
+      </div>
+      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">What Happens Next</p>
+        <div className="relative">
+          {STAGES.map((s, i) => {
+            const isLast = i === STAGES.length - 1;
+            return (
+              <div key={s.label} className="relative flex gap-3">
+                <div className="flex flex-col items-center" style={{ width: 28, flexShrink: 0 }}>
+                  <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center z-10 shrink-0 ${s.done ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white' : s.active ? 'border-[var(--color-brand)] bg-white dark:bg-[#1e2029] text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] text-gray-300 dark:text-gray-700'}`}>
+                    {s.done ? <Check size={12} strokeWidth={3} /> : <span className="text-[9px] font-black">{i + 1}</span>}
+                  </div>
+                  {!isLast && <div className={`w-px flex-1 my-1 ${s.done ? 'bg-[var(--color-brand)]/40' : 'bg-gray-200 dark:bg-gray-700'}`} style={{ minHeight: 16 }} />}
+                </div>
+                <div className={`pb-3 ${isLast ? 'pb-0' : ''}`} style={{ paddingTop: 3 }}>
+                  <p className={`text-xs font-bold ${s.done ? 'text-[var(--color-brand)]' : s.active ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-600'}`}>{s.label}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Success screen ────────────────────────────────────────────────────────────
 
 interface SuccessScreenProps {
-  requestNumber: string;
+  itemCode: string;
   isUrgent: boolean;
   requestType: ItemRequestType | null;
   onViewRequests: () => void;
   onNewRequest: () => void;
 }
 
-function SuccessScreen({ requestNumber, isUrgent, requestType, onViewRequests, onNewRequest }: SuccessScreenProps) {
+function SuccessScreen({ itemCode, isUrgent, requestType, onViewRequests, onNewRequest }: SuccessScreenProps) {
   const slaHours = requestType ? URGENCY_SLA_HOURS[requestType] : 48;
   const urgentSla = isUrgent ? Math.floor(slaHours / 2) : slaHours;
-
-  const TIMELINE = [
-    { label: 'Submitted', sublabel: 'Just now', done: true, active: false },
-    { label: 'Duplicate Check', sublabel: 'In queue', done: false, active: true },
-    { label: 'Item Definition', sublabel: 'Pending', done: false, active: false },
-    { label: 'Pricing Review', sublabel: 'Pending', done: false, active: false },
-    { label: 'Approval', sublabel: 'Pending', done: false, active: false },
-    { label: 'Active', sublabel: 'End goal', done: false, active: false },
-  ];
-
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-8 py-12 animate-page-entry text-center">
-
-      {/* Success icon */}
-      <div className="relative mb-8">
-        <div className="w-20 h-20 bg-[var(--color-brand)]/10 rounded-full flex items-center justify-center">
-          <div className="w-14 h-14 bg-[var(--color-brand)] rounded-full flex items-center justify-center shadow-xl shadow-[var(--color-brand)]/30">
-            <Check size={28} className="text-white" strokeWidth={3} />
-          </div>
+      <div className="w-20 h-20 bg-[var(--color-brand)]/10 rounded-full flex items-center justify-center mb-8">
+        <div className="w-14 h-14 bg-[var(--color-brand)] rounded-full flex items-center justify-center shadow-xl shadow-[var(--color-brand)]/30">
+          <Check size={28} className="text-white" strokeWidth={3} />
         </div>
       </div>
-
-      <h1 className="text-3xl font-black text-gray-900 dark:text-white mb-2">Request Submitted!</h1>
-      <p className="text-gray-500 dark:text-gray-400 mb-2">
-        Your request has been received and is now in the Master Data queue.
-      </p>
-      <div className="inline-flex items-center gap-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-xl font-mono text-sm font-bold mb-2">
-        <FileText size={14} />
-        {requestNumber}
+      <h1 className="text-3xl font-black text-gray-900 dark:text-white mb-2">Request Submitted</h1>
+      <p className="text-gray-500 dark:text-gray-400 mb-4">Your request is now in the Master Data review queue.</p>
+      <div className="inline-flex items-center gap-2 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white px-5 py-2.5 rounded-xl font-mono font-black text-lg tracking-widest mb-2">
+        {itemCode}
       </div>
-      {isUrgent && (
-        <span className="inline-flex items-center gap-1.5 bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-black px-3 py-1 rounded-full border border-red-200 dark:border-red-500/20 mb-2">
-          <Zap size={12} /> URGENT — Expected review within {urgentSla} hours
-        </span>
-      )}
-      {!isUrgent && (
-        <p className="text-xs text-gray-400 mb-2">Expected review within {urgentSla} hours</p>
-      )}
-
-      {/* Progress timeline */}
-      <div className="w-full max-w-md mt-8 mb-10">
-        <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Request Progress</p>
-        <div className="relative">
-          <div className="absolute left-[19px] top-5 bottom-5 w-px bg-gray-200 dark:bg-gray-700" />
-          <div className="space-y-4 text-left">
-            {TIMELINE.map((step, idx) => (
-              <div key={step.label} className="flex items-center gap-4 relative">
-                <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 z-10 transition-all ${
-                  step.done
-                    ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white'
-                    : step.active
-                    ? 'bg-white dark:bg-[#1e2029] border-[var(--color-brand)] text-[var(--color-brand)]'
-                    : 'bg-white dark:bg-[#1e2029] border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600'
-                }`}>
-                  {step.done ? <Check size={14} strokeWidth={3} /> : <span className="text-[11px] font-black">{idx + 1}</span>}
-                </div>
-                <div>
-                  <p className={`text-sm font-bold ${step.done ? 'text-[var(--color-brand)]' : step.active ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-600'}`}>
-                    {step.label}
-                  </p>
-                  <p className="text-xs text-gray-400">{step.sublabel}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex flex-col sm:flex-row items-center gap-3">
-        <button
-          onClick={onViewRequests}
-          className="px-8 py-3 rounded-xl bg-[var(--color-brand)] text-white font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all"
-        >
-          View My Requests
-        </button>
-        <button
-          onClick={onNewRequest}
-          className="px-8 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
-        >
-          Submit Another Request
-        </button>
+      {isUrgent
+        ? <span className="inline-flex items-center gap-1.5 bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-black px-3 py-1 rounded-full border border-red-200 dark:border-red-500/20 mt-2"><Zap size={12} /> URGENT — Expected review within {urgentSla} hours</span>
+        : <p className="text-xs text-gray-400 mt-1">Expected review within {urgentSla} hours</p>}
+      <div className="flex flex-col sm:flex-row items-center gap-3 mt-10">
+        <button onClick={onViewRequests} className="px-8 py-2.5 rounded-xl bg-[var(--color-brand)] text-white font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all text-sm">View My Requests</button>
+        <button onClick={onNewRequest} className="px-8 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-800 transition-all text-sm">Submit Another Request</button>
       </div>
     </div>
   );
 }
 
-// ── Validation ─────────────────────────────────────────────────────────────────
+// ── Shared section label ──────────────────────────────────────────────────────
+
+function SectionLabel({ n, done, title, sub }: { n: number; done: boolean; title: string; sub: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-black ${done ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+        {done ? <Check size={11} strokeWidth={3} /> : n}
+      </div>
+      <div>
+        <p className="text-sm font-bold text-gray-900 dark:text-white leading-none">{title}</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Validation ────────────────────────────────────────────────────────────────
 
 function validateStep(step: number, s1: Step1Data, s2: Step2Data, s3: Step3Data): string | null {
   if (step === 0) {
-    if (!s1.request_type) return 'Please select an item type to continue.';
+    if (!s1.request_type) return 'Please select a transaction type to continue.';
   }
   if (step === 1) {
-    if (s2.item_description.length < DESC_MIN) return `Item description needs at least ${DESC_MIN} characters.`;
-    if (s2.business_reason.length < REASON_MIN) return `Business reason needs at least ${REASON_MIN} characters.`;
+    if (!s2.categoryCode)    return 'Please select a catalogue category.';
+    if (!s2.productTypeCode) return 'Please select a product type.';
+    if (s2.rfid === null)    return 'Please indicate whether this item will be RFID tracked.';
+    const def = getProductDef(s2.productTypeCode);
+    if (def?.bedSizes || def?.bodySizes) {
+      if (!s2.sizeCode) return 'Please select a size.';
+    }
+    if (def?.hasColour) {
+      if (!s2.colourLabel) return 'Please select a colour.';
+      if (s2.colourLabel === 'Other' && !s2.colourCustom.trim()) return 'Please describe the custom colour.';
+    }
+    if (!s2.material) return 'Please select the item material.';
+    if (!s2.item_check_confirmed) return 'Please confirm this item does not already exist in the master catalogue.';
   }
   if (step === 2) {
-    if (!s3.target_sap && !s3.target_bundle && !s3.target_linenhub && !s3.target_salesforce) {
-      return 'Please select at least one target system.';
-    }
-    if (s1.request_type === 'CUSTOMER_SPECIFIC' && !s3.customer_reference.trim()) {
-      return 'Customer reference is required for Customer-Specific items.';
-    }
-    if (s1.request_type === 'REPLACEMENT' && !s3.replacement_for_item_id.trim()) {
-      return 'Please specify the item being replaced.';
-    }
+    if (!s3.business_reason_type) return 'Please select a business reason.';
+    if (s3.business_reason_type === 'OTHER' && s3.business_reason_other.length < 20) return 'Please describe the business reason (at least 20 characters).';
+    if (s3.is_urgent && s3.urgent_reason.length < 10) return 'Please explain why this request is urgent.';
+    if (s1.request_type === 'CUSTOMER_SPECIFIC' && !s3.customer_reference.trim()) return 'Customer reference is required for Customer-Specific items.';
+    if (s1.request_type === 'REPLACEMENT' && !s3.replacement_for_item_id.trim()) return 'Please specify the item being replaced.';
   }
   return null;
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
+
+const STEP2_INITIAL: Step2Data = {
+  categoryLabel: '', categoryCode: '', productTypeLabel: '', productTypeCode: '',
+  rfid: null, sizeLabel: '', sizeCode: '', colourLabel: '', colourCode: '', colourCustom: '',
+  gsm: '', gsmSkipped: false, material: '', width_cm: '', height_cm: '', grade: '',
+  additional_notes: '', item_check_confirmed: false,
+};
+const STEP3_INITIAL: Step3Data = {
+  business_reason_type: '', business_reason_other: '', is_urgent: false, urgent_reason: '',
+  target_sap: true, target_bundle: false, target_linenhub: false, target_salesforce: false,
+  customer_reference: '', contract_reference: '', replacement_for_item_id: '',
+};
 
 export default function ItemRequestWizard() {
   const navigate = useNavigate();
+  const { currentUser } = useApp();
   const { toasts, dismissToast, success, error: toastError } = useToast();
 
-  const [activeStep, setActiveStep] = useState(0);
+  const [activeStep, setActiveStep]   = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [submittedRequestNumber, setSubmittedRequestNumber] = useState('');
-
+  const [submitted, setSubmitted]     = useState(false);
+  const [submittedCode, setSubmittedCode] = useState('');
   const [step1, setStep1] = useState<Step1Data>({ request_type: null });
-  const [step2, setStep2] = useState<Step2Data>({
-    item_description: '',
-    business_reason: '',
-    required_activation_date: '',
-    is_urgent: false,
-  });
-  const [step3, setStep3] = useState<Step3Data>({
-    target_sap: true,
-    target_bundle: false,
-    target_linenhub: false,
-    target_salesforce: false,
-    department: '',
-    business_unit: '',
-    customer_reference: '',
-    contract_reference: '',
-    replacement_for_item_id: '',
-  });
+  const [step2, setStep2] = useState<Step2Data>(STEP2_INITIAL);
+  const [step3, setStep3] = useState<Step3Data>(STEP3_INITIAL);
+  const [dupeStatus, setDupeStatus] = useState<'idle'|'searching'|'found'|'clear'>('idle');
+  const [dupeCount,  setDupeCount]  = useState(0);
 
   const handleContinue = useCallback(async () => {
-    const validationError = validateStep(activeStep, step1, step2, step3);
-    if (validationError) {
-      toastError(validationError);
-      return;
-    }
+    const err = validateStep(activeStep, step1, step2, step3);
+    if (err) { toastError(err); return; }
+    if (activeStep < STEPS.length - 1) { setActiveStep(p => p + 1); return; }
 
-    // Not the final step — just advance
-    if (activeStep < STEPS.length - 1) {
-      setActiveStep(prev => prev + 1);
-      return;
-    }
-
-    // Final step — create + submit
     setIsSubmitting(true);
     try {
+      const segs = getSkuSegments(step1, step2);
+      const itemDescription  = buildItemDescription(step2);
+      const fullReason = step3.is_urgent && step3.urgent_reason
+        ? `${buildBusinessReason(step3)}\n\nUrgency: ${step3.urgent_reason}`
+        : buildBusinessReason(step3);
       const request = await createItemRequest({
-        request_type: step1.request_type!,
-        item_description: step2.item_description,
-        business_reason: step2.business_reason,
-        required_activation_date: step2.required_activation_date || undefined,
-        target_sap: step3.target_sap,
-        target_bundle: step3.target_bundle,
-        target_linenhub: step3.target_linenhub,
-        target_salesforce: step3.target_salesforce,
-        department: step3.department || undefined,
-        business_unit: step3.business_unit || undefined,
-        customer_reference: step3.customer_reference || undefined,
-        contract_reference: step3.contract_reference || undefined,
+        request_type:            step1.request_type!,
+        item_description:        itemDescription,
+        business_reason:         fullReason,
+        target_sap:              true,
+        target_bundle:           step3.target_bundle,
+        target_linenhub:         step3.target_linenhub,
+        target_salesforce:       step3.target_salesforce,
+        department:              step2.categoryLabel || undefined,
+        customer_reference:      step3.customer_reference      || undefined,
+        contract_reference:      step3.contract_reference      || undefined,
         replacement_for_item_id: step3.replacement_for_item_id || undefined,
-      });
-
-      await transitionRequest(request.id, 'SUBMITTED');
-
-      setSubmittedRequestNumber(request.request_number);
+      }, currentUser?.id);
+      await transitionRequest(request.id, 'SUBMITTED', { actorId: currentUser?.id });
+      setSubmittedCode(buildItemCode(segs));
       setSubmitted(true);
       success('Request submitted successfully!');
     } catch (err) {
@@ -800,79 +1182,52 @@ export default function ItemRequestWizard() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [activeStep, step1, step2, step3, toastError, success]);
+  }, [activeStep, step1, step2, step3, currentUser, toastError, success]);
 
-  const handlePrevious = useCallback(() => {
-    setActiveStep(prev => Math.max(0, prev - 1));
-  }, []);
-
-  const handleCancel = useCallback(() => {
-    navigate('/items/my-requests');
-  }, [navigate]);
-
+  const handlePrevious  = useCallback(() => setActiveStep(p => Math.max(0, p - 1)), []);
+  const handleCancel    = useCallback(() => navigate('/items/my-requests'), [navigate]);
   const handleNewRequest = useCallback(() => {
-    setActiveStep(0);
-    setSubmitted(false);
-    setStep1({ request_type: null });
-    setStep2({ item_description: '', business_reason: '', required_activation_date: '', is_urgent: false });
-    setStep3({
-      target_sap: true, target_bundle: false, target_linenhub: false, target_salesforce: false,
-      department: '', business_unit: '', customer_reference: '', contract_reference: '', replacement_for_item_id: '',
-    });
+    setActiveStep(0); setSubmitted(false);
+    setStep1({ request_type: null }); setStep2(STEP2_INITIAL); setStep3(STEP3_INITIAL);
   }, []);
 
-  // Success screen
   if (submitted) {
     return (
       <>
-        <SuccessScreen
-          requestNumber={submittedRequestNumber}
-          isUrgent={step2.is_urgent}
-          requestType={step1.request_type}
-          onViewRequests={() => navigate('/items/my-requests')}
-          onNewRequest={handleNewRequest}
-        />
+        <SuccessScreen itemCode={submittedCode} isUrgent={step3.is_urgent} requestType={step1.request_type}
+          onViewRequests={() => navigate('/items/my-requests')} onNewRequest={handleNewRequest} />
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </>
     );
   }
 
-  const isLastStep = activeStep === STEPS.length - 1;
-
-  const continueLabel = isLastStep
-    ? isSubmitting ? 'Submitting…' : 'Submit Request'
-    : 'Continue';
+  // Context panel for each step
+  const contextPanel = activeStep === 1 ? (
+    <CodePreviewPanel s1={step1} s2={step2} dupeStatus={dupeStatus} dupeCount={dupeCount} />
+  ) : activeStep >= 2 ? (
+    <ReviewContextPanel step1={step1} step2={step2} />
+  ) : undefined;
 
   return (
     <>
       <ItemRequestWizardShell
-        title="New Item Request"
-        subtitle="Request a new item for the catalogue"
-        steps={STEPS}
-        activeStepIndex={activeStep}
-        onContinue={handleContinue}
-        onPrevious={activeStep > 0 ? handlePrevious : undefined}
+        title="New Item Request" subtitle="Request a new item for the catalogue"
+        steps={STEPS} activeStepIndex={activeStep} contextPanel={contextPanel}
+        onContinue={handleContinue} onPrevious={activeStep > 0 ? handlePrevious : undefined}
         onCancel={handleCancel}
-        continueLabel={continueLabel}
-        continueDisabled={isSubmitting}
-        isSaving={isSubmitting && isLastStep}
+        continueLabel={activeStep === STEPS.length - 1 ? (isSubmitting ? 'Submitting…' : 'Submit Request') : 'Continue'}
+        continueDisabled={isSubmitting} isSaving={isSubmitting && activeStep === STEPS.length - 1}
       >
-        {activeStep === 0 && (
-          <Step1TypeSelector data={step1} onChange={setStep1} />
-        )}
+        {activeStep === 0 && <Step1TypeSelector data={step1} onChange={setStep1} />}
         {activeStep === 1 && (
-          <Step2Details data={step2} onChange={partial => setStep2(prev => ({ ...prev, ...partial }))} />
+          <Step2CodeBuilder data={step2} onChange={p => setStep2(prev => ({ ...prev, ...p }))}
+            requestType={step1.request_type}
+            onDupeStatusChange={(s, c) => { setDupeStatus(s); setDupeCount(c); }} />
         )}
         {activeStep === 2 && (
-          <Step3Systems
-            data={step3}
-            onChange={partial => setStep3(prev => ({ ...prev, ...partial }))}
-            requestType={step1.request_type}
-          />
+          <Step3Context data={step3} onChange={p => setStep3(prev => ({ ...prev, ...p }))} requestType={step1.request_type} />
         )}
-        {activeStep === 3 && (
-          <Step4Review step1={step1} step2={step2} step3={step3} />
-        )}
+        {activeStep === 3 && <Step4Review step1={step1} step2={step2} step3={step3} />}
       </ItemRequestWizardShell>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </>
