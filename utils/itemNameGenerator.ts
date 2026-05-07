@@ -1,43 +1,155 @@
 
-// ── Colour vocabulary ──────────────────────────────────────────────────────────
+// ── MD SKU Convention (Segment-based positional code) ─────────────────────────
+//
+// Segments (concatenated, no separator):
+//   1. Item Type:     P=Purchase, S=Sale, B=Both (purchase+sale)
+//   2. RFID Flag:     R=RFID, L=Non-RFID
+//   3. Category:      H=Healthcare, A=Accommodation, LH=LinenHub, CG=COG, DH=DailyHire
+//   4. Product Type:  2-char code (SH=Sheet, BT=BathTowel, HT=HandTowel, etc.)
+//   5. Size:          Q=Queen, K=King, S=Single, D=Double, F=Full, T=Twin, or blank
+//   6. Variety:       01..07 or blank if N/A
+//   7. Colour:        1-3 char code (W=White, B=Blue, etc.)
+//   8. GSM:           numeric (e.g. 500) or blank
+//
+// Example: SLASHQ01W500  →  Sale, L(non-RFID), A(Accommodation), SH(Sheet), Q(Queen), 01, W(White), 500gsm
 
-const COLOUR_MAP: Record<string, string> = {
-  white: 'WHT', black: 'BLK', grey: 'GRY', gray: 'GRY', red: 'RED',
-  blue: 'BLU', navy: 'NVY', green: 'GRN', yellow: 'YLW', orange: 'ORG',
-  pink: 'PNK', purple: 'PRP', brown: 'BRN', beige: 'BGE', ivory: 'IVY',
-  cream: 'CRM', silver: 'SLV', gold: 'GLD', tan: 'TAN', teal: 'TEL',
-  aqua: 'AQA', maroon: 'MRN', khaki: 'KHK', coral: 'CRL', mint: 'MNT',
-  lilac: 'LLC', charcoal: 'CHL', sand: 'SND', stone: 'STN', natural: 'NAT',
-  ecru: 'ECR', burgundy: 'BRG', 'off-white': 'OFW', offwhite: 'OFW',
+// ── Category codes ─────────────────────────────────────────────────────────────
+
+const CATEGORY_CODE_MAP: Record<string, string> = {
+  // Standard codes from spec
+  healthcare: 'H',
+  'health care': 'H',
+  accommodation: 'A',
+  linenhub: 'LH',
+  'linen hub': 'LH',
+  cog: 'CG',
+  'customer own goods': 'CG',
+  'customer-owned goods': 'CG',
+  dailyhire: 'DH',
+  'daily hire': 'DH',
+  // Additional mapped from item_pool / item_catalog
+  mining: 'MN',
+  transport: 'TR',
+  food: 'FB',
+  'food & beverages': 'FB',
+  'food and beverages': 'FB',
 };
 
-const COLOUR_NAMES = new Set(Object.keys(COLOUR_MAP));
+// ── Product type codes ─────────────────────────────────────────────────────────
 
-// ── Material vocabulary ────────────────────────────────────────────────────────
-
-const MATERIAL_MAP: Record<string, string> = {
-  cotton: 'COT', polyester: 'POL', poly: 'POL', linen: 'LIN', wool: 'WOL',
-  silk: 'SLK', bamboo: 'BAM', nylon: 'NYL', rayon: 'RAY', viscose: 'VIS',
-  microfiber: 'MCF', microfibre: 'MCF', terry: 'TRY', flannel: 'FLN',
-  fleece: 'FLC', velvet: 'VLV', satin: 'SAT', percale: 'PRC', jersey: 'JRS',
-  twill: 'TWL', canvas: 'CNV', denim: 'DNM', leather: 'LTH', mesh: 'MSH',
-  rubber: 'RBR', foam: 'FOM', glass: 'GLS', ceramic: 'CRM', metal: 'MTL',
-  steel: 'STL', aluminum: 'ALU', aluminium: 'ALU', plastic: 'PLS',
-  paper: 'PPR', cardboard: 'CBD', wood: 'WOD', bamboo_alt: 'BAM',
-  spandex: 'SPX', lycra: 'LYC', acrylic: 'ACR',
+const PRODUCT_TYPE_MAP: Record<string, string> = {
+  // Linen
+  sheet: 'SH',
+  'bed sheet': 'SH',
+  sheets: 'SH',
+  'flat sheet': 'FS',
+  'fitted sheet': 'FT',
+  'duvet cover': 'DC',
+  'pillow case': 'PC',
+  pillowcase: 'PC',
+  'pillow slip': 'PS',
+  quilt: 'QC',
+  'quilt cover': 'QC',
+  blanket: 'BL',
+  'bath towel': 'BT',
+  'bath sheet': 'BS',
+  'hand towel': 'HT',
+  'face washer': 'FW',
+  facewasher: 'FW',
+  washer: 'FW',
+  'bath mat': 'BM',
+  bathmat: 'BM',
+  towel: 'TW',
+  robe: 'RB',
+  'bath robe': 'RB',
+  bathrobe: 'RB',
+  // Bedding
+  'mattress protector': 'MP',
+  'mattress topper': 'MT',
+  pillow: 'PL',
+  bolster: 'BO',
+  // Clothing
+  'sleeping bag': 'SB',
+  uniform: 'UN',
+  shirt: 'SR',
+  scrub: 'SC',
+  // Equipment
+  hood: 'HD',
+  bag: 'BG',
+  container: 'CN',
+  tray: 'TY',
+  cart: 'CT',
+  trolley: 'TL',
 };
 
-const MATERIAL_NAMES = new Set(Object.keys(MATERIAL_MAP));
+// ── Size codes ─────────────────────────────────────────────────────────────────
 
-// ── Noise words to strip from short names ──────────────────────────────────────
+const SIZE_CODE_MAP: Record<string, string> = {
+  queen: 'Q',
+  king: 'K',
+  single: 'S',
+  double: 'D',
+  full: 'F',
+  twin: 'T',
+  'king single': 'KS',
+  'super king': 'SK',
+  // Generic sizes
+  small: '01',
+  medium: '02',
+  large: '03',
+  xlarge: '04',
+  'x-large': '04',
+  xxlarge: '05',
+  'xx-large': '05',
+};
 
-const NOISE_WORDS = new Set([
+// ── Colour codes ───────────────────────────────────────────────────────────────
+
+const COLOUR_CODE_MAP: Record<string, string> = {
+  white: 'W',
+  offwhite: 'OW',
+  'off-white': 'OW',
+  cream: 'CR',
+  ivory: 'IV',
+  ecru: 'EC',
+  natural: 'NA',
+  black: 'BK',
+  grey: 'GY',
+  gray: 'GY',
+  charcoal: 'CH',
+  silver: 'SV',
+  red: 'RD',
+  burgundy: 'BU',
+  maroon: 'MR',
+  pink: 'PK',
+  coral: 'CO',
+  orange: 'OR',
+  yellow: 'YE',
+  gold: 'GD',
+  green: 'GN',
+  mint: 'MT',
+  teal: 'TL',
+  aqua: 'AQ',
+  blue: 'BL',
+  navy: 'NV',
+  purple: 'PU',
+  lilac: 'LC',
+  brown: 'BR',
+  tan: 'TN',
+  beige: 'BG',
+  sand: 'SD',
+  stone: 'ST',
+  khaki: 'KH',
+};
+
+// ── Noise words for short name generation ─────────────────────────────────────
+
+const SHORT_NAME_NOISE = new Set([
   'grade', 'quality', 'standard', 'premium', 'professional', 'deluxe',
-  'series', 'model', 'type', 'style', 'class', 'brand', 'certified',
-  'approved', 'rated', 'compliant', 'genuine', 'original', 'authentic',
-  'ultra', 'super', 'extra', 'heavy', 'light', 'medium', 'fine', 'coarse',
-  'duty', 'weight', 'the', 'a', 'an', 'and', 'or', 'for', 'with', 'in',
-  'of', 'to', 'per', 'by',
+  'series', 'model', 'type', 'style', 'class', 'certified', 'approved',
+  'rated', 'compliant', 'genuine', 'original', 'authentic',
+  'the', 'a', 'an', 'and', 'or', 'for', 'with', 'in', 'of', 'to', 'per', 'by',
+  'catalogue', 'catalog',
 ]);
 
 // ── Parser ─────────────────────────────────────────────────────────────────────
@@ -46,7 +158,12 @@ export interface ParsedDescription {
   gsm: number | null;
   dimensions: string | null;
   colour: string | null;
+  colourCode: string | null;
   material: string | null;
+  productType: string | null;
+  productTypeCode: string | null;
+  categoryCode: string | null;
+  sizeCode: string | null;
   coreWords: string[];
   rawTokens: string[];
 }
@@ -56,63 +173,168 @@ export function parseDescription(description: string): ParsedDescription {
   const lower = raw.toLowerCase();
   const tokens = lower.split(/[\s,/|]+/).filter(Boolean);
 
-  // Extract GSM  (e.g. "500gsm", "500 gsm")
+  // GSM
   let gsm: number | null = null;
   const gsmMatch = lower.match(/\b(\d+)\s*gsm\b/);
   if (gsmMatch) gsm = parseInt(gsmMatch[1], 10);
 
-  // Extract dimensions (e.g. "70x140", "70 x 140cm", "70×140")
+  // Dimensions
   let dimensions: string | null = null;
   const dimMatch = lower.match(/\b(\d+)\s*[x×]\s*(\d+)(?:\s*(cm|mm|m|in|inch|inches))?\b/);
   if (dimMatch) {
     const unit = dimMatch[3] ?? 'cm';
     dimensions = `${dimMatch[1]}x${dimMatch[2]}${unit}`;
-  } else {
-    // Single dimension (e.g. "70cm")
-    const singleDim = lower.match(/\b(\d+)\s*(cm|mm|m|in|inch)\b/);
-    if (singleDim) dimensions = `${singleDim[1]}${singleDim[2]}`;
   }
 
-  // Extract colour
+  // Colour — longest phrase match first, then single word
   let colour: string | null = null;
-  for (const tok of tokens) {
-    const clean = tok.replace(/[^a-z-]/g, '');
-    if (COLOUR_NAMES.has(clean)) {
-      colour = clean.charAt(0).toUpperCase() + clean.slice(1);
+  let colourCode: string | null = null;
+  const sortedColours = Object.keys(COLOUR_CODE_MAP).sort((a, b) => b.length - a.length);
+  for (const colName of sortedColours) {
+    if (lower.includes(colName)) {
+      colour = colName.charAt(0).toUpperCase() + colName.slice(1);
+      colourCode = COLOUR_CODE_MAP[colName];
       break;
     }
   }
 
-  // Extract material (first material word found)
+  // Product type — longest phrase match first
+  let productType: string | null = null;
+  let productTypeCode: string | null = null;
+  const sortedProductTypes = Object.keys(PRODUCT_TYPE_MAP).sort((a, b) => b.length - a.length);
+  for (const ptName of sortedProductTypes) {
+    if (lower.includes(ptName)) {
+      productType = ptName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      productTypeCode = PRODUCT_TYPE_MAP[ptName];
+      break;
+    }
+  }
+
+  // Category — longest phrase match first
+  let categoryCode: string | null = null;
+  const sortedCategories = Object.keys(CATEGORY_CODE_MAP).sort((a, b) => b.length - a.length);
+  for (const catName of sortedCategories) {
+    if (lower.includes(catName)) {
+      categoryCode = CATEGORY_CODE_MAP[catName];
+      break;
+    }
+  }
+
+  // Size — longest phrase match first
+  let sizeCode: string | null = null;
+  const sortedSizes = Object.keys(SIZE_CODE_MAP).sort((a, b) => b.length - a.length);
+  for (const sizeName of sortedSizes) {
+    if (lower.includes(sizeName)) {
+      sizeCode = SIZE_CODE_MAP[sizeName];
+      break;
+    }
+  }
+
+  // Material (for short name only)
+  const MATERIAL_KEYWORDS: Record<string, string> = {
+    '100% cotton': 'Cotton', cotton: 'Cotton', polyester: 'Polyester',
+    linen: 'Linen', bamboo: 'Bamboo', microfibre: 'Microfibre',
+    microfiber: 'Microfiber', terry: 'Terry', fleece: 'Fleece',
+    wool: 'Wool', silk: 'Silk', nylon: 'Nylon', rayon: 'Rayon',
+  };
   let material: string | null = null;
-  for (const tok of tokens) {
-    const clean = tok.replace(/[^a-z]/g, '');
-    if (MATERIAL_NAMES.has(clean)) {
-      material = clean.charAt(0).toUpperCase() + clean.slice(1);
+  const sortedMaterials = Object.keys(MATERIAL_KEYWORDS).sort((a, b) => b.length - a.length);
+  for (const mat of sortedMaterials) {
+    if (lower.includes(mat)) {
+      material = MATERIAL_KEYWORDS[mat];
       break;
     }
   }
 
-  // Core words: strip noise, gsm tokens, dimension tokens, colour, material
+  // Core words for display — strip noise, attributes we already extracted
   const gsmPattern = /^\d+gsm$/;
   const dimPattern = /^\d+[x×]\d+/;
   const numOnlyPattern = /^\d+$/;
   const unitSuffixPattern = /^\d+(cm|mm|m|in|kg|g|ml|l|lb|oz)$/;
+  const pctPattern = /^\d+%$/;
 
   const coreWords = tokens.filter(tok => {
     const clean = tok.replace(/[^a-z]/g, '');
     if (!clean || clean.length < 2) return false;
-    if (NOISE_WORDS.has(clean)) return false;
-    if (COLOUR_NAMES.has(clean)) return false;
-    if (MATERIAL_NAMES.has(clean)) return false;
+    if (SHORT_NAME_NOISE.has(clean)) return false;
     if (gsmPattern.test(tok)) return false;
     if (dimPattern.test(tok)) return false;
     if (numOnlyPattern.test(tok)) return false;
     if (unitSuffixPattern.test(tok)) return false;
+    if (pctPattern.test(tok)) return false;
     return true;
   });
 
-  return { gsm, dimensions, colour, material, coreWords, rawTokens: tokens };
+  return { gsm, dimensions, colour, colourCode, material, productType, productTypeCode, categoryCode, sizeCode, coreWords, rawTokens: tokens };
+}
+
+// ── MD SKU Code Generator ──────────────────────────────────────────────────────
+//
+// Generates a positional code following the MD Proposal:
+// [Type][RFID][Category][ProductType][Size][Variety][Colour][GSM]
+
+export interface SkuSegments {
+  itemType?: 'P' | 'S' | 'B';  // Purchase / Sale / Both
+  rfid?: boolean;
+  categoryCode?: string;        // e.g. 'A', 'H', 'LH'
+  productTypeCode?: string;     // e.g. 'SH', 'BT'
+  sizeCode?: string;            // e.g. 'Q', 'K'
+  varietyCode?: string;         // e.g. '01', '02'
+  colourCode?: string;          // e.g. 'W', 'BL'
+  gsm?: number | null;
+}
+
+export function buildItemCode(segments: SkuSegments): string {
+  const parts: string[] = [];
+
+  // Seg 1: Item Type
+  parts.push(segments.itemType ?? 'B');
+
+  // Seg 2: RFID
+  parts.push(segments.rfid ? 'R' : 'L');
+
+  // Seg 3: Category (default to general 'GN' if unknown)
+  parts.push(segments.categoryCode ?? 'GN');
+
+  // Seg 4: Product Type (2 chars, default to 'IT' for Item)
+  parts.push(segments.productTypeCode ?? 'IT');
+
+  // Seg 5: Size (optional, skip if blank)
+  if (segments.sizeCode) parts.push(segments.sizeCode);
+
+  // Seg 6: Variety (optional)
+  if (segments.varietyCode) parts.push(segments.varietyCode);
+
+  // Seg 7: Colour (optional)
+  if (segments.colourCode) parts.push(segments.colourCode);
+
+  // Seg 8: GSM (optional)
+  if (segments.gsm) parts.push(String(segments.gsm));
+
+  return parts.join('').toUpperCase();
+}
+
+// Derive SKU segments from free-text description (pre-definition approximation)
+export function generateItemCode(
+  description: string,
+  overrides?: Partial<SkuSegments>
+): string {
+  if (!description?.trim()) return 'BLGNIT';
+
+  const parsed = parseDescription(description);
+
+  const segments: SkuSegments = {
+    itemType: 'B',
+    rfid: false,
+    categoryCode: parsed.categoryCode ?? undefined,
+    productTypeCode: parsed.productTypeCode ?? undefined,
+    sizeCode: parsed.sizeCode ?? undefined,
+    colourCode: parsed.colourCode ?? undefined,
+    gsm: parsed.gsm,
+    ...overrides,
+  };
+
+  return buildItemCode(segments);
 }
 
 // ── Short name generator ───────────────────────────────────────────────────────
@@ -120,63 +342,31 @@ export function parseDescription(description: string): ParsedDescription {
 export function generateShortName(description: string): string {
   if (!description?.trim()) return '';
 
-  const { gsm, dimensions, colour, material, coreWords } = parseDescription(description);
+  const { gsm, dimensions, colour, material, productType, sizeCode, coreWords } = parseDescription(description);
 
-  // Build: [Material] [Core words] [GSM] [Colour] [Dimensions]
   const parts: string[] = [];
 
   if (material) parts.push(material);
-
-  // Include first 4 meaningful core words (title-cased)
-  const coreDisplay = coreWords.slice(0, 4).map(w => w.charAt(0).toUpperCase() + w.slice(1));
-  parts.push(...coreDisplay);
-
+  if (productType) {
+    parts.push(productType);
+  } else {
+    // Fall back to first 3 meaningful core words
+    const coreDisplay = coreWords.slice(0, 3).map(w => w.charAt(0).toUpperCase() + w.slice(1));
+    parts.push(...coreDisplay);
+  }
+  if (sizeCode) {
+    // Map size code back to readable name for display
+    const sizeNames: Record<string, string> = { Q: 'Queen', K: 'King', S: 'Single', D: 'Double', F: 'Full', T: 'Twin', KS: 'King Single' };
+    const sizeName = sizeNames[sizeCode];
+    if (sizeName) parts.push(sizeName);
+  }
   if (gsm) parts.push(`${gsm}gsm`);
   if (colour) parts.push(colour);
-  if (dimensions) parts.push(dimensions);
+  if (dimensions && !sizeCode) parts.push(dimensions);
 
   const result = [...new Set(parts)].join(' ');
-  // Trim to 60 chars at a word boundary
   if (result.length <= 60) return result;
-  const trimmed = result.slice(0, 60).replace(/\s\S*$/, '');
-  return trimmed || result.slice(0, 60);
-}
-
-// ── Item code generator ────────────────────────────────────────────────────────
-
-function abbreviate(word: string, length: number): string {
-  return word.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, length);
-}
-
-export function generateItemCode(description: string): string {
-  if (!description?.trim()) return 'ITEM';
-
-  const { gsm, dimensions, colour, material, coreWords } = parseDescription(description);
-
-  // Segment 1: material abbreviation (if found)
-  const matPart = material ? MATERIAL_MAP[material.toLowerCase()] : null;
-
-  // Segment 2: core noun abbreviation — first 1-3 core words, 2-3 chars each
-  const nounPart = coreWords.slice(0, 3).map(w => abbreviate(w, 2)).join('');
-
-  // Segment 3: numeric attribute (GSM or dimensions)
-  let attrPart: string | null = null;
-  if (gsm) {
-    attrPart = `${gsm}`;
-  } else if (dimensions) {
-    // Compact: 70x140cm → 70X140
-    attrPart = dimensions.toUpperCase().replace('CM', '').replace('MM', 'M');
-  }
-
-  // Segment 4: colour abbreviation
-  const colPart = colour ? COLOUR_MAP[colour.toLowerCase()] : null;
-
-  // Assemble with dashes, drop empty segments
-  const segments = [matPart ?? nounPart, matPart ? nounPart : null, attrPart, colPart].filter(Boolean) as string[];
-  const code = segments.join('-');
-
-  // Trim to 20 chars, strip trailing dash
-  return code.slice(0, 20).replace(/-+$/, '') || 'ITEM';
+  return result.slice(0, 60).replace(/\s\S*$/, '') || result.slice(0, 60);
 }
 
 // ── Search token extractor ─────────────────────────────────────────────────────
@@ -185,18 +375,16 @@ export function extractSearchTokens(description: string): string[] {
   if (!description?.trim()) return [];
 
   const { rawTokens } = parseDescription(description);
-
   const tokens = new Set<string>();
 
-  // Include meaningful tokens ≥ 3 chars, non-noise
   for (const tok of rawTokens) {
     const clean = tok.replace(/[^a-z0-9]/g, '');
-    if (clean.length >= 3 && !NOISE_WORDS.has(clean)) {
+    if (clean.length >= 3 && !SHORT_NAME_NOISE.has(clean)) {
       tokens.add(clean);
     }
   }
 
-  // Also include comma-separated segments as whole phrases
+  // Comma-separated segments as whole phrases
   const segments = description.split(/[,|/]+/).map(s => s.trim()).filter(s => s.length >= 3);
   for (const seg of segments) {
     tokens.add(seg.trim());

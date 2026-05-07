@@ -95,14 +95,15 @@ export async function submitItemRequest(requestId: string): Promise<ItemRequest>
   return data as ItemRequest;
 }
 
-export async function getMyItemRequests(): Promise<ItemRequest[]> {
+export async function getMyItemRequests(qaUserId?: string): Promise<ItemRequest[]> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const effectiveUserId = user?.id ?? qaUserId;
+  if (!effectiveUserId) return [];
 
   const { data, error } = await supabase
     .from('item_requests')
     .select('*')
-    .eq('requestor_id', user.id)
+    .eq('requestor_id', effectiveUserId)
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);

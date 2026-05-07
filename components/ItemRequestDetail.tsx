@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, CheckCircle2, Clock, AlertCircle, FileText,
-  User, Tag, Layers, Info, ExternalLink, Trash2
+  User, Tag, Layers, ExternalLink, Trash2
 } from 'lucide-react';
 import { getItemRequest, deleteItemRequest } from '../services/itemRequestService';
 import { generateItemCode } from '../utils/itemNameGenerator';
@@ -11,6 +11,7 @@ import { useApp } from '../context/AppContext';
 import { PriceHistoryPanel } from './PriceHistoryPanel';
 import { PublicationGate } from './PublicationGate';
 import { PublicationStatusPanel } from './PublicationStatusPanel';
+import WorkflowLifecycle from './WorkflowLifecycle';
 
 
 const ItemRequestDetail = () => {
@@ -141,8 +142,7 @@ const ItemRequestDetail = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           <div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{request.request_number}</p>
-            <h1 className="text-3xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-2">
+            <h1 className="text-3xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-2 font-mono">
               {generateItemCode(request.item_description)}
             </h1>
             <p className="text-xl text-gray-500 font-medium">{request.item_description}</p>
@@ -184,42 +184,11 @@ const ItemRequestDetail = () => {
         </div>
 
         <div className="space-y-6">
-          {(() => {
-            type GuidanceConfig = { text: string; next: string; color: string; shadow: string };
-            const STAGE_GUIDANCE: Record<string, GuidanceConfig> = {
-              SUBMITTED:           { text: 'This request has been submitted and is awaiting assignment to the Duplicate Review stage by the Master Data team.', next: 'Duplicate Check', color: 'bg-[var(--color-brand)]', shadow: 'shadow-[var(--color-brand)]/20' },
-              DUPLICATE_REVIEW:    { text: 'The Master Data team is verifying whether this item already exists in the catalogue. This is a required audit step before any new record is created.', next: 'Item Definition', color: 'bg-[var(--color-brand)]', shadow: 'shadow-[var(--color-brand)]/20' },
-              DATA_REVIEW:         { text: 'Duplicate check passed. The Master Data team is now defining all technical attributes and system mappings for the new item record.', next: 'Pricing Review', color: 'bg-[var(--color-brand)]', shadow: 'shadow-[var(--color-brand)]/20' },
-              PRICING_REVIEW:      { text: 'Item definition is complete. The Pricing team is setting purchase and sale pricing before the request moves to final approval.', next: 'Approval', color: 'bg-amber-500', shadow: 'shadow-amber-500/20' },
-              APPROVAL_PENDING:    { text: 'Pricing has been confirmed and the request is awaiting sign-off from an approver. You will be notified when a decision is made.', next: 'Activation', color: 'bg-amber-500', shadow: 'shadow-amber-500/20' },
-              REVISION_REQUIRED:   { text: 'An approver has requested changes to this request. Review the feedback and update your request before re-submitting.', next: 'Re-submission', color: 'bg-red-500', shadow: 'shadow-red-500/20' },
-              APPROVED:            { text: 'This request has been approved and the item is being published to the required downstream systems.', next: 'Publishing', color: 'bg-emerald-500', shadow: 'shadow-emerald-500/20' },
-              PUBLISHING:          { text: 'The item is currently being published to the target systems. This may take a few minutes.', next: 'Active', color: 'bg-emerald-500', shadow: 'shadow-emerald-500/20' },
-              PARTIALLY_PUBLISHED: { text: 'The item has been published to some target systems. Publishing to remaining systems is in progress or pending retry.', next: 'Full Publication', color: 'bg-emerald-500', shadow: 'shadow-emerald-500/20' },
-              FULLY_PUBLISHED:     { text: 'All target systems have received the item record. It will be marked Active once final confirmation is complete.', next: 'Active', color: 'bg-emerald-500', shadow: 'shadow-emerald-500/20' },
-              ACTIVE:              { text: 'This item is live and active across all required systems. No further action is needed.', next: '', color: 'bg-emerald-500', shadow: 'shadow-emerald-500/20' },
-              REJECTED:            { text: 'This request was not approved. Contact the Master Data team if you believe this decision was made in error.', next: '', color: 'bg-red-500', shadow: 'shadow-red-500/20' },
-            };
-            const guidance = STAGE_GUIDANCE[request.status];
-            if (!guidance) return null;
-            return (
-              <div className={`${guidance.color} rounded-2xl p-6 text-white shadow-xl ${guidance.shadow}`}>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                    <Info size={20} />
-                  </div>
-                  <h3 className="font-bold uppercase tracking-tight">Stage Guidance</h3>
-                </div>
-                <p className="text-white/80 text-sm leading-relaxed mb-4">{guidance.text}</p>
-                {guidance.next && (
-                  <div className="pt-4 border-t border-white/10 flex items-center justify-between text-[10px] font-black uppercase tracking-widest opacity-60">
-                    <span>Next Stage</span>
-                    <span>{guidance.next}</span>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          <WorkflowLifecycle
+            status={request.status}
+            requestId={request.id}
+            userRole={currentUser?.role}
+          />
         </div>
       </div>
 

@@ -59,15 +59,9 @@ function RequestContext({ request, proposedCode }: { request: ItemRequest; propo
   return (
     <aside className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
       <div>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Request</p>
-        <p className="font-mono text-sm font-bold text-[var(--color-brand)]">{request.request_number}</p>
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Item Code</p>
+        <p className="font-mono text-sm font-bold text-[var(--color-brand)]">{proposedCode || generateItemCode(request.item_description)}</p>
       </div>
-      {proposedCode && (
-        <div>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Proposed Code</p>
-          <p className="font-mono text-sm font-bold text-gray-900 dark:text-white">{proposedCode}</p>
-        </div>
-      )}
       <div>
         <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Description</p>
         <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">{request.item_description}</p>

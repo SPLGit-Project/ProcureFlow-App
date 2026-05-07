@@ -7,14 +7,15 @@ import {
   Clock,
   AlertCircle,
   FileText,
-  Calendar,
   Check,
   ChevronDown,
   ChevronRight,
   Zap,
 } from 'lucide-react';
 import { getMyItemRequests } from '../services/itemRequestService';
+import { generateItemCode } from '../utils/itemNameGenerator';
 import { ItemRequest, ItemRequestType, ItemRequestStatus } from '../types';
+import { useApp } from '../context/AppContext';
 import PageHeader from './PageHeader';
 
 // ── Label maps ─────────────────────────────────────────────────────────────────
@@ -168,6 +169,7 @@ const formatDate = (dateStr?: string) => {
 
 export default function MyItemRequests() {
   const navigate = useNavigate();
+  const { currentUser } = useApp();
   const [requests, setRequests]     = useState<ItemRequest[]>([]);
   const [isLoading, setIsLoading]   = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -176,7 +178,7 @@ export default function MyItemRequests() {
   useEffect(() => {
     async function load() {
       try {
-        const data = await getMyItemRequests();
+        const data = await getMyItemRequests(currentUser?.id);
         setRequests(data);
       } catch (error) {
         console.error('Failed to load requests', error);
@@ -185,10 +187,10 @@ export default function MyItemRequests() {
       }
     }
     load();
-  }, []);
+  }, [currentUser?.id]);
 
   const filteredRequests = requests.filter(r =>
-    r.request_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    generateItemCode(r.item_description).toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.item_description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -207,9 +209,9 @@ export default function MyItemRequests() {
         />
         <button
           onClick={() => navigate('/items/new-request')}
-          className="bg-[var(--color-brand)] text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 shrink-0"
+          className="bg-[var(--color-brand)] text-white px-5 py-2 rounded-xl font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 shrink-0 text-sm"
         >
-          <Plus size={20} /> New Item Request
+          <Plus size={16} /> New Item Request
         </button>
       </div>
 
@@ -241,22 +243,21 @@ export default function MyItemRequests() {
             <thead>
               <tr className="bg-gray-50 dark:bg-[#15171e]/50">
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 w-8" />
-                                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">Request #</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">Item Code</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">Type</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">Description</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">Needed By</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 text-right">Created</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">Loading requests</td>
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">Loading requests</td>
                 </tr>
               ) : filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={6}>
                     <div className="px-6 py-20 flex flex-col items-center">
                       <FileText size={48} className="text-gray-200 dark:text-gray-700 mb-4" />
                       <p className="text-gray-500 dark:text-gray-400 font-medium">No item requests found.</p>
@@ -289,8 +290,8 @@ export default function MyItemRequests() {
                         </td>
                         <td className="px-6 py-5 whitespace-nowrap">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-[var(--color-brand)] transition-colors">
-                              {request.request_number}
+                            <span className="text-sm font-bold font-mono text-gray-900 dark:text-white group-hover:text-[var(--color-brand)] transition-colors">
+                              {generateItemCode(request.item_description)}
                             </span>
                             {request.is_urgent && (
                               <span className="bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-500 text-[10px] font-black px-1.5 py-0.5 rounded border border-red-200 dark:border-red-500/20 flex items-center gap-0.5">
@@ -314,12 +315,6 @@ export default function MyItemRequests() {
                             {STATUS_CONFIG[request.status]?.label || request.status}
                           </span>
                         </td>
-                        <td className="px-6 py-5 whitespace-nowrap">
-                          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                            <Calendar size={14} className="text-gray-400" />
-                            {formatDate(request.required_activation_date)}
-                          </div>
-                        </td>
                         <td className="px-6 py-5 whitespace-nowrap text-right">
                           <div className="flex flex-col items-end">
                             <span className="text-sm text-gray-900 dark:text-white font-medium">{formatDate(request.created_at)}</span>
@@ -334,7 +329,7 @@ export default function MyItemRequests() {
                       </tr>
                       {isExpanded && (
                         <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
-                          <td colSpan={7} className="px-0 py-0">
+                          <td colSpan={6} className="px-0 py-0">
                             <StatusTimeline status={request.status} />
                           </td>
                         </tr>
@@ -359,7 +354,10 @@ export default function MyItemRequests() {
             Pricing and supplier assignment happens during the Pricing Review stage.
           </p>
         </div>
-        <button className="whitespace-nowrap px-6 py-2.5 bg-white dark:bg-white/10 text-indigo-600 dark:text-white font-bold rounded-xl border border-indigo-200 dark:border-indigo-500/30 hover:bg-indigo-100 dark:hover:bg-white/20 transition-all text-sm">
+        <button
+          onClick={() => navigate('/help?category=item-creation')}
+          className="whitespace-nowrap px-6 py-2.5 bg-white dark:bg-white/10 text-indigo-600 dark:text-white font-bold rounded-xl border border-indigo-200 dark:border-indigo-500/30 hover:bg-indigo-100 dark:hover:bg-white/20 transition-all text-sm"
+        >
           Learn More
         </button>
       </div>
