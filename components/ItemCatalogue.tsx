@@ -1,72 +1,88 @@
 import { useState, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx';
+import { useApp } from '../context/AppContext.tsx';
 import { supabase } from '../lib/supabaseClient.ts';
 import {
   BookOpen, Search, RefreshCw, AlertCircle, Package,
   Cpu, CheckCircle2, XCircle, SlidersHorizontal, X,
+  Download, Edit2, History, Archive, CheckCircle,
 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { generateItemCode } from '../utils/itemNameGenerator';
+import { ItemWizard } from './ItemWizard.tsx';
+import { EntityAuditPanel } from './EntityAuditPanel.tsx';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
+import { useToast } from './ToastNotification';
+import { Item } from '../types.ts';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Export column map ─────────────────────────────────────────────────────────
 
-interface ItemRow {
-  id: string;
-  sku: string;
-  name: string;
-  short_name: string | null;
-  category: string | null;
-  sub_category: string | null;
-  item_pool: string | null;
-  item_catalog: string | null;
-  item_type: string | null;
-  item_colour: string | null;
-  item_material: string | null;
-  item_size: string | null;
-  item_weight: number | null;
-  rfid_flag: boolean | null;
-  cog_flag: boolean | null;
-  active_flag: boolean | null;
-  sap_item_code_raw: string | null;
-  range_name: string | null;
-  specs: Record<string, unknown> | null;
-  created_at: string | null;
-}
+const EXPORT_COLUMNS: { key: keyof Item | string; label: string }[] = [
+  { key: 'sku', label: 'SKU' },
+  { key: 'name', label: 'Name' },
+  { key: 'category', label: 'Category' },
+  { key: 'subCategory', label: 'Sub Category' },
+  { key: 'itemPool', label: 'Pool' },
+  { key: 'itemCatalog', label: 'Catalogue' },
+  { key: 'itemType', label: 'Type' },
+  { key: 'itemSize', label: 'Size' },
+  { key: 'itemColour', label: 'Colour' },
+  { key: 'itemMaterial', label: 'Material' },
+  { key: 'itemWeight', label: 'Weight (g/m²)' },
+  { key: 'rfidFlag', label: 'RFID' },
+  { key: 'cogFlag', label: 'COG' },
+  { key: 'activeFlag', label: 'Status' },
+  { key: 'sapItemCodeRaw', label: 'SAP Code' },
+  { key: 'uom', label: 'UOM' },
+  { key: 'upq', label: 'UPQ' },
+  { key: 'unitPrice', label: 'Unit Price' },
+  { key: 'minLevel', label: 'Min Level' },
+  { key: 'maxLevel', label: 'Max Level' },
+];
 
-type TabType = 'all' | 'workflow' | 'legacy';
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ── Proposed MD code ──────────────────────────────────────────────────────────
-
-function getProposedMdCode(item: ItemRow): string {
+function getProposedMdCode(item: Item): string {
   const parts: string[] = [];
   if (item.name) parts.push(item.name);
-  if (item.item_catalog) parts.push(item.item_catalog);
-  if (item.item_pool) parts.push(item.item_pool);
-  if (item.item_colour) parts.push(item.item_colour);
-  if (item.item_size) parts.push(item.item_size);
+  if (item.itemCatalog) parts.push(item.itemCatalog);
+  if (item.itemPool) parts.push(item.itemPool);
+  if (item.itemColour) parts.push(item.itemColour);
+  if (item.itemSize) parts.push(item.itemSize);
 
   const itemTypeCode: 'P' | 'S' =
-    item.item_type?.toLowerCase().includes('sale') ? 'S' : 'P';
+    item.itemType?.toLowerCase().includes('sale') ? 'S' : 'P';
 
   return generateItemCode(parts.join(' '), {
     itemType: itemTypeCode,
-    rfid: item.rfid_flag ?? false,
+    rfid: item.rfidFlag ?? false,
   });
 }
 
-function getDisplayWeight(item: ItemRow): string | null {
-  if (item.item_weight != null) return `${item.item_weight} g/m²`;
-  const gsm = item.specs?.gsm;
+function getDisplayWeight(item: Item): string | null {
+  if (item.itemWeight != null) return `${item.itemWeight} g/m²`;
+  const gsm = (item as Item & { specs?: { gsm?: unknown } }).specs?.gsm;
   if (gsm != null) return `${gsm} gsm`;
   return null;
 }
 
+type TabType = 'all' | 'workflow' | 'legacy';
+
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub }: { label: string; value: number; sub?: string }) {
+function StatCard({
+  label, value, sub, highlight,
+}: { label: string; value: number; sub?: string; highlight?: boolean }) {
   return (
-    <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl px-5 py-4 flex flex-col gap-1">
+    <div className={`border rounded-2xl px-5 py-4 flex flex-col gap-1 transition-colors ${
+      highlight
+        ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
+        : 'bg-white dark:bg-[#1e2029] border-gray-100 dark:border-gray-800'
+    }`}>
       <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</span>
-      <span className="text-2xl font-black text-gray-900 dark:text-white">{value.toLocaleString()}</span>
+      <span className={`text-2xl font-black ${highlight ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}`}>
+        {value.toLocaleString()}
+      </span>
       {sub && <span className="text-[11px] text-gray-400">{sub}</span>}
     </div>
   );
@@ -75,158 +91,254 @@ function StatCard({ label, value, sub }: { label: string; value: number; sub?: s
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ItemCatalogue() {
-  const [items, setItems] = useState<ItemRow[]>([]);
-  const [workflowItemIds, setWorkflowItemIds] = useState<Set<string>>(new Set());
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    items,
+    updateItem,
+    archiveItem,
+    reloadData,
+    suppliers,
+    attributeOptions,
+    upsertAttributeOption,
+  } = useApp();
+  const { success, error: showError } = useToast();
 
+  const [workflowItemIds, setWorkflowItemIds] = useState<Set<string>>(new Set());
+  const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Filters & tabs
   const [activeTab, setActiveTab] = useState<TabType>('all');
+  const [filterActiveOnly, setFilterActiveOnly] = useState(true);
   const [search, setSearch] = useState('');
   const [filterPool, setFilterPool] = useState('');
   const [filterCatalog, setFilterCatalog] = useState('');
   const [filterRfid, setFilterRfid] = useState<boolean | null>(null);
-  const [filterActiveOnly, setFilterActiveOnly] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  const loadData = async (silent = false) => {
-    if (silent) setIsRefreshing(true);
-    else setIsLoading(true);
-    setError(null);
+  // Action modals
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [auditItem, setAuditItem] = useState<Item | null>(null);
+  const [confirmArchive, setConfirmArchive] = useState<Item | null>(null);
 
-    try {
-      const [itemsRes, workflowRes] = await Promise.all([
-        supabase
-          .from('items')
-          .select(
-            'id, sku, name, short_name, category, sub_category, ' +
-            'item_pool, item_catalog, item_type, item_colour, item_material, ' +
-            'item_size, item_weight, rfid_flag, cog_flag, active_flag, ' +
-            'sap_item_code_raw, range_name, specs, created_at'
-          )
-          .order('name'),
-        supabase
-          .from('item_requests')
-          .select('resulting_item_id')
-          .not('resulting_item_id', 'is', null),
-      ]);
+  // ── Load workflow IDs ────────────────────────────────────────────────────
 
-      if (itemsRes.error) throw itemsRes.error;
-      if (workflowRes.error) throw workflowRes.error;
+  useEffect(() => {
+    supabase
+      .from('item_requests')
+      .select('resulting_item_id')
+      .not('resulting_item_id', 'is', null)
+      .then(({ data }) => {
+        setWorkflowItemIds(
+          new Set((data ?? []).map((r: { resulting_item_id: string }) => r.resulting_item_id))
+        );
+        setIsLoadingWorkflow(false);
+      });
+  }, []);
 
-      setItems((itemsRes.data ?? []) as ItemRow[]);
-      setWorkflowItemIds(
-        new Set((workflowRes.data ?? []).map((r: { resulting_item_id: string }) => r.resulting_item_id))
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
+  // ── Refresh ──────────────────────────────────────────────────────────────
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await reloadData(true);
+    setIsRefreshing(false);
   };
 
-  useEffect(() => { loadData(); }, []);
+  // ── Base set (respects active-only toggle) ───────────────────────────────
 
-  // ── Derived filter options ─────────────────────────────────────────────────
+  const baseSet = useMemo(
+    () => (filterActiveOnly ? items.filter(i => i.activeFlag !== false) : items),
+    [items, filterActiveOnly]
+  );
+
+  // ── Stats (computed from baseSet — reflect the active-only filter) ────────
+
+  const allItemsCount = items.length;
+  const stats = useMemo(() => ({
+    total: baseSet.length,
+    workflow: baseSet.filter(i => workflowItemIds.has(i.id)).length,
+    legacy: baseSet.filter(i => !workflowItemIds.has(i.id)).length,
+    rfid: baseSet.filter(i => i.rfidFlag).length,
+    inactive: filterActiveOnly ? items.filter(i => i.activeFlag === false).length : baseSet.filter(i => i.activeFlag !== false).length,
+  }), [baseSet, workflowItemIds, items, filterActiveOnly]);
+
+  // ── Filter options from the full item list ───────────────────────────────
 
   const allPools = useMemo(() =>
-    [...new Set(items.map(i => i.item_pool).filter(Boolean))].sort() as string[],
+    [...new Set(items.map(i => i.itemPool).filter(Boolean))].sort() as string[],
     [items]
   );
   const allCatalogs = useMemo(() =>
-    [...new Set(items.map(i => i.item_catalog).filter(Boolean))].sort() as string[],
+    [...new Set(items.map(i => i.itemCatalog).filter(Boolean))].sort() as string[],
     [items]
   );
 
-  // ── Stats ──────────────────────────────────────────────────────────────────
-
-  const stats = useMemo(() => ({
-    total: items.length,
-    workflow: items.filter(i => workflowItemIds.has(i.id)).length,
-    legacy: items.filter(i => !workflowItemIds.has(i.id)).length,
-    rfid: items.filter(i => i.rfid_flag).length,
-    active: items.filter(i => i.active_flag).length,
-  }), [items, workflowItemIds]);
-
-  // ── Filtered items ─────────────────────────────────────────────────────────
+  // ── Filtered items ───────────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return items.filter(item => {
+    return baseSet.filter(item => {
       if (activeTab === 'workflow' && !workflowItemIds.has(item.id)) return false;
       if (activeTab === 'legacy' && workflowItemIds.has(item.id)) return false;
-      if (filterPool && item.item_pool !== filterPool) return false;
-      if (filterCatalog && item.item_catalog !== filterCatalog) return false;
-      if (filterRfid !== null && !!item.rfid_flag !== filterRfid) return false;
-      if (filterActiveOnly && !item.active_flag) return false;
+      if (filterPool && item.itemPool !== filterPool) return false;
+      if (filterCatalog && item.itemCatalog !== filterCatalog) return false;
+      if (filterRfid !== null && !!item.rfidFlag !== filterRfid) return false;
       if (q) {
-        const nameMatch = item.name.toLowerCase().includes(q);
-        const sapMatch = (item.sap_item_code_raw ?? '').toLowerCase().includes(q);
-        const skuMatch = (item.sku ?? '').toLowerCase().includes(q);
-        if (!nameMatch && !sapMatch && !skuMatch) return false;
+        const nameHit = item.name.toLowerCase().includes(q);
+        const sapHit = (item.sapItemCodeRaw ?? item.sku ?? '').toLowerCase().includes(q);
+        const skuHit = (item.sku ?? '').toLowerCase().includes(q);
+        if (!nameHit && !sapHit && !skuHit) return false;
       }
       return true;
     });
-  }, [items, workflowItemIds, activeTab, search, filterPool, filterCatalog, filterRfid, filterActiveOnly]);
+  }, [baseSet, workflowItemIds, activeTab, search, filterPool, filterCatalog, filterRfid]);
 
-  const hasActiveFilters = search || filterPool || filterCatalog || filterRfid !== null || filterActiveOnly;
+  const hasSubFilters = !!(search || filterPool || filterCatalog || filterRfid !== null);
 
-  const clearFilters = () => {
+  const clearSubFilters = () => {
     setSearch('');
     setFilterPool('');
     setFilterCatalog('');
     setFilterRfid(null);
-    setFilterActiveOnly(false);
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Export ───────────────────────────────────────────────────────────────
+
+  const handleExport = () => {
+    const data = filtered.map(item => {
+      const row: Record<string, unknown> = {};
+      EXPORT_COLUMNS.forEach(col => {
+        let val: unknown = item[col.key as keyof Item];
+        if (col.key === 'rfidFlag' || col.key === 'cogFlag') val = val ? 'Yes' : 'No';
+        if (col.key === 'activeFlag') val = val !== false ? 'Active' : 'Archived';
+        row[col.label] = val ?? '';
+      });
+      row['Proposed MD Code'] = getProposedMdCode(item);
+      row['Source'] = workflowItemIds.has(item.id) ? 'Workflow' : 'Legacy';
+      return row;
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Item Catalogue');
+    XLSX.writeFile(wb, `Item_Catalogue_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+    success('Catalogue exported successfully');
+  };
+
+  // ── Edit save ────────────────────────────────────────────────────────────
+
+  const handleWizardSave = async (itemData: Partial<Item>) => {
+    try {
+      if (editingItem) {
+        await updateItem({ ...editingItem, ...itemData });
+        success('Item updated successfully');
+        setEditingItem(null);
+        await reloadData(true);
+      }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to update item');
+    }
+  };
+
+  // ── Archive ──────────────────────────────────────────────────────────────
+
+  const handleArchiveConfirm = async () => {
+    if (!confirmArchive) return;
+    try {
+      await archiveItem(confirmArchive.id);
+      success(`"${confirmArchive.name}" archived`);
+      setConfirmArchive(null);
+      await reloadData(true);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to archive item');
+    }
+  };
+
+  const isLoading = isLoadingWorkflow;
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-8 animate-page-entry max-w-7xl mx-auto">
-      {/* Header */}
+    <div className="space-y-6 animate-page-entry max-w-7xl mx-auto">
+
+      {/* Header row */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <PageHeader
           title="Item Catalogue"
           subtitle="Unified master item list — legacy and workflow-created items."
         />
-        <button
-          onClick={() => loadData(true)}
-          disabled={isRefreshing}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
-        >
-          <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            title="Export current view to Excel"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
+          >
+            <Download size={14} /> Export
+          </button>
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
+          >
+            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
 
-      {error && (
-        <div className="flex items-center gap-2 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl text-sm text-red-700 dark:text-red-300">
-          <AlertCircle size={16} className="shrink-0" />
-          {error}
-          <button className="ml-auto text-xs underline opacity-60 hover:opacity-100" onClick={() => setError(null)}>Dismiss</button>
-        </div>
-      )}
+      {/* Active-only toggle — prominent, always visible */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setFilterActiveOnly(v => !v)}
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-black uppercase tracking-widest border transition-all ${
+            filterActiveOnly
+              ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/25'
+              : 'bg-white dark:bg-[#1e2029] border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'
+          }`}
+        >
+          <CheckCircle size={16} className={filterActiveOnly ? 'text-white' : 'text-gray-400'} />
+          {filterActiveOnly ? 'Active Items Only' : 'Showing All Items'}
+        </button>
+        {!filterActiveOnly && (
+          <p className="text-xs text-gray-400">
+            Includes <span className="font-bold text-gray-600 dark:text-gray-300">{items.filter(i => i.activeFlag === false).length}</span> archived item{items.filter(i => i.activeFlag === false).length !== 1 ? 's' : ''}
+          </p>
+        )}
+      </div>
 
-      {/* Stats strip */}
+      {/* Stats strip — values reflect the active-only filter */}
       {!isLoading && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <StatCard label="Total Items" value={stats.total} />
-          <StatCard label="Workflow Items" value={stats.workflow} sub="via request flow" />
-          <StatCard label="Legacy Items" value={stats.legacy} sub="pre-existing" />
+          <StatCard
+            label={filterActiveOnly ? 'Active Items' : 'Total Items'}
+            value={stats.total}
+            highlight={filterActiveOnly}
+            sub={filterActiveOnly ? `of ${allItemsCount.toLocaleString()} total` : undefined}
+          />
+          <StatCard
+            label="Workflow"
+            value={stats.workflow}
+            sub={filterActiveOnly ? 'active workflow items' : 'via request flow'}
+          />
+          <StatCard
+            label="Legacy"
+            value={stats.legacy}
+            sub={filterActiveOnly ? 'active legacy items' : 'pre-existing'}
+          />
           <StatCard label="RFID Enabled" value={stats.rfid} />
-          <StatCard label="Active" value={stats.active} />
+          <StatCard
+            label={filterActiveOnly ? 'Archived (hidden)' : 'Active'}
+            value={stats.inactive}
+            sub={filterActiveOnly ? 'not shown above' : undefined}
+          />
         </div>
       )}
 
-      {/* Tabs + filter toggle */}
+      {/* Tabs + search + filters */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex gap-1 p-1 bg-gray-50 dark:bg-white/5 rounded-2xl w-fit border border-gray-100 dark:border-gray-800">
           {([
-            { id: 'all', label: 'All Items', count: items.length },
-            { id: 'workflow', label: 'Workflow', count: stats.workflow },
-            { id: 'legacy', label: 'Legacy', count: stats.legacy },
-          ] as { id: TabType; label: string; count: number }[]).map(tab => (
+            { id: 'all' as TabType, label: 'All', count: baseSet.length },
+            { id: 'workflow' as TabType, label: 'Workflow', count: stats.workflow },
+            { id: 'legacy' as TabType, label: 'Legacy', count: stats.legacy },
+          ]).map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -260,20 +372,20 @@ export default function ItemCatalogue() {
           <button
             onClick={() => setShowFilters(v => !v)}
             className={`flex items-center gap-2 px-3 py-2 text-xs font-black uppercase tracking-widest rounded-xl border transition-all ${
-              showFilters || (filterPool || filterCatalog || filterRfid !== null || filterActiveOnly)
+              showFilters || (filterPool || filterCatalog || filterRfid !== null)
                 ? 'bg-[var(--color-brand)]/10 border-[var(--color-brand)]/30 text-[var(--color-brand)]'
                 : 'border-gray-200 dark:border-gray-700 text-gray-500 bg-white dark:bg-[#1e2029] hover:bg-gray-50 dark:hover:bg-white/5'
             }`}
           >
             <SlidersHorizontal size={14} />
             Filters
-            {(filterPool || filterCatalog || filterRfid !== null || filterActiveOnly) && (
+            {(filterPool || filterCatalog || filterRfid !== null) && (
               <span className="w-2 h-2 rounded-full bg-[var(--color-brand)]" />
             )}
           </button>
-          {hasActiveFilters && (
+          {hasSubFilters && (
             <button
-              onClick={clearFilters}
+              onClick={clearSubFilters}
               className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
               <X size={13} /> Clear
@@ -284,7 +396,7 @@ export default function ItemCatalogue() {
 
       {/* Filter panel */}
       {showFilters && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-5 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-5 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800">
           {allPools.length > 0 && (
             <div className="space-y-1.5">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Item Pool</label>
@@ -323,35 +435,24 @@ export default function ItemCatalogue() {
               <option value="no">Non-RFID Only</option>
             </select>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Status</label>
-            <button
-              onClick={() => setFilterActiveOnly(v => !v)}
-              className={`w-full px-3 py-2 text-sm border rounded-xl font-medium transition-all text-left ${
-                filterActiveOnly
-                  ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] text-gray-500'
-              }`}
-            >
-              {filterActiveOnly ? '✓ Active items only' : 'Include inactive'}
-            </button>
-          </div>
         </div>
       )}
 
       {/* Table */}
       <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center gap-3">
+
+        {/* Table header bar */}
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center gap-3 flex-wrap">
           <Package size={16} className="text-[var(--color-brand)]" />
           <span className="font-bold text-gray-800 dark:text-white text-sm">
             {filtered.length.toLocaleString()} item{filtered.length !== 1 ? 's' : ''}
           </span>
-          {hasActiveFilters && (
-            <span className="text-xs text-gray-400">— filtered from {items.length.toLocaleString()} total</span>
+          {hasSubFilters && (
+            <span className="text-xs text-gray-400">— filtered from {baseSet.length.toLocaleString()}</span>
           )}
           {activeTab === 'legacy' && (
-            <span className="ml-auto text-[10px] text-gray-400 font-medium">
-              MD codes shown are proposals only — computed from item attributes, not written to the database
+            <span className="ml-auto text-[10px] text-gray-400">
+              MD codes are proposals only — computed from item attributes, not written to the database
             </span>
           )}
         </div>
@@ -366,14 +467,14 @@ export default function ItemCatalogue() {
           <div className="flex flex-col items-center justify-center py-24 text-gray-400">
             <BookOpen size={48} className="mb-4 opacity-20" />
             <p className="font-bold text-sm tracking-tight">No items match your filters.</p>
-            {hasActiveFilters && (
-              <button onClick={clearFilters} className="mt-2 text-xs underline opacity-60 hover:opacity-100">
+            {hasSubFilters && (
+              <button onClick={clearSubFilters} className="mt-2 text-xs underline opacity-60 hover:opacity-100">
                 Clear filters
               </button>
             )}
           </div>
         ) : (
-          <div className="overflow-auto max-h-[65vh]">
+          <div className="overflow-auto max-h-[60vh]">
             <table className="w-full text-left text-sm border-collapse">
               <thead className="bg-gray-50 dark:bg-[#15171e] text-[10px] uppercase tracking-wider text-gray-400 sticky top-0 z-10">
                 <tr>
@@ -385,6 +486,9 @@ export default function ItemCatalogue() {
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Weight</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">RFID</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Status</th>
+                  <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800 text-right sticky right-0 bg-gray-50 dark:bg-[#15171e] shadow-[-8px_0_10px_-8px_rgba(0,0,0,0.06)]">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
@@ -392,98 +496,125 @@ export default function ItemCatalogue() {
                   const isWorkflow = workflowItemIds.has(item.id);
                   const proposedCode = getProposedMdCode(item);
                   const displayWeight = getDisplayWeight(item);
-                  const attrs = [item.item_size, item.item_colour, item.item_material]
+                  const attrs = [item.itemSize, item.itemColour, item.itemMaterial]
                     .filter(Boolean).join(' · ');
+                  const isInactive = item.activeFlag === false;
 
                   return (
-                    <tr key={item.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
+                    <tr
+                      key={item.id}
+                      className={`transition-colors ${
+                        isInactive
+                          ? 'opacity-50 hover:opacity-70 bg-gray-50/30 dark:bg-white/[0.02]'
+                          : 'hover:bg-gray-50/50 dark:hover:bg-white/5'
+                      }`}
+                    >
                       {/* Name */}
-                      <td className="px-4 py-3 max-w-[260px]">
+                      <td className="px-4 py-3 max-w-[240px]">
                         <p className="font-semibold text-gray-900 dark:text-white truncate" title={item.name}>
                           {item.name}
                         </p>
-                        {item.short_name && item.short_name !== item.name && (
-                          <p className="text-[10px] text-gray-400 truncate mt-0.5">{item.short_name}</p>
+                        {item.category && (
+                          <p className="text-[10px] text-gray-400 truncate mt-0.5">{item.category}</p>
                         )}
                       </td>
 
                       {/* MD Code */}
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         {isWorkflow ? (
                           <div>
-                            <span className="font-mono text-xs font-bold text-[var(--color-brand)]">
-                              {proposedCode}
-                            </span>
-                            <p className="text-[9px] uppercase tracking-widest text-[var(--color-brand)]/60 mt-0.5 font-black">
-                              Workflow
-                            </p>
+                            <span className="font-mono text-xs font-bold text-[var(--color-brand)]">{proposedCode}</span>
+                            <p className="text-[9px] uppercase tracking-widest text-[var(--color-brand)]/60 mt-0.5 font-black">Workflow</p>
                           </div>
                         ) : (
                           <div>
-                            <span className="font-mono text-xs text-gray-400 italic">
-                              {proposedCode}
-                            </span>
-                            <p className="text-[9px] uppercase tracking-widest text-gray-300 dark:text-gray-600 mt-0.5 font-black">
-                              Proposed
-                            </p>
+                            <span className="font-mono text-xs text-gray-400 italic">{proposedCode}</span>
+                            <p className="text-[9px] uppercase tracking-widest text-gray-300 dark:text-gray-600 mt-0.5 font-black">Proposed</p>
                           </div>
                         )}
                       </td>
 
                       {/* SAP Code */}
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <span className="font-mono text-xs text-gray-600 dark:text-gray-400">
-                          {item.sap_item_code_raw ?? item.sku ?? (
-                            <span className="text-gray-300 dark:text-gray-700">—</span>
-                          )}
+                          {item.sapItemCodeRaw ?? item.sku ?? '—'}
                         </span>
                       </td>
 
                       {/* Pool / Catalogue */}
                       <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-                        {item.item_pool && (
-                          <span className="block font-medium text-gray-700 dark:text-gray-300">{item.item_pool}</span>
+                        {item.itemPool && (
+                          <span className="block font-medium text-gray-700 dark:text-gray-300">{item.itemPool}</span>
                         )}
-                        {item.item_catalog && (
-                          <span className="text-gray-400 text-[11px]">{item.item_catalog}</span>
+                        {item.itemCatalog && (
+                          <span className="text-gray-400 text-[11px]">{item.itemCatalog}</span>
                         )}
-                        {!item.item_pool && !item.item_catalog && (
+                        {!item.itemPool && !item.itemCatalog && (
                           <span className="text-gray-300 dark:text-gray-700">—</span>
                         )}
                       </td>
 
                       {/* Attributes */}
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 max-w-[180px]">
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 max-w-[160px] truncate">
                         {attrs || <span className="text-gray-300 dark:text-gray-700">—</span>}
                       </td>
 
                       {/* Weight */}
-                      <td className="px-4 py-3 text-xs font-mono text-gray-500 dark:text-gray-400">
+                      <td className="px-4 py-3 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
                         {displayWeight ?? <span className="text-gray-300 dark:text-gray-700">—</span>}
                       </td>
 
                       {/* RFID */}
-                      <td className="px-4 py-3">
-                        {item.rfid_flag ? (
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {item.rfidFlag ? (
                           <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-teal-600 dark:text-teal-400">
                             <Cpu size={11} /> RFID
                           </span>
                         ) : (
-                          <span className="text-[10px] text-gray-300 dark:text-gray-700 font-black uppercase tracking-widest">Non-RFID</span>
+                          <span className="text-[10px] text-gray-300 dark:text-gray-600 font-black uppercase tracking-widest">Non-RFID</span>
                         )}
                       </td>
 
                       {/* Status */}
-                      <td className="px-4 py-3">
-                        {item.active_flag ? (
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {isInactive ? (
+                          <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                            <XCircle size={11} /> Archived
+                          </span>
+                        ) : (
                           <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                             <CheckCircle2 size={11} /> Active
                           </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                            <XCircle size={11} /> Inactive
-                          </span>
                         )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3 text-right sticky right-0 bg-white dark:bg-[#1e2029] shadow-[-8px_0_10px_-8px_rgba(0,0,0,0.06)]">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setEditingItem(item)}
+                            title="Edit item"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            onClick={() => setAuditItem(item)}
+                            title="View audit history"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
+                          >
+                            <History size={15} />
+                          </button>
+                          {!isInactive && (
+                            <button
+                              onClick={() => setConfirmArchive(item)}
+                              title="Archive item"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                            >
+                              <Archive size={15} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -493,6 +624,66 @@ export default function ItemCatalogue() {
           </div>
         )}
       </div>
+
+      {/* Edit modal */}
+      {editingItem && (
+        <ItemWizard
+          isOpen
+          onClose={() => setEditingItem(null)}
+          onSave={handleWizardSave}
+          existingItem={editingItem}
+          items={items}
+          suppliers={suppliers}
+          attributeOptions={attributeOptions}
+          upsertAttributeOption={upsertAttributeOption}
+        />
+      )}
+
+      {/* Audit history modal */}
+      {auditItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <History size={22} className="text-blue-500" /> Audit History
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  {auditItem.name} <span className="font-mono text-xs">({auditItem.sku})</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setAuditItem(null)}
+                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <EntityAuditPanel recordId={auditItem.id} tableFilter={['items']} entityLabel="item" />
+            </div>
+            <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex justify-end bg-gray-50 dark:bg-white/5">
+              <button
+                onClick={() => setAuditItem(null)}
+                className="px-5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive confirm */}
+      <ConfirmDialog
+        isOpen={!!confirmArchive}
+        title="Archive Item?"
+        message={`Archive "${confirmArchive?.name}" (${confirmArchive?.sku})? It will be hidden from active lists but can be restored.`}
+        confirmLabel="Archive"
+        variant="danger"
+        onConfirm={handleArchiveConfirm}
+        onCancel={() => setConfirmArchive(null)}
+      />
     </div>
   );
 }
