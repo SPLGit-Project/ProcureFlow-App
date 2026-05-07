@@ -212,18 +212,18 @@ interface Step3Data {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const ITEM_TYPE_CODE: Record<ItemRequestType, 'P' | 'S' | 'B'> = {
-  PURCHASE_AND_SALE: 'B', PURCHASE_ONLY: 'P', SALE_ONLY: 'S',
-  COG: 'B', REPLACEMENT: 'B', CUSTOMER_SPECIFIC: 'B',
-  BUNDLE_LINENHUB_ONLY: 'S', SHARED_CATALOGUE: 'B',
+const ITEM_TYPE_CODE: Record<ItemRequestType, 'P' | 'S'> = {
+  PURCHASE_AND_SALE: 'P', PURCHASE_ONLY: 'P', SALE_ONLY: 'S',
+  COG: 'P', REPLACEMENT: 'P', CUSTOMER_SPECIFIC: 'P',
+  BUNDLE_LINENHUB_ONLY: 'S', SHARED_CATALOGUE: 'P',
 };
 
-const ITEM_TYPE_LABEL: Record<'P'|'S'|'B', string> = {
-  B: 'Both', P: 'Purchase', S: 'Sale',
+const ITEM_TYPE_LABEL: Record<'P'|'S', string> = {
+  P: 'Purchase', S: 'Sale',
 };
 
 function getSkuSegments(s1: Step1Data, s2: Step2Data): SkuSegments {
-  const hasVariants = !!(s2.sizeCode || s2.colourCode || s2.gsm);
+  const hasVariants = !!(s2.sizeCode || s2.colourCode);
   return {
     itemType: s1.request_type ? ITEM_TYPE_CODE[s1.request_type] : undefined,
     rfid: s2.rfid ?? false,
@@ -232,7 +232,6 @@ function getSkuSegments(s1: Step1Data, s2: Step2Data): SkuSegments {
     sizeCode: s2.sizeCode || undefined,
     varietyCode: hasVariants ? '01' : undefined,
     colourCode: s2.colourCode || undefined,
-    gsm: s2.gsm ? parseInt(s2.gsm, 10) : null,
   };
 }
 
@@ -273,14 +272,13 @@ function CodePreviewPanel({ s1, s2, dupeStatus, dupeCount }: CodePreviewPanelPro
   const def = getProductDef(s2.productTypeCode);
   const typeCode = s1.request_type ? ITEM_TYPE_CODE[s1.request_type] : null;
   const rfidCode = s2.rfid !== null ? (s2.rfid ? 'R' : 'L') : null;
-  const hasVariants = !!(s2.sizeCode || s2.colourCode || s2.gsm);
+  const hasVariants = !!(s2.sizeCode || s2.colourCode);
   const segments = getSkuSegments(s1, s2);
   const code = buildItemCode(segments);
   const codeReady = !!(typeCode && rfidCode && s2.categoryCode && s2.productTypeCode);
 
   const noSize   = def !== null && !def.bedSizes && !def.bodySizes;
   const noColour = def !== null && !def.hasColour;
-  const noGSM    = def !== null && !def.hasGSM;
 
   type SegRow = { code: string|null; label: string; hint: string; na?: boolean };
   const rows: SegRow[] = [
@@ -295,9 +293,6 @@ function CodePreviewPanel({ s1, s2, dupeStatus, dupeCount }: CodePreviewPanelPro
     noColour
       ? { code: '—', label: 'No colour', hint: 'Colour', na: true }
       : { code: s2.colourCode, label: s2.colourLabel === 'Other' ? `Other (${s2.colourCustom || 'TBD'})` : s2.colourLabel, hint: 'Colour' },
-    noGSM || s2.gsmSkipped
-      ? { code: '—', label: noGSM ? 'No GSM' : 'Skipped', hint: 'GSM', na: true }
-      : { code: s2.gsm || null, label: s2.gsm ? `${s2.gsm} gsm` : '', hint: 'GSM (g/m²)' },
   ];
 
   return (
@@ -362,12 +357,12 @@ function CodePreviewPanel({ s1, s2, dupeStatus, dupeCount }: CodePreviewPanelPro
 // ── Step 1: Transaction Type ──────────────────────────────────────────────────
 
 const TYPE_CARDS = [
-  { value: 'PURCHASE_AND_SALE' as ItemRequestType, code: 'B', label: 'Purchase & Sale',   desc: 'Bought from supplier, sold to customers.',                icon: ShoppingCart, color: 'text-blue-500'   },
-  { value: 'PURCHASE_ONLY'     as ItemRequestType, code: 'P', label: 'Purchase Only',      desc: 'Purchased internally — not listed for sale.',             icon: Package,      color: 'text-violet-500' },
-  { value: 'SALE_ONLY'         as ItemRequestType, code: 'S', label: 'Sale Only',           desc: 'Sold to customers, not purchased via standard PO.',       icon: Tag,          color: 'text-emerald-500'},
-  { value: 'COG'               as ItemRequestType, code: 'B', label: 'COG',                 desc: 'Customer-owned goods managed on behalf of a client.',     icon: Users,        color: 'text-amber-500'  },
-  { value: 'REPLACEMENT'       as ItemRequestType, code: 'B', label: 'Replacement',         desc: 'Replaces an existing item being retired or superseded.',  icon: RefreshCw,    color: 'text-rose-500'   },
-  { value: 'CUSTOMER_SPECIFIC' as ItemRequestType, code: 'B', label: 'Customer-Specific',   desc: 'Created exclusively for a single customer or contract.',  icon: User,         color: 'text-indigo-500' },
+  { value: 'PURCHASE_AND_SALE' as ItemRequestType, code: 'P', label: 'Standard Item',      desc: 'Purchased from supplier — sell pricing will be set during the pricing review stage.',     icon: ShoppingCart, color: 'text-blue-500'   },
+  { value: 'PURCHASE_ONLY'     as ItemRequestType, code: 'P', label: 'Purchase Only',       desc: 'Purchased internally with no sell variant (e.g. RFID chips, consumables, PPE).',         icon: Package,      color: 'text-violet-500' },
+  { value: 'SALE_ONLY'         as ItemRequestType, code: 'S', label: 'Sale Only',            desc: 'Rare — sold without a purchase record (e.g. consolidated off-cuts sold as rags).',      icon: Tag,          color: 'text-emerald-500'},
+  { value: 'COG'               as ItemRequestType, code: 'P', label: 'COG',                  desc: 'Customer-owned goods processed and managed on their behalf.',                            icon: Users,        color: 'text-amber-500'  },
+  { value: 'REPLACEMENT'       as ItemRequestType, code: 'P', label: 'Replacement',          desc: 'Replaces an existing item being retired or superseded.',                                 icon: RefreshCw,    color: 'text-rose-500'   },
+  { value: 'CUSTOMER_SPECIFIC' as ItemRequestType, code: 'P', label: 'Customer-Specific',    desc: 'Created exclusively for a single customer or contract.',                                 icon: User,         color: 'text-indigo-500' },
 ];
 
 interface Step1Props { data: Step1Data; onChange: (v: Step1Data) => void; }
@@ -378,7 +373,7 @@ function Step1TypeSelector({ data, onChange }: Step1Props) {
       <div>
         <h2 className="text-xl font-black text-gray-900 dark:text-white">What type of transaction is this?</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          This becomes the first character of your item code — <span className="font-bold">B</span> (Both), <span className="font-bold">P</span> (Purchase), or <span className="font-bold">S</span> (Sale).
+          This becomes the first character of your item code — <span className="font-bold">P</span> (Purchase) or <span className="font-bold">S</span> (Sale only — rare).
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -433,8 +428,7 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
   const showRfid        = !!data.productTypeCode;
   const showSize        = showRfid && data.rfid !== null;
   const showColour      = showSize && (hasSize ? !!data.sizeCode : true);
-  const showGSM         = showColour && (hasColour ? (!!data.colourCode || data.colourCode === '') : true);
-  const showSpec        = showGSM && (hasGSM ? (!!data.gsm || data.gsmSkipped) : true);
+  const showSpec        = showColour && (hasColour ? (!!data.colourCode || data.colourLabel === 'Other') : true);
 
   // Duplicate search
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -636,36 +630,10 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
         </section>
       )}
 
-      {/* ── Section: GSM ── */}
-      {showGSM && hasGSM && (
-        <section className="space-y-3 animate-slide-up">
-          <SectionLabel n={4 + (hasSize ? 1 : 0) + (hasColour ? 1 : 0)} done={!!data.gsm || data.gsmSkipped} title="GSM (grams per square metre)" sub="Segment 8 of your code" />
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-xs">
-              <input type="text" inputMode="numeric" value={data.gsm}
-                onChange={e => onChange({ gsm: e.target.value.replace(/[^0-9]/g, ''), gsmSkipped: false })}
-                placeholder="e.g. 500"
-                disabled={data.gsmSkipped}
-                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 pr-14 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all disabled:opacity-40" />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold pointer-events-none">g/m²</span>
-            </div>
-            <button type="button" onClick={() => onChange({ gsm: '', gsmSkipped: !data.gsmSkipped })}
-              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
-                data.gsmSkipped ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
-                                : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'
-              }`}>
-              {data.gsmSkipped ? <Check size={12} /> : null}
-              Not applicable
-            </button>
-          </div>
-          <p className="text-xs text-gray-400">Typical values: cotton terry 400–600 g/m², percale sheets 200–300 g/m²</p>
-        </section>
-      )}
-
       {/* ── Section: Specification ── */}
       {showSpec && (
         <section className="space-y-4 animate-slide-up">
-          <SectionLabel n={4 + (hasSize ? 1 : 0) + (hasColour ? 1 : 0) + (hasGSM ? 1 : 0)} done={!!data.material} title="Specification Details" sub="Non-code attributes for Master Data" />
+          <SectionLabel n={4 + (hasSize ? 1 : 0) + (hasColour ? 1 : 0)} done={!!data.material} title="Specification Details" sub="Non-code attributes for Master Data" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Material <span className="text-red-500">*</span></label>
@@ -679,6 +647,45 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
                 ))}
               </div>
             </div>
+
+            {hasGSM && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
+                  Weight / GSM
+                  <span className="font-normal normal-case text-gray-400"> — not in item code</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input type="text" inputMode="numeric" value={data.gsm}
+                      onChange={e => onChange({ gsm: e.target.value.replace(/[^0-9]/g, ''), gsmSkipped: false })}
+                      placeholder="e.g. 500"
+                      disabled={data.gsmSkipped}
+                      className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 pr-12 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all disabled:opacity-40" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold pointer-events-none">g/m²</span>
+                  </div>
+                  <button type="button" onClick={() => onChange({ gsm: '', gsmSkipped: !data.gsmSkipped })}
+                    className={`flex items-center gap-1.5 px-2.5 py-2.5 rounded-xl border-2 text-xs font-bold transition-all whitespace-nowrap ${
+                      data.gsmSkipped ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
+                                      : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}>
+                    {data.gsmSkipped && <Check size={11} />}
+                    N/A
+                  </button>
+                </div>
+                {data.gsm ? (
+                  <p className="text-xs text-gray-400">Terry 400–600 g/m² · Percale sheets 200–300 g/m²</p>
+                ) : (
+                  <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-500/8 border border-amber-100 dark:border-amber-500/15">
+                    <AlertTriangle size={11} className="text-amber-500 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
+                      {data.gsmSkipped
+                        ? 'Marked N/A — Master Data will confirm weight classification during item definition.'
+                        : 'Weight required for batch washing. If unknown, Master Data will be flagged to verify.'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {def?.hasDimensions && (
               <div className="space-y-1.5">
@@ -965,7 +972,7 @@ function Step4Review({ step1, step2, step3 }: Step4Props) {
             { label: 'Product Type',  value: `${step2.productTypeLabel} (${step2.productTypeCode})` },
             step2.sizeLabel ? { label: 'Size',   value: `${step2.sizeLabel} (${step2.sizeCode})` } : null,
             step2.colourLabel && step2.colourLabel !== 'Other' ? { label: 'Colour', value: `${step2.colourLabel} (${step2.colourCode})` } : null,
-            step2.gsm ? { label: 'GSM', value: `${step2.gsm} g/m²` } : null,
+            step2.gsm ? { label: 'Weight / GSM', value: `${step2.gsm} g/m²` } : null,
             step2.material ? { label: 'Material', value: step2.material } : null,
             { label: 'Business Reason', value: reasonLabel },
             { label: 'Target Systems',  value: activeSystems.join(', ') },
@@ -980,6 +987,20 @@ function Step4Review({ step1, step2, step3 }: Step4Props) {
           ))}
         </div>
       </div>
+
+      {getProductDef(step2.productTypeCode)?.hasGSM && !step2.gsm && (
+        <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-500/8 border border-amber-100 dark:border-amber-500/20">
+          <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-amber-800 dark:text-amber-300 text-sm">Weight Not Provided</p>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+              {step2.gsmSkipped
+                ? 'Marked as not applicable — Master Data will be asked to confirm weight classification during item definition.'
+                : 'Weight not entered — Master Data will be flagged to verify before this item is processed through the facility.'}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-4 p-4 bg-blue-50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/20 rounded-2xl">
         <div className="p-2.5 bg-blue-100 dark:bg-blue-500/20 rounded-xl text-blue-600 dark:text-blue-400 shrink-0"><Clock size={18} /></div>
