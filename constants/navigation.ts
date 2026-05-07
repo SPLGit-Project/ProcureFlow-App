@@ -27,7 +27,7 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     { id: 'my-item-requests', path: '/items/my-requests', label: 'My Item Requests', iconName: 'ClipboardList', permission: 'view_dashboard', category: 'Items' },
     { id: 'master-data-queue', path: '/items/master-data-queue', label: 'Master Data Queue', iconName: 'ListTodo', permission: 'manage_item_definition', category: 'Items' },
     { id: 'item-catalogue', path: '/item-catalogue', label: 'Item Catalogue', iconName: 'BookOpen', permission: 'view_items', category: 'Items' },
-    { id: 'data-ingest', path: '/data-ingest', label: 'Data Ingestion', iconName: 'FileText', permission: 'manage_development', category: 'Items' },
+    { id: 'data-ingest', path: '/data-ingest', label: 'Data Ingestion', iconName: 'FileText', permission: 'manage_development', category: 'Procurement' },
 
     // ── Pricing ──
     { id: 'pricing-queue', path: '/items/pricing-queue', label: 'Pricing Queue', iconName: 'ListChecks', permission: 'manage_sell_pricing', category: 'Pricing' },

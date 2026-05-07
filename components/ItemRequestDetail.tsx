@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, CheckCircle2, Clock, AlertCircle, FileText, 
+import {
+  ArrowLeft, CheckCircle2, Clock, AlertCircle, FileText,
   User, Tag, Layers, Info, ExternalLink, Trash2
 } from 'lucide-react';
 import { getItemRequest, deleteItemRequest } from '../services/itemRequestService';
+import { generateItemCode } from '../utils/itemNameGenerator';
 import { ItemRequest } from '../types';
 import { useApp } from '../context/AppContext';
 import { PriceHistoryPanel } from './PriceHistoryPanel';
@@ -140,8 +141,9 @@ const ItemRequestDetail = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{request.request_number}</p>
             <h1 className="text-3xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-2">
-              {request.request_number}
+              {generateItemCode(request.item_description)}
             </h1>
             <p className="text-xl text-gray-500 font-medium">{request.item_description}</p>
           </div>
@@ -226,23 +228,25 @@ const ItemRequestDetail = () => {
         <button
           onClick={() => setActiveTab('workflow')}
           className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${
-            activeTab === 'workflow' 
-              ? 'border-[var(--color-brand)] text-[var(--color-brand)]' 
+            activeTab === 'workflow'
+              ? 'border-[var(--color-brand)] text-[var(--color-brand)]'
               : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
           }`}
         >
           Workflow Stage
         </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${
-            activeTab === 'history' 
-              ? 'border-[var(--color-brand)] text-[var(--color-brand)]' 
-              : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
-          }`}
-        >
-          Price History
-        </button>
+        {request.resulting_item_id && (
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${
+              activeTab === 'history'
+                ? 'border-[var(--color-brand)] text-[var(--color-brand)]'
+                : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+            }`}
+          >
+            Price History
+          </button>
+        )}
       </div>
 
       {/* Main Content */}

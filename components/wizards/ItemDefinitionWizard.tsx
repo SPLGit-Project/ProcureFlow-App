@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, Check, Database, Flag, Hash, Package, Ruler, SlidersHorizontal } from 'lucide-react';
+import { AlertCircle, Check, Database, Flag, Hash, Package, RefreshCw, Ruler, SlidersHorizontal } from 'lucide-react';
 import ItemRequestWizardShell, { WizardStep } from '../ItemRequestWizardShell';
 import { ToastContainer, useToast } from '../ToastNotification';
 import { getItemRequest } from '../../services/itemRequestService';
@@ -11,6 +11,7 @@ import {
   saveItemDefinition,
   SapCodeCheckResult,
 } from '../../services/itemDefinitionService';
+import { generateShortName, generateItemCode, parseDescription } from '../../utils/itemNameGenerator';
 import { ItemRequest } from '../../types';
 
 const STEPS: WizardStep[] = [
@@ -31,6 +32,7 @@ const EMPTY_FORM: ItemDefinitionPayload = {
   sap_item_code_raw: '',
   sap_item_code_norm: '',
   name: '',
+  short_name: '',
   description: '',
   division: '',
   uom: 'EA',
@@ -53,13 +55,19 @@ const EMPTY_FORM: ItemDefinitionPayload = {
   initial_stock_qty: null,
 };
 
-function RequestContext({ request }: { request: ItemRequest }) {
+function RequestContext({ request, proposedCode }: { request: ItemRequest; proposedCode: string }) {
   return (
     <aside className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
       <div>
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Request</p>
         <p className="font-mono text-sm font-bold text-[var(--color-brand)]">{request.request_number}</p>
       </div>
+      {proposedCode && (
+        <div>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Proposed Code</p>
+          <p className="font-mono text-sm font-bold text-gray-900 dark:text-white">{proposedCode}</p>
+        </div>
+      )}
       <div>
         <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Description</p>
         <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">{request.item_description}</p>
@@ -76,10 +84,11 @@ function RequestContext({ request }: { request: ItemRequest }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="space-y-1.5 block">
       <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{label}</span>
+      {hint && <span className="block text-[10px] text-gray-400 -mt-1">{hint}</span>}
       {children}
     </label>
   );
@@ -125,9 +134,17 @@ export default function ItemDefinitionWizard() {
   const [sapCheck, setSapCheck] = useState<SapCodeCheckResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  // Track which system flags came from the original request so we can show context
+  const [requestFlags, setRequestFlags] = useState({ bundle: false, linenhub: false, salesforce: false });
 
   const update = (partial: Partial<ItemDefinitionPayload>) => {
     setForm(prev => ({ ...prev, ...partial }));
+  };
+
+  const regenerateShortName = () => {
+    if (!form.description) return;
+    const sn = generateShortName(form.description);
+    update({ short_name: sn, name: sn.slice(0, 40) });
   };
 
   useEffect(() => {
@@ -142,12 +159,29 @@ export default function ItemDefinitionWizard() {
         ]);
         if (!loadedRequest) throw new Error('Request not found.');
         if (cancelled) return;
+
+        // Parse physical attributes from description
+        const parsed = parseDescription(loadedRequest.item_description);
+        const shortName = generateShortName(loadedRequest.item_description);
+
         setRequest(loadedRequest);
         setOptions(loadedOptions);
+        setRequestFlags({
+          bundle: loadedRequest.target_bundle,
+          linenhub: loadedRequest.target_linenhub,
+          salesforce: loadedRequest.target_salesforce,
+        });
         setForm(prev => ({
           ...prev,
           description: loadedRequest.item_description,
-          name: loadedRequest.item_description.slice(0, 40),
+          short_name: shortName,
+          name: shortName.slice(0, 40),
+          // Pre-populate physical attributes parsed from description
+          item_colour: parsed.colour ?? '',
+          item_material: parsed.material ?? '',
+          item_size: parsed.dimensions ?? '',
+          gsm: parsed.gsm,
+          // System flags from request
           target_bundle: loadedRequest.target_bundle,
           target_linenhub: loadedRequest.target_linenhub,
           target_salesforce: loadedRequest.target_salesforce,
@@ -165,6 +199,11 @@ export default function ItemDefinitionWizard() {
     load();
     return () => { cancelled = true; };
   }, [id, toastError]);
+
+  const proposedItemCode = useMemo(
+    () => form.description ? generateItemCode(form.description) : '',
+    [form.description]
+  );
 
   const catalogOptions = options.itemCatalogs[form.item_pool] ?? [];
   const typeOptions = options.itemTypes[form.item_catalog] ?? [];
@@ -240,8 +279,9 @@ export default function ItemDefinitionWizard() {
         continueDisabled={isSaving || isLoading}
         isSaving={isSaving}
         isLoading={isLoading}
-        contextPanel={request ? <RequestContext request={request} /> : undefined}
+        contextPanel={request ? <RequestContext request={request} proposedCode={proposedItemCode} /> : undefined}
       >
+        {/* Step 0 — Classification */}
         {activeStep === 0 && (
           <div className="space-y-6">
             <div>
@@ -283,11 +323,12 @@ export default function ItemDefinitionWizard() {
           </div>
         )}
 
+        {/* Step 1 — Identity */}
         {activeStep === 1 && (
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-black text-gray-900 dark:text-white">Identity</h2>
-              <p className="text-sm text-gray-500 mt-1">Normalise and verify the SAP item code before continuing.</p>
+              <p className="text-sm text-gray-500 mt-1">Normalise and verify the SAP item code, then confirm the item naming.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="SAP Item Code">
@@ -296,12 +337,33 @@ export default function ItemDefinitionWizard() {
               <Field label="Normalised Code">
                 <input className={inputClass} value={form.sap_item_code_norm} onChange={event => update({ sap_item_code_norm: event.target.value })} />
               </Field>
-              <Field label="Description">
+              <Field label="Full Description" hint="Pre-populated from request — edit only if needed">
                 <textarea className={`${inputClass} min-h-28`} value={form.description} onChange={event => update({ description: event.target.value })} />
               </Field>
-              <Field label="Display Name">
-                <input className={inputClass} maxLength={40} value={form.name} onChange={event => update({ name: event.target.value })} />
-              </Field>
+              <div className="space-y-4">
+                <Field label="Short Name" hint="Auto-generated search name (≤60 chars) — used for catalogue search">
+                  <div className="flex gap-2">
+                    <input
+                      className={inputClass}
+                      maxLength={60}
+                      value={form.short_name}
+                      onChange={event => update({ short_name: event.target.value, name: event.target.value.slice(0, 40) })}
+                      placeholder="e.g. Cotton Terry Towel 500gsm White"
+                    />
+                    <button
+                      type="button"
+                      onClick={regenerateShortName}
+                      title="Regenerate from description"
+                      className="shrink-0 w-10 h-10 mt-0.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#15171e] flex items-center justify-center text-gray-400 hover:text-[var(--color-brand)] hover:border-[var(--color-brand)] transition-all"
+                    >
+                      <RefreshCw size={14} />
+                    </button>
+                  </div>
+                </Field>
+                <Field label="Display Name" hint="Auto-set from short name (≤40 chars) — shown in lists and tiles">
+                  <input className={inputClass} maxLength={40} value={form.name} onChange={event => update({ name: event.target.value })} />
+                </Field>
+              </div>
               <Field label="Division">
                 <input className={inputClass} value={form.division} onChange={event => update({ division: event.target.value })} placeholder="e.g. Hospitality" />
               </Field>
@@ -317,48 +379,94 @@ export default function ItemDefinitionWizard() {
           </div>
         )}
 
+        {/* Step 2 — Physical Attributes */}
         {activeStep === 2 && (
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-black text-gray-900 dark:text-white">Physical Attributes</h2>
-              <p className="text-sm text-gray-500 mt-1">Capture measurable and descriptive item attributes.</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Colour, material, size and GSM have been pre-populated from the description — verify and adjust as needed.
+              </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field label="UOM"><input className={inputClass} value={form.uom} onChange={event => update({ uom: event.target.value })} /></Field>
               <Field label="UPQ"><NumberInput value={form.upq} onChange={value => update({ upq: value })} /></Field>
-              <Field label="Weight"><NumberInput value={form.item_weight} onChange={value => update({ item_weight: value })} /></Field>
-              <Field label="Size"><input className={inputClass} value={form.item_size} onChange={event => update({ item_size: event.target.value })} /></Field>
-              <Field label="Colour"><input className={inputClass} value={form.item_colour} onChange={event => update({ item_colour: event.target.value })} /></Field>
-              <Field label="Material"><input className={inputClass} value={form.item_material} onChange={event => update({ item_material: event.target.value })} /></Field>
-              <Field label="GSM"><NumberInput value={form.gsm} onChange={value => update({ gsm: value })} /></Field>
+              <Field label="Weight (kg)"><NumberInput value={form.item_weight} onChange={value => update({ item_weight: value })} placeholder="e.g. 0.5" /></Field>
+              <Field label="Size / Dimensions" hint="e.g. 70x140cm"><input className={inputClass} value={form.item_size} onChange={event => update({ item_size: event.target.value })} placeholder="e.g. 70x140cm" /></Field>
+              <Field label="Colour"><input className={inputClass} value={form.item_colour} onChange={event => update({ item_colour: event.target.value })} placeholder="e.g. White" /></Field>
+              <Field label="Material"><input className={inputClass} value={form.item_material} onChange={event => update({ item_material: event.target.value })} placeholder="e.g. Cotton" /></Field>
+              <Field label="GSM"><NumberInput value={form.gsm} onChange={value => update({ gsm: value })} placeholder="e.g. 500" /></Field>
             </div>
           </div>
         )}
 
+        {/* Step 3 — System Flags */}
         {activeStep === 3 && (
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-black text-gray-900 dark:text-white">System Flags</h2>
-              <p className="text-sm text-gray-500 mt-1">Define which workflows and downstream systems apply.</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Target systems and transaction types are pre-set from the original request. Confirm or adjust if needed.
+              </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {[
-                ['purchase_enabled', 'Purchase enabled'],
-                ['sale_enabled', 'Sale enabled'],
-                ['target_bundle', 'Bundle'],
-                ['target_linenhub', 'LinenHub'],
-                ['target_salesforce', 'Salesforce'],
-                ['rfid_flag', 'RFID'],
-                ['cog_flag', 'COG'],
-              ].map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => update({ [key]: !form[key as keyof ItemDefinitionPayload] } as Partial<ItemDefinitionPayload>)}
-                  className={`p-4 rounded-2xl border text-left font-bold transition-all ${form[key as keyof ItemDefinitionPayload] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300'}`}
-                >
-                  {label}
-                </button>
-              ))}
+
+            {/* Transaction flags — derived from request type */}
+            <div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Transaction Type <span className="normal-case font-normal text-gray-400">(from request type)</span></p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {([
+                  ['purchase_enabled', 'Purchase Enabled'],
+                  ['sale_enabled', 'Sale Enabled'],
+                ] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => update({ [key]: !form[key] } as Partial<ItemDefinitionPayload>)}
+                    className={`p-4 rounded-2xl border text-left font-bold transition-all ${form[key] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Target systems — pre-populated from request */}
+            <div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Target Systems <span className="normal-case font-normal text-gray-400">(pre-set from request — adjust if classification changes scope)</span></p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {([
+                  ['target_bundle', 'Bundle', requestFlags.bundle],
+                  ['target_linenhub', 'LinenHub', requestFlags.linenhub],
+                  ['target_salesforce', 'Salesforce', requestFlags.salesforce],
+                ] as const).map(([key, label, fromRequest]) => (
+                  <button
+                    key={key}
+                    onClick={() => update({ [key]: !form[key as keyof ItemDefinitionPayload] } as Partial<ItemDefinitionPayload>)}
+                    className={`p-4 rounded-2xl border text-left transition-all ${form[key as keyof ItemDefinitionPayload] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300'}`}
+                  >
+                    <p className="font-bold">{label}</p>
+                    {fromRequest && <p className="text-[10px] opacity-60 mt-0.5">Requested by originator</p>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Special flags */}
+            <div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Special Flags</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {([
+                  ['rfid_flag', 'RFID Tracked'],
+                  ['cog_flag', 'Customer-Owned Goods (COG)'],
+                ] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => update({ [key]: !form[key] } as Partial<ItemDefinitionPayload>)}
+                    className={`p-4 rounded-2xl border text-left font-bold transition-all ${form[key] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
             {form.cog_flag && (
               <Field label="COG Customer">
@@ -368,11 +476,12 @@ export default function ItemDefinitionWizard() {
           </div>
         )}
 
+        {/* Step 4 — Stock Levels */}
         {activeStep === 4 && (
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-black text-gray-900 dark:text-white">Stock Levels</h2>
-              <p className="text-sm text-gray-500 mt-1">Set initial stock controls where applicable.</p>
+              <p className="text-sm text-gray-500 mt-1">Set initial stock controls where applicable. Leave blank if not managed.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field label="Min/Par Level"><NumberInput value={form.min_level} onChange={value => update({ min_level: value })} /></Field>
@@ -382,6 +491,7 @@ export default function ItemDefinitionWizard() {
           </div>
         )}
 
+        {/* Step 5 — Review */}
         {activeStep === 5 && (
           <div className="space-y-6">
             <div>
@@ -391,9 +501,9 @@ export default function ItemDefinitionWizard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
                 [Database, 'Classification', `${form.item_pool} / ${form.item_catalog} / ${form.item_type} / ${form.category} / ${form.sub_category}`],
-                [Hash, 'Identity', `${form.sap_item_code_norm} - ${form.name}`],
-                [Ruler, 'Physical', `${form.uom}, UPQ ${form.upq ?? 0}, ${form.item_colour || 'no colour'}, ${form.item_material || 'no material'}`],
-                [Flag, 'Flags', `${form.purchase_enabled ? 'Purchase' : ''} ${form.sale_enabled ? 'Sale' : ''} ${form.cog_flag ? 'COG' : ''}`.trim() || 'No flags'],
+                [Hash, 'Identity', `${form.sap_item_code_norm} — ${form.short_name || form.name}`],
+                [Ruler, 'Physical', `${form.uom}, UPQ ${form.upq ?? 0}, ${form.item_colour || 'no colour'}, ${form.item_material || 'no material'}${form.gsm ? `, ${form.gsm}gsm` : ''}`],
+                [Flag, 'Flags', `${form.purchase_enabled ? 'Purchase' : ''} ${form.sale_enabled ? 'Sale' : ''} ${form.cog_flag ? 'COG' : ''}`.trim() || 'No transaction flags'],
                 [SlidersHorizontal, 'Stock', `Min ${form.min_level ?? 0}, Max ${form.max_level ?? 0}, Initial ${form.initial_stock_qty ?? 0}`],
                 [Package, 'Next Stage', form.purchase_enabled || form.sale_enabled ? 'Pricing Review' : 'Approval Pending'],
               ].map(([Icon, label, value]) => {

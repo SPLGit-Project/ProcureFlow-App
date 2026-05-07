@@ -5,6 +5,7 @@ import ItemRequestWizardShell, { WizardStep } from '../ItemRequestWizardShell';
 import { ToastContainer, useToast } from '../ToastNotification';
 import { getItemRequest, saveDuplicateCheckOutcome, searchExistingItems } from '../../services/itemRequestService';
 import { transitionRequest } from '../../services/itemWorkflowService';
+import { extractSearchTokens } from '../../utils/itemNameGenerator';
 import { ItemRequest } from '../../types';
 
 type DuplicateOutcome = 'USE_EXISTING' | 'SIMILAR_NEW_REQUIRED' | 'NO_DUPLICATE';
@@ -24,12 +25,23 @@ const STEPS: WizardStep[] = [
   { id: 'confirm', label: 'Confirm & Record' },
 ];
 
-function similarity(searchTerm: string, value: string): number {
-  const source = new Set(searchTerm.toLowerCase().split(/\W+/).filter(Boolean));
-  const target = new Set(value.toLowerCase().split(/\W+/).filter(Boolean));
-  if (source.size === 0 || target.size === 0) return 0.35;
-  const matches = [...source].filter(word => target.has(word)).length;
-  return Math.min(0.98, Math.max(0.35, matches / source.size));
+function similarity(searchTerms: string[], itemText: string): number {
+  const targetWords = new Set(itemText.toLowerCase().split(/\W+/).filter(w => w.length >= 2));
+  if (targetWords.size === 0) return 0.35;
+
+  let totalMatches = 0;
+  let totalSource = 0;
+
+  for (const term of searchTerms) {
+    const sourceWords = term.toLowerCase().split(/\W+/).filter(w => w.length >= 2);
+    if (sourceWords.length === 0) continue;
+    const matches = sourceWords.filter(w => targetWords.has(w) || [...targetWords].some(t => t.includes(w) || w.includes(t))).length;
+    totalMatches += matches;
+    totalSource += sourceWords.length;
+  }
+
+  if (totalSource === 0) return 0.35;
+  return Math.min(0.98, Math.max(0.35, totalMatches / totalSource));
 }
 
 function RequestContext({ request }: { request: ItemRequest }) {
@@ -88,10 +100,15 @@ export default function DuplicateCheckWizard() {
 
   const runSearch = useCallback(async (term: string) => {
     if (!term.trim()) return;
-    const raw = await searchExistingItems(term.trim());
-    const scored = raw.map(item => ({
+    // Split description into meaningful tokens for granular DB matching
+    const tokens = extractSearchTokens(term.trim());
+    const queryTokens = tokens.length > 0 ? tokens : [term.trim()];
+    const raw = await searchExistingItems(queryTokens);
+    // Dedupe by id then score each result against all search tokens
+    const deduped = Array.from(new Map(raw.map(r => [r.id, r])).values());
+    const scored = deduped.map(item => ({
       ...item,
-      similarity_score: similarity(term, `${item.sku} ${item.name} ${item.category ?? ''}`),
+      similarity_score: similarity(queryTokens, `${item.sku} ${item.name} ${item.short_name ?? ''} ${item.category ?? ''}`),
     })).sort((a, b) => b.similarity_score - a.similarity_score);
     setResults(scored);
     setSearchTerms(prev => prev.includes(term.trim()) ? prev : [...prev, term.trim()]);
