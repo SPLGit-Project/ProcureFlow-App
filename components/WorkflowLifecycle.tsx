@@ -1,16 +1,23 @@
 import React, { useState } from 'react';
-import { Check, ChevronDown, ChevronRight, Circle, XCircle } from 'lucide-react';
+import {
+  Check, FileText, Search, Package, Tag, ThumbsUp, Zap, Circle as CircleIcon,
+  XCircle, ArrowRight,
+} from 'lucide-react';
 import { ItemRequestStatus } from '../types';
 import { useNavigate } from 'react-router-dom';
 
-// ── Stage and sub-step definitions ────────────────────────────────────────────
+// ── Stage icons ────────────────────────────────────────────────────────────────
+
+const STAGE_ICONS = [FileText, Search, Package, Tag, ThumbsUp, Zap, CircleIcon];
+
+// ── Stage definitions ─────────────────────────────────────────────────────────
 
 interface SubStep {
   label: string;
 }
 
 interface Stage {
-  status: ItemRequestStatus | null; // null = terminal positive
+  status: ItemRequestStatus | null;
   label: string;
   description: string;
   subSteps?: SubStep[];
@@ -22,7 +29,7 @@ const LIFECYCLE_STAGES: Stage[] = [
   {
     status: 'SUBMITTED',
     label: 'Submitted',
-    description: 'Your request is received by the Master Data team.',
+    description: 'Your request is received',
     subSteps: [
       { label: 'Request context reviewed' },
       { label: 'Assigned to Master Data queue' },
@@ -31,7 +38,7 @@ const LIFECYCLE_STAGES: Stage[] = [
   {
     status: 'DUPLICATE_REVIEW',
     label: 'Duplicate Check',
-    description: 'Master Data verifies no existing item matches.',
+    description: 'Master Data verifies no existing item matches',
     subSteps: [
       { label: 'Request Summary' },
       { label: 'Catalogue Search' },
@@ -44,7 +51,7 @@ const LIFECYCLE_STAGES: Stage[] = [
   {
     status: 'DATA_REVIEW',
     label: 'Item Definition',
-    description: 'Master Data completes SAP code and catalogue setup.',
+    description: 'Master Data completes SAP and catalogue setup',
     subSteps: [
       { label: 'Classification' },
       { label: 'Identity & Naming' },
@@ -59,7 +66,7 @@ const LIFECYCLE_STAGES: Stage[] = [
   {
     status: 'PRICING_REVIEW',
     label: 'Pricing Review',
-    description: 'Pricing team sets buy and sell prices.',
+    description: 'Pricing team sets buy and sell prices',
     subSteps: [
       { label: 'Purchase Pricing' },
       { label: 'Sell Pricing' },
@@ -71,7 +78,7 @@ const LIFECYCLE_STAGES: Stage[] = [
   {
     status: 'APPROVAL_PENDING',
     label: 'Approval',
-    description: 'Approver sign-off based on item type and margin rules.',
+    description: 'Approver sign-off based on item type',
     subSteps: [
       { label: 'Review Request Details' },
       { label: 'Review Pricing & Margin' },
@@ -83,7 +90,7 @@ const LIFECYCLE_STAGES: Stage[] = [
   {
     status: 'APPROVED',
     label: 'Publication',
-    description: 'Item published to all target downstream systems.',
+    description: 'Item published to all target downstream systems',
     subSteps: [
       { label: 'Publication Gate Check' },
       { label: 'Publish to Systems' },
@@ -93,11 +100,10 @@ const LIFECYCLE_STAGES: Stage[] = [
   {
     status: 'ACTIVE',
     label: 'Active',
-    description: 'Item is live and available across all selected systems.',
+    description: 'Item live in selected systems',
   },
 ];
 
-// Map statuses to their stage index
 const STATUS_STAGE_INDEX: Partial<Record<ItemRequestStatus, number>> = {
   SUBMITTED: 0,
   DUPLICATE_REVIEW: 1,
@@ -112,28 +118,28 @@ const STATUS_STAGE_INDEX: Partial<Record<ItemRequestStatus, number>> = {
   ACTIVE: 6,
 };
 
-// ── Helper: "what do YOU need to do next" ────────────────────────────────────
+// ── Role-aware next-step prompt ───────────────────────────────────────────────
 
 function getActionPrompt(status: ItemRequestStatus, userRole?: string): string | null {
-  const isMasterData = userRole === 'ADMIN' || userRole === 'MASTER_DATA';
+  const isMD = userRole === 'ADMIN' || userRole === 'MASTER_DATA';
   const isPricing = userRole === 'ADMIN' || userRole === 'PRICING';
   const isApprover = userRole === 'ADMIN' || userRole === 'APPROVER';
 
   switch (status) {
     case 'SUBMITTED':
-      return isMasterData ? 'Open the Duplicate Check wizard to begin processing this request.' : 'Waiting for Master Data team to begin the duplicate check.';
+      return isMD ? 'Open the Duplicate Check wizard to begin processing this request.' : 'Waiting for Master Data to begin the duplicate check.';
     case 'DUPLICATE_REVIEW':
-      return isMasterData ? 'Complete the Duplicate Check wizard to proceed.' : 'Master Data is performing the catalogue duplicate check.';
+      return isMD ? 'Complete the Duplicate Check wizard to proceed.' : 'Master Data is performing the catalogue duplicate check.';
     case 'DATA_REVIEW':
-      return isMasterData ? 'Complete the Item Definition wizard to define all master data attributes.' : 'Master Data is defining the item record.';
+      return isMD ? 'Complete the Item Definition wizard to define all master data attributes.' : 'Master Data is defining the item record.';
     case 'PRICING_REVIEW':
-      return isPricing ? 'Set purchase and sell pricing in the Pricing Setup wizard.' : 'Waiting for Pricing team to complete pricing setup.';
+      return isPricing ? 'Set purchase and sell pricing in the Pricing Setup wizard.' : 'Waiting for Pricing to complete pricing setup.';
     case 'APPROVAL_PENDING':
       return isApprover ? 'Review this request and record your approval decision.' : 'Waiting for approver sign-off.';
     case 'REVISION_REQUIRED':
-      return 'Review the feedback below, update your request, and re-submit.';
+      return 'Review the feedback, update your request, and re-submit.';
     case 'APPROVED':
-      return isMasterData ? 'Trigger publication to push this item to downstream systems.' : 'Item approved — publication in progress.';
+      return isMD ? 'Trigger publication to push this item to downstream systems.' : 'Item approved — publication in progress.';
     default:
       return null;
   }
@@ -155,18 +161,18 @@ export default function WorkflowLifecycle({ status, requestId, userRole }: Workf
   const [expandedIdx, setExpandedIdx] = useState<number | null>(activeIdx);
 
   if (isTerminal) {
-    const terminalConfig = {
+    const cfg = {
       REJECTED: { label: 'Request Rejected', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/5', border: 'border-red-100 dark:border-red-500/20' },
-      REPLACED: { label: 'Item Replaced', color: 'text-gray-600 dark:text-gray-400', bg: 'bg-gray-50 dark:bg-gray-800', border: 'border-gray-200 dark:border-gray-700' },
-      RETIRED: { label: 'Item Retired', color: 'text-gray-600 dark:text-gray-400', bg: 'bg-gray-50 dark:bg-gray-800', border: 'border-gray-200 dark:border-gray-700' },
+      REPLACED: { label: 'Item Replaced', color: 'text-gray-500 dark:text-gray-400', bg: 'bg-gray-50 dark:bg-gray-800', border: 'border-gray-200 dark:border-gray-700' },
+      RETIRED:  { label: 'Item Retired',  color: 'text-gray-500 dark:text-gray-400', bg: 'bg-gray-50 dark:bg-gray-800', border: 'border-gray-200 dark:border-gray-700' },
     }[status as 'REJECTED' | 'REPLACED' | 'RETIRED'];
 
     return (
-      <div className={`rounded-2xl border p-6 flex items-center gap-4 ${terminalConfig.bg} ${terminalConfig.border}`}>
-        <XCircle size={28} className={terminalConfig.color} />
+      <div className={`rounded-2xl border p-5 flex items-center gap-4 ${cfg.bg} ${cfg.border}`}>
+        <XCircle size={24} className={cfg.color} />
         <div>
-          <p className={`font-bold text-lg ${terminalConfig.color}`}>{terminalConfig.label}</p>
-          <p className="text-sm text-gray-500 mt-0.5">This request has reached a terminal state.</p>
+          <p className={`font-bold ${cfg.color}`}>{cfg.label}</p>
+          <p className="text-xs text-gray-400 mt-0.5">This request has reached a terminal state.</p>
         </div>
       </div>
     );
@@ -174,108 +180,135 @@ export default function WorkflowLifecycle({ status, requestId, userRole }: Workf
 
   return (
     <div className="space-y-4">
-      {/* Action Prompt */}
+      {/* Section heading */}
+      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">What Happens Next</p>
+
+      {/* Action prompt */}
       {actionPrompt && (
-        <div className="p-4 rounded-2xl bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/20 text-sm text-gray-700 dark:text-gray-300">
-          <span className="font-bold text-[var(--color-brand)] text-xs uppercase tracking-widest block mb-1">Your Next Step</span>
-          {actionPrompt}
+        <div className="flex items-start gap-3 p-3.5 rounded-xl bg-[var(--color-brand)]/6 border border-[var(--color-brand)]/15">
+          <ArrowRight size={13} className="text-[var(--color-brand)] shrink-0 mt-0.5" />
+          <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{actionPrompt}</p>
         </div>
       )}
 
-      {/* Stage list */}
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+      {/* Timeline */}
+      <div className="relative">
         {LIFECYCLE_STAGES.map((stage, idx) => {
-          const isDone = idx < activeIdx;
-          const isActive = idx === activeIdx;
-          const isPending = idx > activeIdx;
+          const isDone    = idx < activeIdx;
+          const isActive  = idx === activeIdx;
+          const isLast    = idx === LIFECYCLE_STAGES.length - 1;
           const isExpanded = expandedIdx === idx;
-          const hasSubSteps = stage.subSteps && stage.subSteps.length > 0;
-          const hasAction = isActive && stage.actionLabel && stage.actionPath;
+          const hasSubSteps = (stage.subSteps?.length ?? 0) > 0;
+          const hasAction  = isActive && stage.actionLabel && stage.actionPath;
+          const Icon = STAGE_ICONS[idx];
+
+          // Connector line extends down unless this is the last stage
+          // When expanded, the line must be taller to accommodate sub-steps
+          const lineVisible = !isLast;
 
           return (
-            <div
-              key={stage.label}
-              className={`border-b border-gray-100 dark:border-gray-800 last:border-b-0 ${isActive ? 'bg-[var(--color-brand)]/3' : ''}`}
-            >
-              <button
-                className="w-full flex items-start gap-4 px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-white/3 transition-colors"
-                onClick={() => setExpandedIdx(isExpanded ? null : idx)}
-                disabled={!hasSubSteps && !hasAction}
-              >
-                {/* Status indicator */}
-                <div className="shrink-0 mt-0.5">
+            <div key={stage.label} className="relative flex gap-0">
+              {/* Left column: icon + vertical connector */}
+              <div className="flex flex-col items-center" style={{ width: 40, flexShrink: 0 }}>
+                {/* Stage icon circle */}
+                <button
+                  onClick={() => hasSubSteps ? setExpandedIdx(isExpanded ? null : idx) : undefined}
+                  disabled={!hasSubSteps}
+                  className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center transition-all shrink-0 ${
+                    isDone
+                      ? 'bg-[var(--color-brand)] text-white'
+                      : isActive
+                      ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/30'
+                      : 'bg-gray-100 dark:bg-[#1e2029] border-2 border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600'
+                  } ${hasSubSteps ? 'cursor-pointer hover:opacity-85' : 'cursor-default'}`}
+                >
                   {isDone ? (
-                    <div className="w-7 h-7 rounded-full bg-[var(--color-brand)] flex items-center justify-center">
-                      <Check size={12} strokeWidth={3} className="text-white" />
-                    </div>
-                  ) : isActive ? (
-                    <div className="w-7 h-7 rounded-full border-2 border-[var(--color-brand)] bg-white dark:bg-[#1e2029] flex items-center justify-center">
-                      <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-brand)]" />
-                    </div>
+                    <Check size={14} strokeWidth={3} />
                   ) : (
-                    <div className="w-7 h-7 rounded-full border-2 border-gray-200 dark:border-gray-700 flex items-center justify-center">
-                      <span className="text-[10px] font-black text-gray-300 dark:text-gray-600">{idx + 1}</span>
-                    </div>
+                    <Icon size={15} strokeWidth={1.8} />
+                  )}
+                </button>
+
+                {/* Connector line between stages (and sub-step section) */}
+                {lineVisible && (
+                  <div className={`w-px flex-1 min-h-[24px] ${
+                    isDone ? 'bg-[var(--color-brand)]/40' : 'bg-gray-200 dark:bg-gray-800'
+                  }`} />
+                )}
+              </div>
+
+              {/* Right column: label, description, sub-steps */}
+              <div className={`flex-1 min-w-0 pb-6 ${isLast ? 'pb-0' : ''}`} style={{ paddingLeft: 14 }}>
+                {/* Stage header */}
+                <div className="flex items-center gap-2 h-10">
+                  <p className={`text-sm font-bold leading-tight ${
+                    isDone   ? 'text-[var(--color-brand)]'
+                    : isActive ? 'text-gray-900 dark:text-white'
+                    : 'text-gray-400 dark:text-gray-600'
+                  }`}>
+                    {stage.label}
+                  </p>
+                  {isActive && (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-[var(--color-brand)] text-white">
+                      Current
+                    </span>
                   )}
                 </div>
 
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className={`text-sm font-bold ${
-                      isDone ? 'text-[var(--color-brand)]'
-                      : isActive ? 'text-gray-900 dark:text-white'
-                      : 'text-gray-400 dark:text-gray-600'
-                    }`}>
-                      {stage.label}
-                    </p>
-                    {isActive && (
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-[var(--color-brand)] text-white">
-                        Current
-                      </span>
+                <p className={`text-xs leading-relaxed -mt-1 ${
+                  isActive ? 'text-gray-500 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'
+                }`}>
+                  {stage.description}
+                </p>
+
+                {/* Sub-steps (expanded) */}
+                {isExpanded && hasSubSteps && (
+                  <div className="mt-3 space-y-0">
+                    {stage.subSteps!.map((sub, subIdx) => {
+                      const isLastSub = subIdx === stage.subSteps!.length - 1;
+                      return (
+                        <div key={subIdx} className="flex gap-0">
+                          {/* Sub-step connector column */}
+                          <div className="flex flex-col items-center" style={{ width: 20, flexShrink: 0 }}>
+                            {/* Horizontal connector to main line */}
+                            <div className="flex items-center" style={{ height: 22 }}>
+                              <div className={`h-px w-5 ${isDone ? 'bg-[var(--color-brand)]/30' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                            </div>
+                            {/* Vertical segment between sub-steps */}
+                            {!isLastSub && (
+                              <div className={`w-px flex-1 ${isDone ? 'bg-[var(--color-brand)]/20' : 'bg-gray-100 dark:bg-gray-800'}`} />
+                            )}
+                          </div>
+
+                          {/* Sub-step dot + label */}
+                          <div className="flex items-center gap-2.5 pb-1" style={{ paddingLeft: 8 }}>
+                            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                              isDone ? 'bg-[var(--color-brand)]/60' : 'bg-gray-300 dark:bg-gray-600'
+                            }`} />
+                            <span className={`text-xs ${
+                              isDone ? 'text-[var(--color-brand)]/70' : isActive ? 'text-gray-600 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'
+                            }`}>
+                              {sub.label}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Action button */}
+                    {hasAction && (
+                      <div className="pt-3">
+                        <button
+                          onClick={() => navigate(stage.actionPath!(requestId))}
+                          className="px-4 py-2 rounded-xl bg-[var(--color-brand)] text-white text-[11px] font-black uppercase tracking-widest hover:opacity-90 transition-opacity"
+                        >
+                          {stage.actionLabel}
+                        </button>
+                      </div>
                     )}
                   </div>
-                  <p className={`text-xs mt-0.5 leading-relaxed ${
-                    isActive ? 'text-gray-500 dark:text-gray-400' : 'text-gray-300 dark:text-gray-700'
-                  }`}>
-                    {stage.description}
-                  </p>
-                </div>
-
-                {/* Expand chevron */}
-                {hasSubSteps && (
-                  <div className={`shrink-0 mt-0.5 ${isActive ? 'text-[var(--color-brand)]' : isDone ? 'text-[var(--color-brand)]/60' : 'text-gray-300'}`}>
-                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  </div>
                 )}
-              </button>
-
-              {/* Sub-steps */}
-              {isExpanded && hasSubSteps && (
-                <div className="px-5 pb-4 pl-16 space-y-2">
-                  {stage.subSteps!.map((sub, subIdx) => (
-                    <div key={subIdx} className="flex items-center gap-2.5">
-                      <Circle
-                        size={6}
-                        className={`shrink-0 ${isDone ? 'fill-[var(--color-brand)] text-[var(--color-brand)]' : isActive ? 'fill-gray-300 text-gray-300 dark:fill-gray-600 dark:text-gray-600' : 'fill-gray-200 text-gray-200 dark:fill-gray-700 dark:text-gray-700'}`}
-                      />
-                      <span className={`text-xs ${isDone ? 'text-[var(--color-brand)]/80' : isActive ? 'text-gray-600 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'}`}>
-                        {sub.label}
-                      </span>
-                    </div>
-                  ))}
-
-                  {/* Action button */}
-                  {hasAction && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate(stage.actionPath!(requestId)); }}
-                      className="mt-3 px-4 py-2 rounded-xl bg-[var(--color-brand)] text-white text-[11px] font-black uppercase tracking-widest hover:opacity-90 transition-opacity"
-                    >
-                      {stage.actionLabel}
-                    </button>
-                  )}
-                </div>
-              )}
+              </div>
             </div>
           );
         })}
