@@ -238,14 +238,15 @@ function getSkuSegments(s1: Step1Data, s2: Step2Data): SkuSegments {
 function buildItemDescription(s2: Step2Data): string {
   const parts: string[] = [];
   const effectiveColour = s2.colourCode ? s2.colourLabel : (s2.colourCustom || '');
-  if (effectiveColour && effectiveColour !== 'Other') parts.push(effectiveColour);
-  if (s2.material && s2.material !== 'Other') parts.push(s2.material);
+  // Product type leads for human readability, then attributes in natural order
   if (s2.productTypeLabel && s2.productTypeLabel !== 'Other') parts.push(s2.productTypeLabel);
   if (s2.sizeLabel) parts.push(s2.sizeLabel);
+  if (effectiveColour && effectiveColour !== 'Other') parts.push(effectiveColour);
+  if (s2.material && s2.material !== 'Other') parts.push(s2.material);
   if (s2.gsm) parts.push(`${s2.gsm}gsm`);
   if (s2.grade && s2.grade !== 'Other') parts.push(s2.grade);
-  if (s2.categoryLabel) parts.push(`${s2.categoryLabel} catalogue`);
   if (s2.width_cm && s2.height_cm) parts.push(`${s2.width_cm}×${s2.height_cm}cm`);
+  if (s2.categoryLabel) parts.push(`${s2.categoryLabel} catalogue`);
   if (s2.additional_notes) parts.push(s2.additional_notes);
   return parts.join(', ');
 }
@@ -968,10 +969,14 @@ function Step4Review({ step1, step2, step3 }: Step4Props) {
         </div>
         <div className="px-5 divide-y divide-gray-50 dark:divide-gray-800/60">
           {[
-            { label: 'Category',      value: `${step2.categoryLabel} (${step2.categoryCode})` },
+            // Product type leads (human anchor), then code-read order: [Type][RFID][Category][ProductType][Size][Colour]
             { label: 'Product Type',  value: `${step2.productTypeLabel} (${step2.productTypeCode})` },
+            { label: 'Transaction',   value: `${typeCard?.label ?? ''} (${step1.request_type ? ITEM_TYPE_CODE[step1.request_type] : ''})` },
+            { label: 'RFID',          value: step2.rfid ? 'RFID Tracked (R)' : 'Non-RFID (L)' },
+            { label: 'Category',      value: `${step2.categoryLabel} (${step2.categoryCode})` },
             step2.sizeLabel ? { label: 'Size',   value: `${step2.sizeLabel} (${step2.sizeCode})` } : null,
             step2.colourLabel && step2.colourLabel !== 'Other' ? { label: 'Colour', value: `${step2.colourLabel} (${step2.colourCode})` } : null,
+            // Non-code attributes
             step2.gsm ? { label: 'Weight / GSM', value: `${step2.gsm} g/m²` } : null,
             step2.material ? { label: 'Material', value: step2.material } : null,
             { label: 'Business Reason', value: reasonLabel },
