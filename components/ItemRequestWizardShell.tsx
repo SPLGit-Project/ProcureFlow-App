@@ -215,15 +215,8 @@ const ItemRequestWizardShell: React.FC<ItemRequestWizardShellProps> = ({
           ) : null}
         </div>
 
-        {/* Right: step info + nav buttons */}
+        {/* Right: nav buttons */}
         <div className="flex items-center gap-3 shrink-0">
-          <div className="flex flex-col items-end mr-1">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">
-              Step {activeStepIndex + 1} of {steps.length}
-            </p>
-            <p className="text-xs font-bold text-gray-900 dark:text-white leading-tight mt-0.5">{activeStep?.label}</p>
-          </div>
-
           {!isFirstStep && onPrevious && (
             <button
               onClick={onPrevious}

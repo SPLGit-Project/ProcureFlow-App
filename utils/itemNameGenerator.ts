@@ -286,6 +286,7 @@ export interface SkuSegments {
   itemType?: 'P' | 'S' | 'B';  // Purchase / Sale / Both
   rfid?: boolean;
   categoryCode?: string;        // e.g. 'A', 'H', 'LH'
+  customerCode?: string;        // 2-letter customer code (COG / CUSTOMER_SPECIFIC)
   productTypeCode?: string;     // e.g. 'SH', 'BT'
   sizeCode?: string;            // e.g. 'Q', 'K'
   varietyCode?: string;         // e.g. '01', '02'
@@ -304,6 +305,9 @@ export function buildItemCode(segments: SkuSegments): string {
 
   // Seg 3: Category (default to general 'GN' if unknown)
   parts.push(segments.categoryCode ?? 'GN');
+
+  // Seg 3.5: Customer code (COG / CUSTOMER_SPECIFIC — between category and product type)
+  if (segments.customerCode) parts.push(segments.customerCode);
 
   // Seg 4: Product Type (2 chars, default to 'IT' for Item)
   parts.push(segments.productTypeCode ?? 'IT');

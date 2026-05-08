@@ -42,6 +42,7 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     { id: 'approval-rules', path: '/admin/approval-rules', label: 'Approval Rules', iconName: 'ShieldCheck', permission: 'manage_settings', category: 'Admin' },
     { id: 'admin-tools', path: '/admin/tools', label: 'Admin Tools', iconName: 'Activity', permission: 'manage_settings', category: 'Admin' },
     { id: 'admin-cutover', path: '/admin/cutover', label: 'Cutover Readiness', iconName: 'ShieldCheck', permission: 'manage_settings', category: 'Admin' },
+    { id: 'admin-colours', path: '/admin/colours', label: 'Colour Palette', iconName: 'Activity', permission: 'manage_settings', category: 'Admin' },
     { id: 'settings', path: '/settings', label: 'Admin Panel', iconName: 'Settings', permission: 'manage_settings', isSystem: true, category: 'Admin' },
 
     // ── System ──

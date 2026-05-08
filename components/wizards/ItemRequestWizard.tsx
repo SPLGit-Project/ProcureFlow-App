@@ -150,6 +150,8 @@ interface Step1Data {
 interface Step2Data {
   categoryLabel: string;
   categoryCode: string;
+  customerName: string;   // full customer name entered by user
+  customerCode: string;   // auto-generated 2-letter code
   productTypeLabel: string;
   productTypeCode: string;
   rfid: boolean | null;
@@ -186,6 +188,22 @@ interface Step3Data {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function generateCustomerCode(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '';
+  if (words.length === 1) {
+    const w = words[0];
+    return (w[0] + w[w.length - 1]).toUpperCase();
+  }
+  if (words.length === 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  // 3+ words: first letter of first word + last letter of last word
+  const first = words[0];
+  const last = words[words.length - 1];
+  return (first[0] + last[last.length - 1]).toUpperCase();
+}
+
 const ITEM_TYPE_CODE: Record<ItemRequestType, 'P' | 'S'> = {
   PURCHASE_AND_SALE: 'P', PURCHASE_ONLY: 'P', SALE_ONLY: 'S',
   COG: 'P', REPLACEMENT: 'P', CUSTOMER_SPECIFIC: 'P',
@@ -202,6 +220,7 @@ function getSkuSegments(s1: Step1Data, s2: Step2Data): SkuSegments {
     itemType: s1.request_type ? ITEM_TYPE_CODE[s1.request_type] : undefined,
     rfid: s2.rfid ?? false,
     categoryCode: s2.categoryCode || undefined,
+    customerCode: s2.customerCode || undefined,
     productTypeCode: s2.productTypeCode || undefined,
     sizeCode: s2.sizeCode || undefined,
     varietyCode: hasVariants ? '01' : undefined,
@@ -255,11 +274,14 @@ function CodePreviewPanel({ s1, s2, dupeStatus, dupeCount }: CodePreviewPanelPro
   const noSize   = def !== null && !def.bedSizes && !def.bodySizes;
   const noColour = def !== null && !def.hasColour;
 
+  const showCustomerRow = s1.request_type === 'COG' || s1.request_type === 'CUSTOMER_SPECIFIC';
+
   type SegRow = { code: string|null; label: string; hint: string; na?: boolean };
   const rows: SegRow[] = [
     { code: typeCode,           label: typeCode ? ITEM_TYPE_LABEL[typeCode] : '',    hint: 'Transaction type' },
     { code: rfidCode,           label: rfidCode ? (s2.rfid ? 'RFID tracked' : 'Non-RFID') : '', hint: 'RFID tracking' },
     { code: s2.categoryCode,    label: s2.categoryLabel,  hint: 'Catalogue category' },
+    ...(showCustomerRow ? [{ code: s2.customerCode || null, label: s2.customerName ? `Customer: ${s2.customerName}` : '', hint: 'Customer code' }] : []),
     { code: s2.productTypeCode, label: s2.productTypeLabel, hint: 'Product type' },
     noSize
       ? { code: '—', label: 'No size', hint: 'Size', na: true }
@@ -441,13 +463,26 @@ interface Step2Props {
   onExit: () => void;
 }
 
-function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfectMatchChange, onExit }: Step2Props) {
+function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusChange, onPerfectMatchChange, onExit }: Step2Props) {
   const def = getProductDef(data.productTypeCode);
   const hasSize   = def ? (def.bedSizes || def.bodySizes) : false;
   const hasColour = def ? def.hasColour  : false;
   const hasGSM    = def ? def.hasGSM     : false;
 
+  // Local dupe status for inline display
+  const [localDupeStatus, setLocalDupeStatus] = useState<'idle'|'searching'|'found'|'clear'>('idle');
+  const [localDupeCount, setLocalDupeCount] = useState(0);
+
+  // Auto-set COG category on mount
+  useEffect(() => {
+    if (requestType === 'COG' && !data.categoryCode) {
+      onChange({ categoryLabel: 'COG', categoryCode: 'CG' });
+    }
+  }, [requestType]);
+
   // Progressive reveal state
+  const isCOG              = requestType === 'COG';
+  const isCustomerSpecific = requestType === 'CUSTOMER_SPECIFIC';
   const showProductType = !!data.categoryCode;
   const showRfid        = !!data.productTypeCode;
   const showSize        = showRfid && data.rfid !== null;
@@ -469,12 +504,16 @@ function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfe
     if (searchTimer.current) clearTimeout(searchTimer.current);
     if (!data.productTypeCode || !data.categoryCode) {
       onDupeStatusChange('idle', 0);
+      setLocalDupeStatus('idle');
+      setLocalDupeCount(0);
       setSearchResults([]);
       onPerfectMatchChange(false);
       return;
     }
     const term = [data.colourLabel, data.productTypeLabel, data.sizeLabel].filter(Boolean).join(' ');
     onDupeStatusChange('searching', 0);
+    setLocalDupeStatus('searching');
+    setLocalDupeCount(0);
     searchTimer.current = setTimeout(async () => {
       try {
         const results = await searchExistingItems(term);
@@ -482,9 +521,14 @@ function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfe
         setSearchResults(top);
         const hasPerfect = top.some(item => calculateSimilarity(item, data) >= 95);
         onPerfectMatchChange(hasPerfect);
-        onDupeStatusChange(results.length > 0 ? 'found' : 'clear', results.length);
+        const status = results.length > 0 ? 'found' : 'clear';
+        onDupeStatusChange(status, results.length);
+        setLocalDupeStatus(status);
+        setLocalDupeCount(results.length);
       } catch {
         onDupeStatusChange('idle', 0);
+        setLocalDupeStatus('idle');
+        setLocalDupeCount(0);
         onPerfectMatchChange(false);
       }
     }, 700);
@@ -525,14 +569,82 @@ function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfe
     pct >= 70 ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20' :
                 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20';
 
-  let sectionN = 1;
+  let sectionN = isCustomerSpecific ? 2 : 1;
 
   return (
     <div className="space-y-8">
 
-      {/* ── Section: Category ── */}
+      {/* ── COG: auto-category + Customer Name ── */}
+      {isCOG && (
+        <section className="space-y-3">
+          <SectionLabel n={1} done={!!data.customerCode} title="Customer Name" sub="Generates 2-letter customer code (Segment 4)" />
+          <div className="space-y-3">
+            <div className="relative">
+              <input
+                type="text"
+                value={data.customerName}
+                onChange={e => {
+                  const name = e.target.value;
+                  const code = generateCustomerCode(name);
+                  onChange({ customerName: name, customerCode: code, categoryCode: 'CG', categoryLabel: 'COG' });
+                }}
+                placeholder="e.g. Hilton Hotel, Marriott, Healthcare NSW"
+                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
+              />
+            </div>
+            {data.customerCode && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/20 rounded-xl">
+                <span className="font-mono text-lg font-black text-[var(--color-brand)]">{data.customerCode}</span>
+                <div>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">Customer code generated</p>
+                  <p className="text-xs text-gray-500">This 2-letter code will appear in the item code after CG (COG category)</p>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800">
+              <span className="font-mono text-xs font-black text-gray-400">CG</span>
+              <span className="text-xs text-gray-500">Catalogue category auto-set to COG</span>
+              <span className="ml-auto font-mono text-[10px] font-black px-1.5 py-0.5 rounded bg-[var(--color-brand)] text-white">LOCKED</span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── CUSTOMER_SPECIFIC: Customer Name (before category) ── */}
+      {isCustomerSpecific && (
+        <section className="space-y-3">
+          <SectionLabel n={1} done={!!data.customerCode} title="Customer Name" sub="Generates 2-letter customer code for item code" />
+          <div className="space-y-3">
+            <div className="relative">
+              <input
+                type="text"
+                value={data.customerName}
+                onChange={e => {
+                  const name = e.target.value;
+                  const code = generateCustomerCode(name);
+                  onChange({ customerName: name, customerCode: code });
+                }}
+                placeholder="e.g. Hilton Hotel, Marriott, Healthcare NSW"
+                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
+              />
+            </div>
+            {data.customerCode && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/20 rounded-xl">
+                <span className="font-mono text-lg font-black text-[var(--color-brand)]">{data.customerCode}</span>
+                <div>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">Customer code generated</p>
+                  <p className="text-xs text-gray-500">This 2-letter code will appear in the item code after the catalogue category</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── Section: Category (hidden for COG — auto-set) ── */}
+      {!isCOG && (
       <section className="space-y-3">
-        <SectionLabel n={sectionN} done={!!data.categoryCode} title="Catalogue Category" sub="Segment 3 of your code" />
+        <SectionLabel n={isCustomerSpecific ? sectionN : 1} done={!!data.categoryCode} title="Catalogue Category" sub="Segment 3 of your code" />
         {!showingSelector('category', !!data.categoryCode) ? (
           <SelectedChip
             label={`${data.categoryLabel} — ${data.categoryCode}`}
@@ -563,6 +675,7 @@ function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfe
           </div>
         )}
       </section>
+      )}
 
       {/* ── Section: Product Type ── */}
       {showProductType && (() => { sectionN++; return (
@@ -732,6 +845,10 @@ function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfe
       {showSpec && (() => { sectionN++; return (
         <section className="space-y-4 animate-slide-up">
           <SectionLabel n={sectionN} done={!!data.material} title="Specification Details" sub="Non-code attributes for Master Data" />
+          <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-blue-50 dark:bg-blue-500/8 border border-blue-100 dark:border-blue-500/20 text-xs text-blue-700 dark:text-blue-400">
+            <AlertCircle size={13} className="shrink-0 mt-0.5" />
+            <span>Fill in what you know. The <strong>Procurement team</strong> will review this request and complete any missing technical details before it reaches Master Data.</span>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Material <span className="text-red-500">*</span></label>
@@ -777,8 +894,8 @@ function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfe
                     <AlertTriangle size={11} className="text-amber-500 shrink-0 mt-0.5" />
                     <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
                       {data.gsmSkipped
-                        ? 'Marked N/A — Master Data will confirm weight classification during item definition.'
-                        : 'Weight required for batch washing. If unknown, Master Data will be flagged to verify.'}
+                        ? 'Marked N/A — Procurement team will confirm during their review.'
+                        : 'If unknown, leave blank — the Procurement team will verify during their review.'}
                     </p>
                   </div>
                 )}
@@ -814,6 +931,7 @@ function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfe
                   </button>
                 ))}
               </div>
+              <p className="text-[11px] text-gray-400">(optional — Procurement team will complete if unknown)</p>
             </div>
 
             {/* UPQ */}
@@ -826,6 +944,7 @@ function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfe
                   className="w-28 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
                 <p className="text-xs text-gray-400">How many individual units make up one order quantity (e.g. 12 for a dozen).</p>
               </div>
+              <p className="text-[11px] text-gray-400">(optional — Procurement team will complete if unknown)</p>
             </div>
           </div>
 
@@ -891,6 +1010,27 @@ function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfe
             </div>
           </div>
         </section>
+      )}
+
+      {/* ── Inline catalogue check status ── */}
+      {showSpec && (
+        <div className={`flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-medium ${
+          localDupeStatus === 'searching' ? 'bg-gray-50 dark:bg-gray-800/50 text-gray-500 border border-gray-200 dark:border-gray-700' :
+          localDupeStatus === 'found'     ? 'bg-amber-50 dark:bg-amber-500/8 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20' :
+          localDupeStatus === 'clear'     ? 'bg-green-50 dark:bg-green-500/8 text-green-700 dark:text-green-400 border border-green-100 dark:border-green-500/15' :
+                                            'bg-gray-50 dark:bg-gray-800/50 text-gray-400 border border-gray-200 dark:border-gray-700'
+        }`}>
+          {localDupeStatus === 'searching' && <Search size={13} className="shrink-0 animate-pulse" />}
+          {localDupeStatus === 'found'     && <AlertCircle size={13} className="shrink-0" />}
+          {localDupeStatus === 'clear'     && <Check size={13} className="shrink-0" />}
+          {localDupeStatus === 'idle'      && <Search size={13} className="shrink-0 opacity-40" />}
+          <span>
+            {localDupeStatus === 'searching' ? 'Checking master catalogue for similar items…' :
+             localDupeStatus === 'found'     ? `${localDupeCount} similar item${localDupeCount !== 1 ? 's' : ''} found in catalogue — review the list above before confirming` :
+             localDupeStatus === 'clear'     ? 'No matching items found in the master catalogue' :
+                                              'Catalogue check will run once product type and category are selected'}
+          </span>
+        </div>
       )}
 
       {/* ── Master catalogue confirmation ── */}
@@ -1336,6 +1476,7 @@ function validateStep(step: number, s1: Step1Data, s2: Step2Data, s3: Step3Data)
     }
     if (!s2.material) return 'Please select the item material.';
     if (!s2.item_check_confirmed) return 'Please confirm this item does not already exist in the master catalogue.';
+    // Note: GSM, UOM, UPQ are optional — Procurement team will complete if unknown
   }
   if (step === 2) {
     if (!s3.business_reason_type) return 'Please select a business reason.';
@@ -1350,7 +1491,8 @@ function validateStep(step: number, s1: Step1Data, s2: Step2Data, s3: Step3Data)
 // ── Main component ────────────────────────────────────────────────────────────
 
 const STEP2_INITIAL: Step2Data = {
-  categoryLabel: '', categoryCode: '', productTypeLabel: '', productTypeCode: '',
+  categoryLabel: '', categoryCode: '', customerName: '', customerCode: '',
+  productTypeLabel: '', productTypeCode: '',
   rfid: null, sizeLabel: '', sizeCode: '', colourLabel: '', colourCode: '', colourCustom: '',
   gsm: '', gsmSkipped: false, material: '', width_cm: '', height_cm: '', grade: '',
   uom: 'EA', upq: '1', additional_notes: '', item_check_confirmed: false,

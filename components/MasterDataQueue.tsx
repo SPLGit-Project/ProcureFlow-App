@@ -202,11 +202,19 @@ const MasterDataQueue = () => {
             </button>
           )}
           {request.status === 'PRICING_REVIEW' && (
-            <button 
+            <button
               onClick={() => navigate(`/items/requests/${request.id}/pricing`)}
               className="px-4 py-2 bg-amber-500 text-white text-[11px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-all flex items-center gap-2"
             >
               <ExternalLink size={14} /> Setup Pricing
+            </button>
+          )}
+          {isProcurementPending(request) && (
+            <button
+              onClick={() => navigate(`/items/requests/${request.id}/procurement-review`)}
+              className="px-4 py-2 bg-violet-500 text-white text-[11px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-violet-500/20 hover:bg-violet-600 transition-all flex items-center gap-2"
+            >
+              <ExternalLink size={14} /> Start Review
             </button>
           )}
           <button

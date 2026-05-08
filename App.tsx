@@ -52,6 +52,7 @@ const PriceManagementDashboard = lazy(() => import('./components/PriceManagement
 const AdminTools = lazy(() => import('./components/AdminTools.tsx'));
 const CutoverReadinessChecker = lazy(() => import('./components/CutoverReadinessChecker.tsx'));
 const ColourPaletteAdmin = lazy(() => import('./components/ColourPaletteAdmin.tsx'));
+const ProcurementReviewWizard = lazy(() => import('./components/wizards/ProcurementReviewWizard.tsx'));
 
 
 
@@ -120,6 +121,7 @@ function App() {
               <Route path="items/requests/:id/define" element={<Suspense fallback={<LoadingSpinner />}><ItemDefinitionWizard /></Suspense>} />
               <Route path="items/requests/:id/pricing" element={<Suspense fallback={<LoadingSpinner />}><PricingSetupWizard /></Suspense>} />
               <Route path="items/requests/:id/approve" element={<Suspense fallback={<LoadingSpinner />}><ApprovalReviewWizard /></Suspense>} />
+              <Route path="items/requests/:id/procurement-review" element={<Suspense fallback={<LoadingSpinner />}><ProcurementReviewWizard /></Suspense>} />
               <Route path="items/requests/:id"    element={<Suspense fallback={<LoadingSpinner />}><ItemRequestDetail /></Suspense>} />
               <Route path="items/pricing-queue"   element={<Suspense fallback={<LoadingSpinner />}><PricingReviewQueue /></Suspense>} />
               <Route path="admin/approval-rules"  element={<Suspense fallback={<LoadingSpinner />}><ApprovalRulesConfig /></Suspense>} />
