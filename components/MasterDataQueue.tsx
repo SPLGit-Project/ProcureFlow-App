@@ -33,7 +33,7 @@ const formatRelativeTime = (dateString: string) => {
 };
 
 
-type TabType = 'NEEDS_ACTION' | 'PRICING_REVIEW' | 'PENDING_APPROVAL' | 'REVISION_REQUIRED';
+type TabType = 'NEEDS_ACTION' | 'PRICING_REVIEW' | 'PENDING_APPROVAL' | 'REVISION_REQUIRED' | 'PROCUREMENT_REVIEW';
 
 const MasterDataQueue = () => {
   const { hasPermission } = useApp();
@@ -77,6 +77,9 @@ const MasterDataQueue = () => {
     );
   }
 
+  const isProcurementPending = (r: ItemRequestWithUser) =>
+    !!(r.metadata as Record<string, unknown> | undefined)?.procurement_review_pending;
+
   const getFilteredRequests = () => {
     switch (activeTab) {
       case 'NEEDS_ACTION':
@@ -87,6 +90,8 @@ const MasterDataQueue = () => {
         return requests.filter(r => r.status === 'APPROVAL_PENDING');
       case 'REVISION_REQUIRED':
         return requests.filter(r => r.status === 'REVISION_REQUIRED');
+      case 'PROCUREMENT_REVIEW':
+        return requests.filter(isProcurementPending);
       default:
         return [];
     }
@@ -110,7 +115,10 @@ const MasterDataQueue = () => {
     }
   };
 
-  const RequestCard = ({ request }: { request: ItemRequestWithUser }) => (
+  const RequestCard = ({ request }: { request: ItemRequestWithUser }) => {
+    const meta = (request.metadata ?? {}) as Record<string, unknown>;
+    const missingFields = Array.isArray(meta.procurement_missing_fields) ? meta.procurement_missing_fields as string[] : [];
+    return (
     <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl p-6 hover:shadow-lg transition-all group relative overflow-hidden">
       {request.is_urgent && (
         <div className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-black uppercase tracking-widest rounded-bl-xl">
@@ -201,7 +209,7 @@ const MasterDataQueue = () => {
               <ExternalLink size={14} /> Setup Pricing
             </button>
           )}
-          <button 
+          <button
             onClick={() => navigate(`/items/requests/${request.id}`)}
             className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-all"
             title="View Details"
@@ -210,8 +218,19 @@ const MasterDataQueue = () => {
           </button>
         </div>
       </div>
+      {missingFields.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-amber-100 dark:border-amber-500/15 flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">Awaiting from Procurement:</span>
+          {missingFields.map((f: string) => (
+            <span key={f} className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded border border-amber-200 dark:border-amber-500/20">
+              {f}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-8 animate-page-entry max-w-6xl mx-auto">
@@ -230,12 +249,13 @@ const MasterDataQueue = () => {
         </button>
       </div>
 
-      <div className="flex gap-1 p-1 bg-gray-50 dark:bg-white/5 rounded-2xl w-fit border border-gray-100 dark:border-gray-800">
+      <div className="flex gap-1 p-1 bg-gray-50 dark:bg-white/5 rounded-2xl w-fit border border-gray-100 dark:border-gray-800 flex-wrap">
         {[
           { id: 'NEEDS_ACTION', label: 'Needs Action', icon: AlertCircle, count: requests.filter(r => ['SUBMITTED', 'DUPLICATE_REVIEW', 'DATA_REVIEW'].includes(r.status)).length },
           { id: 'PRICING_REVIEW', label: 'Pricing Review', icon: Clock, count: requests.filter(r => r.status === 'PRICING_REVIEW').length },
           { id: 'PENDING_APPROVAL', label: 'Pending Approval', icon: Clock, count: requests.filter(r => r.status === 'APPROVAL_PENDING').length },
-          { id: 'REVISION_REQUIRED', label: 'Revision Required', icon: History, count: requests.filter(r => r.status === 'REVISION_REQUIRED').length }
+          { id: 'REVISION_REQUIRED', label: 'Revision Required', icon: History, count: requests.filter(r => r.status === 'REVISION_REQUIRED').length },
+          { id: 'PROCUREMENT_REVIEW', label: 'Procurement Review', icon: Search, count: requests.filter(isProcurementPending).length },
         ].map(tab => (
           <button
             key={tab.id}

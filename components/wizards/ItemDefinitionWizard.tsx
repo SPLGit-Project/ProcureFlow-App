@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, Check, Database, Flag, Hash, Package, RefreshCw, Ruler, SlidersHorizontal } from 'lucide-react';
+import { AlertCircle, Check, Database, Flag, Hash, Package, RefreshCw, Ruler, SendHorizonal, SlidersHorizontal } from 'lucide-react';
 import ItemRequestWizardShell, { WizardStep } from '../ItemRequestWizardShell';
 import { ToastContainer, useToast } from '../ToastNotification';
 import { getItemRequest } from '../../services/itemRequestService';
@@ -11,6 +11,7 @@ import {
   saveItemDefinition,
   SapCodeCheckResult,
 } from '../../services/itemDefinitionService';
+import { supabase } from '../../lib/supabaseClient';
 import { generateShortName, generateItemCode, parseDescription } from '../../utils/itemNameGenerator';
 import { ItemRequest } from '../../types';
 
@@ -128,6 +129,7 @@ export default function ItemDefinitionWizard() {
   const [sapCheck, setSapCheck] = useState<SapCodeCheckResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [procurementReviewSent, setProcurementReviewSent] = useState(false);
   // Track which system flags came from the original request so we can show context
   const [requestFlags, setRequestFlags] = useState({ bundle: false, linenhub: false, salesforce: false });
 
@@ -165,16 +167,51 @@ export default function ItemDefinitionWizard() {
           linenhub: loadedRequest.target_linenhub,
           salesforce: loadedRequest.target_salesforce,
         });
+
+        // ── Classification pre-population ──────────────────────────────────────
+        // Match department label (e.g. "Accommodation") to a catalog entry
+        const dept = (loadedRequest.department ?? '').toLowerCase();
+        let matchPool = '';
+        let matchCatalog = '';
+        if (dept) {
+          outer: for (const [pool, catalogs] of Object.entries(loadedOptions.itemCatalogs)) {
+            for (const cat of catalogs) {
+              if (cat.toLowerCase().includes(dept) || dept.includes(cat.toLowerCase())) {
+                matchPool    = pool;
+                matchCatalog = cat;
+                break outer;
+              }
+            }
+          }
+        }
+
+        // SAP code = proposed item code from description + wizard metadata
+        const meta = (loadedRequest.metadata ?? {}) as Record<string, unknown>;
+        const proposedCode = generateItemCode(loadedRequest.item_description);
+
+        // UOM / UPQ from wizard metadata (overrides defaults if available)
+        const metaUom = typeof meta.uom === 'string' ? meta.uom : 'EA';
+        const metaUpq = typeof meta.upq === 'string' || typeof meta.upq === 'number' ? Number(meta.upq) : 1;
+
         setForm(prev => ({
           ...prev,
+          // Classification
+          item_pool:    matchPool,
+          item_catalog: matchCatalog,
+          // Identity
           description: loadedRequest.item_description,
+          sap_item_code_raw: proposedCode,
           short_name: shortName,
           name: shortName.slice(0, 40),
-          // Pre-populate physical attributes parsed from description
-          item_colour: parsed.colour ?? '',
-          item_material: parsed.material ?? '',
-          item_size: parsed.dimensions ?? '',
-          gsm: parsed.gsm,
+          division: matchCatalog || loadedRequest.department || '',
+          // Physical attributes: prefer wizard metadata, fall back to description parsing
+          item_colour:   (typeof meta.colourCode === 'string' && meta.colourCode ? meta.colourCode : parsed.colour) ?? '',
+          item_material: (typeof meta.material   === 'string' && meta.material   ? meta.material   : parsed.material) ?? '',
+          item_size:     parsed.dimensions ?? (meta.width_cm && meta.height_cm ? `${meta.width_cm}x${meta.height_cm}cm` : ''),
+          gsm:           (typeof meta.gsm === 'number' && meta.gsm > 0) ? meta.gsm : parsed.gsm,
+          uom:           metaUom,
+          upq:           metaUpq,
+          rfid_flag:     typeof meta.rfid === 'boolean' ? meta.rfid : false,
           // System flags from request
           target_bundle: loadedRequest.target_bundle,
           target_linenhub: loadedRequest.target_linenhub,
@@ -195,8 +232,8 @@ export default function ItemDefinitionWizard() {
   }, [id, toastError]);
 
   const proposedItemCode = useMemo(
-    () => form.description ? generateItemCode(form.description) : '',
-    [form.description]
+    () => form.sap_item_code_raw || (form.description ? generateItemCode(form.description) : ''),
+    [form.sap_item_code_raw, form.description]
   );
 
   const catalogOptions = options.itemCatalogs[form.item_pool] ?? [];
@@ -211,8 +248,8 @@ export default function ItemDefinitionWizard() {
       }
     }
     if (activeStep === 1) {
-      if (!form.sap_item_code_raw || !form.sap_item_code_norm || !form.name || !form.description) {
-        return 'Complete SAP code, description, display name, and division.';
+      if (!form.sap_item_code_raw || !form.name || !form.description) {
+        return 'Complete the SAP item code, description, and display name.';
       }
       if (sapCheck?.isDuplicate) return 'SAP item code already exists.';
     }
@@ -322,14 +359,14 @@ export default function ItemDefinitionWizard() {
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-black text-gray-900 dark:text-white">Identity</h2>
-              <p className="text-sm text-gray-500 mt-1">Normalise and verify the SAP item code, then confirm the item naming.</p>
+              <p className="text-sm text-gray-500 mt-1">The SAP code has been generated from the item's attributes — verify and confirm the naming.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="SAP Item Code">
-                <input className={inputClass} value={form.sap_item_code_raw} onChange={event => update({ sap_item_code_raw: event.target.value, sap_item_code_norm: '' })} onBlur={handleSapBlur} placeholder="e.g. 104231" />
+              <Field label="SAP Item Code" hint="Pre-generated from item attributes — edit only if SAP requires a different code">
+                <input className={inputClass} value={form.sap_item_code_raw} onChange={event => update({ sap_item_code_raw: event.target.value, sap_item_code_norm: '' })} onBlur={handleSapBlur} placeholder="e.g. BLASHQ01W500" />
               </Field>
-              <Field label="Normalised Code">
-                <input className={inputClass} value={form.sap_item_code_norm} onChange={event => update({ sap_item_code_norm: event.target.value })} />
+              <Field label="Division" hint="Pre-set from the item's catalogue — edit if needed">
+                <input className={inputClass} value={form.division} onChange={event => update({ division: event.target.value })} placeholder="e.g. Accommodation" />
               </Field>
               <Field label="Full Description" hint="Pre-populated from request — edit only if needed">
                 <textarea className={`${inputClass} min-h-28`} value={form.description} onChange={event => update({ description: event.target.value })} />
@@ -358,15 +395,12 @@ export default function ItemDefinitionWizard() {
                   <input className={inputClass} maxLength={40} value={form.name} onChange={event => update({ name: event.target.value })} />
                 </Field>
               </div>
-              <Field label="Division">
-                <input className={inputClass} value={form.division} onChange={event => update({ division: event.target.value })} placeholder="e.g. Hospitality" />
-              </Field>
             </div>
             {sapCheck && (
               <div className={`flex items-start gap-3 p-4 rounded-2xl border ${sapCheck.isDuplicate ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
                 {sapCheck.isDuplicate ? <AlertCircle size={18} /> : <Check size={18} />}
                 <p className="text-sm font-medium">
-                  {sapCheck.isDuplicate ? `Duplicate found: ${sapCheck.existingItemName}` : `Code available. Normalised as ${sapCheck.normalized}.`}
+                  {sapCheck.isDuplicate ? `Duplicate found: ${sapCheck.existingItemName}` : 'Code verified — available for use.'}
                 </p>
               </div>
             )}
@@ -374,25 +408,85 @@ export default function ItemDefinitionWizard() {
         )}
 
         {/* Step 2 — Physical Attributes */}
-        {activeStep === 2 && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-black text-gray-900 dark:text-white">Physical Attributes</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Colour, material, size and GSM have been pre-populated from the description — verify and adjust as needed.
-              </p>
+        {activeStep === 2 && (() => {
+          const missingFields: string[] = [];
+          if (!form.item_weight) missingFields.push('Weight (kg)');
+          if (!form.gsm) missingFields.push('GSM');
+          if (!form.item_size) missingFields.push('Dimensions');
+          if (!form.uom || form.uom === 'EA') {} // EA is a valid default
+          const hasMissing = missingFields.length > 0;
+
+          const handleRequestFromProcurement = async () => {
+            if (!request) return;
+            try {
+              const existingMeta = (request.metadata ?? {}) as Record<string, unknown>;
+              await supabase.from('item_requests').update({
+                metadata: {
+                  ...existingMeta,
+                  procurement_review_pending: true,
+                  procurement_missing_fields: missingFields,
+                },
+              }).eq('id', request.id);
+              setProcurementReviewSent(true);
+              success('Procurement team notified. Proceeding to next step.');
+              setActiveStep(prev => prev + 1);
+            } catch {
+              toastError('Failed to flag for procurement review. Please try again.');
+            }
+          };
+
+          return (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-black text-gray-900 dark:text-white">Physical Attributes</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Pre-populated from the item creation wizard — verify and adjust as needed.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Field label="UOM"><input className={inputClass} value={form.uom} onChange={event => update({ uom: event.target.value })} /></Field>
+                <Field label="UPQ"><NumberInput value={form.upq} onChange={value => update({ upq: value })} /></Field>
+                <Field label="Weight (kg)"><NumberInput value={form.item_weight} onChange={value => update({ item_weight: value })} placeholder="e.g. 0.5" /></Field>
+                <Field label="Size / Dimensions" hint="e.g. 70x140cm"><input className={inputClass} value={form.item_size} onChange={event => update({ item_size: event.target.value })} placeholder="e.g. 70x140cm" /></Field>
+                <Field label="Colour"><input className={inputClass} value={form.item_colour} onChange={event => update({ item_colour: event.target.value })} placeholder="e.g. White" /></Field>
+                <Field label="Material"><input className={inputClass} value={form.item_material} onChange={event => update({ item_material: event.target.value })} placeholder="e.g. Cotton" /></Field>
+                <Field label="GSM"><NumberInput value={form.gsm} onChange={value => update({ gsm: value })} placeholder="e.g. 500" /></Field>
+              </div>
+
+              {hasMissing && !procurementReviewSent && (
+                <div className="rounded-2xl border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/5 p-5 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Missing physical attributes</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                        The following attributes were not provided during item creation and may be needed:
+                        <span className="font-bold ml-1">{missingFields.join(', ')}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRequestFromProcurement}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-white text-xs font-black uppercase tracking-widest hover:bg-amber-600 transition-all shadow-md shadow-amber-500/20"
+                  >
+                    <SendHorizonal size={13} />
+                    Request from Procurement & Continue
+                  </button>
+                  <p className="text-[11px] text-amber-600 dark:text-amber-500">
+                    This will notify the procurement team to supply the missing details, flag the request under the Procurement Review tab, and advance you to the next step.
+                  </p>
+                </div>
+              )}
+              {procurementReviewSent && (
+                <div className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-500/8 border border-emerald-200 dark:border-emerald-500/20">
+                  <Check size={16} className="text-emerald-500 shrink-0" />
+                  <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Procurement team notified — the request is flagged for review.</p>
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Field label="UOM"><input className={inputClass} value={form.uom} onChange={event => update({ uom: event.target.value })} /></Field>
-              <Field label="UPQ"><NumberInput value={form.upq} onChange={value => update({ upq: value })} /></Field>
-              <Field label="Weight (kg)"><NumberInput value={form.item_weight} onChange={value => update({ item_weight: value })} placeholder="e.g. 0.5" /></Field>
-              <Field label="Size / Dimensions" hint="e.g. 70x140cm"><input className={inputClass} value={form.item_size} onChange={event => update({ item_size: event.target.value })} placeholder="e.g. 70x140cm" /></Field>
-              <Field label="Colour"><input className={inputClass} value={form.item_colour} onChange={event => update({ item_colour: event.target.value })} placeholder="e.g. White" /></Field>
-              <Field label="Material"><input className={inputClass} value={form.item_material} onChange={event => update({ item_material: event.target.value })} placeholder="e.g. Cotton" /></Field>
-              <Field label="GSM"><NumberInput value={form.gsm} onChange={value => update({ gsm: value })} placeholder="e.g. 500" /></Field>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Step 3 — System Flags */}
         {activeStep === 3 && (

@@ -837,6 +837,7 @@ export interface ItemRequest {
   updated_at: string;
   // Wizard & workflow fields (added in migration item_requests_wizard_columns)
   wizard_draft?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   assigned_to?: string;
   assigned_at?: string;
   status_changed_at?: string;

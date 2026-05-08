@@ -12,6 +12,7 @@ import { transitionRequest } from '../../services/itemWorkflowService';
 import { ItemRequestType } from '../../types';
 import { ToastContainer, useToast } from '../ToastNotification';
 import { buildItemCode, SkuSegments } from '../../utils/itemNameGenerator';
+import { supabase } from '../../lib/supabaseClient';
 
 // ── Steps ─────────────────────────────────────────────────────────────────────
 
@@ -192,6 +193,8 @@ interface Step2Data {
   width_cm: string;
   height_cm: string;
   grade: string;
+  uom: string;
+  upq: string;
   additional_notes: string;
   item_check_confirmed: boolean;
 }
@@ -369,20 +372,54 @@ const TYPE_CARDS = [
 interface Step1Props { data: Step1Data; onChange: (v: Step1Data) => void; }
 
 function Step1TypeSelector({ data, onChange }: Step1Props) {
+  const [showSelector, setShowSelector] = useState(!data.request_type);
+  const selected = TYPE_CARDS.find(c => c.value === data.request_type);
+
+  const header = (
+    <div>
+      <h2 className="text-xl font-black text-gray-900 dark:text-white">What type of transaction is this?</h2>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        This becomes the first character of your item code — <span className="font-bold">P</span> (Purchase) or <span className="font-bold">S</span> (Sale only — rare).
+      </p>
+    </div>
+  );
+
+  if (!showSelector && selected) {
+    const Icon = selected.icon;
+    return (
+      <div className="space-y-5">
+        {header}
+        <div className="flex items-center gap-3 px-4 py-3 bg-[var(--color-brand)]/5 border-2 border-[var(--color-brand)]/20 rounded-xl">
+          <div className={`p-1.5 rounded-lg bg-white dark:bg-[#1e2029] ${selected.color} shrink-0`}>
+            <Icon size={16} />
+          </div>
+          <Check size={14} className="text-[var(--color-brand)] shrink-0" />
+          <span className="text-sm font-bold text-gray-900 dark:text-white flex-1">{selected.label}</span>
+          <span className="font-mono text-[10px] font-black px-1.5 py-0.5 rounded bg-[var(--color-brand)] text-white shrink-0">
+            {selected.code}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowSelector(true)}
+            className="text-[11px] font-black uppercase tracking-widest text-gray-400 hover:text-[var(--color-brand)] transition-colors px-2.5 py-1 rounded-lg hover:bg-[var(--color-brand)]/10 shrink-0"
+          >
+            Change
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-xl font-black text-gray-900 dark:text-white">What type of transaction is this?</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          This becomes the first character of your item code — <span className="font-bold">P</span> (Purchase) or <span className="font-bold">S</span> (Sale only — rare).
-        </p>
-      </div>
+      {header}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {TYPE_CARDS.map(card => {
           const Icon = card.icon;
           const sel = data.request_type === card.value;
           return (
-            <button key={card.value} type="button" onClick={() => onChange({ request_type: card.value })}
+            <button key={card.value} type="button"
+              onClick={() => { onChange({ request_type: card.value }); setShowSelector(false); }}
               className={`text-left p-4 rounded-2xl border-2 transition-all flex items-start gap-4 ${
                 sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 shadow-lg shadow-[var(--color-brand)]/10'
                     : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
@@ -409,6 +446,18 @@ function Step1TypeSelector({ data, onChange }: Step1Props) {
   );
 }
 
+// ── UOM options ───────────────────────────────────────────────────────────────
+
+const UOM_OPTIONS = [
+  { value: 'EA',  label: 'Each'     },
+  { value: 'DZ',  label: 'Dozen'    },
+  { value: 'PAR', label: 'Pair'     },
+  { value: 'SET', label: 'Set'      },
+  { value: 'PKT', label: 'Packet'   },
+  { value: 'KG',  label: 'Kilogram' },
+  { value: 'M',   label: 'Metre'    },
+];
+
 // ── Step 2: Code builder ──────────────────────────────────────────────────────
 
 interface Step2Props {
@@ -416,9 +465,11 @@ interface Step2Props {
   onChange: (v: Partial<Step2Data>) => void;
   requestType: ItemRequestType | null;
   onDupeStatusChange: (status: 'idle'|'searching'|'found'|'clear', count: number) => void;
+  onPerfectMatchChange: (has: boolean) => void;
+  onExit: () => void;
 }
 
-function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
+function Step2CodeBuilder({ data, onChange, onDupeStatusChange, onPerfectMatchChange, onExit }: Step2Props) {
   const def = getProductDef(data.productTypeCode);
   const hasSize   = def ? (def.bedSizes || def.bodySizes) : false;
   const hasColour = def ? def.hasColour  : false;
@@ -431,6 +482,13 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
   const showColour      = showSize && (hasSize ? !!data.sizeCode : true);
   const showSpec        = showColour && (hasColour ? (!!data.colourCode || data.colourLabel === 'Other') : true);
 
+  // Collapse state: sections user has explicitly expanded (clicking "Change")
+  // By default, sections with values show as chips; no value → full selector
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const expandSection  = (s: string) => setExpandedSections(prev => new Set([...prev, s]));
+  const collapseSection = (s: string) => setExpandedSections(prev => { const n = new Set(prev); n.delete(s); return n; });
+  const showingSelector = (section: string, hasValue: boolean) => !hasValue || expandedSections.has(section);
+
   // Duplicate search
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -439,6 +497,8 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
     if (searchTimer.current) clearTimeout(searchTimer.current);
     if (!data.productTypeCode || !data.categoryCode) {
       onDupeStatusChange('idle', 0);
+      setSearchResults([]);
+      onPerfectMatchChange(false);
       return;
     }
     const term = [data.colourLabel, data.productTypeLabel, data.sizeLabel].filter(Boolean).join(' ');
@@ -446,10 +506,14 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
     searchTimer.current = setTimeout(async () => {
       try {
         const results = await searchExistingItems(term);
-        setSearchResults(results.slice(0, 5));
+        const top = results.slice(0, 5);
+        setSearchResults(top);
+        const hasPerfect = top.some(item => calculateSimilarity(item, data) >= 95);
+        onPerfectMatchChange(hasPerfect);
         onDupeStatusChange(results.length > 0 ? 'found' : 'clear', results.length);
       } catch {
         onDupeStatusChange('idle', 0);
+        onPerfectMatchChange(false);
       }
     }, 700);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
@@ -470,6 +534,7 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
       rfid: null,
       item_check_confirmed: false,
     });
+    collapseSection('productType');
   };
 
   const groupedProducts = PRODUCT_GROUPS.map(g => ({
@@ -477,164 +542,224 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
     items: PRODUCT_TYPE_DEFS.filter(p => p.group === g),
   }));
 
+  // Scored results for similarity display
+  const scoredResults = searchResults
+    .map(item => ({ ...item, similarity: calculateSimilarity(item, data) }))
+    .sort((a, b) => b.similarity - a.similarity);
+  const hasPerfectMatch = scoredResults.some(r => r.similarity >= 95);
+
+  const similarityColor = (pct: number) =>
+    pct >= 95 ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20' :
+    pct >= 70 ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20' :
+                'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20';
+
+  let sectionN = 1;
+
   return (
     <div className="space-y-8">
 
       {/* ── Section: Category ── */}
       <section className="space-y-3">
-        <SectionLabel n={1} done={!!data.categoryCode} title="Catalogue Category" sub="Segment 3 of your code" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {CATEGORIES.map(cat => {
-            const sel = data.categoryCode === cat.code;
-            return (
-              <button key={cat.code} type="button"
-                onClick={() => onChange({ categoryLabel: cat.label, categoryCode: cat.code, item_check_confirmed: false })}
-                className={`text-left p-3.5 rounded-xl border-2 transition-all flex items-center gap-3 ${
-                  sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
-                }`}>
-                <span className={`font-mono text-sm font-black w-8 text-center shrink-0 px-1 py-0.5 rounded ${
-                  sel ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
-                }`}>{cat.code}</span>
-                <div className="min-w-0">
-                  <p className={`text-sm font-bold ${sel ? 'text-[var(--color-brand)]' : 'text-gray-900 dark:text-white'}`}>{cat.label}</p>
-                  <p className="text-[11px] text-gray-400 truncate">{cat.description}</p>
-                </div>
-                {sel && <Check size={14} className="text-[var(--color-brand)] shrink-0 ml-auto" />}
-              </button>
-            );
-          })}
-        </div>
+        <SectionLabel n={sectionN} done={!!data.categoryCode} title="Catalogue Category" sub="Segment 3 of your code" />
+        {!showingSelector('category', !!data.categoryCode) ? (
+          <SelectedChip
+            label={`${data.categoryLabel} — ${data.categoryCode}`}
+            onClear={() => expandSection('category')}
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {CATEGORIES.map(cat => {
+              const sel = data.categoryCode === cat.code;
+              return (
+                <button key={cat.code} type="button"
+                  onClick={() => { onChange({ categoryLabel: cat.label, categoryCode: cat.code, item_check_confirmed: false }); collapseSection('category'); }}
+                  className={`text-left p-3.5 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                    sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}>
+                  <span className={`font-mono text-sm font-black w-8 text-center shrink-0 px-1 py-0.5 rounded ${
+                    sel ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                  }`}>{cat.code}</span>
+                  <div className="min-w-0">
+                    <p className={`text-sm font-bold ${sel ? 'text-[var(--color-brand)]' : 'text-gray-900 dark:text-white'}`}>{cat.label}</p>
+                    <p className="text-[11px] text-gray-400 truncate">{cat.description}</p>
+                  </div>
+                  {sel && <Check size={14} className="text-[var(--color-brand)] shrink-0 ml-auto" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* ── Section: Product Type ── */}
-      {showProductType && (
+      {showProductType && (() => { sectionN++; return (
         <section className="space-y-3 animate-slide-up">
-          <SectionLabel n={2} done={!!data.productTypeCode} title="Product Type" sub="Segment 4 of your code" />
-          <div className="space-y-4">
-            {groupedProducts.map(({ group, items }) => (
-              <div key={group}>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{group}</p>
-                <div className="flex flex-wrap gap-2">
-                  {items.map(pt => {
-                    const sel = data.productTypeCode === pt.code;
-                    return (
-                      <button key={pt.code} type="button" onClick={() => handleProductTypeChange(pt)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm transition-all ${
-                          sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
-                              : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                        }`}>
-                        <span className={`font-mono text-[10px] font-black ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>{pt.code}</span>
-                        <span className="font-medium">{pt.label}</span>
-                        {sel && <Check size={12} />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── Section: RFID ── */}
-      {showRfid && (
-        <section className="space-y-3 animate-slide-up">
-          <SectionLabel n={3} done={data.rfid !== null} title="RFID Tracking" sub="Segment 2 of your code" />
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { val: true,  code: 'R', label: 'RFID Tracked',  desc: 'Item carries an RFID chip for automated tracking.', Icon: Wifi },
-              { val: false, code: 'L', label: 'Non-RFID',      desc: 'Standard item — no chip or automated tracking.',   Icon: WifiOff },
-            ].map(opt => {
-              const sel = data.rfid === opt.val;
-              const Icon = opt.Icon;
-              return (
-                <button key={String(opt.val)} type="button" onClick={() => onChange({ rfid: opt.val })}
-                  className={`text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${
-                    sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
-                  }`}>
-                  <Icon size={18} className={sel ? 'text-[var(--color-brand)] mt-0.5' : 'text-gray-400 mt-0.5'} />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className={`font-bold text-sm ${sel ? 'text-[var(--color-brand)]' : 'text-gray-900 dark:text-white'}`}>{opt.label}</span>
-                      <span className={`font-mono text-[10px] font-black px-1.5 py-0.5 rounded ${sel ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>{opt.code}</span>
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{opt.desc}</p>
+          <SectionLabel n={sectionN} done={!!data.productTypeCode} title="Product Type" sub="Segment 4 of your code" />
+          {!showingSelector('productType', !!data.productTypeCode) ? (
+            <SelectedChip
+              label={data.productTypeLabel}
+              code={data.productTypeCode}
+              onClear={() => expandSection('productType')}
+            />
+          ) : (
+            <div className="space-y-4">
+              {groupedProducts.map(({ group, items }) => (
+                <div key={group}>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{group}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {items.map(pt => {
+                      const sel = data.productTypeCode === pt.code;
+                      return (
+                        <button key={pt.code} type="button" onClick={() => handleProductTypeChange(pt)}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm transition-all ${
+                            sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
+                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                          }`}>
+                          <span className={`font-mono text-[10px] font-black ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>{pt.code}</span>
+                          <span className="font-medium">{pt.label}</span>
+                          {sel && <Check size={12} />}
+                        </button>
+                      );
+                    })}
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ── Section: Size ── */}
-      {showSize && hasSize && (
-        <section className="space-y-3 animate-slide-up">
-          <SectionLabel n={4} done={!!data.sizeCode} title="Size" sub="Segment 5 of your code" />
-          <div className="flex flex-wrap gap-2">
-            {(def!.bedSizes ? BED_SIZES : BODY_SIZES).map(sz => {
-              const sel = data.sizeCode === sz.code;
-              return (
-                <button key={sz.code} type="button" onClick={() => onChange({ sizeLabel: sz.label, sizeCode: sz.code })}
-                  className={`flex flex-col items-center px-4 py-2.5 rounded-xl border-2 transition-all min-w-[64px] ${
-                    sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
-                  }`}>
-                  <span className={`font-mono text-sm font-black ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>{sz.code}</span>
-                  <span className={`text-xs mt-0.5 ${sel ? 'font-bold text-[var(--color-brand)]' : 'text-gray-600 dark:text-gray-400'}`}>{sz.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ── Section: Colour ── */}
-      {showColour && hasColour && (
-        <section className="space-y-3 animate-slide-up">
-          <SectionLabel n={4 + (hasSize ? 1 : 0)} done={!!data.colourCode || data.colourLabel === 'Other'} title="Colour" sub="Segment 7 of your code" />
-          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-            {COLOURS.map(col => {
-              const sel = data.colourLabel === col.label;
-              return (
-                <button key={col.label} type="button"
-                  onClick={() => onChange({ colourLabel: col.label, colourCode: col.code, colourCustom: '', item_check_confirmed: false })}
-                  className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all gap-1.5 ${
-                    sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
-                  }`}>
-                  <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 shrink-0"
-                    style={{ background: col.hex }} />
-                  <span className={`font-mono text-[9px] font-black leading-none ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>
-                    {col.code || '?'}
-                  </span>
-                  <span className={`text-[10px] text-center leading-tight ${sel ? 'font-bold text-[var(--color-brand)]' : 'text-gray-600 dark:text-gray-400'}`}>
-                    {col.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {data.colourLabel === 'Other' && (
-            <div className="space-y-1">
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                Non-standard colours don't generate a colour code segment. Master Data will assign one during item definition.
-              </p>
-              <input type="text" value={data.colourCustom}
-                onChange={e => onChange({ colourCustom: e.target.value })}
-                placeholder="Describe the colour (e.g. Dusty Rose, Sage Green)…"
-                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
+                </div>
+              ))}
             </div>
           )}
         </section>
-      )}
+      ); })()}
 
-      {/* ── Section: Specification ── */}
-      {showSpec && (
+      {/* ── Section: RFID ── */}
+      {showRfid && (() => { sectionN++; return (
+        <section className="space-y-3 animate-slide-up">
+          <SectionLabel n={sectionN} done={data.rfid !== null} title="RFID Tracking" sub="Segment 2 of your code" />
+          {!showingSelector('rfid', data.rfid !== null) ? (
+            <SelectedChip
+              label={data.rfid ? 'RFID Tracked' : 'Non-RFID'}
+              code={data.rfid ? 'R' : 'L'}
+              onClear={() => expandSection('rfid')}
+            />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { val: true,  code: 'R', label: 'RFID Tracked',  desc: 'Item carries an RFID chip for automated tracking.', Icon: Wifi },
+                { val: false, code: 'L', label: 'Non-RFID',      desc: 'Standard item — no chip or automated tracking.',   Icon: WifiOff },
+              ].map(opt => {
+                const sel = data.rfid === opt.val;
+                const Icon = opt.Icon;
+                return (
+                  <button key={String(opt.val)} type="button"
+                    onClick={() => { onChange({ rfid: opt.val }); collapseSection('rfid'); }}
+                    className={`text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${
+                      sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}>
+                    <Icon size={18} className={sel ? 'text-[var(--color-brand)] mt-0.5' : 'text-gray-400 mt-0.5'} />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-bold text-sm ${sel ? 'text-[var(--color-brand)]' : 'text-gray-900 dark:text-white'}`}>{opt.label}</span>
+                        <span className={`font-mono text-[10px] font-black px-1.5 py-0.5 rounded ${sel ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>{opt.code}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{opt.desc}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ); })()}
+
+      {/* ── Section: Size ── */}
+      {showSize && hasSize && (() => { sectionN++; return (
+        <section className="space-y-3 animate-slide-up">
+          <SectionLabel n={sectionN} done={!!data.sizeCode} title="Size" sub="Segment 5 of your code" />
+          {!showingSelector('size', !!data.sizeCode) ? (
+            <SelectedChip
+              label={data.sizeLabel}
+              code={data.sizeCode}
+              onClear={() => expandSection('size')}
+            />
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {(def!.bedSizes ? BED_SIZES : BODY_SIZES).map(sz => {
+                const sel = data.sizeCode === sz.code;
+                return (
+                  <button key={sz.code} type="button"
+                    onClick={() => { onChange({ sizeLabel: sz.label, sizeCode: sz.code }); collapseSection('size'); }}
+                    className={`flex flex-col items-center px-4 py-2.5 rounded-xl border-2 transition-all min-w-[64px] ${
+                      sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}>
+                    <span className={`font-mono text-sm font-black ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>{sz.code}</span>
+                    <span className={`text-xs mt-0.5 ${sel ? 'font-bold text-[var(--color-brand)]' : 'text-gray-600 dark:text-gray-400'}`}>{sz.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ); })()}
+
+      {/* ── Section: Colour ── */}
+      {showColour && hasColour && (() => { sectionN++; return (
+        <section className="space-y-3 animate-slide-up">
+          <SectionLabel n={sectionN} done={!!data.colourCode || data.colourLabel === 'Other'} title="Colour" sub="Segment 7 of your code" />
+          {!showingSelector('colour', !!(data.colourCode || (data.colourLabel === 'Other' && data.colourCustom))) ? (
+            <SelectedChip
+              label={data.colourLabel === 'Other' ? `Other — ${data.colourCustom || 'Custom'}` : data.colourLabel}
+              code={data.colourCode || undefined}
+              onClear={() => expandSection('colour')}
+            />
+          ) : (
+            <>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                {COLOURS.map(col => {
+                  const sel = data.colourLabel === col.label;
+                  return (
+                    <button key={col.label} type="button"
+                      onClick={() => {
+                        onChange({ colourLabel: col.label, colourCode: col.code, colourCustom: '', item_check_confirmed: false });
+                        if (col.label !== 'Other') collapseSection('colour');
+                      }}
+                      className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all gap-1.5 ${
+                        sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
+                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                      }`}>
+                      <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 shrink-0"
+                        style={{ background: col.hex }} />
+                      <span className={`font-mono text-[9px] font-black leading-none ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>
+                        {col.code || '?'}
+                      </span>
+                      <span className={`text-[10px] text-center leading-tight ${sel ? 'font-bold text-[var(--color-brand)]' : 'text-gray-600 dark:text-gray-400'}`}>
+                        {col.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {data.colourLabel === 'Other' && (
+                <div className="space-y-1">
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Non-standard colours don't generate a colour code segment. Master Data will assign one during item definition.
+                  </p>
+                  <input type="text" value={data.colourCustom}
+                    onChange={e => onChange({ colourCustom: e.target.value })}
+                    onBlur={() => { if (data.colourCustom.trim()) collapseSection('colour'); }}
+                    placeholder="Describe the colour (e.g. Dusty Rose, Sage Green)…"
+                    className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      ); })()}
+
+      {/* ── Section: Specification Details ── */}
+      {showSpec && (() => { sectionN++; return (
         <section className="space-y-4 animate-slide-up">
-          <SectionLabel n={4 + (hasSize ? 1 : 0) + (hasColour ? 1 : 0)} done={!!data.material} title="Specification Details" sub="Non-code attributes for Master Data" />
+          <SectionLabel n={sectionN} done={!!data.material} title="Specification Details" sub="Non-code attributes for Master Data" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Material <span className="text-red-500">*</span></label>
@@ -701,6 +826,35 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
                 </div>
               </div>
             )}
+
+            {/* UOM */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Unit of Measure (UOM)</label>
+              <div className="flex flex-wrap gap-2">
+                {UOM_OPTIONS.map(u => (
+                  <button key={u.value} type="button" onClick={() => onChange({ uom: u.value })}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                      data.uom === u.value ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)] font-bold'
+                                           : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                    }`}>
+                    <span className="font-mono font-black">{u.value}</span>
+                    <span>{u.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* UPQ */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Units Per Quantity (UPQ)</label>
+              <div className="flex items-center gap-2">
+                <input type="text" inputMode="numeric" value={data.upq}
+                  onChange={e => onChange({ upq: e.target.value.replace(/[^0-9]/g, '') || '1' })}
+                  placeholder="1"
+                  className="w-28 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
+                <p className="text-xs text-gray-400">How many individual units make up one order quantity (e.g. 12 for a dozen).</p>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-1.5">
@@ -723,34 +877,51 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange }: Step2Props) {
               rows={2} className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all resize-none" />
           </div>
         </section>
-      )}
+      ); })()}
 
-      {/* ── Duplicate check results + confirmation ── */}
-      {showSpec && searchResults.length > 0 && (
+      {/* ── Similarity check results ── */}
+      {showSpec && scoredResults.length > 0 && (
         <section className="space-y-3 animate-slide-up">
-          <div className="border border-amber-200 dark:border-amber-500/20 rounded-xl overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 dark:bg-amber-500/8 border-b border-amber-100 dark:border-amber-500/15">
-              <AlertCircle size={13} className="text-amber-500 shrink-0" />
-              <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Similar Items Found — Review Before Continuing</span>
+          <div className={`rounded-xl overflow-hidden border ${hasPerfectMatch ? 'border-red-200 dark:border-red-500/25' : 'border-amber-200 dark:border-amber-500/20'}`}>
+            <div className={`flex items-center gap-2 px-4 py-2.5 border-b ${hasPerfectMatch ? 'bg-red-50 dark:bg-red-500/10 border-red-100 dark:border-red-500/20' : 'bg-amber-50 dark:bg-amber-500/8 border-amber-100 dark:border-amber-500/15'}`}>
+              <AlertCircle size={13} className={hasPerfectMatch ? 'text-red-500 shrink-0' : 'text-amber-500 shrink-0'} />
+              <span className={`text-xs font-bold uppercase tracking-wide ${hasPerfectMatch ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                {hasPerfectMatch ? 'Exact Match Detected — Cannot Submit' : 'Similar Items Found — Review Before Continuing'}
+              </span>
             </div>
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {searchResults.map(item => (
+            <div className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-[#1e2029]">
+              {scoredResults.map(item => (
                 <div key={item.id} className="flex items-center gap-3 px-4 py-3">
                   <Package size={13} className="text-gray-400 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{item.name}</p>
                     <p className="text-xs text-gray-400">{item.sku}{item.category ? ` · ${item.category}` : ''}</p>
                   </div>
+                  <span className={`text-[11px] font-black px-2 py-0.5 rounded border shrink-0 ${similarityColor(item.similarity)}`}>
+                    {item.similarity}% match
+                  </span>
                 </div>
               ))}
             </div>
-            <div className="px-4 py-3 bg-amber-50/50 dark:bg-amber-500/5 border-t border-amber-100 dark:border-amber-500/10">
-              <p className="text-xs text-amber-700 dark:text-amber-400">If any of the above matches what you need, cancel this request and use the existing item.</p>
+            <div className={`flex items-center justify-between px-4 py-3 border-t ${hasPerfectMatch ? 'bg-red-50/50 dark:bg-red-500/5 border-red-100 dark:border-red-500/10' : 'bg-amber-50/50 dark:bg-amber-500/5 border-amber-100 dark:border-amber-500/10'}`}>
+              <p className={`text-xs ${hasPerfectMatch ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                {hasPerfectMatch
+                  ? 'A 95–100% match means this item already exists. You cannot create a duplicate.'
+                  : 'If any match is what you need, use the existing item instead.'}
+              </p>
+              <button
+                type="button"
+                onClick={onExit}
+                className="ml-4 shrink-0 text-[11px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 whitespace-nowrap"
+              >
+                Exit to My Requests
+              </button>
             </div>
           </div>
         </section>
       )}
 
+      {/* ── Master catalogue confirmation ── */}
       {showSpec && (
         <div className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
           data.item_check_confirmed ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-500/8' : 'border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]/40'
@@ -1114,6 +1285,65 @@ function SectionLabel({ n, done, title, sub }: { n: number; done: boolean; title
   );
 }
 
+// ── Collapsed selection chip ──────────────────────────────────────────────────
+
+function SelectedChip({ label, code, onClear }: { label: string; code?: string; onClear: () => void }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 bg-[var(--color-brand)]/5 border-2 border-[var(--color-brand)]/20 rounded-xl">
+      <Check size={14} className="text-[var(--color-brand)] shrink-0" />
+      <span className="text-sm font-bold text-gray-900 dark:text-white flex-1 truncate">{label}</span>
+      {code && (
+        <span className="font-mono text-[10px] font-black px-1.5 py-0.5 rounded bg-[var(--color-brand)] text-white shrink-0">
+          {code}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={onClear}
+        className="text-[11px] font-black uppercase tracking-widest text-gray-400 hover:text-[var(--color-brand)] transition-colors px-2.5 py-1 rounded-lg hover:bg-[var(--color-brand)]/10 shrink-0"
+      >
+        Change
+      </button>
+    </div>
+  );
+}
+
+// ── Similarity scorer ─────────────────────────────────────────────────────────
+
+function calculateSimilarity(item: { name: string; sku?: string; category?: string }, s2: Step2Data): number {
+  let score = 0, maxScore = 0;
+  const name = (item.name ?? '').toLowerCase();
+  const category = (item.category ?? '').toLowerCase();
+
+  if (s2.productTypeLabel && s2.productTypeLabel !== 'Other') {
+    maxScore += 35;
+    if (name.includes(s2.productTypeLabel.toLowerCase())) score += 35;
+    else if (s2.productTypeCode && (item.sku ?? '').toUpperCase().includes(s2.productTypeCode)) score += 20;
+  }
+  if (s2.categoryLabel) {
+    maxScore += 20;
+    if (category.includes(s2.categoryLabel.toLowerCase()) || name.includes(s2.categoryCode.toLowerCase())) score += 20;
+  }
+  if (s2.colourLabel && s2.colourLabel !== 'Other') {
+    maxScore += 15;
+    if (name.includes(s2.colourLabel.toLowerCase())) score += 15;
+  }
+  if (s2.sizeLabel) {
+    maxScore += 10;
+    if (name.includes(s2.sizeLabel.toLowerCase())) score += 10;
+  }
+  if (s2.material && s2.material !== 'Other') {
+    maxScore += 10;
+    const mat = s2.material.replace('100% ', '').toLowerCase().split(' ')[0];
+    if (name.includes(mat)) score += 10;
+  }
+  if (s2.gsm && !s2.gsmSkipped) {
+    maxScore += 10;
+    if (name.includes(`${s2.gsm}gsm`) || name.includes(`${s2.gsm} gsm`)) score += 10;
+  }
+  return maxScore > 0 ? Math.min(100, Math.round((score / maxScore) * 100)) : 0;
+}
+
 // ── Validation ────────────────────────────────────────────────────────────────
 
 function validateStep(step: number, s1: Step1Data, s2: Step2Data, s3: Step3Data): string | null {
@@ -1151,7 +1381,7 @@ const STEP2_INITIAL: Step2Data = {
   categoryLabel: '', categoryCode: '', productTypeLabel: '', productTypeCode: '',
   rfid: null, sizeLabel: '', sizeCode: '', colourLabel: '', colourCode: '', colourCustom: '',
   gsm: '', gsmSkipped: false, material: '', width_cm: '', height_cm: '', grade: '',
-  additional_notes: '', item_check_confirmed: false,
+  uom: 'EA', upq: '1', additional_notes: '', item_check_confirmed: false,
 };
 const STEP3_INITIAL: Step3Data = {
   business_reason_type: '', business_reason_other: '', is_urgent: false, urgent_reason: '',
@@ -1173,8 +1403,13 @@ export default function ItemRequestWizard() {
   const [step3, setStep3] = useState<Step3Data>(STEP3_INITIAL);
   const [dupeStatus, setDupeStatus] = useState<'idle'|'searching'|'found'|'clear'>('idle');
   const [dupeCount,  setDupeCount]  = useState(0);
+  const [hasPerfectMatch, setHasPerfectMatch] = useState(false);
 
   const handleContinue = useCallback(async () => {
+    if (activeStep === 1 && hasPerfectMatch) {
+      toastError('A matching item already exists in the catalogue. You cannot create a duplicate — please exit and use the existing item.');
+      return;
+    }
     const err = validateStep(activeStep, step1, step2, step3);
     if (err) { toastError(err); return; }
     if (activeStep < STEPS.length - 1) { setActiveStep(p => p + 1); return; }
@@ -1199,6 +1434,26 @@ export default function ItemRequestWizard() {
         contract_reference:      step3.contract_reference      || undefined,
         replacement_for_item_id: step3.replacement_for_item_id || undefined,
       }, currentUser?.id);
+      // Store wizard-derived metadata for downstream pre-population
+      if (currentUser?.id) {
+        await supabase.from('item_requests').update({
+          metadata: {
+            categoryCode:    step2.categoryCode,
+            productTypeCode: step2.productTypeCode,
+            rfid:            step2.rfid,
+            sizeCode:        step2.sizeCode,
+            colourCode:      step2.colourCode,
+            colourCustom:    step2.colourCustom || undefined,
+            gsm:             step2.gsm || undefined,
+            material:        step2.material || undefined,
+            grade:           step2.grade || undefined,
+            uom:             step2.uom,
+            upq:             step2.upq,
+            width_cm:        step2.width_cm || undefined,
+            height_cm:       step2.height_cm || undefined,
+          },
+        }).eq('id', request.id);
+      }
       await transitionRequest(request.id, 'SUBMITTED', { actorId: currentUser?.id });
       setSubmittedCode(buildItemCode(segs));
       setSubmitted(true);
@@ -1242,13 +1497,16 @@ export default function ItemRequestWizard() {
         onContinue={handleContinue} onPrevious={activeStep > 0 ? handlePrevious : undefined}
         onCancel={handleCancel}
         continueLabel={activeStep === STEPS.length - 1 ? (isSubmitting ? 'Submitting…' : 'Submit Request') : 'Continue'}
-        continueDisabled={isSubmitting} isSaving={isSubmitting && activeStep === STEPS.length - 1}
+        continueDisabled={isSubmitting || (activeStep === 1 && hasPerfectMatch)}
+        isSaving={isSubmitting && activeStep === STEPS.length - 1}
       >
         {activeStep === 0 && <Step1TypeSelector data={step1} onChange={setStep1} />}
         {activeStep === 1 && (
           <Step2CodeBuilder data={step2} onChange={p => setStep2(prev => ({ ...prev, ...p }))}
             requestType={step1.request_type}
-            onDupeStatusChange={(s, c) => { setDupeStatus(s); setDupeCount(c); }} />
+            onDupeStatusChange={(s, c) => { setDupeStatus(s); setDupeCount(c); }}
+            onPerfectMatchChange={setHasPerfectMatch}
+            onExit={handleCancel} />
         )}
         {activeStep === 2 && (
           <Step3Context data={step3} onChange={p => setStep3(prev => ({ ...prev, ...p }))} requestType={step1.request_type} />
