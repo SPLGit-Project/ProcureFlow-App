@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ShoppingCart, Tag, Package, RefreshCw, User, Check, CheckCircle2,
   AlertTriangle, Clock, FileText, Zap, Users, Search, AlertCircle,
-  Wifi, WifiOff, ChevronRight, Layers,
+  Wifi, WifiOff, ChevronRight, Layers, ArrowLeft,
 } from 'lucide-react';
 import ItemRequestWizardShell, { WizardStep } from '../ItemRequestWizardShell';
 import { createItemRequest, searchExistingItems } from '../../services/itemRequestService';
@@ -1249,9 +1249,9 @@ function Step3Context({ data, onChange, requestType }: Step3Props) {
 
 // ── Step 4: Review ────────────────────────────────────────────────────────────
 
-interface Step4Props { step1: Step1Data; step2: Step2Data; step3: Step3Data; }
+interface Step4Props { step1: Step1Data; step2: Step2Data; step3: Step3Data; onPrevious: () => void; }
 
-function Step4Review({ step1, step2, step3 }: Step4Props) {
+function Step4Review({ step1, step2, step3, onPrevious }: Step4Props) {
   const segs  = getSkuSegments(step1, step2);
   const code  = buildItemCode(segs);
   const typeCard = TYPE_CARDS.find(t => t.value === step1.request_type);
@@ -1316,27 +1316,78 @@ function Step4Review({ step1, step2, step3 }: Step4Props) {
         </div>
       </div>
 
-      {getProductDef(step2.productTypeCode)?.hasGSM && !step2.gsm && (
-        <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-500/8 border border-amber-100 dark:border-amber-500/20">
-          <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-bold text-amber-800 dark:text-amber-300 text-sm">Weight Not Provided</p>
-            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-              {step2.gsmSkipped
-                ? 'Marked as not applicable — Master Data will be asked to confirm weight classification during item definition.'
-                : 'Weight not entered — Master Data will be flagged to verify before this item is processed through the facility.'}
-            </p>
-          </div>
-        </div>
-      )}
+      {/* ── Missing optional attributes ── */}
+      {(() => {
+        const def = getProductDef(step2.productTypeCode);
+        const missing: { field: string; hint: string }[] = [];
+        if (def?.hasGSM && !step2.gsm && !step2.gsmSkipped) missing.push({ field: 'Weight / GSM', hint: 'grams per m² — helps classify the item' });
+        if (!step2.material) missing.push({ field: 'Material', hint: 'e.g. 100% Cotton, Polyester Blend' });
+        if (!step2.grade) missing.push({ field: 'Grade / Standard', hint: 'e.g. Hotel Grade, Healthcare Grade' });
+        if (def?.hasDimensions && (!step2.width_cm || !step2.height_cm)) missing.push({ field: 'Dimensions', hint: 'width × length in cm' });
+        if (!step2.uom || step2.uom === 'EA') { /* EA is fine default, skip */ }
+        const procurementDelay = missing.length > 0 ? 24 : 0;
+        const totalHours = urgentSla + procurementDelay;
 
-      <div className="flex items-center gap-4 p-4 bg-blue-50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/20 rounded-2xl">
-        <div className="p-2.5 bg-blue-100 dark:bg-blue-500/20 rounded-xl text-blue-600 dark:text-blue-400 shrink-0"><Clock size={18} /></div>
-        <div>
-          <p className="font-bold text-blue-900 dark:text-blue-300 text-sm">Estimated review time</p>
-          <p className="text-sm text-blue-700 dark:text-blue-400">{step3.is_urgent ? 'Urgent — ' : ''}{urgentSla} hours ({Math.ceil(urgentSla / 8)} business days)</p>
-        </div>
-      </div>
+        return (
+          <>
+            {missing.length > 0 && (
+              <div className="rounded-2xl border border-amber-200 dark:border-amber-500/25 overflow-hidden">
+                <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-50 dark:bg-amber-500/10 border-b border-amber-100 dark:border-amber-500/15">
+                  <AlertTriangle size={14} className="text-amber-500 shrink-0" />
+                  <p className="text-xs font-black uppercase tracking-widest text-amber-700 dark:text-amber-400">
+                    {missing.length} optional {missing.length === 1 ? 'attribute' : 'attributes'} not provided
+                  </p>
+                </div>
+                <div className="bg-white dark:bg-[#1e2029] divide-y divide-amber-50 dark:divide-amber-500/10">
+                  {missing.map(m => (
+                    <div key={m.field} className="flex items-start gap-3 px-4 py-2.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1.5" />
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{m.field}</span>
+                        <span className="text-xs text-gray-400 ml-1.5">— {m.hint}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="px-4 py-3 bg-amber-50/60 dark:bg-amber-500/5 border-t border-amber-100 dark:border-amber-500/10 space-y-2">
+                  <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                    <strong>That's OK</strong> — the Procurement team will complete any missing details during their review. However, providing this information now can <strong>reduce review time by up to 24 hours</strong> by removing the need for a separate Procurement review step.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onPrevious}
+                    className="flex items-center gap-1.5 text-xs font-black text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200 transition-colors underline underline-offset-2"
+                  >
+                    <ArrowLeft size={12} />
+                    Go back to Build Item Code to add these details
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className={`flex items-start gap-4 p-4 rounded-2xl border ${missing.length > 0 ? 'bg-amber-50/40 dark:bg-amber-500/5 border-amber-100 dark:border-amber-500/15' : 'bg-blue-50 dark:bg-blue-500/5 border-blue-100 dark:border-blue-500/20'}`}>
+              <div className={`p-2.5 rounded-xl shrink-0 ${missing.length > 0 ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400'}`}>
+                <Clock size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className={`font-bold text-sm ${missing.length > 0 ? 'text-amber-900 dark:text-amber-300' : 'text-blue-900 dark:text-blue-300'}`}>
+                  Estimated review time
+                </p>
+                <p className={`text-sm mt-0.5 ${missing.length > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-blue-700 dark:text-blue-400'}`}>
+                  {step3.is_urgent ? 'Urgent — ' : ''}
+                  <strong>{totalHours} hours</strong> ({Math.ceil(totalHours / 8)} business days)
+                </p>
+                {missing.length > 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-1.5 leading-relaxed">
+                    Includes ~{procurementDelay}h for Procurement review of missing details.
+                    Fill them in above to reduce this to <strong>{urgentSla} hours</strong>.
+                  </p>
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }
@@ -1347,12 +1398,13 @@ function ReviewContextPanel({ step1, step2 }: { step1: Step1Data; step2: Step2Da
   const segs = getSkuSegments(step1, step2);
   const code = buildItemCode(segs);
   const STAGES = [
-    { label: 'Submitted',      done: true, active: false },
-    { label: 'Duplicate Check', done: false, active: true  },
-    { label: 'Item Definition', done: false, active: false },
-    { label: 'Pricing Review',  done: false, active: false },
-    { label: 'Approval',        done: false, active: false },
-    { label: 'Active',          done: false, active: false },
+    { label: 'Submitted',          done: true,  active: false },
+    { label: 'Duplicate Check',    done: false, active: true  },
+    { label: 'Procurement Review', done: false, active: false },
+    { label: 'Master Data QA',     done: false, active: false },
+    { label: 'Pricing Review',     done: false, active: false },
+    { label: 'Approval',           done: false, active: false },
+    { label: 'Active',             done: false, active: false },
   ];
   return (
     <div className="space-y-4">
@@ -1670,7 +1722,7 @@ export default function ItemRequestWizard() {
         {activeStep === 2 && (
           <Step3Context data={step3} onChange={p => setStep3(prev => ({ ...prev, ...p }))} requestType={step1.request_type} />
         )}
-        {activeStep === 3 && <Step4Review step1={step1} step2={step2} step3={step3} />}
+        {activeStep === 3 && <Step4Review step1={step1} step2={step2} step3={step3} onPrevious={handlePrevious} />}
       </ItemRequestWizardShell>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </>
