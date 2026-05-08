@@ -53,6 +53,7 @@ const AdminTools = lazy(() => import('./components/AdminTools.tsx'));
 const CutoverReadinessChecker = lazy(() => import('./components/CutoverReadinessChecker.tsx'));
 const ColourPaletteAdmin = lazy(() => import('./components/ColourPaletteAdmin.tsx'));
 const ProcurementReviewWizard = lazy(() => import('./components/wizards/ProcurementReviewWizard.tsx'));
+const ProcurementQueue = lazy(() => import('./components/ProcurementQueue.tsx'));
 
 
 
@@ -117,6 +118,7 @@ function App() {
               <Route path="items/new-request"     element={<Suspense fallback={<LoadingSpinner />}><ItemRequestWizard /></Suspense>} />
               <Route path="items/my-requests"     element={<Suspense fallback={<LoadingSpinner />}><MyItemRequests /></Suspense>} />
               <Route path="items/master-data-queue" element={<Suspense fallback={<LoadingSpinner />}><MasterDataQueue /></Suspense>} />
+              <Route path="items/procurement-queue" element={<Suspense fallback={<LoadingSpinner />}><ProcurementQueue /></Suspense>} />
               <Route path="items/requests/:id/duplicate-check" element={<Suspense fallback={<LoadingSpinner />}><DuplicateCheckWizard /></Suspense>} />
               <Route path="items/requests/:id/define" element={<Suspense fallback={<LoadingSpinner />}><ItemDefinitionWizard /></Suspense>} />
               <Route path="items/requests/:id/pricing" element={<Suspense fallback={<LoadingSpinner />}><PricingSetupWizard /></Suspense>} />

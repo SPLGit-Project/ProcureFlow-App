@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import PageMetaContext, { type PageMeta } from '../context/PageMetaContext';
 import {
   Activity,
+  ArrowLeft,
   BarChart3,
   Bell,
   BookOpen,
@@ -22,11 +23,13 @@ import {
   LayoutDashboard,
   ListChecks,
   ListTodo,
+  Loader2,
   LogOut,
   MapPin,
   Menu,
   Moon,
   PlusCircle,
+  Save,
   Settings,
   ShieldCheck,
   Sun,
@@ -433,7 +436,7 @@ const Layout = () => {
                 const PageTitleIcon = currentNavItem?.icon ?? null;
                 return (
                 <header className="pointer-events-auto bg-white/90 dark:bg-[#1a1d27]/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center gap-3 px-4">
-                  {/* Left: page identity */}
+                  {/* Left: page identity + optional Cancel */}
                   <div className="flex items-center gap-3 min-w-0 shrink-0">
                     <button
                       onClick={() => setIsMobileMenuOpen(true)}
@@ -441,6 +444,17 @@ const Layout = () => {
                     >
                       <Menu size={20} />
                     </button>
+                    {pageMeta.wizardActions?.onCancel && (
+                      <button
+                        onClick={pageMeta.wizardActions.onCancel}
+                        className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
+                      >
+                        <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:border-gray-400 transition-all">
+                          <ArrowLeft size={14} />
+                        </div>
+                        <span className="hidden sm:inline">Cancel</span>
+                      </button>
+                    )}
                     {PageTitleIcon && (
                       <div className="shrink-0 w-8 h-8 rounded-xl bg-tranquil flex items-center justify-center shadow-sm shadow-tranquil/30">
                         <PageTitleIcon size={16} className="text-white" />
@@ -478,6 +492,43 @@ const Layout = () => {
                   </div>
                   {/* Right: actions */}
                   <div className="flex items-center gap-2 shrink-0">
+                    {pageMeta.wizardActions && (
+                      <>
+                        {/* Autosave */}
+                        {pageMeta.wizardActions.isSaving ? (
+                          <span className="hidden sm:flex items-center gap-1 text-xs text-gray-400 mr-1">
+                            <Loader2 size={11} className="animate-spin" />Saving…
+                          </span>
+                        ) : pageMeta.wizardActions.lastSavedAt ? (
+                          <span className="hidden sm:flex items-center gap-1 text-xs text-emerald-500 mr-1">
+                            <Save size={11} />Saved
+                          </span>
+                        ) : null}
+                        {pageMeta.wizardActions.showPrevious && (
+                          <button
+                            onClick={pageMeta.wizardActions.onPrevious}
+                            className="h-8 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-[11px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+                          >
+                            Previous
+                          </button>
+                        )}
+                        <button
+                          onClick={pageMeta.wizardActions.onContinue}
+                          disabled={pageMeta.wizardActions.continueDisabled}
+                          className={`h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all flex items-center gap-1 ${
+                            pageMeta.wizardActions.continueDisabled
+                              ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+                              : 'bg-tranquil hover:opacity-90 active:scale-95 shadow-sm shadow-tranquil/30'
+                          }`}
+                        >
+                          {pageMeta.wizardActions.isSaving ? (
+                            <><Loader2 size={11} className="animate-spin" />Saving…</>
+                          ) : (
+                            <>{pageMeta.wizardActions.continueLabel ?? 'Continue'}<ChevronRight size={11} /></>
+                          )}
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={() => setIsTaskDrawerOpen(true)}
                       className="relative bg-tranquil text-white p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
@@ -646,6 +697,17 @@ const Layout = () => {
             >
               <Menu size={20} />
             </button>
+            {pageMeta.wizardActions?.onCancel && (
+              <button
+                onClick={pageMeta.wizardActions.onCancel}
+                className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
+              >
+                <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:border-gray-400 transition-all">
+                  <ArrowLeft size={14} />
+                </div>
+                <span className="hidden sm:inline">Cancel</span>
+              </button>
+            )}
             <div className="min-w-0">
               <div className="hidden md:flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-tertiary">Workspace</span>
@@ -670,6 +732,42 @@ const Layout = () => {
           )}
 
           <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
+            {pageMeta.wizardActions && (
+              <>
+                {pageMeta.wizardActions.isSaving ? (
+                  <span className="hidden sm:flex items-center gap-1 text-xs text-gray-400 mr-1">
+                    <Loader2 size={11} className="animate-spin" />Saving…
+                  </span>
+                ) : pageMeta.wizardActions.lastSavedAt ? (
+                  <span className="hidden sm:flex items-center gap-1 text-xs text-emerald-500 mr-1">
+                    <Save size={11} />Saved
+                  </span>
+                ) : null}
+                {pageMeta.wizardActions.showPrevious && (
+                  <button
+                    onClick={pageMeta.wizardActions.onPrevious}
+                    className="h-8 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-[11px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+                  >
+                    Previous
+                  </button>
+                )}
+                <button
+                  onClick={pageMeta.wizardActions.onContinue}
+                  disabled={pageMeta.wizardActions.continueDisabled}
+                  className={`h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all flex items-center gap-1 ${
+                    pageMeta.wizardActions.continueDisabled
+                      ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+                      : 'bg-[var(--color-brand)] hover:opacity-90 active:scale-95 shadow-sm shadow-[var(--color-brand)]/30'
+                  }`}
+                >
+                  {pageMeta.wizardActions.isSaving ? (
+                    <><Loader2 size={11} className="animate-spin" />Saving…</>
+                  ) : (
+                    <>{pageMeta.wizardActions.continueLabel ?? 'Continue'}<ChevronRight size={11} /></>
+                  )}
+                </button>
+              </>
+            )}
             <button
               onClick={() => setIsTaskDrawerOpen(true)}
               className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"

@@ -163,13 +163,13 @@ interface Step2Data {
   gsm: string;
   gsmSkipped: boolean;
   material: string;
+  materialCustom: string;
   width_cm: string;
   height_cm: string;
   grade: string;
   uom: string;
   upq: string;
   additional_notes: string;
-  item_check_confirmed: boolean;
 }
 
 interface Step3Data {
@@ -184,6 +184,20 @@ interface Step3Data {
   customer_reference: string;
   contract_reference: string;
   replacement_for_item_id: string;
+}
+
+// ── Custom materials localStorage helpers ─────────────────────────────────────
+
+const CUSTOM_MATERIALS_KEY = 'pf-custom-materials';
+function getCustomMaterials(): string[] {
+  try { return JSON.parse(localStorage.getItem(CUSTOM_MATERIALS_KEY) ?? '[]'); }
+  catch { return []; }
+}
+function saveCustomMaterial(name: string) {
+  const existing = getCustomMaterials();
+  if (!existing.includes(name) && name.trim()) {
+    localStorage.setItem(CUSTOM_MATERIALS_KEY, JSON.stringify([name, ...existing].slice(0, 10)));
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -469,6 +483,9 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
   const hasColour = def ? def.hasColour  : false;
   const hasGSM    = def ? def.hasGSM     : false;
 
+  // Custom materials saved in localStorage
+  const [customMaterials, setCustomMaterials] = useState<string[]>(() => getCustomMaterials());
+
   // Local dupe status for inline display
   const [localDupeStatus, setLocalDupeStatus] = useState<'idle'|'searching'|'found'|'clear'>('idle');
   const [localDupeCount, setLocalDupeCount] = useState(0);
@@ -548,7 +565,6 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
       gsm: '',
       gsmSkipped: !pt.hasGSM,
       rfid: null,
-      item_check_confirmed: false,
     });
     collapseSection('productType');
   };
@@ -656,7 +672,7 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
               const sel = data.categoryCode === cat.code;
               return (
                 <button key={cat.code} type="button"
-                  onClick={() => { onChange({ categoryLabel: cat.label, categoryCode: cat.code, item_check_confirmed: false }); collapseSection('category'); }}
+                  onClick={() => { onChange({ categoryLabel: cat.label, categoryCode: cat.code }); collapseSection('category'); }}
                   className={`text-left p-3.5 rounded-xl border-2 transition-all flex items-center gap-3 ${
                     sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
@@ -805,7 +821,7 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
                   return (
                     <button key={col.id} type="button"
                       onClick={() => {
-                        onChange({ colourLabel: col.label, colourCode: col.code, colourCustom: '', item_check_confirmed: false });
+                        onChange({ colourLabel: col.label, colourCode: col.code, colourCustom: '' });
                         if (col.label !== 'Other') collapseSection('colour');
                       }}
                       className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all gap-1.5 ${
@@ -849,59 +865,129 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
             <AlertCircle size={13} className="shrink-0 mt-0.5" />
             <span>Fill in what you know. The <strong>Procurement team</strong> will review this request and complete any missing technical details before it reaches Master Data.</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+          <div className="space-y-5">
+            {/* Material — full width */}
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Material <span className="text-red-500">*</span></label>
               <div className="flex flex-wrap gap-2">
-                {MATERIALS.map(m => (
-                  <button key={m} type="button" onClick={() => onChange({ material: m })}
+                {MATERIALS.filter(m => m !== 'Other').map(m => (
+                  <button key={m} type="button" onClick={() => onChange({ material: m, materialCustom: '' })}
                     className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
                       data.material === m ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)] font-bold'
                                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
                     }`}>{m}</button>
                 ))}
+                {customMaterials.map(m => (
+                  <button key={m} type="button" onClick={() => onChange({ material: m, materialCustom: '' })}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                      data.material === m ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)] font-bold'
+                                         : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                    }`}>{m}</button>
+                ))}
+                <button type="button" onClick={() => onChange({ material: 'Other' })}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                    data.material === 'Other' ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)] font-bold'
+                                             : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                  }`}>Other</button>
+              </div>
+              {data.material === 'Other' && (
+                <input
+                  type="text"
+                  value={data.materialCustom}
+                  onChange={e => onChange({ materialCustom: e.target.value })}
+                  onBlur={() => {
+                    const trimmed = data.materialCustom.trim();
+                    if (trimmed) {
+                      saveCustomMaterial(trimmed);
+                      setCustomMaterials(getCustomMaterials());
+                      onChange({ material: trimmed, materialCustom: '' });
+                    }
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const trimmed = data.materialCustom.trim();
+                      if (trimmed) {
+                        saveCustomMaterial(trimmed);
+                        setCustomMaterials(getCustomMaterials());
+                        onChange({ material: trimmed, materialCustom: '' });
+                      }
+                    }
+                  }}
+                  placeholder="Describe the material (e.g. Linen Blend, Viscose)…"
+                  className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
+                />
+              )}
+            </div>
+
+            <hr className="border-gray-100 dark:border-gray-800" />
+
+            {/* Measurements row — 3 columns */}
+            <div className="grid grid-cols-3 gap-4">
+              {/* GSM */}
+              {hasGSM ? (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
+                    GSM
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input type="text" inputMode="numeric" value={data.gsm}
+                        onChange={e => onChange({ gsm: e.target.value.replace(/[^0-9]/g, ''), gsmSkipped: false })}
+                        placeholder="e.g. 500"
+                        disabled={data.gsmSkipped}
+                        className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 pr-10 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all disabled:opacity-40" />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 font-semibold pointer-events-none">g/m²</span>
+                    </div>
+                    <button type="button" onClick={() => onChange({ gsm: '', gsmSkipped: !data.gsmSkipped })}
+                      className={`flex items-center gap-1 px-2 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
+                        data.gsmSkipped ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
+                                        : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'
+                      }`}>
+                      {data.gsmSkipped && <Check size={11} />}
+                      N/A
+                    </button>
+                  </div>
+                  {!data.gsm && !data.gsmSkipped && (
+                    <p className="text-[11px] text-gray-400">Optional</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">GSM</label>
+                  <p className="text-xs text-gray-400 italic">N/A for this type</p>
+                </div>
+              )}
+
+              {/* UOM */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">UOM</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {UOM_OPTIONS.map(u => (
+                    <button key={u.value} type="button" onClick={() => onChange({ uom: u.value })}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-medium transition-all ${
+                        data.uom === u.value ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)] font-bold'
+                                             : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                      }`}>
+                      <span className="font-mono font-black">{u.value}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400">Optional</p>
+              </div>
+
+              {/* UPQ */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">UPQ</label>
+                <input type="text" inputMode="numeric" value={data.upq}
+                  onChange={e => onChange({ upq: e.target.value.replace(/[^0-9]/g, '') || '1' })}
+                  placeholder="1"
+                  className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
+                <p className="text-[11px] text-gray-400">Optional</p>
               </div>
             </div>
 
-            {hasGSM && (
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
-                  Weight / GSM
-                  <span className="font-normal normal-case text-gray-400"> — not in item code</span>
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input type="text" inputMode="numeric" value={data.gsm}
-                      onChange={e => onChange({ gsm: e.target.value.replace(/[^0-9]/g, ''), gsmSkipped: false })}
-                      placeholder="e.g. 500"
-                      disabled={data.gsmSkipped}
-                      className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 pr-12 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all disabled:opacity-40" />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold pointer-events-none">g/m²</span>
-                  </div>
-                  <button type="button" onClick={() => onChange({ gsm: '', gsmSkipped: !data.gsmSkipped })}
-                    className={`flex items-center gap-1.5 px-2.5 py-2.5 rounded-xl border-2 text-xs font-bold transition-all whitespace-nowrap ${
-                      data.gsmSkipped ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
-                                      : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}>
-                    {data.gsmSkipped && <Check size={11} />}
-                    N/A
-                  </button>
-                </div>
-                {data.gsm ? (
-                  <p className="text-xs text-gray-400">Terry 400–600 g/m² · Percale sheets 200–300 g/m²</p>
-                ) : (
-                  <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-500/8 border border-amber-100 dark:border-amber-500/15">
-                    <AlertTriangle size={11} className="text-amber-500 shrink-0 mt-0.5" />
-                    <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
-                      {data.gsmSkipped
-                        ? 'Marked N/A — Procurement team will confirm during their review.'
-                        : 'If unknown, leave blank — the Procurement team will verify during their review.'}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
+            {/* Dimensions (if applicable) */}
             {def?.hasDimensions && (
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Dimensions</label>
@@ -916,56 +1002,29 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
               </div>
             )}
 
-            {/* UOM */}
+            <hr className="border-gray-100 dark:border-gray-800" />
+
+            {/* Grade / Standard — full width */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Unit of Measure (UOM)</label>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Grade / Standard</label>
               <div className="flex flex-wrap gap-2">
-                {UOM_OPTIONS.map(u => (
-                  <button key={u.value} type="button" onClick={() => onChange({ uom: u.value })}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                      data.uom === u.value ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)] font-bold'
-                                           : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
-                    }`}>
-                    <span className="font-mono font-black">{u.value}</span>
-                    <span>{u.label}</span>
-                  </button>
+                {GRADES.map(g => (
+                  <button key={g} type="button" onClick={() => onChange({ grade: g })}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                      data.grade === g ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)] font-bold'
+                                       : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                    }`}>{g}</button>
                 ))}
               </div>
-              <p className="text-[11px] text-gray-400">(optional — Procurement team will complete if unknown)</p>
             </div>
 
-            {/* UPQ */}
+            {/* Additional Notes — full width */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Units Per Quantity (UPQ)</label>
-              <div className="flex items-center gap-2">
-                <input type="text" inputMode="numeric" value={data.upq}
-                  onChange={e => onChange({ upq: e.target.value.replace(/[^0-9]/g, '') || '1' })}
-                  placeholder="1"
-                  className="w-28 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all" />
-                <p className="text-xs text-gray-400">How many individual units make up one order quantity (e.g. 12 for a dozen).</p>
-              </div>
-              <p className="text-[11px] text-gray-400">(optional — Procurement team will complete if unknown)</p>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Additional Notes <span className="font-normal text-gray-400 normal-case">(optional)</span></label>
+              <textarea value={data.additional_notes} onChange={e => onChange({ additional_notes: e.target.value })}
+                placeholder="Packaging requirements, special finish, branding specs, compliance notes…"
+                rows={2} className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all resize-none" />
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Grade / Standard</label>
-            <div className="flex flex-wrap gap-2">
-              {GRADES.map(g => (
-                <button key={g} type="button" onClick={() => onChange({ grade: g })}
-                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                    data.grade === g ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)] font-bold'
-                                     : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
-                  }`}>{g}</button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Additional Notes <span className="font-normal text-gray-400 normal-case">(optional)</span></label>
-            <textarea value={data.additional_notes} onChange={e => onChange({ additional_notes: e.target.value })}
-              placeholder="Packaging requirements, special finish, branding specs, compliance notes…"
-              rows={2} className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all resize-none" />
           </div>
         </section>
       ); })()}
@@ -1033,25 +1092,6 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
         </div>
       )}
 
-      {/* ── Master catalogue confirmation ── */}
-      {showSpec && (
-        <div className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
-          data.item_check_confirmed ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-500/8' : 'border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]/40'
-        }`} onClick={() => onChange({ item_check_confirmed: !data.item_check_confirmed })} role="checkbox" aria-checked={data.item_check_confirmed} tabIndex={0}
-          onKeyDown={e => e.key === ' ' && onChange({ item_check_confirmed: !data.item_check_confirmed })}>
-          <div className={`w-5 h-5 rounded-md border-2 shrink-0 mt-0.5 flex items-center justify-center transition-all ${
-            data.item_check_confirmed ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 dark:border-gray-600'
-          }`}>
-            {data.item_check_confirmed && <Check size={11} strokeWidth={3} className="text-white" />}
-          </div>
-          <div>
-            <p className={`text-sm font-bold ${data.item_check_confirmed ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-700 dark:text-gray-300'}`}>
-              I've confirmed this item does not already exist in the master catalogue
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">This confirmation is recorded as part of the audit trail for this request.</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1475,7 +1515,6 @@ function validateStep(step: number, s1: Step1Data, s2: Step2Data, s3: Step3Data)
       if (s2.colourLabel === 'Other' && !s2.colourCustom.trim()) return 'Please describe the custom colour.';
     }
     if (!s2.material) return 'Please select the item material.';
-    if (!s2.item_check_confirmed) return 'Please confirm this item does not already exist in the master catalogue.';
     // Note: GSM, UOM, UPQ are optional — Procurement team will complete if unknown
   }
   if (step === 2) {
@@ -1494,8 +1533,8 @@ const STEP2_INITIAL: Step2Data = {
   categoryLabel: '', categoryCode: '', customerName: '', customerCode: '',
   productTypeLabel: '', productTypeCode: '',
   rfid: null, sizeLabel: '', sizeCode: '', colourLabel: '', colourCode: '', colourCustom: '',
-  gsm: '', gsmSkipped: false, material: '', width_cm: '', height_cm: '', grade: '',
-  uom: 'EA', upq: '1', additional_notes: '', item_check_confirmed: false,
+  gsm: '', gsmSkipped: false, material: '', materialCustom: '', width_cm: '', height_cm: '', grade: '',
+  uom: 'EA', upq: '1', additional_notes: '',
 };
 const STEP3_INITIAL: Step3Data = {
   business_reason_type: '', business_reason_other: '', is_urgent: false, urgent_reason: '',

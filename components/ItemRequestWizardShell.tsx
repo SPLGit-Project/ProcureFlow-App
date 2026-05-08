@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, ChevronRight, Loader2, Save } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import { useSetPageMeta } from '../context/PageMetaContext';
 
 // ── Step definitions ───────────────────────────────────────────────────────────
@@ -52,14 +52,6 @@ function stepStatus(index: number, activeIndex: number): StepStatus {
   if (index < activeIndex) return 'completed';
   if (index === activeIndex) return 'active';
   return 'pending';
-}
-
-function formatSavedAt(date: Date): string {
-  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (diffSec < 5) return 'Saved just now';
-  if (diffSec < 60) return `Saved ${diffSec}s ago`;
-  const diffMin = Math.floor(diffSec / 60);
-  return `Saved ${diffMin}m ago`;
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -168,14 +160,6 @@ const ItemRequestWizardShell: React.FC<ItemRequestWizardShellProps> = ({
   const activeStep = steps[activeStepIndex];
   const forwardLabel = continueLabel ?? (isLastStep ? 'Submit' : 'Continue');
 
-  // Broadcast step info + subtitle to the Layout header (works in both classic and revamp)
-  useSetPageMeta({
-    subtitle,
-    stepInfo: activeStep
-      ? { current: activeStepIndex + 1, total: steps.length, label: activeStep.label }
-      : undefined,
-  });
-
   const handleCancel = () => {
     if (onCancel) {
       onCancel();
@@ -184,71 +168,26 @@ const ItemRequestWizardShell: React.FC<ItemRequestWizardShellProps> = ({
     }
   };
 
+  // Broadcast step info + subtitle + wizard actions to the Layout header
+  useSetPageMeta({
+    subtitle,
+    stepInfo: activeStep
+      ? { current: activeStepIndex + 1, total: steps.length, label: activeStep.label }
+      : undefined,
+    wizardActions: {
+      onCancel: handleCancel,
+      onPrevious: !isFirstStep && onPrevious ? onPrevious : undefined,
+      onContinue,
+      continueLabel: forwardLabel,
+      continueDisabled: continueDisabled || isSaving,
+      isSaving,
+      lastSavedAt,
+      showPrevious: !isFirstStep && !!onPrevious,
+    },
+  });
+
   return (
     <div className="flex flex-col min-h-full animate-page-entry">
-
-      {/* ── Top navigation bar ─────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-8 pt-6 pb-4 gap-4">
-        {/* Left: Cancel */}
-        <button
-          onClick={handleCancel}
-          className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors group shrink-0"
-        >
-          <div className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-800 flex items-center justify-center group-hover:border-gray-900 dark:group-hover:border-white transition-all">
-            <ArrowLeft size={16} />
-          </div>
-          Cancel
-        </button>
-
-        {/* Centre: autosave indicator */}
-        <div className="flex items-center gap-1.5 text-xs text-gray-400">
-          {isSaving ? (
-            <>
-              <Loader2 size={12} className="animate-spin" />
-              <span>Saving…</span>
-            </>
-          ) : lastSavedAt ? (
-            <>
-              <Save size={12} className="text-emerald-500" />
-              <span className="text-emerald-600 dark:text-emerald-400">{formatSavedAt(lastSavedAt)}</span>
-            </>
-          ) : null}
-        </div>
-
-        {/* Right: nav buttons */}
-        <div className="flex items-center gap-3 shrink-0">
-          {!isFirstStep && onPrevious && (
-            <button
-              onClick={onPrevious}
-              className="h-9 px-4 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
-            >
-              Previous
-            </button>
-          )}
-
-          <button
-            onClick={onContinue}
-            disabled={continueDisabled || isSaving}
-            className={`h-9 px-5 rounded-xl text-xs font-black uppercase tracking-widest text-white transition-all flex items-center gap-1.5 ${
-              continueDisabled || isSaving
-                ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
-                : 'bg-[var(--color-brand)] hover:opacity-90 active:scale-95 shadow-md shadow-[var(--color-brand)]/20'
-            }`}
-          >
-            {isSaving ? (
-              <>
-                <Loader2 size={13} className="animate-spin" />
-                Saving…
-              </>
-            ) : (
-              <>
-                {forwardLabel}
-                {!isLastStep && <ChevronRight size={13} />}
-              </>
-            )}
-          </button>
-        </div>
-      </div>
 
       {/* ── Horizontal stepper ─────────────────────────────────────────────── */}
       <div className="px-8 py-4 border-b border-gray-100 dark:border-gray-800">
