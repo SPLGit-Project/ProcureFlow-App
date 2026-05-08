@@ -13,6 +13,7 @@ import { ItemRequestType } from '../../types';
 import { ToastContainer, useToast } from '../ToastNotification';
 import { buildItemCode, SkuSegments } from '../../utils/itemNameGenerator';
 import { supabase } from '../../lib/supabaseClient';
+import { ColourOption, colourSwatchStyle, getActiveColours } from '../../services/colourService';
 
 // ── Steps ─────────────────────────────────────────────────────────────────────
 
@@ -114,37 +115,7 @@ const BODY_SIZES = [
   { label: 'XXL',         code: '05' },
 ];
 
-// ── Colour options ────────────────────────────────────────────────────────────
-
-const COLOURS = [
-  { label: 'White',    code: 'W',  hex: '#FFFFFF' },
-  { label: 'Off-White',code: 'OW', hex: '#F5ECD7' },
-  { label: 'Cream',    code: 'CR', hex: '#FFFACD' },
-  { label: 'Ivory',    code: 'IV', hex: '#FFFFF0' },
-  { label: 'Natural',  code: 'NA', hex: '#E8DCC8' },
-  { label: 'Beige',    code: 'BG', hex: '#D4C5A9' },
-  { label: 'Stone',    code: 'ST', hex: '#B0A395' },
-  { label: 'Khaki',    code: 'KH', hex: '#C3B091' },
-  { label: 'Sand',     code: 'SD', hex: '#D2B48C' },
-  { label: 'Grey',     code: 'GY', hex: '#9E9E9E' },
-  { label: 'Charcoal', code: 'CH', hex: '#4A4A4A' },
-  { label: 'Black',    code: 'BK', hex: '#1A1A1A' },
-  { label: 'Navy',     code: 'NV', hex: '#1B2A4A' },
-  { label: 'Blue',     code: 'BL', hex: '#2196F3' },
-  { label: 'Teal',     code: 'TL', hex: '#008B8B' },
-  { label: 'Aqua',     code: 'AQ', hex: '#00BCD4' },
-  { label: 'Green',    code: 'GN', hex: '#4CAF50' },
-  { label: 'Sage',     code: 'SG', hex: '#87A878' },
-  { label: 'Red',      code: 'RD', hex: '#F44336' },
-  { label: 'Burgundy', code: 'BU', hex: '#800020' },
-  { label: 'Pink',     code: 'PK', hex: '#E91E96' },
-  { label: 'Coral',    code: 'CO', hex: '#FF6B6B' },
-  { label: 'Orange',   code: 'OR', hex: '#FF9800' },
-  { label: 'Gold',     code: 'GD', hex: '#FFD700' },
-  { label: 'Purple',   code: 'PU', hex: '#9C27B0' },
-  { label: 'Brown',    code: 'BR', hex: '#795548' },
-  { label: 'Other',    code: '',   hex: '#E0E0E0' },
-];
+// Colour options are loaded dynamically from the DB (see ColourOption in colourService)
 
 // ── Materials & grades ────────────────────────────────────────────────────────
 
@@ -464,12 +435,13 @@ interface Step2Props {
   data: Step2Data;
   onChange: (v: Partial<Step2Data>) => void;
   requestType: ItemRequestType | null;
+  colours: ColourOption[];
   onDupeStatusChange: (status: 'idle'|'searching'|'found'|'clear', count: number) => void;
   onPerfectMatchChange: (has: boolean) => void;
   onExit: () => void;
 }
 
-function Step2CodeBuilder({ data, onChange, onDupeStatusChange, onPerfectMatchChange, onExit }: Step2Props) {
+function Step2CodeBuilder({ data, onChange, colours, onDupeStatusChange, onPerfectMatchChange, onExit }: Step2Props) {
   const def = getProductDef(data.productTypeCode);
   const hasSize   = def ? (def.bedSizes || def.bodySizes) : false;
   const hasColour = def ? def.hasColour  : false;
@@ -715,10 +687,10 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange, onPerfectMatchCh
           ) : (
             <>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                {COLOURS.map(col => {
+                {colours.map(col => {
                   const sel = data.colourLabel === col.label;
                   return (
-                    <button key={col.label} type="button"
+                    <button key={col.id} type="button"
                       onClick={() => {
                         onChange({ colourLabel: col.label, colourCode: col.code, colourCustom: '', item_check_confirmed: false });
                         if (col.label !== 'Other') collapseSection('colour');
@@ -728,7 +700,7 @@ function Step2CodeBuilder({ data, onChange, onDupeStatusChange, onPerfectMatchCh
                             : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
                       }`}>
                       <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 shrink-0"
-                        style={{ background: col.hex }} />
+                        style={colourSwatchStyle(col)} />
                       <span className={`font-mono text-[9px] font-black leading-none ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>
                         {col.code || '?'}
                       </span>
@@ -1404,6 +1376,11 @@ export default function ItemRequestWizard() {
   const [dupeStatus, setDupeStatus] = useState<'idle'|'searching'|'found'|'clear'>('idle');
   const [dupeCount,  setDupeCount]  = useState(0);
   const [hasPerfectMatch, setHasPerfectMatch] = useState(false);
+  const [colours, setColours] = useState<ColourOption[]>([]);
+
+  useEffect(() => {
+    getActiveColours().then(setColours).catch(console.error);
+  }, []);
 
   const handleContinue = useCallback(async () => {
     if (activeStep === 1 && hasPerfectMatch) {
@@ -1504,6 +1481,7 @@ export default function ItemRequestWizard() {
         {activeStep === 1 && (
           <Step2CodeBuilder data={step2} onChange={p => setStep2(prev => ({ ...prev, ...p }))}
             requestType={step1.request_type}
+            colours={colours}
             onDupeStatusChange={(s, c) => { setDupeStatus(s); setDupeCount(c); }}
             onPerfectMatchChange={setHasPerfectMatch}
             onExit={handleCancel} />

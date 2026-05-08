@@ -51,6 +51,7 @@ const PricingScheduleForm = lazy(() => import('./components/PricingScheduleForm.
 const PriceManagementDashboard = lazy(() => import('./components/PriceManagementDashboard.tsx'));
 const AdminTools = lazy(() => import('./components/AdminTools.tsx'));
 const CutoverReadinessChecker = lazy(() => import('./components/CutoverReadinessChecker.tsx'));
+const ColourPaletteAdmin = lazy(() => import('./components/ColourPaletteAdmin.tsx'));
 
 
 
@@ -127,6 +128,7 @@ function App() {
               <Route path="pricing/dashboard"     element={<Suspense fallback={<LoadingSpinner />}><PriceManagementDashboard /></Suspense>} />
               <Route path="admin/tools"           element={<Suspense fallback={<LoadingSpinner />}><AdminTools /></Suspense>} />
               <Route path="admin/cutover"         element={<Suspense fallback={<LoadingSpinner />}><CutoverReadinessChecker /></Suspense>} />
+              <Route path="admin/colours"         element={<Suspense fallback={<LoadingSpinner />}><ColourPaletteAdmin /></Suspense>} />
 
 
 
