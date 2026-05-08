@@ -257,7 +257,7 @@ export default function DuplicateCheckWizard() {
         justification: justification.trim() || undefined,
       });
       success('Duplicate check outcome recorded.');
-      navigate(outcome === 'USE_EXISTING' ? `/items/requests/${request.id}` : `/items/requests/${request.id}/define`);
+      navigate(outcome === 'USE_EXISTING' ? `/items/requests/${request.id}` : `/items/requests/${request.id}/procurement-review`);
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to record duplicate check.');
     } finally {

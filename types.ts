@@ -843,6 +843,21 @@ export interface ItemRequest {
   status_changed_at?: string;
   status_changed_by?: string;
   revision_requested_by?: string;
+  // Display / code fields
+  requestor_name?: string;
+  proposed_code?: string;
+  item_code?: string;
+  customer_code?: string;
+  // Spec / technical fields (filled by Procurement review step)
+  spec_gsm?: number | null;
+  spec_uom?: string;
+  spec_upq?: number | null;
+  spec_material?: string;
+  spec_grade?: string;
+  spec_width_cm?: number | null;
+  spec_height_cm?: number | null;
+  spec_notes?: string;
+  procurement_reviewed_at?: string;
 }
 
 export interface ItemPurchasePrice {

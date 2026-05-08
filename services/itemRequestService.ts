@@ -135,7 +135,7 @@ export async function getRequestsForMasterData(): Promise<ItemRequest[]> {
   const { data, error } = await supabase
     .from('item_requests')
     .select('*')
-    .in('status', ['SUBMITTED', 'DUPLICATE_REVIEW', 'DATA_REVIEW', 'PRICING_REVIEW', 'APPROVAL_PENDING', 'APPROVED', 'REVISION_REQUIRED'])
+    .in('status', ['SUBMITTED', 'DUPLICATE_REVIEW', 'PROCUREMENT_REVIEW', 'DATA_REVIEW', 'PRICING_REVIEW', 'APPROVAL_PENDING', 'APPROVED', 'REVISION_REQUIRED'])
     .order('is_urgent', { ascending: false })
     .order('created_at', { ascending: true });
 
@@ -192,11 +192,11 @@ export async function saveDuplicateCheckOutcome(input: DuplicateCheckInput): Pro
   if (upsertError) throw new Error(upsertError.message);
 
   // Advance request status through the workflow guard so the outcome is audited.
-  const nextStatus = input.outcome === 'USE_EXISTING' ? 'ACTIVE' : 'DATA_REVIEW';
+  const nextStatus = input.outcome === 'USE_EXISTING' ? 'ACTIVE' : 'PROCUREMENT_REVIEW';
   await transitionRequest(input.request_id, nextStatus as ItemRequestStatus, {
     notes: input.outcome === 'USE_EXISTING'
       ? 'Duplicate check completed: use existing item.'
-      : 'Duplicate check completed: new item definition required.',
+      : 'Duplicate check completed — forwarded to Procurement team for technical review.',
     metadata: {
       action: 'DUPLICATE_CHECK_OUTCOME',
       outcome: input.outcome,

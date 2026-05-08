@@ -77,9 +77,6 @@ const MasterDataQueue = () => {
     );
   }
 
-  const isProcurementPending = (r: ItemRequestWithUser) =>
-    !!(r.metadata as Record<string, unknown> | undefined)?.procurement_review_pending;
-
   const getFilteredRequests = () => {
     switch (activeTab) {
       case 'NEEDS_ACTION':
@@ -91,7 +88,7 @@ const MasterDataQueue = () => {
       case 'REVISION_REQUIRED':
         return requests.filter(r => r.status === 'REVISION_REQUIRED');
       case 'PROCUREMENT_REVIEW':
-        return requests.filter(isProcurementPending);
+        return requests.filter(r => r.status === 'PROCUREMENT_REVIEW');
       default:
         return [];
     }
@@ -209,12 +206,12 @@ const MasterDataQueue = () => {
               <ExternalLink size={14} /> Setup Pricing
             </button>
           )}
-          {isProcurementPending(request) && (
+          {request.status === 'PROCUREMENT_REVIEW' && (
             <button
               onClick={() => navigate(`/items/requests/${request.id}/procurement-review`)}
               className="px-4 py-2 bg-violet-500 text-white text-[11px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-violet-500/20 hover:bg-violet-600 transition-all flex items-center gap-2"
             >
-              <ExternalLink size={14} /> Start Review
+              <ExternalLink size={14} /> Procurement Review
             </button>
           )}
           <button
@@ -263,7 +260,7 @@ const MasterDataQueue = () => {
           { id: 'PRICING_REVIEW', label: 'Pricing Review', icon: Clock, count: requests.filter(r => r.status === 'PRICING_REVIEW').length },
           { id: 'PENDING_APPROVAL', label: 'Pending Approval', icon: Clock, count: requests.filter(r => r.status === 'APPROVAL_PENDING').length },
           { id: 'REVISION_REQUIRED', label: 'Revision Required', icon: History, count: requests.filter(r => r.status === 'REVISION_REQUIRED').length },
-          { id: 'PROCUREMENT_REVIEW', label: 'Procurement Review', icon: Search, count: requests.filter(isProcurementPending).length },
+          { id: 'PROCUREMENT_REVIEW', label: 'Procurement Review', icon: Search, count: requests.filter(r => r.status === 'PROCUREMENT_REVIEW').length },
         ].map(tab => (
           <button
             key={tab.id}
