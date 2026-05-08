@@ -24,8 +24,6 @@ export interface PageMeta {
   helpLinkTarget?: string;
   /** When set, the Layout header renders a live "Step X of Y · Label" pill */
   stepInfo?: StepInfo;
-  /** When set, the Layout header renders wizard action buttons */
-  wizardActions?: WizardActions;
 }
 
 const PageMetaContext = React.createContext<{
@@ -34,6 +32,13 @@ const PageMetaContext = React.createContext<{
 
 export default PageMetaContext;
 
+/**
+ * Separate context for wizard action callbacks.
+ * Uses a plain React context (not the key-debounced PageMeta system) so that
+ * callbacks always reflect the latest closure — no stale-capture problem.
+ */
+export const WizardActionsContext = React.createContext<WizardActions | null>(null);
+
 export const useSetPageMeta = (meta: PageMeta) => {
   const { setMeta } = React.useContext(PageMetaContext);
   const key = [
@@ -41,13 +46,6 @@ export const useSetPageMeta = (meta: PageMeta) => {
     meta.helpTitle ?? '',
     meta.helpLinkTarget ?? '',
     meta.stepInfo ? `${meta.stepInfo.current}/${meta.stepInfo.total}/${meta.stepInfo.label}` : '',
-    meta.wizardActions ? [
-      meta.wizardActions.continueLabel ?? '',
-      String(meta.wizardActions.continueDisabled ?? false),
-      String(meta.wizardActions.isSaving ?? false),
-      String(meta.wizardActions.showPrevious ?? false),
-      meta.wizardActions.lastSavedAt ? meta.wizardActions.lastSavedAt.toISOString().slice(0, 16) : '',
-    ].join(':') : '',
   ].join('|');
   React.useEffect(() => {
     setMeta(meta);

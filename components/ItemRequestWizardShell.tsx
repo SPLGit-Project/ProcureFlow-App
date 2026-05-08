@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronRight } from 'lucide-react';
-import { useSetPageMeta } from '../context/PageMetaContext';
+import { useSetPageMeta, WizardActionsContext } from '../context/PageMetaContext';
 
 // ── Step definitions ───────────────────────────────────────────────────────────
 
@@ -168,25 +168,31 @@ const ItemRequestWizardShell: React.FC<ItemRequestWizardShellProps> = ({
     }
   };
 
-  // Broadcast step info + subtitle + wizard actions to the Layout header
+  // Broadcast step info + subtitle to the Layout header (non-callback data)
   useSetPageMeta({
     subtitle,
     stepInfo: activeStep
       ? { current: activeStepIndex + 1, total: steps.length, label: activeStep.label }
       : undefined,
-    wizardActions: {
-      onCancel: handleCancel,
-      onPrevious: !isFirstStep && onPrevious ? onPrevious : undefined,
-      onContinue,
-      continueLabel: forwardLabel,
-      continueDisabled: continueDisabled || isSaving,
-      isSaving,
-      lastSavedAt,
-      showPrevious: !isFirstStep && !!onPrevious,
-    },
   });
 
+  // Wizard action callbacks go through WizardActionsContext so they are NEVER
+  // stale — this context value updates on every render, bypassing the key-based
+  // debounce in useSetPageMeta that caused the stale-closure bug.
+  const wizardActionsValue = React.useMemo(() => ({
+    onCancel: handleCancel,
+    onPrevious: !isFirstStep && onPrevious ? onPrevious : undefined,
+    onContinue,
+    continueLabel: forwardLabel,
+    continueDisabled: continueDisabled || isSaving,
+    isSaving,
+    lastSavedAt,
+    showPrevious: !isFirstStep && !!onPrevious,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [handleCancel, isFirstStep, onPrevious, onContinue, forwardLabel, continueDisabled, isSaving, lastSavedAt]);
+
   return (
+    <WizardActionsContext.Provider value={wizardActionsValue}>
     <div className="flex flex-col min-h-full animate-page-entry">
 
       {/* ── Horizontal stepper ─────────────────────────────────────────────── */}
@@ -215,6 +221,7 @@ const ItemRequestWizardShell: React.FC<ItemRequestWizardShellProps> = ({
       </div>
 
     </div>
+    </WizardActionsContext.Provider>
   );
 };
 

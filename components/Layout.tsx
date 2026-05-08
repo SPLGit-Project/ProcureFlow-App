@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import PageMetaContext, { type PageMeta } from '../context/PageMetaContext';
+import PageMetaContext, { type PageMeta, WizardActionsContext } from '../context/PageMetaContext';
 import {
   Activity,
   ArrowLeft,
@@ -80,6 +80,9 @@ const Layout = () => {
     return localStorage.getItem(REVAMP_EXPANDED_KEY) === 'true';
   });
   const [pageMeta, setPageMeta] = React.useState<PageMeta>({});
+  // WizardActionsContext is provided by ItemRequestWizardShell and updates on every
+  // render — callbacks are always fresh, never stale.
+  const wizardActions = React.useContext(WizardActionsContext);
   const [navCanScrollDown, setNavCanScrollDown] = React.useState(false);
   const navRef = React.useRef<HTMLElement>(null);
   const location = useLocation();
@@ -444,9 +447,9 @@ const Layout = () => {
                     >
                       <Menu size={20} />
                     </button>
-                    {pageMeta.wizardActions?.onCancel && (
+                    {wizardActions?.onCancel && (
                       <button
-                        onClick={pageMeta.wizardActions.onCancel}
+                        onClick={wizardActions.onCancel}
                         className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
                       >
                         <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:border-gray-400 transition-all">
@@ -492,39 +495,39 @@ const Layout = () => {
                   </div>
                   {/* Right: actions */}
                   <div className="flex items-center gap-2 shrink-0">
-                    {pageMeta.wizardActions && (
+                    {wizardActions && (
                       <>
                         {/* Autosave */}
-                        {pageMeta.wizardActions.isSaving ? (
+                        {wizardActions.isSaving ? (
                           <span className="hidden sm:flex items-center gap-1 text-xs text-gray-400 mr-1">
                             <Loader2 size={11} className="animate-spin" />Saving…
                           </span>
-                        ) : pageMeta.wizardActions.lastSavedAt ? (
+                        ) : wizardActions.lastSavedAt ? (
                           <span className="hidden sm:flex items-center gap-1 text-xs text-emerald-500 mr-1">
                             <Save size={11} />Saved
                           </span>
                         ) : null}
-                        {pageMeta.wizardActions.showPrevious && (
+                        {wizardActions.showPrevious && (
                           <button
-                            onClick={pageMeta.wizardActions.onPrevious}
+                            onClick={wizardActions.onPrevious}
                             className="h-8 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-[11px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
                           >
                             Previous
                           </button>
                         )}
                         <button
-                          onClick={pageMeta.wizardActions.onContinue}
-                          disabled={pageMeta.wizardActions.continueDisabled}
+                          onClick={wizardActions.onContinue}
+                          disabled={wizardActions.continueDisabled}
                           className={`h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all flex items-center gap-1 ${
-                            pageMeta.wizardActions.continueDisabled
+                            wizardActions.continueDisabled
                               ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
                               : 'bg-tranquil hover:opacity-90 active:scale-95 shadow-sm shadow-tranquil/30'
                           }`}
                         >
-                          {pageMeta.wizardActions.isSaving ? (
+                          {wizardActions.isSaving ? (
                             <><Loader2 size={11} className="animate-spin" />Saving…</>
                           ) : (
-                            <>{pageMeta.wizardActions.continueLabel ?? 'Continue'}<ChevronRight size={11} /></>
+                            <>{wizardActions.continueLabel ?? 'Continue'}<ChevronRight size={11} /></>
                           )}
                         </button>
                       </>
@@ -697,9 +700,9 @@ const Layout = () => {
             >
               <Menu size={20} />
             </button>
-            {pageMeta.wizardActions?.onCancel && (
+            {wizardActions?.onCancel && (
               <button
-                onClick={pageMeta.wizardActions.onCancel}
+                onClick={wizardActions.onCancel}
                 className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
               >
                 <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:border-gray-400 transition-all">
@@ -732,38 +735,38 @@ const Layout = () => {
           )}
 
           <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
-            {pageMeta.wizardActions && (
+            {wizardActions && (
               <>
-                {pageMeta.wizardActions.isSaving ? (
+                {wizardActions.isSaving ? (
                   <span className="hidden sm:flex items-center gap-1 text-xs text-gray-400 mr-1">
                     <Loader2 size={11} className="animate-spin" />Saving…
                   </span>
-                ) : pageMeta.wizardActions.lastSavedAt ? (
+                ) : wizardActions.lastSavedAt ? (
                   <span className="hidden sm:flex items-center gap-1 text-xs text-emerald-500 mr-1">
                     <Save size={11} />Saved
                   </span>
                 ) : null}
-                {pageMeta.wizardActions.showPrevious && (
+                {wizardActions.showPrevious && (
                   <button
-                    onClick={pageMeta.wizardActions.onPrevious}
+                    onClick={wizardActions.onPrevious}
                     className="h-8 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-[11px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
                   >
                     Previous
                   </button>
                 )}
                 <button
-                  onClick={pageMeta.wizardActions.onContinue}
-                  disabled={pageMeta.wizardActions.continueDisabled}
+                  onClick={wizardActions.onContinue}
+                  disabled={wizardActions.continueDisabled}
                   className={`h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all flex items-center gap-1 ${
-                    pageMeta.wizardActions.continueDisabled
+                    wizardActions.continueDisabled
                       ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
                       : 'bg-[var(--color-brand)] hover:opacity-90 active:scale-95 shadow-sm shadow-[var(--color-brand)]/30'
                   }`}
                 >
-                  {pageMeta.wizardActions.isSaving ? (
+                  {wizardActions.isSaving ? (
                     <><Loader2 size={11} className="animate-spin" />Saving…</>
                   ) : (
-                    <>{pageMeta.wizardActions.continueLabel ?? 'Continue'}<ChevronRight size={11} /></>
+                    <>{wizardActions.continueLabel ?? 'Continue'}<ChevronRight size={11} /></>
                   )}
                 </button>
               </>
