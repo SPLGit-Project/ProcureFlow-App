@@ -31,7 +31,8 @@ import {
   updateSellPriceStatus,
   createSellPrice,
   getCostBasisForItem,
-  getMarginThreshold
+  getMarginThreshold,
+  getFuturePriceChanges
 } from '../services/sellPricingService';
 import { FuturePricesPanel } from './FuturePricesPanel';
 import PricingSchedulesList from './PricingSchedulesList';
@@ -507,9 +508,14 @@ const FuturePricesPanelWithCancel = () => {
 
   useEffect(() => {
     const fetch = async () => {
-      const { data } = await supabase.from('v_future_price_changes').select('*');
-      setPrices(data || []);
-      setLoading(false);
+      try {
+        const data = await getFuturePriceChanges();
+        setPrices(data || []);
+      } catch (err: any) {
+        console.error('Failed to fetch future prices:', err);
+      } finally {
+        setLoading(false);
+      }
     };
     fetch();
   }, [refreshKey]);

@@ -145,6 +145,13 @@ export const azureDbService = {
      * Joins corders + stock + autoreturn_log → the core Smart Buying input.
      */
     async getShortSupplyData(sites: BcSiteCode[]): Promise<ShortSupplyRow[]> {
+        if (import.meta.env.VITE_QA_MODE === '1') {
+            return [
+                { siteCode: 'MEL', stkKey: 'TOWL-WH', description: 'Bath Towel - White', ordQty: 500, shortQty: 120, launderChg: 0.85, hireChg: 0.15, weight: 0.65, suggestedBuy: 50 },
+                { siteCode: 'MEL', stkKey: 'SHET-QK', name: 'Queen Sheet', description: 'Queen Sheet Cotton', ordQty: 200, shortQty: 45, launderChg: 1.25, hireChg: 0.25, weight: 1.10, suggestedBuy: 20 },
+                { siteCode: 'PER', stkKey: 'TOWL-WH', description: 'Bath Towel - White', ordQty: 300, shortQty: 80, launderChg: 0.90, hireChg: 0.20, weight: 0.65, suggestedBuy: 30 },
+            ] as ShortSupplyRow[];
+        }
         return azureDbService.proxyQuery<ShortSupplyRow>('SHORT_SUPPLY', { sites });
     },
 
@@ -154,6 +161,13 @@ export const azureDbService = {
      * ADL: also include types '6','D'. BNE type '8' weighted at 55%.
      */
     async getStarMetrics(sites: BcSiteCode[]): Promise<StarMetric[]> {
+        if (import.meta.env.VITE_QA_MODE === '1') {
+            return [
+                { siteCode: 'MEL', stkKey: 'TOWL-WH', starDays: 14.2, sampleCount: 1500 },
+                { siteCode: 'MEL', stkKey: 'SHET-QK', starDays: 21.5, sampleCount: 800 },
+                { siteCode: 'PER', stkKey: 'TOWL-WH', starDays: 15.8, sampleCount: 1200 },
+            ];
+        }
         return azureDbService.proxyQuery<StarMetric>('STAR_METRICS', { sites });
     },
 

@@ -724,12 +724,12 @@ const PODetail = () => {
 
   const handleDeletePO = async () => {
       if (!po) return;
-      if (!isAdmin && !canDeletePendingRequest) {
-          alert('Only the requester can delete while pending approval.');
+      console.log('handleDeletePO initiated for', po.id);
+      
+      if (!window.confirm(`ARE YOU SURE? \n\nThis will permanently delete PO ${po.displayId || po.id} and all associated data. This action cannot be undone.`)) {
+          console.log('Deletion cancelled by user');
           return;
       }
-
-      if (!globalThis.confirm(`ARE YOU SURE? \n\nThis will permanently delete PO ${po.displayId || po.id} and all associated data (lines, deliveries, approvals). This action cannot be undone.`)) return;
       
       try {
           setIsDeletingRequest(true);

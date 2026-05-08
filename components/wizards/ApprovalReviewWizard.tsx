@@ -89,7 +89,7 @@ function ContextPanel({ request, activeInstance }: { request: ItemRequest; activ
 export default function ApprovalReviewWizard() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { hasPermission } = useApp();
+  const { hasPermission, currentUser } = useApp();
   const { toasts, dismissToast, success, error: toastError } = useToast();
 
   const [request, setRequest] = useState<ItemRequest | null>(null);
@@ -181,6 +181,7 @@ export default function ApprovalReviewWizard() {
         comments: decision === 'APPROVED' && comments.trim().length < 10
           ? 'Approved via approval review wizard.'
           : comments.trim(),
+        actorId: currentUser?.id,
       });
       success('Approval decision recorded.');
       navigate('/approvals');
