@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { RefreshCw, X, Download, CheckCircle, Sparkles } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { RefreshCw, X, Download, Zap } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import {
   clearAllCaches,
@@ -34,7 +33,6 @@ const AUTO_DISMISS_MS = 60 * 1000; // 1 minute
  * Provides seamless update experience with visual feedback
  */
 export default function UpdateToast() {
-  const { branding } = useApp();
   const [state, setState] = useState<UpdateState>('idle');
   const [isVisible, setIsVisible] = useState(false);
   const [newVersion, setNewVersion] = useState<VersionInfo | null>(null);
@@ -45,10 +43,6 @@ export default function UpdateToast() {
   );
   const dismissTimer = useRef<number | null>(null);
   const checkInterval = useRef<number | null>(null);
-
-  // Theme-aware styling
-  const isDark = branding.sidebarTheme === 'dark' || 
-    window.matchMedia('(prefers-color-scheme: dark)').matches;
 
   /**
    * Check for updates by comparing build-time version with server version
@@ -190,66 +184,44 @@ export default function UpdateToast() {
 
   const getIcon = () => {
     if (isUpdating) {
-      return <RefreshCw size={20} className="animate-spin text-blue-500" />;
+      return <RefreshCw size={18} className="animate-spin text-white" />;
     }
-    return <Sparkles size={20} className="text-blue-500" />;
+    return <Zap size={18} className="text-white" />;
   };
 
   return (
-    <div 
-      className={`
-        fixed bottom-4 right-4 z-[100] max-w-sm w-full
-        animate-slide-up
-      `}
+    <div
+      className="fixed bottom-4 right-4 z-[100] max-w-sm w-full animate-slide-up"
       role="alert"
       aria-live="polite"
     >
-      <div 
-        className={`
-          rounded-xl overflow-hidden shadow-2xl border
-          ${isDark 
-            ? 'bg-[#1e2029] border-gray-700/50' 
-            : 'bg-white border-gray-200'
-          }
-        `}
-      >
+      {/* Always dark / nocturne — matches the sidebar aesthetic */}
+      <div className="rounded-2xl overflow-hidden shadow-2xl border bg-nocturne border-white/5">
         {/* Progress Bar */}
-        <div className="h-1 bg-gray-200 dark:bg-gray-700 relative overflow-hidden">
-          <div 
-            className={`
-              h-full bg-gradient-to-r from-blue-500 to-purple-500
-              transition-all duration-500 ease-out
-            `}
+        <div className="h-1 bg-white/10 relative overflow-hidden">
+          <div
+            className="h-full bg-tranquil transition-all duration-500 ease-out"
             style={{ width: isUpdating ? `${progress}%` : '0%' }}
           />
           {state === 'available' && (
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 animate-pulse" />
+            <div className="absolute inset-0 bg-tranquil/30 animate-pulse" />
           )}
         </div>
 
         {/* Content */}
         <div className="p-4">
           <div className="flex items-start gap-3">
-            {/* Icon */}
-            <div className={`
-              p-2 rounded-lg shrink-0
-              ${isDark ? 'bg-blue-500/20' : 'bg-blue-50'}
-            `}>
+            {/* Icon — same style as active sidebar nav item */}
+            <div className="bg-tranquil rounded-xl p-2.5 shrink-0 shadow-md shadow-tranquil/30">
               {getIcon()}
             </div>
 
             {/* Text */}
             <div className="flex-1 min-w-0">
-              <h3 className={`
-                font-bold text-sm mb-1
-                ${isDark ? 'text-white' : 'text-gray-900'}
-              `}>
+              <h3 className="font-bold text-sm mb-1 text-white">
                 {isUpdating ? 'Updating...' : 'Update Available'}
               </h3>
-              <p className={`
-                text-xs mb-3
-                ${isDark ? 'text-gray-400' : 'text-secondary'}
-              `}>
+              <p className="text-xs mb-3 text-white/50">
                 {getStatusText()}
                 {newVersion?.gitHash && !isUpdating && (
                   <span className="font-mono ml-1 opacity-60">
@@ -263,29 +235,14 @@ export default function UpdateToast() {
                 <div className="flex gap-2">
                   <button
                     onClick={performUpdate}
-                    className={`
-                      flex-1 flex items-center justify-center gap-2
-                      px-4 py-2 rounded-lg text-sm font-bold
-                      bg-gradient-to-r from-blue-500 to-blue-600
-                      text-white shadow-sm
-                      hover:from-blue-600 hover:to-blue-700
-                      transition-all duration-200
-                      focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-                    `}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-tranquil text-white shadow-sm hover:bg-[#0f87a8] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-tranquil focus:ring-offset-2"
                   >
                     <Download size={14} />
                     Update Now
                   </button>
                   <button
                     onClick={dismiss}
-                    className={`
-                      px-3 py-2 rounded-lg text-sm font-medium
-                      transition-colors
-                      ${isDark 
-                        ? 'text-gray-400 hover:bg-white/10 hover:text-white' 
-                        : 'text-secondary hover:bg-gray-100 hover:text-gray-900'
-                      }
-                    `}
+                    className="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white"
                   >
                     Later
                   </button>
@@ -294,13 +251,10 @@ export default function UpdateToast() {
 
               {/* Progress Status */}
               {isUpdating && (
-                <div className={`
-                  flex items-center gap-2 text-xs
-                  ${isDark ? 'text-gray-400' : 'text-secondary'}
-                `}>
-                  <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-500 transition-all duration-300 rounded-full"
+                <div className="flex items-center gap-2 text-xs text-white/50">
+                  <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-tranquil transition-all duration-300 rounded-full"
                       style={{ width: `${progress}%` }}
                     />
                   </div>
@@ -309,17 +263,11 @@ export default function UpdateToast() {
               )}
             </div>
 
-            {/* Close Button (only when not updating) */}
+            {/* Close Button */}
             {!isUpdating && (
               <button
                 onClick={dismiss}
-                className={`
-                  shrink-0 p-1 rounded-lg transition-colors
-                  ${isDark 
-                    ? 'text-gray-500 hover:text-white hover:bg-white/10' 
-                    : 'text-tertiary hover:text-secondary hover:bg-gray-100'
-                  }
-                `}
+                className="shrink-0 p-1 rounded-lg transition-colors text-white/40 hover:text-white hover:bg-white/10"
                 aria-label="Dismiss"
               >
                 <X size={16} />

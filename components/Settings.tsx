@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-unused-vars no-explicit-any
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
 import AvatarPicker from './AvatarPicker.tsx';
@@ -11,7 +12,7 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3
 } from 'lucide-react';
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
@@ -26,8 +27,12 @@ import StockMappingConfirmation from './StockMappingConfirmation.tsx';
 import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { AuditLogViewer } from './AuditLogViewer.tsx';
+import DataSyncPanel from './DataSyncPanel';
+import SmartBuyingSettings from './SmartBuyingSettings';
+import ItemCreationSettings from './ItemCreationSettings';
+import PageHeader from './PageHeader';
 import * as XLSX from 'xlsx';
-import CatalogManagement from './CatalogManagement.tsx'; // Import CatalogManagement
+import ItemSetupManagement from './ItemSetupManagement.tsx';
 import MenuEditor from './MenuEditor.tsx';
 import { ItemWizard } from './ItemWizard.tsx';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
@@ -69,7 +74,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_development', label: 'Development Admin', description: 'Access to Smart Buying and Data Ingest tools', icon: Code, category: 'Development' }
 ];
 
-type AdminTab = 'PROFILE' | 'ITEMS' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT';
+type AdminTab = 'PROFILE' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC' | 'SMART_BUYING' | 'ITEM_CREATION';
 
 const MASTER_ITEM_COLUMNS = [
     { key: 'sku', label: 'SKU' },
@@ -119,8 +124,11 @@ const Settings = () => {
     archiveItem, getAuditLogs,
     // Catalog Management
     attributeOptions, upsertAttributeOption, deleteAttributeOption,
-    activeSiteIds
+    activeSiteIds,
+    featureFlags
   } = useApp();
+
+  const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
 
 
     const handleWizardSave = async (itemData: Partial<Item>) => {
@@ -159,10 +167,13 @@ const Settings = () => {
 
   useEffect(() => {
     const state = location.state as { activeTab?: AdminTab };
+    const queryTab = new URLSearchParams(location.search).get('tab') as AdminTab | null;
     if (state?.activeTab) {
       setActiveTab(state.activeTab);
+    } else if (queryTab) {
+      setActiveTab(queryTab);
     }
-  }, [location.state]);
+  }, [location.state, location.search]);
 
   // --- Smart Sticky Header Logic ---
   const [isStuck, setIsStuck] = useState(false);
@@ -184,6 +195,13 @@ const Settings = () => {
      };
   }, []);
   
+  // Find Layout's header slot for the admin tab bar portal (revamp mode only)
+  const [adminTabSlot, setAdminTabSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const slot = document.getElementById('admin-tab-slot');
+    if (slot) setAdminTabSlot(slot);
+  }, []);
+
   // --- Security: Permission-based Guard ---
   useEffect(() => {
       if (activeTab === 'PROFILE') return;
@@ -395,10 +413,8 @@ const Settings = () => {
   const [fieldRegistry, setFieldRegistry] = useState<any[]>([]);
   
   useEffect(() => {
-     if (activeTab === 'ITEMS') {
-         getItemFieldRegistry().then(setFieldRegistry).catch(console.error);
-     }
-  }, [activeTab, getItemFieldRegistry]);
+     getItemFieldRegistry().then(setFieldRegistry).catch(console.error);
+  }, [getItemFieldRegistry]);
 
    // --- Item Management Improvements ---
    const [showArchived, setShowArchived] = useState(false);
@@ -778,8 +794,7 @@ const Settings = () => {
   }).sort((a,b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime());
 
   const allTabs: { id: AdminTab, icon: React.ElementType, label: string, permission?: PermissionId }[] = [
-      { id: 'ITEMS', icon: Box, label: 'Items', permission: 'view_items' },
-      { id: 'CATALOG', icon: BookOpen, label: 'Catalog', permission: 'view_items' },
+      { id: 'CATALOG', icon: BookOpen, label: 'Item Setup', permission: 'view_items' },
       { id: 'STOCK', icon: Database, label: 'Stock', permission: 'view_stock' },
       { id: 'MAPPING', label: 'Mapping', icon: GitMerge, permission: 'view_mapping' },
       { id: 'SUPPLIERS', label: 'Suppliers', icon: Truck, permission: 'view_suppliers' },
@@ -792,7 +807,10 @@ const Settings = () => {
       { id: 'MENU', label: 'Menu Config', icon: ListFilter, permission: 'manage_settings' },
       { id: 'MIGRATION', label: 'Data Migration', icon: Upload, permission: 'manage_settings' },
       { id: 'EMAIL', label: 'Email Templates', icon: Mail, permission: 'manage_settings' },
-      { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'manage_settings' }
+      { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'manage_settings' },
+      { id: 'DATA_SYNC', label: 'Data Sync', icon: Database, permission: 'manage_settings' },
+      { id: 'SMART_BUYING',    label: 'Smart Buying',   icon: BarChart3, permission: 'manage_settings' },
+      { id: 'ITEM_CREATION',   label: 'Item Creation',  icon: Package,   permission: 'manage_items' }
   ];
 
   const visibleTabs: { id: AdminTab, icon: React.ElementType, label: string }[] = [
@@ -1289,48 +1307,78 @@ if __name__ == "__main__":
 
   return (
     <div className="max-w-7xl mx-auto pb-12 px-4 md:px-8">
-      <div className="flex items-center gap-3 py-6 md:py-8">
-         <SettingsIcon className="text-gray-900 dark:text-white" size={32} />
-         <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Admin Portal</h1>
-            <p className="text-secondary dark:text-gray-400 text-sm">System Configuration</p>
-         </div>
-      </div>
+      {/* Page header — only shown in classic mode; revamp header handles title */}
+      {!uiRevamp && (
+        <div className="py-6 md:py-8">
+          <PageHeader title="Admin Portal" subtitle="System Configuration" />
+        </div>
+      )}
+      {uiRevamp && <PageHeader title="Admin Portal" subtitle="System Configuration" />}
 
-      <div ref={sentinelRef} className="h-px w-full pointer-events-none absolute" />
-      <div className={`sticky top-[-1px] z-30 transition-all duration-300 ${isStuck ? '-mx-4 sm:-mx-4 md:-mx-8 px-4 sm:px-4 md:px-8 bg-white/95 dark:bg-[#15171e]/95 border-b border-gray-200 dark:border-gray-800 shadow-md py-3' : '-mx-4 px-4 md:mx-0 md:px-0 pt-2 pb-2'}`}>
-          <div className={`transition-all duration-300 ${isStuck ? 'rounded-none border-0 bg-transparent p-0 shadow-none backdrop-blur-none max-w-7xl mx-auto' : 'rounded-2xl border border-gray-200/80 bg-white/75 p-2 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-[#15171e]/90'}`}>
+      {/* Sticky tab bar — only in classic mode; revamp portals it to the floating header */}
+      {!uiRevamp && (
+        <>
+          <div ref={sentinelRef} className="h-px w-full pointer-events-none absolute" />
+          <div className={`sticky top-[-1px] z-30 transition-all duration-300 ${isStuck ? '-mx-4 sm:-mx-4 md:-mx-8 px-4 sm:px-4 md:px-8 bg-white/95 dark:bg-[#15171e]/95 border-b border-gray-200 dark:border-gray-800 shadow-md py-3' : '-mx-4 px-4 md:mx-0 md:px-0 pt-2 pb-2'}`}>
+            <div className={`transition-all duration-300 ${isStuck ? 'rounded-none border-0 bg-transparent p-0 shadow-none backdrop-blur-none max-w-7xl mx-auto' : 'rounded-2xl border border-gray-200/80 bg-white/75 p-2 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-[#15171e]/90'}`}>
               <div className="flex items-center gap-2 overflow-x-auto">
-                  {visibleTabs.map(tab => {
-                      const isActive = activeTab === tab.id;
-                      const TabIcon = tab.icon;
-                      return (
-                          <button type="button"
-                              key={tab.id}
-                              onClick={() => setActiveTab(tab.id)}
-                              aria-current={isActive ? 'page' : undefined}
-                              aria-label={tab.label}
-                              title={tab.label}
-                              className={`group flex h-10 shrink-0 items-center rounded-full border transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/40 ${
-                                  isActive
-                                      ? 'bg-[var(--color-brand)]/10 border-[var(--color-brand)]/30 text-[var(--color-brand)] pl-3 pr-4 shadow-sm'
-                                      : 'border-transparent pl-3 pr-3 text-secondary hover:bg-gray-100 hover:text-primary dark:text-gray-500 dark:hover:bg-white/5 dark:hover:text-gray-200'
-                              }`}
-                          >
-                              <TabIcon size={16} className={`transition-transform duration-300 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`} />
-                              <span
-                                  className={`overflow-hidden whitespace-nowrap text-sm font-semibold transition-all duration-300 ${
-                                      isActive ? 'ml-2 max-w-[11rem] opacity-100' : 'ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[11rem] group-hover:opacity-100'
-                                  }`}
-                              >
-                                  {tab.label}
-                              </span>
-                          </button>
-                      );
-                  })}
+                {visibleTabs.map(tab => {
+                  const isActive = activeTab === tab.id;
+                  const TabIcon = tab.icon;
+                  return (
+                    <button type="button"
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      aria-current={isActive ? 'page' : undefined}
+                      aria-label={tab.label}
+                      title={tab.label}
+                      className={`group flex h-10 shrink-0 items-center rounded-full border transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/40 ${
+                        isActive
+                          ? 'bg-[var(--color-brand)]/10 border-[var(--color-brand)]/30 text-[var(--color-brand)] pl-3 pr-4 shadow-sm'
+                          : 'border-transparent pl-3 pr-3 text-secondary hover:bg-gray-100 hover:text-primary dark:text-gray-500 dark:hover:bg-white/5 dark:hover:text-gray-200'
+                      }`}
+                    >
+                      <TabIcon size={16} className={`transition-transform duration-300 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`} />
+                      <span className={`overflow-hidden whitespace-nowrap text-sm font-semibold transition-all duration-300 ${
+                        isActive ? 'ml-2 max-w-[11rem] opacity-100' : 'ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[11rem] group-hover:opacity-100'
+                      }`}>
+                        {tab.label}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
+            </div>
           </div>
-      </div>
+        </>
+      )}
+
+      {/* Revamp mode: portal the tab bar into the floating header's center slot */}
+      {uiRevamp && adminTabSlot && createPortal(
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide py-0.5">
+          {visibleTabs.map(tab => {
+            const isActive = activeTab === tab.id;
+            const TabIcon = tab.icon;
+            return (
+              <button
+                type="button"
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                title={tab.label}
+                className={`flex items-center rounded-xl transition-all duration-150 h-9 shrink-0 ${
+                  isActive
+                    ? 'bg-tranquil text-white shadow-md shadow-tranquil/30 px-3 gap-2'
+                    : 'text-secondary dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-primary dark:hover:text-white p-2.5'
+                }`}
+              >
+                <TabIcon size={16} className="shrink-0" />
+                {isActive && <span className="text-xs font-semibold whitespace-nowrap">{tab.label}</span>}
+              </button>
+            );
+          })}
+        </div>,
+        adminTabSlot
+      )}
 
       <div className="mt-6">
 
@@ -1426,359 +1474,29 @@ if __name__ == "__main__":
       )}
 
 
-      
-      {activeTab === 'ITEMS' && (
 
-        <div className="space-y-6 animate-fade-in h-[calc(100vh-140px)] flex flex-col"> 
-            
-            {/* Header / Controls */}
-            <div className="bg-white dark:bg-[#1e2029] p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 shrink-0">
-                <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        Master Item List 
-                        <span className="text-xs font-normal text-secondary dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{(items || []).filter(i => i.activeFlag !== false).length} Active Items</span>
-                    </h3>
-                    <div className="flex gap-3 items-center">
-                        <label className="flex items-center gap-2 text-xs font-bold text-secondary dark:text-gray-500 cursor-pointer mr-2">
-                           <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded text-secondary dark:text-gray-500 focus:ring-gray-400"/>
-                           Show Archived
-                        </label>
-                        <button type="button" 
-                            onClick={async () => {
-                                setIsImportingItems(true);
-                                try {
-                                    await reloadData(true);
-                                    success('Item list refreshed');
-                                } finally {
-                                    setIsImportingItems(false);
-                                }
-                            }} 
-                            className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 
-                            title="Refresh List"
-                        >
-                            <RefreshCw size={16} className={isImportingItems ? 'animate-spin' : ''}/>
-                        </button>
-                        <button type="button" 
-                            onClick={handleExportItems}
-                            disabled={isImportingItems}
-                            className="p-2 text-gray-500 hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 
-                            title="Export Master List"
-                        >
-                            <Download size={16}/>
-                        </button>
-                        <button type="button" 
-                            onClick={() => itemImportInputRef.current?.click()} 
-                            disabled={isImportingItems}
-                            className="p-2 text-secondary hover:text-[var(--color-brand)] bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50" 
-                            title="Import from Excel"
-                        >
-                            {isImportingItems ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16}/>}
-                        </button>
-                        <input type="file" ref={itemImportInputRef} onChange={handleImportItems} className="hidden" accept=".xlsx,.xls,.csv" />
-                        <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1"></div>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                            <input 
-                                type="text" 
-                                placeholder="Search items..." 
-                                className="w-64 pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                                value={itemSearch}
-                                onChange={e => setItemSearch(e.target.value)}
-                            />
-                        </div>
-                        <button type="button" onClick={() => { 
-                            setEditingItem(null); 
-                            setIsItemFormOpen(true); 
-                        }} className="btn-primary flex items-center gap-2 text-sm shadow-sm" title="Add New Item">
-                            <Plus size={16} />
-                            <span className="hidden md:inline">Add Item</span>
-                        </button>
-                </div>
-            </div>
 
-            {/* Hierarchy Filter Bar */}
-            <div className="bg-white dark:bg-[#1e2029] p-3 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-wrap gap-3 shrink-0 items-center mb-4">
-                <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase mr-2">
-                    <Filter size={14}/> Filters
-                </div>
-                
-                <select className="input-field w-32 py-1.5 text-xs" value={filterPool} onChange={e => setFilterPool(e.target.value)}>
-                    <option value="">All Pools</option>
-                    {HierarchyManager.getPools(attributeOptions).map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-
-                <ChevronRight size={14} className="text-gray-300"/>
-
-                <select className="input-field w-32 py-1.5 text-xs" value={filterCatalog} onChange={e => setFilterCatalog(e.target.value)} disabled={!filterPool}>
-                    <option value="">All Catalogs</option>
-                    {HierarchyManager.getCatalogs(filterPool, attributeOptions).map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-
-                <ChevronRight size={14} className="text-gray-300"/>
-
-                <select className="input-field w-32 py-1.5 text-xs" value={filterType} onChange={e => setFilterType(e.target.value)} disabled={!filterCatalog}>
-                    <option value="">All Types</option>
-                    {HierarchyManager.getTypes(filterPool, filterCatalog, attributeOptions).map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                
-                <ChevronRight size={14} className="text-gray-300"/>
-
-                <select className="input-field w-32 py-1.5 text-xs" value={filterCategory} onChange={e => setFilterCategory(e.target.value)} disabled={!filterType}>
-                    <option value="">All Categories</option>
-                    {HierarchyManager.getCategories(filterPool, filterCatalog, filterType, attributeOptions).map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-
-                <ChevronRight size={14} className="text-gray-300"/>
-
-                <select className="input-field w-32 py-1.5 text-xs" value={filterSubCategory} onChange={e => setFilterSubCategory(e.target.value)} disabled={!filterCategory}>
-                    <option value="">All Sub Cats</option>
-                    {HierarchyManager.getSubCategories(filterPool, filterCatalog, filterType, filterCategory, attributeOptions).map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                
-                {(filterPool || filterCatalog || filterType || filterCategory || filterSubCategory) && (
-                    <button type="button" onClick={() => setFilterPool('')} className="ml-auto text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1">
-                        <X size={12}/> Clear
-                    </button>
-                )}
-            </div>
-
-            {/* Table Area - Scrollable */}
-            <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow border border-gray-200 dark:border-gray-800 flex-1 overflow-hidden flex flex-col relative">
-                
-                {/* Loading Overlay */}
-                {isImportingItems && (
-                    <div className="absolute inset-0 bg-white/60 dark:bg-[#1e2029]/60 backdrop-blur-[2px] z-50 flex flex-col items-center justify-center animate-fade-in">
-                        <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 flex flex-col items-center gap-4">
-                            <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-                            <div className="text-center">
-                                <p className="font-bold text-gray-900 dark:text-white">Processing Master Items</p>
-                                <p className="text-xs text-secondary dark:text-gray-400">Updating database and refreshing UI, please wait...</p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-                <div className="table-shell overflow-auto flex-1 max-h-[calc(100dvh-220px)] scrollbar-thin">
-                    <table className="dense-admin-table text-left border-collapse relative">
-                        <thead className="sticky top-0 z-30 bg-gray-50 dark:bg-[#1e2029] shadow-sm">
-                            <tr className="border-b border-gray-200 dark:border-gray-700">
-                                {MASTER_ITEM_COLUMNS.map((col, idx) => {
-                                    const isFilterable = ['category', 'subCategory', 'itemPool', 'itemCatalog', 'itemType'].includes(col.key);
-                                    const uniqueOptions = isFilterable ? Array.from((uniqueValues || {})[col.key] || []).sort() : [];
-                                    
-                                    const stickyClass = idx === 0 
-                                        ? "sticky left-0 z-20 bg-gray-50 dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]" 
-                                        : "";
-
-                                    return (
-                                        <th key={col.key} className={`px-4 py-3 text-left text-xs font-bold text-secondary dark:text-gray-500 uppercase ${stickyClass}`}>
-                                            <div className="flex flex-col gap-1">
-                                                <span>{col.label}</span>
-                                                {isFilterable && (
-                                                    <select 
-                                                        className="text-[10px] font-normal border border-gray-200 dark:border-gray-700 rounded px-1 py-0.5 bg-white dark:bg-[#15171e] focus:ring-1 focus:ring-blue-500 max-w-[120px]"
-                                                        value={itemFilters[col.key] || ''}
-                                                        onChange={(e) => setItemFilters(prev => ({ ...prev, [col.key]: e.target.value }))}
-                                                    >
-                                                        <option value="">All</option>
-                                                        {uniqueOptions.map(opt => (
-                                                            <option key={opt} value={opt}>{opt}</option>
-                                                        ))}
-                                                    </select>
-                                                )}
-                                            </div>
-                                        </th>
-                                    );
-                                })}
-                                <th className="px-4 py-3 text-right bg-gray-50 dark:bg-[#1e2029] sticky right-0 z-20">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {(items || []).filter(i => {
-                                    if (!i) return false;
-                                    // 0. Archive Filter
-                                    if (!showArchived && i.activeFlag === false) return false;
-
-                                    // 1. Search Filter
-                                    const searchMatch = (i.name || '').toLowerCase().includes((itemSearch || '').toLowerCase()) || (i.sku || '').toLowerCase().includes((itemSearch || '').toLowerCase());
-                                    if (!searchMatch) return false;
-                                    
-                                    // 2. Column Filters
-                                    for (const [key, filterVal] of Object.entries(itemFilters || {})) {
-                                        if (filterVal) {
-                                            const itemVal = String(i[key as keyof Item] || '');
-                                            if (itemVal !== filterVal) return false;
-                                        }
-                                    }
-
-                                    // 3. Hierarchy Filters
-                                    if (filterPool && i.itemPool !== filterPool) return false;
-                                    if (filterCatalog && i.itemCatalog !== filterCatalog) return false;
-                                    if (filterType && i.itemType !== filterType) return false;
-                                    if (filterCategory && i.category !== filterCategory) return false;
-                                    if (filterSubCategory && i.subCategory !== filterSubCategory) return false;
-
-                                    return true;
-                                }).map(item => (
-                                        <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
-                                    {MASTER_ITEM_COLUMNS.map((col, idx) => {
-                                        const val = item[col.key as keyof Item];
-                                        const stickyClass = idx === 0 
-                                            ? "sticky left-0 z-10 bg-white dark:bg-[#1e2029] border-r border-gray-200 dark:border-gray-700 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]" 
-                                            : "";
-                                        
-                                        let displayVal: React.ReactNode = String(val === undefined || val === null ? '' : val);
-                                        
-                                        if (col.key === 'unitPrice') {
-                                            const priceOptionCount = (item.priceOptions || []).filter(opt => opt.activeFlag !== false).length;
-                                            displayVal = (
-                                                <div className="flex flex-col">
-                                                    <span className="font-semibold text-gray-900 dark:text-white">${Number(val || 0).toFixed(2)}</span>
-                                                    {priceOptionCount > 1 && (
-                                                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
-                                                            {priceOptionCount} options
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            );
-                                        } else if (col.key === 'rfidFlag' || col.key === 'cogFlag') {
-                                            displayVal = (
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${val ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-secondary dark:text-gray-500'}`}>
-                                                    {val ? 'Yes' : 'No'}
-                                                </span>
-                                            );
-                                        } else if (col.key === 'activeFlag') {
-                                            displayVal = (
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${val !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                                    {val !== false ? 'Active' : 'Archived'}
-                                                </span>
-                                            );
-                                        }
-
-                                        return (
-                                            <td key={col.key} className={`px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap ${stickyClass}`}>
-                                                {displayVal}
-                                            </td>
-                                        );
-                                    })}
-                                    <td className="px-4 py-3 text-right sticky right-0 z-20 bg-white dark:bg-[#1e2029] shadow-[-10px_0_10px_-10px_rgba(0,0,0,0.1)]">
-                                        <div className="flex justify-end gap-2">
-                                            <button type="button" onClick={() => { 
-                                                setEditingItem(item); 
-                                                setItemForm({ 
-                                                    sku: item.sku, name: item.name, description: item.description || '', unitPrice: Number(item.unitPrice), uom: item.uom, upq: Number(item.upq) || 1, category: item.category, subCategory: item.subCategory || '',
-                                                    itemWeight: item.itemWeight || 0, itemPool: item.itemPool || '', itemCatalog: item.itemCatalog || '', 
-                                                    itemType: item.itemType || '', rfidFlag: item.rfidFlag || false, cogFlag: item.cogFlag || false, 
-                                                    itemColour: item.itemColour || '', itemPattern: item.itemPattern || '', itemMaterial: item.itemMaterial || '', 
-                                                    itemSize: item.itemSize || '', measurements: item.measurements || '', cogCustomer: item.cogCustomer || '',
-                                                    supplierId: item.supplierId || '',
-                                                    minLevel: item.minLevel, maxLevel: item.maxLevel
-                                                }); 
-                                                setIsItemFormOpen(true); 
-                                            }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-secondary dark:text-gray-500">
-                                                <Edit2 size={16} />
-                                            </button>
-                                            <button type="button" onClick={() => setSelectedAuditItem(item)} className="p-1 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded text-blue-500" title="View Audit History">
-                                                <History size={16} />
-                                            </button>
-                                            <button type="button" onClick={() => requestDelete(item)} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500" title="Archive Item">
-                                                <Archive size={16} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                    </tr>
-                                ))}
-                                {items.length === 0 && (
-                                    <tr>
-                                        <td colSpan={MASTER_ITEM_COLUMNS.length + 1} className="px-6 py-8 text-center text-secondary dark:text-gray-500">
-                                            No items found. Import items or add manually.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-             
-             {/* --- Modals and Forms --- */}
-              {isItemFormOpen && (
-                <ItemWizard
-                    isOpen={isItemFormOpen}
-                    onClose={() => setIsItemFormOpen(false)}
-                    onSave={handleWizardSave}
-                    existingItem={editingItem}
-                    items={items}
-                    suppliers={suppliers}
-                    attributeOptions={attributeOptions}
-                    upsertAttributeOption={upsertAttributeOption}
-                />
-             )}
-
-             {/* Item Audit Modal */}
-             {selectedAuditItem && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
-                        <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                    <History className="text-blue-600" size={24} />
-                                    Item Audit History
-                                </h2>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                    Viewing changes for <span className="font-semibold text-gray-900 dark:text-gray-200">{selectedAuditItem.name}</span> ({selectedAuditItem.sku})
-                                </p>
-                            </div>
-                            <button type="button" onClick={() => setSelectedAuditItem(null)} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
-                            <EntityAuditPanel recordId={selectedAuditItem.id} tableFilter={['items']} entityLabel="item" />
-                        </div>
-                        <div className="p-6 border-t border-gray-200 dark:border-gray-800 flex justify-end bg-gray-50 dark:bg-white/5">
-                            <button 
-                                type="button" 
-                                onClick={() => setSelectedAuditItem(null)}
-                                className="px-6 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors font-medium"
-                            >
-                                Close History
-                            </button>
-                        </div>
-                    </div>
-                </div>
-             )}
-     
-             <ConfirmDialog 
-                isOpen={confirmDialog.isOpen}
-                title={confirmDialog.title}
-                message={confirmDialog.message}
-                onConfirm={confirmDialog.onConfirm}
-                onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
-                confirmLabel="Archive"
-                variant="danger"
-             />
-        </div>
-    )}
-      
-      {activeTab === 'CATALOG' && (
+            {activeTab === 'CATALOG' && (
         <div className="animate-fade-in space-y-6">
             <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
                 <div className="mb-6 flex justify-between items-start">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                             <BookOpen className="text-blue-600" size={24} />
-                            Catalog Management
+                            Item Taxonomy & Preview Dropdowns
                         </h2>
-                        <p className="text-secondary dark:text-gray-400 mt-1">Manage dynamic attributes for your items including Categories, Groups, and Units of Measure.</p>
+                        <p className="text-secondary dark:text-gray-400 mt-1">Manage item categorisation and the selectable values used by the item creation preview workflow.</p>
                     </div>
                 </div>
                 
-                <CatalogManagement 
-                    options={attributeOptions}
-                    items={items}
-                    upsertOption={upsertAttributeOption}
-                    deleteOption={deleteAttributeOption}
-                />
+                <div className="space-y-8">
+                    <ItemSetupManagement
+                        options={attributeOptions}
+                        items={items}
+                        upsertOption={upsertAttributeOption}
+                        deleteOption={deleteAttributeOption}
+                    />
+                </div>
             </div>
         </div>
       )}
@@ -3725,6 +3443,21 @@ if __name__ == "__main__":
              {activeTab === 'AUDIT' && (
                  <div className="animate-fade-in">
                      <AuditLogViewer />
+                 </div>
+             )}
+             {activeTab === 'DATA_SYNC' && (
+                 <div className="animate-fade-in">
+                     <DataSyncPanel />
+                 </div>
+             )}
+             {activeTab === 'SMART_BUYING' && (
+                 <div className="animate-fade-in">
+                     <SmartBuyingSettings />
+                 </div>
+             )}
+             {activeTab === 'ITEM_CREATION' && (
+                 <div className="animate-fade-in">
+                     <ItemCreationSettings />
                  </div>
              )}
              {/* WORKFLOW STEP MODAL */}

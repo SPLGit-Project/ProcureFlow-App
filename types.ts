@@ -3,7 +3,7 @@
 
 export type UserRole = string; // Was union, now string to support dynamic roles
 
-export type PermissionId = 
+export type PermissionId =
   | 'view_dashboard'
   | 'view_items'
   | 'view_stock'
@@ -19,6 +19,7 @@ export type PermissionId =
   | 'create_request'
   | 'view_all_requests'
   | 'approve_requests'
+  | 'approve_item_requests'
   | 'link_concur'
   | 'receive_goods'
   | 'view_finance'
@@ -26,13 +27,47 @@ export type PermissionId =
   | 'manage_settings'
   | 'manage_items'
   | 'manage_suppliers'
-  | 'manage_development';
+  | 'manage_development'
+  | 'manage_item_requests'
+  | 'manage_item_definition'
+  | 'manage_purchase_pricing'
+  | 'view_purchase_pricing'
+  | 'manage_sell_pricing'
+  | 'view_sell_pricing'
+  | 'override_margin_threshold'
+  | 'manage_pricing_schedules'
+  | 'publish_items';
+
+export interface FeatureFlags {
+  previewEnabled: boolean;
+  previewWriteBlock: boolean;
+  goLiveEnabled: boolean;
+  uiRevampEnabled: boolean;
+  smartBuyingV2Enabled: boolean;
+  integrationsEnabled: boolean;
+  approvedCatalogueEnforced: boolean;
+}
+
+export interface ItemCreationPreviewConfig {
+  previewEnabled: boolean;
+  previewWriteBlock: boolean;
+  goLiveEnabled: boolean;
+}
+
+export interface MarginThresholds {
+  defaultPercent:   number;
+  standard:         number;
+  contract:         number;
+  customerSpecific: number;
+  promotional:      number;
+  customerGroup:    number;
+}
 
 export interface Permission {
     id: PermissionId;
     label: string;
     description: string;
-    category: 'General' | 'Admin';
+    category: 'General' | 'Admin' | 'Commercial';
 }
 
 export interface RoleDefinition {
@@ -95,6 +130,7 @@ export interface MenuItemConfig {
     iconName?: string; // Icon name reference
     isSystem?: boolean; // System-protected items
     path?: string; // Navigation path
+    category?: string; // Sidebar grouping category
 }
 
 export interface AuthConfig {
@@ -192,6 +228,11 @@ export interface Item {
   cogCustomer?: string;
   minLevel?: number;
   maxLevel?: number;
+
+  // Governed Pricing & Workflow
+  workflowStatus?: string;
+  currentLandedCost?: number;
+  preferredSupplierId?: string;
 }
 
 export interface SupplierCatalogItem {
@@ -340,6 +381,10 @@ export interface POLineItem {
   // Concur Linkage
   concurPoNumber?: string; // The external PO number from Concur
   isForceClosed?: boolean; // If true, line is considered complete even if qty < ordered
+  
+  // Governed Pricing
+  sellPriceRecordId?: string; // Links to the specific item_sell_prices record used
+  priceAtOrderTime?: number; // Snapshot of the price at the time of order creation
 }
 
 export interface ApprovalEvent {
@@ -434,7 +479,23 @@ export interface AppNotification {
     createdAt: string;
 }
 
-export type AttributeType = 'CATEGORY' | 'SUB_CATEGORY' | 'POOL' | 'CATALOG' | 'UOM' | 'TYPE';
+export type AttributeType =
+    | 'CATEGORY'
+    | 'SUB_CATEGORY'
+    | 'POOL'
+    | 'CATALOG'
+    | 'UOM'
+    | 'TYPE'
+    | 'PREVIEW_REQUEST_TYPE'
+    | 'PREVIEW_DEPARTMENT'
+    | 'PREVIEW_BUSINESS_UNIT'
+    | 'PREVIEW_BUSINESS_REASON'
+    | 'PREVIEW_PRICE_TYPE'
+    | 'PREVIEW_TAX_CODE'
+    | 'PREVIEW_CUSTOMER_PRICING_GROUP'
+    | 'PREVIEW_APPROVAL_RULE_TYPE'
+    | 'PREVIEW_SAP_MAPPING'
+    | 'PREVIEW_SUPPLIER_EXT';
 
 
 export interface AttributeOption {
@@ -456,6 +517,198 @@ export interface SystemAuditLog {
     summary: Record<string, unknown>; // JSONB
     details: Record<string, unknown>; // JSONB
     createdAt: string;
+}
+
+// --- Item Creation Preview / Research Types ---
+
+export type PreviewItemRequestStatus =
+    | 'Draft'
+    | 'Submitted'
+    | 'Duplicate Review Required'
+    | 'Data Review'
+    | 'Pricing Review'
+    | 'Approval Pending'
+    | 'Revision Required'
+    | 'Approved'
+    | 'Publishing'
+    | 'Partially Published'
+    | 'Fully Published'
+    | 'Active'
+    | 'Replaced'
+    | 'Retired'
+    | 'Rejected / On Hold';
+
+export type PreviewItemRequestType =
+    | 'New Purchase Item'
+    | 'New Sale Item'
+    | 'Purchase + Sale Item'
+    | 'Replacement Item'
+    | 'Customer Own Goods Item'
+    | 'Bundle-Only Item'
+    | 'LinenHub-Only Item'
+    | 'Shared Operational Item';
+
+export type PreviewDuplicateOutcome = 'NoDuplicate' | 'UseExisting' | 'SimilarNewRequired';
+
+export type PreviewPublicationStatus = 'Pending' | 'Published' | 'Acknowledged' | 'Failed' | 'Retrying';
+
+export interface PreviewValidationSummary {
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+}
+
+export interface PreviewDuplicateCandidate {
+    source: 'LIVE_ITEM' | 'PREVIEW_REQUEST' | 'SUPPLIER_MAPPING' | 'STOCK_SNAPSHOT';
+    sourceId: string;
+    sku?: string;
+    name: string;
+    supplierName?: string;
+    category?: string;
+    score: number;
+    matchType: string;
+    reasons: string[];
+}
+
+export interface PreviewItemRequest {
+    id: string;
+    requestNumber: string;
+    requestType: PreviewItemRequestType | string;
+    lifecycleStatus: PreviewItemRequestStatus;
+    requestorUserId?: string;
+    requestorName?: string;
+    department?: string;
+    businessUnit?: string;
+    branchSiteId?: string;
+    branchSiteName?: string;
+    requiredActivationDate?: string;
+    businessReason?: string;
+    businessReasonDetail?: string;
+    newOrReplacement: 'New Item' | 'Replacement';
+    existingItemId?: string;
+    customerReference?: string;
+    proposedDescription: string;
+    itemGroup?: string;
+    division?: string;
+    purchaseEnabled: boolean;
+    saleEnabled: boolean;
+    bundleEnabled: boolean;
+    linenhubEnabled: boolean;
+    salesforceVisible: boolean;
+    duplicateCheckId?: string;
+    currentMarginPercent?: number;
+    currentMarginAmount?: number;
+    validationSummary?: PreviewValidationSummary;
+    draftPayload?: Record<string, unknown>;
+    createdBy?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface PreviewItemMasterDraft {
+    id?: string;
+    requestId: string;
+    proposedSku: string;
+    skuValidation?: PreviewValidationSummary & { collisionSources?: string[] };
+    skuOverrideReason?: string;
+    confirmedDescription?: string;
+    itemCategory?: string;
+    productType?: string;
+    sizeCode?: string;
+    varietyCode?: string;
+    colourCode?: string;
+    gsmCode?: string;
+    rfidFlag: boolean;
+    cogFlag: boolean;
+    cogCustomer?: string;
+    itemWeight?: number;
+    purchaseUom?: string;
+    saleUom?: string;
+    metadata?: Record<string, unknown>;
+    lockedAt?: string;
+}
+
+export interface PreviewPurchasePriceDraft {
+    id?: string;
+    requestId: string;
+    supplierId?: string;
+    supplierName?: string;
+    supplierItemCode?: string;
+    purchaseUom?: string;
+    purchasePriceExGst?: number;
+    purchaseCurrency?: string;
+    minimumOrderQuantity?: number;
+    leadTimeDays?: number;
+    freightHandlingCost?: number;
+    landedCost?: number;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    validationSummary?: PreviewValidationSummary;
+    lockedAt?: string;
+}
+
+export interface PreviewSellPriceDraft {
+    id?: string;
+    requestId: string;
+    priceType: 'Standard' | 'Group' | 'Customer-Specific' | 'Contract' | 'Promotional' | string;
+    customerReference?: string;
+    customerGroupReference?: string;
+    saleUom?: string;
+    sellPriceExGst?: number;
+    taxCode?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    marginPercent?: number;
+    marginAmount?: number;
+    approvalRequired?: boolean;
+    publishToSalesforce: boolean;
+    publishToBundle: boolean;
+    publishToLinenHub: boolean;
+    validationSummary?: PreviewValidationSummary;
+    lockedAt?: string;
+}
+
+export interface PreviewDuplicateCheck {
+    id: string;
+    requestId: string;
+    searchTimestamp: string;
+    searchTerms: Record<string, unknown>;
+    candidates: PreviewDuplicateCandidate[];
+    matchCount: number;
+    highestMatchScore: number;
+    selectedOutcome: PreviewDuplicateOutcome;
+    justification?: string;
+    performedBy?: string;
+}
+
+export interface PreviewPublicationEvent {
+    id: string;
+    requestId: string;
+    eventType: string;
+    eventVersion: string;
+    correlationId: string;
+    sourceSystem: string;
+    targetSystem: 'Bundle' | 'LinenHub' | 'Salesforce' | 'Internal Catalogue' | string;
+    payloadHash: string;
+    payload: Record<string, unknown>;
+    status: PreviewPublicationStatus;
+    retryCount: number;
+    lastError?: string;
+    externalItemId?: string;
+    externalPriceId?: string;
+    publishedAt?: string;
+    acknowledgedAt?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface PreviewItemRequestBundle {
+    request: PreviewItemRequest;
+    masterDraft?: PreviewItemMasterDraft;
+    purchaseDraft?: PreviewPurchasePriceDraft;
+    sellDraft?: PreviewSellPriceDraft;
+    duplicateChecks: PreviewDuplicateCheck[];
+    publicationEvents: PreviewPublicationEvent[];
 }
 
 // --- Simplified Workflow System Types ---
@@ -495,7 +748,8 @@ export interface InAppNotification {
     userId: string;
     title: string;
     message: string;
-    type: WorkflowType;
+    type: string;
+    relatedRequestId?: string;
     relatedPoId?: string;
     isRead: boolean;
     createdAt: string;
@@ -539,3 +793,153 @@ export interface WorkflowPreviewData {
 
 
 
+
+// ── Item Lifecycle Types ──────────────────────────────────────────────────────
+
+export type ItemWorkflowStatus =
+  | 'LEGACY' | 'DRAFT' | 'DATA_REVIEW' | 'PRICING_REVIEW'
+  | 'APPROVAL_PENDING' | 'APPROVED' | 'ACTIVE' | 'REPLACED' | 'RETIRED';
+
+export type ItemRequestStatus =
+  | 'DRAFT' | 'SUBMITTED' | 'DUPLICATE_REVIEW' | 'PROCUREMENT_REVIEW' | 'DATA_REVIEW'
+  | 'PRICING_REVIEW' | 'APPROVAL_PENDING' | 'REVISION_REQUIRED'
+  | 'APPROVED' | 'PUBLISHING' | 'PARTIALLY_PUBLISHED' | 'FULLY_PUBLISHED'
+  | 'ACTIVE' | 'REPLACED' | 'RETIRED' | 'REJECTED';
+
+export type ItemRequestType =
+  | 'PURCHASE_AND_SALE' | 'PURCHASE_ONLY' | 'SALE_ONLY' | 'COG'
+  | 'BUNDLE_LINENHUB_ONLY' | 'REPLACEMENT' | 'CUSTOMER_SPECIFIC' | 'SHARED_CATALOGUE';
+
+export type SellPriceType =
+  | 'STANDARD' | 'GROUP' | 'CUSTOMER_SPECIFIC' | 'CONTRACT' | 'PROMOTIONAL';
+
+export type PurchasePriceStatus =
+  | 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED_FUTURE' | 'ACTIVE' | 'SUPERSEDED' | 'EXPIRED' | 'REJECTED';
+
+export interface ItemRequest {
+  id: string;
+  request_number: string;
+  request_type: ItemRequestType;
+  status: ItemRequestStatus;
+  requestor_id: string;
+  department?: string;
+  business_unit?: string;
+  item_description: string;
+  business_reason: string;
+  required_activation_date?: string;
+  replacement_for_item_id?: string;
+  customer_reference?: string;
+  contract_reference?: string;
+  target_bundle: boolean;
+  target_linenhub: boolean;
+  target_salesforce: boolean;
+  target_sap: boolean;
+  resulting_item_id?: string;
+  revision_number: number;
+  revision_reason?: string;
+  is_urgent: boolean;
+  attachments: Array<{ name: string; url: string; uploaded_at: string }>;
+  submitted_at?: string;
+  approved_at?: string;
+  activated_at?: string;
+  created_at: string;
+  updated_at: string;
+  // Wizard & workflow fields (added in migration item_requests_wizard_columns)
+  wizard_draft?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  assigned_to?: string;
+  assigned_at?: string;
+  status_changed_at?: string;
+  status_changed_by?: string;
+  revision_requested_by?: string;
+  // Display / code fields
+  requestor_name?: string;
+  proposed_code?: string;
+  item_code?: string;
+  customer_code?: string;
+  // Spec / technical fields (filled by Procurement review step)
+  spec_gsm?: number | null;
+  spec_uom?: string;
+  spec_upq?: number | null;
+  spec_material?: string;
+  spec_grade?: string;
+  spec_width_cm?: number | null;
+  spec_height_cm?: number | null;
+  spec_notes?: string;
+  procurement_reviewed_at?: string;
+}
+
+export interface ItemPurchasePrice {
+  id: string;
+  item_id: string;
+  supplier_id: string;
+  supplier_item_code?: string;
+  purchase_price_ex_gst: number;
+  currency: string;
+  purchase_uom: string;
+  pack_conversion_factor: number;
+  moq?: number;
+  lead_time_days?: number;
+  freight_handling_cost: number;
+  landed_cost: number;  // generated
+  is_preferred_supplier: boolean;
+  effective_from: string;
+  effective_to?: string;
+  status: PurchasePriceStatus;
+  notes?: string;
+  created_at: string;
+}
+
+export interface ItemSellPrice {
+  id: string;
+  item_id: string;
+  price_type: SellPriceType;
+  customer_id?: string;
+  customer_group_id?: string;
+  contract_id?: string;
+  sale_uom: string;
+  sell_price_ex_gst: number;
+  tax_code: string;
+  cost_basis: number;
+  margin_percent: number;  // generated
+  margin_amount: number;   // generated
+  requires_margin_approval: boolean;
+  publish_to_salesforce: boolean;
+  publish_to_bundle: boolean;
+  publish_to_linenhub: boolean;
+  effective_from: string;
+  effective_to?: string;
+  status: PurchasePriceStatus;
+  notes?: string;
+  created_at: string;
+}
+
+export interface PricingSchedule {
+  id: string;
+  schedule_number: string;
+  schedule_name: string;
+  basis: 'CPI' | 'MWA' | 'BUSINESS_DECISION';
+  basis_reference?: string;
+  justification?: string;
+  uplift_method: 'PERCENTAGE_INCREASE' | 'PERCENTAGE_DECREASE' | 'FIXED_AMOUNT_INCREASE' | 'FIXED_AMOUNT_DECREASE' | 'REPLACE_WITH_NEW_PRICE';
+  uplift_value: number;
+  price_type_filter?: string[];
+  item_category_filter?: string[];
+  new_effective_from: string;
+  rounding_rule: string;
+  minimum_margin_floor?: number;
+  status: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'SCHEDULED' | 'EXECUTING' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+  preview_item_count?: number;
+  preview_prices_to_create?: number;
+  preview_flagged_count?: number;
+  preview_sample?: any;
+  executed_at?: string;
+  executed_by?: string;
+  prices_created?: number;
+  execution_errors?: any;
+  created_by?: string;
+  approved_by?: string;
+  approved_at?: string;
+  created_at: string;
+  updated_at: string;
+}

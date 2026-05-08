@@ -8,6 +8,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
+const placeholderValuePattern = /dummy|example|your_supabase_project_url/i;
+
+export const isSupabaseConfigured =
+  !placeholderValuePattern.test(supabaseUrl) &&
+  !placeholderValuePattern.test(supabaseAnonKey);
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     flowType: 'implicit',

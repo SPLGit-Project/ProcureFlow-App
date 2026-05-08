@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { FileText, Download, BarChart3, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
+import PageHeader from './PageHeader';
 import { POStatus } from '../types.ts';
 
 type ReportType = 'OUTSTANDING_DELIVERIES' | 'FINANCE_SUMMARY' | 'PO_STATUS';
@@ -102,10 +103,7 @@ const ReportingView = () => {
 
     return (
         <div className="space-y-6 pb-20 animate-fade-in">
-            <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Reports & Analytics</h1>
-                <p className="text-secondary dark:text-gray-400 text-sm mt-1">Generate reports for delivery tracking and financial auditing.</p>
-            </div>
+            <PageHeader title="Reports & Analytics" subtitle="Generate reports for delivery tracking and financial auditing." />
 
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
                 {/* valid reports sidebar */}

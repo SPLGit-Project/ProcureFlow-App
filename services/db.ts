@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId } from '../types';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds } from '../types';
 import { normalizeItemCode } from '../utils/normalization';
 import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
 
@@ -361,6 +361,72 @@ export const db = {
             key: 'teams_config',
             value: { webhookUrl },
             updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+    },
+
+    getFeatureFlags: async (): Promise<FeatureFlags> => {
+        const keys = [
+            'preview_enabled', 'preview_write_block', 'go_live_enabled',
+            'ui_revamp_enabled', 'smart_buying_v2_enabled', 'integrations_enabled',
+            'approved_catalogue_enforced'
+        ];
+        const { data, error } = await supabase
+            .from('app_config')
+            .select('key, value')
+            .in('key', keys);
+        if (error && error.code !== 'PGRST116') throw error;
+        const map: Record<string, boolean> = {};
+        (data || []).forEach((row: { key: string; value: unknown }) => {
+            map[row.key] = row.value === true || row.value === 'true';
+        });
+        return {
+            previewEnabled:             map['preview_enabled']              ?? false,
+            previewWriteBlock:          map['preview_write_block']          ?? true,
+            goLiveEnabled:              map['go_live_enabled']              ?? false,
+            uiRevampEnabled:            map['ui_revamp_enabled']            ?? false,
+            smartBuyingV2Enabled:       map['smart_buying_v2_enabled']      ?? false,
+            integrationsEnabled:        map['integrations_enabled']         ?? false,
+            approvedCatalogueEnforced:  map['approved_catalogue_enforced']  ?? false,
+        };
+    },
+
+    updateFeatureFlag: async (key: keyof FeatureFlags, value: boolean): Promise<void> => {
+        const dbKeyMap: Record<keyof FeatureFlags, string> = {
+            previewEnabled:            'preview_enabled',
+            previewWriteBlock:         'preview_write_block',
+            goLiveEnabled:             'go_live_enabled',
+            uiRevampEnabled:           'ui_revamp_enabled',
+            smartBuyingV2Enabled:      'smart_buying_v2_enabled',
+            integrationsEnabled:       'integrations_enabled',
+            approvedCatalogueEnforced: 'approved_catalogue_enforced',
+        };
+        const { error } = await supabase.from('app_config').upsert({
+            key: dbKeyMap[key],
+            value,
+            updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+    },
+
+    getMarginThresholds: async (): Promise<MarginThresholds> => {
+        const DEFAULT: MarginThresholds = {
+            defaultPercent: 25, standard: 25, contract: 20,
+            customerSpecific: 20, promotional: 15, customerGroup: 25,
+        };
+        const { data } = await supabase
+            .from('app_config').select('value').eq('key', 'margin_thresholds').maybeSingle();
+        if (!data?.value) return DEFAULT;
+        const v = data.value as Partial<MarginThresholds>;
+        return { ...DEFAULT, ...v };
+    },
+
+    updateMarginThresholds: async (thresholds: Partial<MarginThresholds>): Promise<void> => {
+        const existing = await db.getMarginThresholds();
+        const { error } = await supabase.from('app_config').upsert({
+            key: 'margin_thresholds',
+            value: { ...existing, ...thresholds },
+            updated_at: new Date().toISOString(),
         });
         if (error) throw error;
     },

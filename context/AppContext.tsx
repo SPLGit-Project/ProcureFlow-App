@@ -1,8 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog } from '../types.ts';
+import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags, MarginThresholds } from '../types.ts';
 import { db } from '../services/db.ts';
-import { supabase } from '../lib/supabaseClient.ts';
+import { isSupabaseConfigured, supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
 import { DirectoryService } from '../services/graphService.ts';
 import {
@@ -49,7 +49,18 @@ const isLocalQaMode = (): boolean => {
     if (!isLocalhost) return false;
 
     const params = new URLSearchParams(globalThis.location.search);
+    if (params.get('qa') === '0') {
+        localStorage.removeItem('pf_qa_mode');
+        return false;
+    }
+
     if (params.get('qa') === '1') {
+        localStorage.setItem('pf_qa_mode', '1');
+        return true;
+    }
+
+    const envQaMode = import.meta.env.VITE_QA_MODE === '1';
+    if (envQaMode || !isSupabaseConfigured) {
         localStorage.setItem('pf_qa_mode', '1');
         return true;
     }
@@ -184,6 +195,14 @@ interface AppContextType {
   addSite: (s: Site) => Promise<void>;
   updateSite: (s: Site) => Promise<void>;
   deleteSite: (id: string) => Promise<void>;
+
+  // Feature Flags
+  featureFlags: FeatureFlags;
+  updateFeatureFlag: (key: keyof FeatureFlags, value: boolean) => Promise<void>;
+
+  // Margin Thresholds
+  marginThresholds: MarginThresholds;
+  updateMarginThresholds: (thresholds: Partial<MarginThresholds>) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -192,7 +211,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const qaMode = isLocalQaMode();
   const qaUser = React.useMemo<User>(() => ({
       ...(MOCK_USERS.find(u => u.role === 'ADMIN') || MOCK_USERS[0]),
-      id: 'qa-admin',
+      id: '00000000-0000-0000-0000-000000000000',
       name: 'QA Admin',
       email: 'qa.admin@splservices.com.au',
       role: 'ADMIN',
@@ -226,9 +245,24 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [isLoadingData, setIsLoadingData] = useState(() => !qaMode);
   
   const [roles, setRoles] = useState<RoleDefinition[]>(() => qaMode ? [...MOCK_ROLES] : []);
-  
 
-  
+  const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
+    previewEnabled: true,
+    previewWriteBlock: true,
+    goLiveEnabled: false,
+    uiRevampEnabled: true,
+    smartBuyingV2Enabled: true,
+    integrationsEnabled: false,
+    approvedCatalogueEnforced: false,
+  };
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(DEFAULT_FEATURE_FLAGS);
+
+  const DEFAULT_MARGIN_THRESHOLDS: MarginThresholds = {
+    defaultPercent: 25, standard: 25, contract: 20,
+    customerSpecific: 20, promotional: 15, customerGroup: 25,
+  };
+  const [marginThresholds, setMarginThresholds] = useState<MarginThresholds>(DEFAULT_MARGIN_THRESHOLDS);
+
   // Auth Config is now managed in the backend (env vars/Azure)
 
   // Theme State
@@ -417,6 +451,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // Data Loading
   const lastFetchTime = React.useRef<number>(0);
   const reloadData = useCallback(async (silent: boolean = false, force: boolean = false) => {
+        // DEV-only: test user is active — skip mock data so synthetic roles stay intact
+        if (import.meta.env.DEV && localStorage.getItem('pf_test_user')) {
+            if (!silent) setIsLoadingData(false);
+            return;
+        }
         if (qaMode) {
             setRoles([...MOCK_ROLES]);
             setUsers([...MOCK_USERS]);
@@ -432,6 +471,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setAvailability([]);
             setTeamsWebhookUrl('');
             setAttributeOptions([]);
+            setFeatureFlags(DEFAULT_FEATURE_FLAGS);
             if (!silent) setIsLoadingData(false);
             return;
         }
@@ -472,7 +512,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 fetchedAvailability,
                 fetchedTeamsUrl,
                 fetchedBranding,
-                fetchedOptions
+                fetchedOptions,
+                fetchedFeatureFlags,
+                fetchedMarginThresholds
             ] = await Promise.all([
                 safeFetch(db.getRoles(), [], 'roles'),
                 safeFetch(db.getUsers(), [], 'users'),
@@ -488,7 +530,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getProductAvailability(), [], 'availability'),
                 safeFetch(db.getTeamsConfig(), '', 'teamsConfig'),
                 safeFetch(db.getBranding(), null, 'branding'),
-                safeFetch(db.getAttributeOptions(), [], 'attributeOptions')
+                safeFetch(db.getAttributeOptions(), [], 'attributeOptions'),
+                safeFetch(db.getFeatureFlags(), DEFAULT_FEATURE_FLAGS, 'featureFlags'),
+                safeFetch(db.getMarginThresholds(), DEFAULT_MARGIN_THRESHOLDS, 'marginThresholds')
             ]);
 
             setRoles(fetchedRoles);
@@ -506,6 +550,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setTeamsWebhookUrl(fetchedTeamsUrl);
             if (fetchedBranding) setBranding(fetchedBranding);
             setAttributeOptions(fetchedOptions);
+            if (fetchedFeatureFlags) setFeatureFlags(fetchedFeatureFlags);
+            if (fetchedMarginThresholds) setMarginThresholds(fetchedMarginThresholds);
             
             lastFetchTime.current = Date.now();
         } catch (error) {
@@ -536,6 +582,28 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // Auth Initialization
   useEffect(() => {
     let mounted = true;
+
+    // DEV-only: Playwright test auth bypass — must run before QA mode check
+    if (import.meta.env.DEV) {
+        const testUserJson = localStorage.getItem('pf_test_user');
+        if (testUserJson) {
+            try {
+                const raw = JSON.parse(testUserJson) as User & { permissions?: PermissionId[] };
+                const { permissions: perms, ...mockUser } = raw;
+                if (perms) {
+                    // Synthesise a role so hasPermission() works without Supabase roles
+                    setRoles([{ id: mockUser.role, name: 'Test Role', description: '', permissions: perms, isSystem: false }]);
+                }
+                setCurrentUser(mockUser as User);
+                setIsAuthenticated(true);
+                setIsPendingApproval(false);
+                setIsLoadingAuth(false);
+                return () => { mounted = false; };
+            } catch {
+                // malformed test user — fall through to normal auth
+            }
+        }
+    }
 
     if (qaMode) {
         setCurrentUser(qaUser);
@@ -1171,6 +1239,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // --- Auth Operations ---
   const login = async () => {
       if (qaMode) {
+          setCurrentUser(qaUser);
+          setIsAuthenticated(true);
+          setIsPendingApproval(false);
+          setIsLoadingAuth(false);
+          reloadData(true);
+          return;
+      }
+
+      if (!isSupabaseConfigured) {
+          localStorage.setItem('pf_qa_mode', '1');
           setCurrentUser(qaUser);
           setIsAuthenticated(true);
           setIsPendingApproval(false);
@@ -2538,13 +2616,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     },
     linkConcurRequest,
     sendNotification,
-    deletePO
+    deletePO,
+
+    featureFlags,
+    updateFeatureFlag: async (key: keyof FeatureFlags, value: boolean) => {
+        await db.updateFeatureFlag(key, value);
+        setFeatureFlags(prev => ({ ...prev, [key]: value }));
+    },
+
+    marginThresholds,
+    updateMarginThresholds: async (thresholds: Partial<MarginThresholds>) => {
+        await db.updateMarginThresholds(thresholds);
+        setMarginThresholds(prev => ({ ...prev, ...thresholds }));
+    },
   }), [
     currentUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
-    reloadData, siteName
+    reloadData, siteName, featureFlags, marginThresholds
   ]);
 
   return (

@@ -132,6 +132,9 @@ function humanizeTableName(table: string): string {
         po_approvals: 'Approval',
         deliveries: 'Delivery',
         delivery_lines: 'Delivery Line',
+        preview_item_requests:           'Item Request',
+        preview_item_approval_instances: 'Approval Decision',
+        preview_publication_events:      'Publication Event',
     };
     return map[table] ?? table.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }

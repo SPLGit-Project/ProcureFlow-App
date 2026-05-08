@@ -1,29 +1,43 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import PageMetaContext, { type PageMeta } from '../context/PageMetaContext';
 import {
   Activity,
+  ArrowLeft,
   BarChart3,
   Bell,
+  BookOpen,
   CheckCircle,
+  ChevronDown,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  ClipboardCheck,
   ClipboardList as TaskIcon,
   Clock,
   DollarSign,
   FileText,
+  FlaskConical,
   HelpCircle,
   LayoutDashboard,
+  ListChecks,
+  ListTodo,
+  Loader2,
+  LogOut,
   MapPin,
   Menu,
   Moon,
   PlusCircle,
+  Save,
   Settings,
+  ShieldCheck,
   Sun,
+  TrendingUp,
   X
 } from 'lucide-react';
 import { DEFAULT_NAV_ITEMS } from '../constants/navigation';
+import ContextHelp from './ContextHelp';
 import PwaInstaller from './PwaInstaller';
 import UpdateToast from './UpdateToast';
 import VersionBadge from './VersionBadge';
@@ -32,6 +46,7 @@ import TaskDrawer from './TaskDrawer';
 import AccountDrawer from './AccountDrawer';
 
 const SIDEBAR_COLLAPSED_KEY = 'pf-sidebar-collapsed';
+const REVAMP_EXPANDED_KEY = 'pf-revamp-sidebar-expanded';
 
 const toTitleCase = (value: string) =>
   value
@@ -49,8 +64,10 @@ const Layout = () => {
     hasPermission,
     activeSiteIds,
     setActiveSiteIds,
-    userSites
+    userSites,
+    featureFlags
   } = useApp();
+  const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isTaskDrawerOpen, setIsTaskDrawerOpen] = React.useState(false);
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = React.useState(false);
@@ -58,6 +75,13 @@ const Layout = () => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
   });
+  const [isRevampExpanded, setIsRevampExpanded] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(REVAMP_EXPANDED_KEY) === 'true';
+  });
+  const [pageMeta, setPageMeta] = React.useState<PageMeta>({});
+  const [navCanScrollDown, setNavCanScrollDown] = React.useState(false);
+  const navRef = React.useRef<HTMLElement>(null);
   const location = useLocation();
 
   React.useEffect(() => {
@@ -69,6 +93,28 @@ const Layout = () => {
       localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isSidebarCollapsed));
     }
   }, [isSidebarCollapsed]);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REVAMP_EXPANDED_KEY, String(isRevampExpanded));
+    }
+  }, [isRevampExpanded]);
+
+  const checkNavScroll = React.useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    setNavCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+  }, []);
+
+  React.useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    checkNavScroll();
+    el.addEventListener('scroll', checkNavScroll);
+    const ro = new ResizeObserver(checkNavScroll);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', checkNavScroll); ro.disconnect(); };
+  }, [checkNavScroll]);
 
   React.useEffect(() => {
     if (!isMobileMenuOpen) return;
@@ -83,11 +129,19 @@ const Layout = () => {
     LayoutDashboard,
     PlusCircle,
     FileText,
+    FlaskConical,
     CheckCircle,
+    ClipboardCheck,
+    ClipboardList: TaskIcon,
+    ListTodo,
+    ListChecks,
+    BookOpen,
     Activity,
     DollarSign,
+    TrendingUp,
     BarChart3,
     Clock,
+    ShieldCheck,
     Settings,
     HelpCircle
   };
@@ -101,17 +155,39 @@ const Layout = () => {
         order: conf ? conf.order : DEFAULT_NAV_ITEMS.indexOf(item),
         isVisible: conf ? conf.isVisible : true,
         label: conf?.customLabel || item.label,
+        category: conf?.category || item.category,
         icon: iconMap[item.iconName] || HelpCircle
       };
     })
       .filter(item => item.isVisible)
       .sort((a, b) => a.order - b.order)
-      .filter(item => !item.permission || hasPermission(item.permission));
-  }, [branding.menuConfig, hasPermission]);
+      .filter(item => {
+        if (item.id === 'item-creation-preview' && !(featureFlags?.previewEnabled ?? false)) return false;
+        return !item.permission || hasPermission(item.permission);
+      });
+  }, [branding.menuConfig, hasPermission, featureFlags?.previewEnabled]);
+
+  const groupedNavItems = React.useMemo(() => {
+    const groups: { category: string; items: typeof navItems }[] = [];
+    navItems.forEach(item => {
+      const cat = item.category || 'Other';
+      let group = groups.find(g => g.category === cat);
+      if (!group) {
+        group = { category: cat, items: [] };
+        groups.push(group);
+      }
+      group.items.push(item);
+    });
+    return groups;
+  }, [navItems]);
+
+  const currentNavItem = React.useMemo(
+    () => navItems.find(item => item.path === location.pathname),
+    [navItems, location.pathname]
+  );
 
   const pageTitle = React.useMemo(() => {
-    const directMatch = navItems.find(item => item.path === location.pathname);
-    if (directMatch) return directMatch.label;
+    if (currentNavItem) return currentNavItem.label;
     if (location.pathname.startsWith('/requests/')) return 'Request Details';
     const fallback = location.pathname
       .split('/')
@@ -119,7 +195,7 @@ const Layout = () => {
       .map(segment => toTitleCase(segment))
       .join(' / ');
     return fallback || 'Dashboard';
-  }, [location.pathname, navItems]);
+  }, [location.pathname, currentNavItem]);
 
   const isSidebarDark = branding.sidebarTheme === 'brand' || branding.sidebarTheme === 'dark';
   const sidebarWidthClass = isSidebarCollapsed ? 'md:w-20' : 'md:w-72';
@@ -145,6 +221,348 @@ const Layout = () => {
   };
 
   if (!currentUser) return null;
+
+  // ─── REVAMPED LAYOUT (floating rail) ────────────────────────────────────────
+  if (uiRevamp) {
+    const sidebarW = isRevampExpanded ? '212px' : '64px';
+
+    return (
+      <PageMetaContext.Provider value={{ setMeta: setPageMeta }}>
+        <div
+          className="flex h-[100dvh] bg-app text-secondary dark:text-slate-300 font-sans selection:bg-tranquil selection:text-white transition-colors duration-200"
+          style={{
+            fontFamily: 'var(--font-family)',
+            // Override brand color with tranquil teal for all var(--color-brand) usages in revamp mode
+            '--color-brand': '#129DC0',
+            '--color-brand-rgb': '18,157,192',
+          } as React.CSSProperties}
+        >
+          <PwaInstaller />
+          <UpdateToast />
+
+          {/* Mobile overlay */}
+          {isMobileMenuOpen && (
+            <div
+              className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm md:hidden"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+          )}
+
+          {/* ── Floating rail — desktop ── */}
+          <aside
+            className="hidden md:flex fixed left-4 top-4 bottom-4 z-50 flex-col rounded-2xl shadow-xl overflow-hidden transition-all duration-300 bg-nocturne text-white"
+            style={{ width: sidebarW }}
+          >
+            {/* Logo / app name */}
+            <div
+              className={`pt-4 pb-3 shrink-0 flex items-center transition-all duration-300 ${isRevampExpanded ? 'px-2 gap-3' : 'px-2 justify-center'}`}
+            >
+              {branding.logoUrl ? (
+                <img
+                  src={branding.logoUrl}
+                  alt="Logo"
+                  className="w-12 h-12 object-contain rounded-xl shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-xl bg-tranquil flex items-center justify-center font-bold text-white shadow-md shadow-tranquil/30 text-[20px] leading-none shrink-0">
+                  {branding.appName.charAt(0)}
+                </div>
+              )}
+              {isRevampExpanded && (
+                <span className="text-white font-bold text-sm truncate">{branding.appName}</span>
+              )}
+            </div>
+
+            {/* Nav items + scroll indicator */}
+            <div className="relative flex-1 min-h-0">
+              <nav
+                ref={navRef}
+                className={`h-full flex flex-col gap-1 w-full py-2 overflow-y-auto scrollbar-hide transition-all duration-300 ${isRevampExpanded ? 'px-3' : 'px-2 items-center'}`}
+              >
+                {groupedNavItems.map((group, gIdx) => (
+                  <React.Fragment key={group.category}>
+                    {isRevampExpanded && (
+                      <div className={`px-3 py-2 mt-4 first:mt-1 mb-1 text-[10px] font-bold uppercase tracking-widest text-white/30`}>
+                        {group.category}
+                      </div>
+                    )}
+                    {group.items.map(item => {
+                      const Icon = item.icon;
+                      return (
+                        <NavLink
+                          key={item.path}
+                          to={item.path}
+                          title={isRevampExpanded ? undefined : item.label}
+                          className={({ isActive }) =>
+                            `relative flex items-center rounded-xl transition-all duration-150 group w-full
+                            ${isRevampExpanded ? 'px-3 py-2.5 gap-3' : 'justify-center p-3'}
+                            ${isActive
+                              ? 'bg-tranquil text-white shadow-md shadow-tranquil/30'
+                              : 'text-white/50 hover:bg-white/10 hover:text-white'}`
+                          }
+                        >
+                          {({ isActive }) => (
+                            <>
+                              <Icon size={18} className="shrink-0" />
+                              {isRevampExpanded && (
+                                <span className="text-sm font-medium truncate">{item.label}</span>
+                              )}
+                              {isActive && !isRevampExpanded && (
+                                <span className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-tranquil rounded-l-full opacity-80" />
+                              )}
+                            </>
+                          )}
+                        </NavLink>
+                      );
+                    })}
+                    {gIdx < groupedNavItems.length - 1 && !isRevampExpanded && (
+                       <div className="w-8 h-px bg-white/5 my-2 shrink-0" />
+                    )}
+                  </React.Fragment>
+                ))}
+              </nav>
+
+              {/* Scroll indicator — fades in when more items exist below */}
+              {navCanScrollDown && (
+                <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-nocturne to-transparent flex items-end justify-center pb-1">
+                  <ChevronDown size={14} className="text-white/40 animate-bounce" />
+                </div>
+              )}
+            </div>
+
+            {/* Bottom — expand toggle + theme + avatar */}
+            <div className={`flex flex-col gap-2 pb-4 pt-2 shrink-0 ${isRevampExpanded ? 'px-3 items-stretch' : 'items-center'}`}>
+              <button
+                onClick={() => setIsRevampExpanded(prev => !prev)}
+                className={`p-2.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all flex items-center ${isRevampExpanded ? 'gap-2' : 'justify-center'}`}
+                title={isRevampExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+              >
+                {isRevampExpanded ? <ChevronsLeft size={17} /> : <ChevronsRight size={17} />}
+                {isRevampExpanded && <span className="text-xs font-medium">Collapse</span>}
+              </button>
+              <button
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className={`p-2.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all flex items-center ${isRevampExpanded ? 'gap-2' : 'justify-center'}`}
+                title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+              >
+                {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+                {isRevampExpanded && <span className="text-xs font-medium">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
+              </button>
+              <button
+                onClick={() => setIsAccountDrawerOpen(true)}
+                className={`flex items-center rounded-xl transition-all hover:bg-white/10 ${isRevampExpanded ? 'gap-2 px-1 py-1' : 'justify-center p-0.5'}`}
+              >
+                <img
+                  src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`}
+                  alt={currentUser.name}
+                  className="w-9 h-9 rounded-full border-2 border-white/10 hover:border-tranquil transition-colors object-cover shrink-0"
+                />
+                {isRevampExpanded && (
+                  <span className="text-xs font-medium text-white/70 truncate">{currentUser.name.split(' ')[0]}</span>
+                )}
+              </button>
+            </div>
+          </aside>
+
+          {/* ── Bottom tab bar — mobile ── */}
+          <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-nocturne/95 backdrop-blur border-t border-white/5 flex items-center justify-around px-2 pb-safe pt-2">
+            {navItems.slice(0, 5).map(item => {
+              const Icon = item.icon;
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all text-[10px] font-bold uppercase tracking-wide
+                    ${isActive ? 'text-tranquil' : 'text-white/40 hover:text-white'}`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <Icon size={20} className={isActive ? 'text-tranquil' : ''} />
+                      <span className="truncate max-w-[48px]">{item.label.split(' ')[0]}</span>
+                    </>
+                  )}
+                </NavLink>
+              );
+            })}
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-white/40 hover:text-white text-[10px] font-bold uppercase tracking-wide"
+            >
+              <Menu size={20} />
+              More
+            </button>
+          </nav>
+
+          {/* Mobile drawer (all nav items) */}
+          {isMobileMenuOpen && (
+            <div className="md:hidden fixed inset-y-0 left-0 w-64 z-50 bg-nocturne flex flex-col shadow-2xl rounded-r-2xl animate-slide-in-right">
+              <div className="flex items-center justify-between p-5 border-b border-white/10">
+                <span className="text-white font-bold text-sm">{branding.appName}</span>
+                <button onClick={() => setIsMobileMenuOpen(false)} className="text-white/50 hover:text-white p-1">
+                  <X size={20} />
+                </button>
+              </div>
+              <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+                {navItems.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all
+                        ${isActive ? 'bg-tranquil text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'}`
+                      }
+                    >
+                      <Icon size={18} className="shrink-0" />
+                      {item.label}
+                    </NavLink>
+                  );
+                })}
+              </nav>
+            </div>
+          )}
+
+          {/* ── Main content area ── */}
+          <div
+            className={`flex-1 min-w-0 flex flex-col h-[100dvh] overflow-hidden transition-all duration-300 ${isRevampExpanded ? 'md:pl-[232px]' : 'md:pl-[88px]'}`}
+          >
+            {/* Floating top header */}
+            <div className="sticky top-0 z-20 shrink-0 px-4 pt-4 pointer-events-none">
+              {(() => {
+                const PageTitleIcon = currentNavItem?.icon ?? null;
+                return (
+                <header className="pointer-events-auto bg-white/90 dark:bg-[#1a1d27]/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center gap-3 px-4">
+                  {/* Left: page identity + optional Cancel */}
+                  <div className="flex items-center gap-3 min-w-0 shrink-0">
+                    <button
+                      onClick={() => setIsMobileMenuOpen(true)}
+                      className="md:hidden p-2 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"
+                    >
+                      <Menu size={20} />
+                    </button>
+                    {pageMeta.wizardActions?.onCancel && (
+                      <button
+                        onClick={pageMeta.wizardActions.onCancel}
+                        className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
+                      >
+                        <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:border-gray-400 transition-all">
+                          <ArrowLeft size={14} />
+                        </div>
+                        <span className="hidden sm:inline">Cancel</span>
+                      </button>
+                    )}
+                    {PageTitleIcon && (
+                      <div className="shrink-0 w-8 h-8 rounded-xl bg-tranquil flex items-center justify-center shadow-sm shadow-tranquil/30">
+                        <PageTitleIcon size={16} className="text-white" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">{pageTitle}</span>
+                        {pageMeta.helpTitle && pageMeta.helpDescription && pageMeta.helpLinkTarget && (
+                          <ContextHelp
+                            title={pageMeta.helpTitle}
+                            description={pageMeta.helpDescription}
+                            linkTarget={pageMeta.helpLinkTarget}
+                          />
+                        )}
+                      </div>
+                      {pageMeta.subtitle && (
+                        <span className="text-xs text-secondary dark:text-slate-400 truncate block leading-tight">{pageMeta.subtitle}</span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Center: step indicator (wizards) or admin tab bar (Settings portal) */}
+                  <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0">
+                    {pageMeta.stepInfo && (
+                      <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 select-none">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-tranquil">
+                          Step {pageMeta.stepInfo.current} of {pageMeta.stepInfo.total}
+                        </span>
+                        <span className="w-px h-3.5 bg-gray-300 dark:bg-gray-600" />
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 max-w-[200px] truncate">
+                          {pageMeta.stepInfo.label}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Right: actions */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {pageMeta.wizardActions && (
+                      <>
+                        {/* Autosave */}
+                        {pageMeta.wizardActions.isSaving ? (
+                          <span className="hidden sm:flex items-center gap-1 text-xs text-gray-400 mr-1">
+                            <Loader2 size={11} className="animate-spin" />Saving…
+                          </span>
+                        ) : pageMeta.wizardActions.lastSavedAt ? (
+                          <span className="hidden sm:flex items-center gap-1 text-xs text-emerald-500 mr-1">
+                            <Save size={11} />Saved
+                          </span>
+                        ) : null}
+                        {pageMeta.wizardActions.showPrevious && (
+                          <button
+                            onClick={pageMeta.wizardActions.onPrevious}
+                            className="h-8 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-[11px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+                          >
+                            Previous
+                          </button>
+                        )}
+                        <button
+                          onClick={pageMeta.wizardActions.onContinue}
+                          disabled={pageMeta.wizardActions.continueDisabled}
+                          className={`h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all flex items-center gap-1 ${
+                            pageMeta.wizardActions.continueDisabled
+                              ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+                              : 'bg-tranquil hover:opacity-90 active:scale-95 shadow-sm shadow-tranquil/30'
+                          }`}
+                        >
+                          {pageMeta.wizardActions.isSaving ? (
+                            <><Loader2 size={11} className="animate-spin" />Saving…</>
+                          ) : (
+                            <>{pageMeta.wizardActions.continueLabel ?? 'Continue'}<ChevronRight size={11} /></>
+                          )}
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => setIsTaskDrawerOpen(true)}
+                      className="relative bg-tranquil text-white p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
+                      title="Task Center"
+                    >
+                      <TaskIcon size={19} />
+                      <span className="absolute top-1 right-1 w-2 h-2 bg-red-400 rounded-full border-2 border-tranquil animate-pulse" />
+                    </button>
+                    <button
+                      className="bg-tranquil text-white p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
+                      title="Notifications"
+                    >
+                      <Bell size={19} />
+                    </button>
+                  </div>
+                </header>
+                );
+              })()}
+            </div>
+
+            <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 scroll-smooth pb-20 md:pb-8">
+              <div className="animate-page-entry">
+                <Outlet />
+              </div>
+            </main>
+          </div>
+
+          <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
+          <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
+        </div>
+      </PageMetaContext.Provider>
+    );
+  }
+  // ─── END REVAMPED LAYOUT ────────────────────────────────────────────────────
 
   return (
     <div
@@ -279,6 +697,17 @@ const Layout = () => {
             >
               <Menu size={20} />
             </button>
+            {pageMeta.wizardActions?.onCancel && (
+              <button
+                onClick={pageMeta.wizardActions.onCancel}
+                className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
+              >
+                <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:border-gray-400 transition-all">
+                  <ArrowLeft size={14} />
+                </div>
+                <span className="hidden sm:inline">Cancel</span>
+              </button>
+            )}
             <div className="min-w-0">
               <div className="hidden md:flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-tertiary">Workspace</span>
@@ -289,7 +718,56 @@ const Layout = () => {
             </div>
           </div>
 
+          {/* Dynamic step indicator — shown by wizards via PageMetaContext */}
+          {pageMeta.stepInfo && (
+            <div className="hidden md:flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 select-none">
+              <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-brand)]">
+                Step {pageMeta.stepInfo.current} of {pageMeta.stepInfo.total}
+              </span>
+              <span className="w-px h-3.5 bg-gray-300 dark:bg-gray-600" />
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 max-w-[180px] truncate">
+                {pageMeta.stepInfo.label}
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
+            {pageMeta.wizardActions && (
+              <>
+                {pageMeta.wizardActions.isSaving ? (
+                  <span className="hidden sm:flex items-center gap-1 text-xs text-gray-400 mr-1">
+                    <Loader2 size={11} className="animate-spin" />Saving…
+                  </span>
+                ) : pageMeta.wizardActions.lastSavedAt ? (
+                  <span className="hidden sm:flex items-center gap-1 text-xs text-emerald-500 mr-1">
+                    <Save size={11} />Saved
+                  </span>
+                ) : null}
+                {pageMeta.wizardActions.showPrevious && (
+                  <button
+                    onClick={pageMeta.wizardActions.onPrevious}
+                    className="h-8 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-[11px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+                  >
+                    Previous
+                  </button>
+                )}
+                <button
+                  onClick={pageMeta.wizardActions.onContinue}
+                  disabled={pageMeta.wizardActions.continueDisabled}
+                  className={`h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all flex items-center gap-1 ${
+                    pageMeta.wizardActions.continueDisabled
+                      ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+                      : 'bg-[var(--color-brand)] hover:opacity-90 active:scale-95 shadow-sm shadow-[var(--color-brand)]/30'
+                  }`}
+                >
+                  {pageMeta.wizardActions.isSaving ? (
+                    <><Loader2 size={11} className="animate-spin" />Saving…</>
+                  ) : (
+                    <>{pageMeta.wizardActions.continueLabel ?? 'Continue'}<ChevronRight size={11} /></>
+                  )}
+                </button>
+              </>
+            )}
             <button
               onClick={() => setIsTaskDrawerOpen(true)}
               className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"

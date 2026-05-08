@@ -15,6 +15,15 @@ export const ALL_PERMISSIONS: Permission[] = [
     { id: 'manage_items', label: 'Manage Items', description: 'Create/Edit items and catalog.', category: 'Admin' },
     { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', category: 'Admin' },
     { id: 'manage_development', label: 'Development Admin', description: 'Access development tools.', category: 'Admin' },
+    
+    // Expansion Phase Permissions
+    { id: 'manage_sell_pricing', label: 'Manage Sell Pricing', description: 'Access Price Management Dashboard.', category: 'Commercial' },
+    { id: 'manage_pricing_schedules', label: 'Manage Pricing Schedules', description: 'Access Pricing Schedules tool.', category: 'Commercial' },
+    { id: 'approve_item_requests', label: 'Approve Item Requests', description: 'Authorize new item creation and pricing.', category: 'Commercial' },
+    { id: 'view_active_requests', label: 'View Active Requests', description: 'Monitor in-progress item workflows.', category: 'Commercial' },
+    { id: 'view_completed_requests', label: 'View Completed Requests', description: 'Access history of active items.', category: 'Commercial' },
+    { id: 'manage_item_definition', label: 'Manage Item Definitions', description: 'Edit master data in the queue.', category: 'Commercial' },
+    { id: 'view_items', label: 'View Items', description: 'Access item catalogue.', category: 'General' },
 ];
 
 export const MOCK_ROLES: RoleDefinition[] = [
@@ -28,7 +37,14 @@ export const MOCK_ROLES: RoleDefinition[] = [
     },
     { 
         id: 'ADMIN', name: 'Administrator', description: 'Full system access.', isSystem: true,
-        permissions: ['view_dashboard', 'create_request', 'view_all_requests', 'approve_requests', 'link_concur', 'receive_goods', 'view_finance', 'manage_finance', 'manage_settings', 'manage_items', 'manage_suppliers', 'manage_development'] 
+        permissions: [
+            'view_dashboard', 'create_request', 'view_all_requests', 'approve_requests', 
+            'link_concur', 'receive_goods', 'view_finance', 'manage_finance', 
+            'manage_settings', 'manage_items', 'manage_suppliers', 'manage_development',
+            'manage_sell_pricing', 'manage_pricing_schedules', 'approve_item_requests',
+            'view_active_requests', 'view_completed_requests', 'manage_item_definition',
+            'view_items'
+        ] 
     }
 ];
 
@@ -53,7 +69,7 @@ export const MOCK_SITES: Site[] = [
 
 export const MOCK_SUPPLIERS: Supplier[] = [
   { 
-    id: 's1', 
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     name: 'Global Textile', 
     contactEmail: 'bianca@globaltextiles.net.au', 
     keyContact: 'Bianca Moses', 
@@ -62,7 +78,7 @@ export const MOCK_SUPPLIERS: Supplier[] = [
     categories: ['Textiles', 'Bedding'] 
   },
   { 
-    id: 's2', 
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     name: 'HOST Supplies', 
     contactEmail: 'anita@hostsupplies.com.au', 
     keyContact: 'Anita',
@@ -71,7 +87,7 @@ export const MOCK_SUPPLIERS: Supplier[] = [
     categories: ['Hospitality', 'Consumables'] 
   },
   { 
-    id: 's3', 
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     name: 'NCC Apparel Pty Ltd', 
     contactEmail: 'jsmith@nccapparel.com.au', 
     keyContact: 'Julie Smith',
@@ -80,7 +96,7 @@ export const MOCK_SUPPLIERS: Supplier[] = [
     categories: ['Apparel', 'Uniforms'] 
   },
   { 
-    id: 's4', 
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
     name: 'Simba Global', 
     contactEmail: 'jcronin@simba.global', 
     keyContact: 'Janet Cronin',
@@ -91,27 +107,27 @@ export const MOCK_SUPPLIERS: Supplier[] = [
 ];
 
 export const MOCK_ITEMS: Item[] = [
-  { id: 'i1', sku: 'GT-SHEET-K', name: 'Premium Cotton Sheet (King)', description: '500TC White Cotton', unitPrice: 45.00, uom: 'Each', category: 'Textiles', stockLevel: 0, supplierId: 's1' },
-  { id: 'i2', sku: 'GT-TOWEL-W', name: 'Bath Towel - White', description: 'Standard Hotel Grade', unitPrice: 12.50, uom: 'Each', category: 'Textiles', stockLevel: 0, supplierId: 's1' },
-  { id: 'i3', sku: 'HS-NAP-2PLY', name: 'Napkins 2-Ply (Pack 100)', description: 'White Dinner Napkins', unitPrice: 8.50, uom: 'Pack', category: 'Consumables', stockLevel: 0, supplierId: 's2' },
-  { id: 'i4', sku: 'HS-CUT-SET', name: 'Stainless Cutlery Set', description: 'Fork, Knife, Spoon', unitPrice: 4.20, uom: 'Set', category: 'Hospitality', stockLevel: 0, supplierId: 's2' },
-  { id: 'i5', sku: 'NCC-VEST-L', name: 'Hi-Vis Safety Vest (L)', description: 'Orange with Reflective Strip', unitPrice: 15.00, uom: 'Each', category: 'Apparel', stockLevel: 0, supplierId: 's3' },
-  { id: 'i6', sku: 'SG-MAT-B', name: 'Bath Mat - Blue', description: 'Heavy weight cotton', unitPrice: 9.00, uom: 'Each', category: 'Textiles', stockLevel: 0, supplierId: 's4' },
+  { id: 'i1', sku: 'GT-SHEET-K', name: 'Premium Cotton Sheet (King)', description: '500TC White Cotton', unitPrice: 45.00, uom: 'Each', category: 'Textiles', stockLevel: 0, supplierId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+  { id: 'i2', sku: 'GT-TOWEL-W', name: 'Bath Towel - White', description: 'Standard Hotel Grade', unitPrice: 12.50, uom: 'Each', category: 'Textiles', stockLevel: 0, supplierId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+  { id: 'i3', sku: 'HS-NAP-2PLY', name: 'Napkins 2-Ply (Pack 100)', description: 'White Dinner Napkins', unitPrice: 8.50, uom: 'Pack', category: 'Consumables', stockLevel: 0, supplierId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
+  { id: 'i4', sku: 'HS-CUT-SET', name: 'Stainless Cutlery Set', description: 'Fork, Knife, Spoon', unitPrice: 4.20, uom: 'Set', category: 'Hospitality', stockLevel: 0, supplierId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
+  { id: 'i5', sku: 'NCC-VEST-L', name: 'Hi-Vis Safety Vest (L)', description: 'Orange with Reflective Strip', unitPrice: 15.00, uom: 'Each', category: 'Apparel', stockLevel: 0, supplierId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' },
+  { id: 'i6', sku: 'SG-MAT-B', name: 'Bath Mat - Blue', description: 'Heavy weight cotton', unitPrice: 9.00, uom: 'Each', category: 'Textiles', stockLevel: 0, supplierId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' },
 ];
 
 export const MOCK_CATALOG: SupplierCatalogItem[] = [
-  { id: 'c1', itemId: 'i1', supplierId: 's1', supplierSku: 'GT-500TC-K', price: 45.00 },
-  { id: 'c2', itemId: 'i2', supplierId: 's1', supplierSku: 'GT-BTW-001', price: 12.50 },
-  { id: 'c3', itemId: 'i3', supplierId: 's2', supplierSku: 'HOST-NAP-W', price: 8.25 },
-  { id: 'c4', itemId: 'i4', supplierId: 's2', supplierSku: 'HOST-CS-01', price: 4.20 },
-  { id: 'c5', itemId: 'i5', supplierId: 's3', supplierSku: 'NCC-HV-OR-L', price: 14.50 },
-  { id: 'c6', itemId: 'i6', supplierId: 's4', supplierSku: 'SIM-BM-BL', price: 9.00 },
+  { id: 'c1', itemId: 'i1', supplierId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', supplierSku: 'GT-500TC-K', price: 45.00 },
+  { id: 'c2', itemId: 'i2', supplierId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', supplierSku: 'GT-BTW-001', price: 12.50 },
+  { id: 'c3', itemId: 'i3', supplierId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', supplierSku: 'HOST-NAP-W', price: 8.25 },
+  { id: 'c4', itemId: 'i4', supplierId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', supplierSku: 'HOST-CS-01', price: 4.20 },
+  { id: 'c5', itemId: 'i5', supplierId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', supplierSku: 'NCC-HV-OR-L', price: 14.50 },
+  { id: 'c6', itemId: 'i6', supplierId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', supplierSku: 'SIM-BM-BL', price: 9.00 },
 ];
 
 export const MOCK_SNAPSHOTS: SupplierStockSnapshot[] = [
   { 
     id: 'snap-1', 
-    supplierId: 's1', 
+    supplierId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 
     supplierSku: 'GT-500TC-K', 
     productName: 'Premium Cotton Sheet (King)', 
     availableQty: 120, 
@@ -124,7 +140,7 @@ export const MOCK_SNAPSHOTS: SupplierStockSnapshot[] = [
   },
   { 
     id: 'snap-2', 
-    supplierId: 's2', 
+    supplierId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 
     supplierSku: 'HOST-NAP-W', 
     productName: 'Napkins 2-Ply', 
     availableQty: 500, 
@@ -144,7 +160,7 @@ export const MOCK_POS: PORequest[] = [
     requesterId: 'u1',
     requesterName: 'Alice Site-User',
     site: 'SPL Brisbane-Meadowbrook',
-    supplierId: 's1',
+    supplierId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     supplierName: 'Global Textile',
     status: 'ACTIVE', 
     totalAmount: 1425,
@@ -164,7 +180,7 @@ export const MOCK_POS: PORequest[] = [
     requesterId: 'u1',
     requesterName: 'Alice Site-User',
     site: 'SPL Sydney-Bankstown',
-    supplierId: 's2',
+    supplierId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     supplierName: 'HOST Supplies',
     status: 'APPROVED_PENDING_CONCUR',
     totalAmount: 412.50,
@@ -174,6 +190,25 @@ export const MOCK_POS: PORequest[] = [
     ],
     lines: [
       { id: 'l3', itemId: 'i3', itemName: 'Napkins 2-Ply (Pack 100)', sku: 'HOST-NAP-W', unitPrice: 8.25, quantityOrdered: 50, quantityReceived: 0, totalPrice: 412.50 },
+    ],
+    deliveries: []
+  },
+  {
+    id: 'REQ-2023-003',
+    requestDate: '2023-10-10',
+    requesterId: '00000000-0000-0000-0000-000000000000',
+    requesterName: 'QA Admin',
+    site: 'SPL Adelaide',
+    supplierId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    supplierName: 'Global Textile',
+    status: 'PENDING_APPROVAL',
+    totalAmount: 1200.00,
+    approvalHistory: [
+        { id: 'ev4', action: 'SUBMITTED', approverName: 'QA Admin', date: '2023-10-10' }
+    ],
+    lines: [
+      { id: 'l4', itemId: 'i1', itemName: 'Premium Cotton Sheet (King)', sku: 'GT-500TC-K', unitPrice: 45.00, quantityOrdered: 20, quantityReceived: 0, totalPrice: 900.00 },
+      { id: 'l5', itemId: 'i2', itemName: 'Bath Towel - White', sku: 'GT-BTW-001', unitPrice: 12.50, quantityOrdered: 24, quantityReceived: 0, totalPrice: 300.00 },
     ],
     deliveries: []
   },

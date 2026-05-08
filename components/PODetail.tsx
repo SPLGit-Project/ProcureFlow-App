@@ -730,7 +730,9 @@ const PODetail = () => {
           return;
       }
 
-      if (!globalThis.confirm(`ARE YOU SURE? \n\nThis will permanently delete PO ${po.displayId || po.id} and all associated data (lines, deliveries, approvals). This action cannot be undone.`)) return;
+      if (!window.confirm(`ARE YOU SURE? \n\nThis will permanently delete PO ${po.displayId || po.id} and all associated data. This action cannot be undone.`)) {
+          return;
+      }
       
       try {
           setIsDeletingRequest(true);

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UploadCloud, CheckCircle, AlertCircle, RefreshCw, Database, Terminal } from 'lucide-react';
+import PageHeader from './PageHeader';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabaseClient';
 import { useApp } from '../context/AppContext';
@@ -90,10 +91,7 @@ export default function DataIngestion() {
   return (
     <div className="flex flex-col h-full gap-6 max-w-4xl mx-auto w-full">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Data Ingestion</h1>
-          <p className="text-gray-500 dark:text-slate-400 mt-1">Upload monthly Short Supply reports</p>
-        </div>
+        <PageHeader title="Data Ingestion" subtitle="Upload monthly Short Supply reports" />
       </div>
 
       <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm p-6">
