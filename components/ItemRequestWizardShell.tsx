@@ -168,8 +168,13 @@ const ItemRequestWizardShell: React.FC<ItemRequestWizardShellProps> = ({
   const activeStep = steps[activeStepIndex];
   const forwardLabel = continueLabel ?? (isLastStep ? 'Submit' : 'Continue');
 
-  // Set floating top-bar subtitle in revamp mode
-  useSetPageMeta({ subtitle });
+  // Broadcast step info + subtitle to the Layout header (works in both classic and revamp)
+  useSetPageMeta({
+    subtitle,
+    stepInfo: activeStep
+      ? { current: activeStepIndex + 1, total: steps.length, label: activeStep.label }
+      : undefined,
+  });
 
   const handleCancel = () => {
     if (onCancel) {

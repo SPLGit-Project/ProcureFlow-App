@@ -20,12 +20,17 @@ import {
   FlaskConical,
   HelpCircle,
   LayoutDashboard,
+  ListChecks,
+  ListTodo,
+  LogOut,
   MapPin,
   Menu,
   Moon,
   PlusCircle,
   Settings,
+  ShieldCheck,
   Sun,
+  TrendingUp,
   X
 } from 'lucide-react';
 import { DEFAULT_NAV_ITEMS } from '../constants/navigation';
@@ -124,11 +129,16 @@ const Layout = () => {
     FlaskConical,
     CheckCircle,
     ClipboardCheck,
+    ClipboardList: TaskIcon,
+    ListTodo,
+    ListChecks,
     BookOpen,
     Activity,
     DollarSign,
+    TrendingUp,
     BarChart3,
     Clock,
+    ShieldCheck,
     Settings,
     HelpCircle
   };
@@ -142,6 +152,7 @@ const Layout = () => {
         order: conf ? conf.order : DEFAULT_NAV_ITEMS.indexOf(item),
         isVisible: conf ? conf.isVisible : true,
         label: conf?.customLabel || item.label,
+        category: conf?.category || item.category,
         icon: iconMap[item.iconName] || HelpCircle
       };
     })
@@ -151,7 +162,21 @@ const Layout = () => {
         if (item.id === 'item-creation-preview' && !(featureFlags?.previewEnabled ?? false)) return false;
         return !item.permission || hasPermission(item.permission);
       });
-  }, [branding.menuConfig, hasPermission]);
+  }, [branding.menuConfig, hasPermission, featureFlags?.previewEnabled]);
+
+  const groupedNavItems = React.useMemo(() => {
+    const groups: { category: string; items: typeof navItems }[] = [];
+    navItems.forEach(item => {
+      const cat = item.category || 'Other';
+      let group = groups.find(g => g.category === cat);
+      if (!group) {
+        group = { category: cat, items: [] };
+        groups.push(group);
+      }
+      group.items.push(item);
+    });
+    return groups;
+  }, [navItems]);
 
   const currentNavItem = React.useMemo(
     () => navItems.find(item => item.path === location.pathname),
@@ -251,35 +276,47 @@ const Layout = () => {
                 ref={navRef}
                 className={`h-full flex flex-col gap-1 w-full py-2 overflow-y-auto scrollbar-hide transition-all duration-300 ${isRevampExpanded ? 'px-3' : 'px-2 items-center'}`}
               >
-                {navItems.map(item => {
-                  const Icon = item.icon;
-                  return (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      title={isRevampExpanded ? undefined : item.label}
-                      className={({ isActive }) =>
-                        `relative flex items-center rounded-xl transition-all duration-150 group w-full
-                        ${isRevampExpanded ? 'px-3 py-2.5 gap-3' : 'justify-center p-3'}
-                        ${isActive
-                          ? 'bg-tranquil text-white shadow-md shadow-tranquil/30'
-                          : 'text-white/50 hover:bg-white/10 hover:text-white'}`
-                      }
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <Icon size={18} className="shrink-0" />
-                          {isRevampExpanded && (
-                            <span className="text-sm font-medium truncate">{item.label}</span>
+                {groupedNavItems.map((group, gIdx) => (
+                  <React.Fragment key={group.category}>
+                    {isRevampExpanded && (
+                      <div className={`px-3 py-2 mt-4 first:mt-1 mb-1 text-[10px] font-bold uppercase tracking-widest text-white/30`}>
+                        {group.category}
+                      </div>
+                    )}
+                    {group.items.map(item => {
+                      const Icon = item.icon;
+                      return (
+                        <NavLink
+                          key={item.path}
+                          to={item.path}
+                          title={isRevampExpanded ? undefined : item.label}
+                          className={({ isActive }) =>
+                            `relative flex items-center rounded-xl transition-all duration-150 group w-full
+                            ${isRevampExpanded ? 'px-3 py-2.5 gap-3' : 'justify-center p-3'}
+                            ${isActive
+                              ? 'bg-tranquil text-white shadow-md shadow-tranquil/30'
+                              : 'text-white/50 hover:bg-white/10 hover:text-white'}`
+                          }
+                        >
+                          {({ isActive }) => (
+                            <>
+                              <Icon size={18} className="shrink-0" />
+                              {isRevampExpanded && (
+                                <span className="text-sm font-medium truncate">{item.label}</span>
+                              )}
+                              {isActive && !isRevampExpanded && (
+                                <span className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-tranquil rounded-l-full opacity-80" />
+                              )}
+                            </>
                           )}
-                          {isActive && !isRevampExpanded && (
-                            <span className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-tranquil rounded-l-full opacity-80" />
-                          )}
-                        </>
-                      )}
-                    </NavLink>
-                  );
-                })}
+                        </NavLink>
+                      );
+                    })}
+                    {gIdx < groupedNavItems.length - 1 && !isRevampExpanded && (
+                       <div className="w-8 h-px bg-white/5 my-2 shrink-0" />
+                    )}
+                  </React.Fragment>
+                ))}
               </nav>
 
               {/* Scroll indicator — fades in when more items exist below */}
@@ -425,8 +462,20 @@ const Layout = () => {
                       )}
                     </div>
                   </div>
-                  {/* Center: admin tab bar portaled here by Settings when on /settings */}
-                  <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0" />
+                  {/* Center: step indicator (wizards) or admin tab bar (Settings portal) */}
+                  <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0">
+                    {pageMeta.stepInfo && (
+                      <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 select-none">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-tranquil">
+                          Step {pageMeta.stepInfo.current} of {pageMeta.stepInfo.total}
+                        </span>
+                        <span className="w-px h-3.5 bg-gray-300 dark:bg-gray-600" />
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 max-w-[200px] truncate">
+                          {pageMeta.stepInfo.label}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                   {/* Right: actions */}
                   <div className="flex items-center gap-2 shrink-0">
                     <button
@@ -606,6 +655,19 @@ const Layout = () => {
               <span className="md:hidden text-sm font-semibold text-gray-900 dark:text-white truncate">{pageTitle}</span>
             </div>
           </div>
+
+          {/* Dynamic step indicator — shown by wizards via PageMetaContext */}
+          {pageMeta.stepInfo && (
+            <div className="hidden md:flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 select-none">
+              <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-brand)]">
+                Step {pageMeta.stepInfo.current} of {pageMeta.stepInfo.total}
+              </span>
+              <span className="w-px h-3.5 bg-gray-300 dark:bg-gray-600" />
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 max-w-[180px] truncate">
+                {pageMeta.stepInfo.label}
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
             <button
