@@ -368,7 +368,8 @@ export const db = {
     getFeatureFlags: async (): Promise<FeatureFlags> => {
         const keys = [
             'preview_enabled', 'preview_write_block', 'go_live_enabled',
-            'ui_revamp_enabled', 'smart_buying_v2_enabled', 'integrations_enabled'
+            'ui_revamp_enabled', 'smart_buying_v2_enabled', 'integrations_enabled',
+            'approved_catalogue_enforced'
         ];
         const { data, error } = await supabase
             .from('app_config')
@@ -380,23 +381,25 @@ export const db = {
             map[row.key] = row.value === true || row.value === 'true';
         });
         return {
-            previewEnabled:        map['preview_enabled']         ?? false,
-            previewWriteBlock:     map['preview_write_block']     ?? true,
-            goLiveEnabled:         map['go_live_enabled']         ?? false,
-            uiRevampEnabled:       map['ui_revamp_enabled']       ?? false,
-            smartBuyingV2Enabled:  map['smart_buying_v2_enabled'] ?? false,
-            integrationsEnabled:   map['integrations_enabled']    ?? false,
+            previewEnabled:             map['preview_enabled']              ?? false,
+            previewWriteBlock:          map['preview_write_block']          ?? true,
+            goLiveEnabled:              map['go_live_enabled']              ?? false,
+            uiRevampEnabled:            map['ui_revamp_enabled']            ?? false,
+            smartBuyingV2Enabled:       map['smart_buying_v2_enabled']      ?? false,
+            integrationsEnabled:        map['integrations_enabled']         ?? false,
+            approvedCatalogueEnforced:  map['approved_catalogue_enforced']  ?? false,
         };
     },
 
     updateFeatureFlag: async (key: keyof FeatureFlags, value: boolean): Promise<void> => {
         const dbKeyMap: Record<keyof FeatureFlags, string> = {
-            previewEnabled:       'preview_enabled',
-            previewWriteBlock:    'preview_write_block',
-            goLiveEnabled:        'go_live_enabled',
-            uiRevampEnabled:      'ui_revamp_enabled',
-            smartBuyingV2Enabled: 'smart_buying_v2_enabled',
-            integrationsEnabled:  'integrations_enabled',
+            previewEnabled:            'preview_enabled',
+            previewWriteBlock:         'preview_write_block',
+            goLiveEnabled:             'go_live_enabled',
+            uiRevampEnabled:           'ui_revamp_enabled',
+            smartBuyingV2Enabled:      'smart_buying_v2_enabled',
+            integrationsEnabled:       'integrations_enabled',
+            approvedCatalogueEnforced: 'approved_catalogue_enforced',
         };
         const { error } = await supabase.from('app_config').upsert({
             key: dbKeyMap[key],

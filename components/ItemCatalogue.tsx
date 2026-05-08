@@ -179,7 +179,7 @@ export default function ItemCatalogue() {
       if (itemsRes.error) throw itemsRes.error;
       if (workflowRes.error) throw workflowRes.error;
 
-      setItems((itemsRes.data ?? []) as ItemRow[]);
+      setItems((itemsRes.data ?? []) as unknown as ItemRow[]);
       setWorkflowItemIds(
         new Set((workflowRes.data ?? []).map((r: { resulting_item_id: string }) => r.resulting_item_id))
       );

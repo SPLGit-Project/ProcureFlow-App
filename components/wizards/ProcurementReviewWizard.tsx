@@ -70,7 +70,7 @@ const ProcurementReviewWizard: React.FC = () => {
         spec_notes: notes,
         procurement_reviewed_at: new Date().toISOString(),
       }).eq('id', id!);
-      await transitionRequest(id!, 'DATA_REVIEW', 'Procurement review completed — forwarded to Master Data');
+      await transitionRequest(id!, 'DATA_REVIEW', { notes: 'Procurement review completed — forwarded to Master Data' });
       showSuccess('Request forwarded to Master Data');
       navigate('/items/master-data-queue');
     } catch (e: any) {

@@ -211,7 +211,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const qaMode = isLocalQaMode();
   const qaUser = React.useMemo<User>(() => ({
       ...(MOCK_USERS.find(u => u.role === 'ADMIN') || MOCK_USERS[0]),
-      id: 'qa-admin',
+      id: '00000000-0000-0000-0000-000000000000',
       name: 'QA Admin',
       email: 'qa.admin@splservices.com.au',
       role: 'ADMIN',
@@ -253,6 +253,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     uiRevampEnabled: true,
     smartBuyingV2Enabled: true,
     integrationsEnabled: false,
+    approvedCatalogueEnforced: false,
   };
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(DEFAULT_FEATURE_FLAGS);
 

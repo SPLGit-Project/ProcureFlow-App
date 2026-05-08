@@ -35,6 +35,7 @@ const STATUS_CONFIG: Record<ItemRequestStatus, { label: string; color: string }>
   DRAFT:               { label: 'Draft',               color: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400' },
   SUBMITTED:           { label: 'Submitted',           color: 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' },
   DUPLICATE_REVIEW:    { label: 'Duplicate Review',    color: 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' },
+  PROCUREMENT_REVIEW:  { label: 'Procurement Review',  color: 'bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-400' },
   DATA_REVIEW:         { label: 'Data Review',         color: 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' },
   PRICING_REVIEW:      { label: 'Pricing Review',      color: 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400' },
   APPROVAL_PENDING:    { label: 'Approval Pending',    color: 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400' },

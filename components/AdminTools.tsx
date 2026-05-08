@@ -8,13 +8,13 @@ import { ConfirmDialog } from './ConfirmDialog.tsx';
 import PageHeader from './PageHeader.tsx';
 
 const AdminTools = () => {
-    const { isSystemAdmin } = useApp();
+    const { hasPermission } = useApp();
     const [isRunning, setIsRunning] = useState(false);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
     const { toasts, dismissToast, success, error } = useToast();
 
     // Security check - only Admin can access this component
-    if (!isSystemAdmin()) {
+    if (!hasPermission('manage_settings')) {
         return <Navigate to="/" replace />;
     }
 

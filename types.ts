@@ -39,11 +39,19 @@ export type PermissionId =
   | 'publish_items';
 
 export interface FeatureFlags {
+  previewEnabled: boolean;
+  previewWriteBlock: boolean;
   goLiveEnabled: boolean;
   uiRevampEnabled: boolean;
   smartBuyingV2Enabled: boolean;
   integrationsEnabled: boolean;
   approvedCatalogueEnforced: boolean;
+}
+
+export interface ItemCreationPreviewConfig {
+  previewEnabled: boolean;
+  previewWriteBlock: boolean;
+  goLiveEnabled: boolean;
 }
 
 export interface MarginThresholds {
@@ -59,7 +67,7 @@ export interface Permission {
     id: PermissionId;
     label: string;
     description: string;
-    category: 'General' | 'Admin';
+    category: 'General' | 'Admin' | 'Commercial';
 }
 
 export interface RoleDefinition {
@@ -122,6 +130,7 @@ export interface MenuItemConfig {
     iconName?: string; // Icon name reference
     isSystem?: boolean; // System-protected items
     path?: string; // Navigation path
+    category?: string; // Sidebar grouping category
 }
 
 export interface AuthConfig {
