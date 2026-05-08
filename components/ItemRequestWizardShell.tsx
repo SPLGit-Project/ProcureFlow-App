@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronRight } from 'lucide-react';
-import { useSetPageMeta, WizardActionsContext } from '../context/PageMetaContext';
+import { useSetPageMeta } from '../context/PageMetaContext';
 
 // ── Step definitions ───────────────────────────────────────────────────────────
 
@@ -161,38 +161,46 @@ const ItemRequestWizardShell: React.FC<ItemRequestWizardShellProps> = ({
   const forwardLabel = continueLabel ?? (isLastStep ? 'Submit' : 'Continue');
 
   const handleCancel = () => {
-    if (onCancel) {
-      onCancel();
-    } else {
-      navigate(-1);
-    }
+    if (onCancel) onCancel();
+    else navigate(-1);
   };
 
-  // Broadcast step info + subtitle to the Layout header (non-callback data)
+  // ── Stable ref-wrapper pattern ─────────────────────────────────────────────
+  // Refs are assigned synchronously on every render so they always hold the
+  // latest callback. The *stable* wrappers (created once) are what we pass to
+  // useSetPageMeta — their identity never changes, so the key-based effect in
+  // useSetPageMeta never goes stale for callbacks.
+  const onContinueRef  = React.useRef(onContinue);
+  const onPreviousRef  = React.useRef(onPrevious);
+  const onCancelRef    = React.useRef(handleCancel);
+  onContinueRef.current = onContinue;
+  onPreviousRef.current = onPrevious;
+  onCancelRef.current   = handleCancel;
+
+  const stableOnContinue = React.useCallback(() => onContinueRef.current?.(), []);
+  const stableOnPrevious = React.useCallback(() => onPreviousRef.current?.(), []);
+  const stableOnCancel   = React.useCallback(() => onCancelRef.current?.(), []);
+
+  // Non-callback reactive values are tracked in the key so the header re-renders
+  // whenever disabled/saving/label/step changes.
   useSetPageMeta({
     subtitle,
     stepInfo: activeStep
       ? { current: activeStepIndex + 1, total: steps.length, label: activeStep.label }
       : undefined,
+    wizardActions: {
+      onCancel:         stableOnCancel,
+      onPrevious:       !isFirstStep && onPrevious ? stableOnPrevious : undefined,
+      onContinue:       stableOnContinue,
+      continueLabel:    forwardLabel,
+      continueDisabled: continueDisabled || isSaving,
+      isSaving,
+      lastSavedAt,
+      showPrevious:     !isFirstStep && !!onPrevious,
+    },
   });
 
-  // Wizard action callbacks go through WizardActionsContext so they are NEVER
-  // stale — this context value updates on every render, bypassing the key-based
-  // debounce in useSetPageMeta that caused the stale-closure bug.
-  const wizardActionsValue = React.useMemo(() => ({
-    onCancel: handleCancel,
-    onPrevious: !isFirstStep && onPrevious ? onPrevious : undefined,
-    onContinue,
-    continueLabel: forwardLabel,
-    continueDisabled: continueDisabled || isSaving,
-    isSaving,
-    lastSavedAt,
-    showPrevious: !isFirstStep && !!onPrevious,
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [handleCancel, isFirstStep, onPrevious, onContinue, forwardLabel, continueDisabled, isSaving, lastSavedAt]);
-
   return (
-    <WizardActionsContext.Provider value={wizardActionsValue}>
     <div className="flex flex-col min-h-full animate-page-entry">
 
       {/* ── Horizontal stepper ─────────────────────────────────────────────── */}
@@ -221,7 +229,6 @@ const ItemRequestWizardShell: React.FC<ItemRequestWizardShellProps> = ({
       </div>
 
     </div>
-    </WizardActionsContext.Provider>
   );
 };
 
