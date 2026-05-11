@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
-import PageMetaContext, { type PageMeta } from '../context/PageMetaContext';
+import { useApp } from '../context/AppContext.tsx';
+import PageMetaContext, { type PageMeta } from '../context/PageMetaContext.tsx';
 import {
   Activity,
   ArrowLeft,
@@ -25,7 +25,6 @@ import {
   ListChecks,
   ListTodo,
   Loader2,
-  LogOut,
   MapPin,
   Menu,
   Moon,
@@ -37,15 +36,15 @@ import {
   TrendingUp,
   X
 } from 'lucide-react';
-import { DEFAULT_NAV_ITEMS } from '../constants/navigation';
-import ContextHelp from './ContextHelp';
-import PwaInstaller from './PwaInstaller';
-import UpdateToast from './UpdateToast';
-import VersionBadge from './VersionBadge';
-import { MultiSiteSelector } from './MultiSiteSelector';
-import TaskDrawer from './TaskDrawer';
-import AccountDrawer from './AccountDrawer';
-import { BrandLogo } from './BrandLogo';
+import { DEFAULT_NAV_ITEMS } from '../constants/navigation.ts';
+import ContextHelp from './ContextHelp.tsx';
+import PwaInstaller from './PwaInstaller.tsx';
+import UpdateToast from './UpdateToast.tsx';
+import VersionBadge from './VersionBadge.tsx';
+import { MultiSiteSelector } from './MultiSiteSelector.tsx';
+import TaskDrawer from './TaskDrawer.tsx';
+import AccountDrawer from './AccountDrawer.tsx';
+import { BrandLogo } from './BrandLogo.tsx';
 
 const SIDEBAR_COLLAPSED_KEY = 'pf-sidebar-collapsed';
 const REVAMP_EXPANDED_KEY = 'pf-revamp-sidebar-expanded';
@@ -323,9 +322,36 @@ const Layout = () => {
               )}
             </div>
 
+            {/* Site selector — accessible from anywhere in the rail */}
+            {userSites.length > 0 && (
+              <div className={`shrink-0 border-t border-white/10 pt-2 ${isRevampExpanded ? 'px-3 pb-2' : 'px-2 pb-2 flex justify-center'}`}>
+                {isRevampExpanded ? (
+                  <MultiSiteSelector
+                    sites={userSites}
+                    selectedSiteIds={activeSiteIds}
+                    onChange={setActiveSiteIds}
+                    variant="brand"
+                  />
+                ) : (
+                  <button type="button"
+                    onClick={() => setIsRevampExpanded(true)}
+                    className="relative p-2.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all flex items-center justify-center"
+                    title={activeSiteIds.length > 0 ? `${activeSiteIds.length} site${activeSiteIds.length > 1 ? 's' : ''} selected — expand to change` : 'No site selected — expand to select'}
+                  >
+                    <MapPin size={17} />
+                    {activeSiteIds.length > 0 && (
+                      <span className="absolute -top-1 -right-1 w-4 h-4 text-[9px] font-bold rounded-full bg-tranquil text-white flex items-center justify-center">
+                        {activeSiteIds.length}
+                      </span>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Bottom — expand toggle + theme + avatar */}
             <div className={`flex flex-col gap-2 pb-4 pt-2 shrink-0 ${isRevampExpanded ? 'px-3 items-stretch' : 'items-center'}`}>
-              <button
+              <button type="button"
                 onClick={() => setIsRevampExpanded(prev => !prev)}
                 className={`p-2.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all flex items-center ${isRevampExpanded ? 'gap-2' : 'justify-center'}`}
                 title={isRevampExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
@@ -333,7 +359,7 @@ const Layout = () => {
                 {isRevampExpanded ? <ChevronsLeft size={17} /> : <ChevronsRight size={17} />}
                 {isRevampExpanded && <span className="text-xs font-medium">Collapse</span>}
               </button>
-              <button
+              <button type="button"
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                 className={`p-2.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all flex items-center ${isRevampExpanded ? 'gap-2' : 'justify-center'}`}
                 title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
@@ -341,7 +367,7 @@ const Layout = () => {
                 {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
                 {isRevampExpanded && <span className="text-xs font-medium">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
               </button>
-              <button
+              <button type="button"
                 onClick={() => setIsAccountDrawerOpen(true)}
                 className={`flex items-center rounded-xl transition-all hover:bg-white/10 ${isRevampExpanded ? 'gap-2 px-1 py-1' : 'justify-center p-0.5'}`}
               >
@@ -379,7 +405,7 @@ const Layout = () => {
                 </NavLink>
               );
             })}
-            <button
+            <button type="button"
               onClick={() => setIsMobileMenuOpen(true)}
               className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-white/40 hover:text-white text-[10px] font-bold uppercase tracking-wide"
             >
@@ -393,7 +419,7 @@ const Layout = () => {
             <div className="md:hidden fixed inset-y-0 left-0 w-64 z-50 bg-nocturne flex flex-col shadow-2xl rounded-r-2xl animate-slide-in-right">
               <div className="flex items-center justify-between p-5 border-b border-white/10">
                 <span className="text-white font-bold text-sm">{branding.appName}</span>
-                <button onClick={() => setIsMobileMenuOpen(false)} className="text-white/50 hover:text-white p-1">
+                <button type="button" onClick={() => setIsMobileMenuOpen(false)} className="text-white/50 hover:text-white p-1">
                   <X size={20} />
                 </button>
               </div>
@@ -441,14 +467,14 @@ const Layout = () => {
                 <header className="pointer-events-auto bg-white/90 dark:bg-nocturne backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center gap-3 px-4">
                   {/* Left: page identity + optional Cancel */}
                   <div className="flex items-center gap-3 min-w-0 shrink-0">
-                    <button
+                    <button type="button"
                       onClick={() => setIsMobileMenuOpen(true)}
                       className="md:hidden p-2 text-secondary hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"
                     >
                       <Menu size={20} />
                     </button>
                     {pageMeta.wizardActions?.onCancel && (
-                      <button
+                      <button type="button"
                         onClick={pageMeta.wizardActions.onCancel}
                         className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
                       >
@@ -518,14 +544,14 @@ const Layout = () => {
                           </span>
                         ) : null}
                         {pageMeta.wizardActions.showPrevious && (
-                          <button
+                          <button type="button"
                             onClick={pageMeta.wizardActions.onPrevious}
                             className="h-8 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-[11px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
                           >
                             Previous
                           </button>
                         )}
-                        <button
+                        <button type="button"
                           onClick={pageMeta.wizardActions.onContinue}
                           disabled={pageMeta.wizardActions.continueDisabled}
                           className={`h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all flex items-center gap-1 ${
@@ -553,7 +579,7 @@ const Layout = () => {
                     >
                       <House size={18} />
                     </NavLink>
-                    <button
+                    <button type="button"
                       onClick={() => setIsTaskDrawerOpen(true)}
                       className="relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
                       title="Task Center"
@@ -561,13 +587,13 @@ const Layout = () => {
                       <TaskIcon size={18} />
                       <span className="absolute top-1 right-1 w-2 h-2 bg-red-400 rounded-full border-2 border-tranquil animate-pulse" />
                     </button>
-                    <button
+                    <button type="button"
                       className="bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
                       title="Notifications"
                     >
                       <Bell size={18} />
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                       className="md:hidden bg-tranquil text-white p-2 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95"
                       title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
@@ -718,7 +744,7 @@ const Layout = () => {
       <div className="flex-1 min-w-0 flex flex-col h-[100dvh] overflow-hidden relative w-full">
         <header className="bg-white/80 dark:bg-[#15171e]/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 z-20 shrink-0 sticky top-0 transition-all">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button
+            <button type="button"
               onClick={() => setIsMobileMenuOpen(open => !open)}
               className="md:hidden p-2 -ml-1 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors"
               aria-label="Toggle mobile menu"
@@ -726,7 +752,7 @@ const Layout = () => {
               <Menu size={20} />
             </button>
             {pageMeta.wizardActions?.onCancel && (
-              <button
+              <button type="button"
                 onClick={pageMeta.wizardActions.onCancel}
                 className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
               >
@@ -771,14 +797,14 @@ const Layout = () => {
                   </span>
                 ) : null}
                 {pageMeta.wizardActions.showPrevious && (
-                  <button
+                  <button type="button"
                     onClick={pageMeta.wizardActions.onPrevious}
                     className="h-8 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-[11px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
                   >
                     Previous
                   </button>
                 )}
-                <button
+                <button type="button"
                   onClick={pageMeta.wizardActions.onContinue}
                   disabled={pageMeta.wizardActions.continueDisabled}
                   className={`h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all flex items-center gap-1 ${
@@ -806,7 +832,7 @@ const Layout = () => {
             >
               <House size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
             </NavLink>
-            <button
+            <button type="button"
               onClick={() => setIsTaskDrawerOpen(true)}
               className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"
               title="Task Center"
@@ -815,14 +841,14 @@ const Layout = () => {
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#15171e] animate-pulse" />
             </button>
 
-            <button
+            <button type="button"
               className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"
               title="Notifications"
             >
               <Bell size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
             </button>
 
-            <button
+            <button type="button"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className="p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all active:scale-95 group"
               title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
