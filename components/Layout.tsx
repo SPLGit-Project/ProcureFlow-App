@@ -481,9 +481,9 @@ const Layout = () => {
                     </div>
                   </div>
                   {/* Center: step indicator (wizards) or admin tab bar (Settings portal) */}
-                  <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0 pr-2">
+                  <div className="flex-1 flex items-center justify-center min-w-0 pr-2">
                     {userSites.length > 0 && (
-                      <div className="hidden sm:block w-[230px] md:w-[300px]">
+                      <div className="hidden sm:block w-[230px] md:w-[300px] shrink-0 mr-4">
                         <MultiSiteSelector
                           sites={userSites}
                           selectedSiteIds={activeSiteIds}
@@ -492,17 +492,19 @@ const Layout = () => {
                         />
                       </div>
                     )}
-                    {pageMeta.stepInfo && (
-                      <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 select-none">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-tranquil">
-                          Step {pageMeta.stepInfo.current} of {pageMeta.stepInfo.total}
-                        </span>
-                        <span className="w-px h-3.5 bg-gray-300 dark:bg-gray-600" />
-                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 max-w-[200px] truncate">
-                          {pageMeta.stepInfo.label}
-                        </span>
-                      </div>
-                    )}
+                    <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0">
+                      {pageMeta.stepInfo && (
+                        <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 select-none shrink-0">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-tranquil">
+                            Step {pageMeta.stepInfo.current} of {pageMeta.stepInfo.total}
+                          </span>
+                          <span className="w-px h-3.5 bg-gray-300 dark:bg-gray-600" />
+                          <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 max-w-[200px] truncate">
+                            {pageMeta.stepInfo.label}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {/* Right: actions */}
                   <div className="flex items-center gap-1 md:gap-2 shrink-0">
