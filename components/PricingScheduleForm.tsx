@@ -208,7 +208,7 @@ export default function PricingScheduleForm() {
   if (step === 3 && schedule) {
     return (
       <div className="max-w-2xl mx-auto py-12 px-4 animate-fade-in">
-        <div className="bg-white dark:bg-[#1e2029] rounded-3xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+        <div className="bg-white dark:bg-nocturne rounded-3xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="bg-blue-500 h-2 w-full"></div>
           <div className="p-8 text-center">
             <div className="w-20 h-20 bg-blue-100 dark:bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -273,7 +273,7 @@ export default function PricingScheduleForm() {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#1e2029] rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="bg-white dark:bg-nocturne rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
         {step === 1 && (
           <div className="p-8 space-y-8 animate-fade-in">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

@@ -54,7 +54,7 @@ const ConcurExportModal: React.FC<ConcurExportModalProps> = ({ po, onClose }) =>
 
     return (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in print:bg-white print:absolute print:inset-0">
-            <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-2xl w-full p-0 border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-2xl w-full p-0 border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col max-h-[90vh]">
                 
                 {/* Header - Hidden in Print */}
                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center print:hidden">

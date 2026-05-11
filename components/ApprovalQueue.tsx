@@ -233,7 +233,7 @@ export default function ApprovalQueue() {
           { label: 'Approved Today', value: metrics.approvedToday, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
           { label: 'Rejected Today', value: metrics.rejectedToday, icon: XCircle, color: 'text-rose-600', bg: 'bg-rose-50 dark:bg-rose-900/20' },
         ].map((m, idx) => (
-          <div key={idx} className={`p-5 rounded-2xl border border-gray-100 dark:border-white/5 bg-white dark:bg-[#1e2029] shadow-sm flex items-center gap-4`}>
+          <div key={idx} className={`p-5 rounded-2xl border border-gray-100 dark:border-white/5 bg-white dark:bg-nocturne shadow-sm flex items-center gap-4`}>
             <div className={`w-12 h-12 rounded-xl ${m.bg} ${m.color} flex items-center justify-center shrink-0`}>
               <m.icon size={24} />
             </div>
@@ -278,7 +278,7 @@ export default function ApprovalQueue() {
             ))}
           </div>
         ) : approvals.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#1e2029] rounded-3xl border border-dashed border-gray-200 dark:border-white/10 text-center">
+          <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-nocturne rounded-3xl border border-dashed border-gray-200 dark:border-white/10 text-center">
             <ClipboardCheck size={48} className="text-gray-200 dark:text-gray-700 mb-4" />
             <p className="text-gray-500 dark:text-gray-400 font-medium">No approvals awaiting your action</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">Take a break, you're all caught up!</p>
@@ -345,7 +345,7 @@ function ApprovalCard({
   canViewPurchase: boolean;
 }) {
   return (
-    <div className={`bg-white dark:bg-[#1e2029] rounded-2xl border transition-all duration-300 ${isExpanded ? 'border-[var(--color-brand)] shadow-lg' : 'border-gray-100 dark:border-white/5 hover:border-gray-200 dark:hover:border-white/10 shadow-sm'}`}>
+    <div className={`bg-white dark:bg-nocturne rounded-2xl border transition-all duration-300 ${isExpanded ? 'border-[var(--color-brand)] shadow-lg' : 'border-gray-100 dark:border-white/5 hover:border-gray-200 dark:hover:border-white/10 shadow-sm'}`}>
       <div className="p-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex-1 min-w-0">

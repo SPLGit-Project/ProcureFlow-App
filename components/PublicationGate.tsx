@@ -70,7 +70,7 @@ export const PublicationGate: React.FC<PublicationGateProps> = ({ itemId, reques
   ];
 
   return (
-    <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-page-entry">
+    <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-page-entry">
       <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#181a21]/50 flex justify-between items-center">
         <div>
           <h2 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Master Data Publication Gate</h2>

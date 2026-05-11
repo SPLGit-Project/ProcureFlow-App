@@ -175,7 +175,7 @@ const PriceManagementDashboard: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setActiveTab('schedules')}
-            className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 text-xs font-black uppercase tracking-widest rounded-2xl shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+            className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 text-xs font-black uppercase tracking-widest rounded-2xl shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
           >
             <Zap size={16} className="text-amber-500" />
             Bulk Uplifts
@@ -196,7 +196,7 @@ const PriceManagementDashboard: React.FC = () => {
             onClick={() => setActiveTab(tab.id as any)}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
               activeTab === tab.id 
-                ? 'bg-white dark:bg-[#1e2029] text-[#129DC0] shadow-sm' 
+                ? 'bg-white dark:bg-nocturne text-[#129DC0] shadow-sm' 
                 : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
@@ -219,13 +219,13 @@ const PriceManagementDashboard: React.FC = () => {
                   placeholder="Search SKU or Name..."
                   value={filters.searchSku}
                   onChange={(e) => setFilters(prev => ({ ...prev, searchSku: e.target.value }))}
-                  className="w-full pl-12 pr-4 py-3 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#129DC0] transition-all"
+                  className="w-full pl-12 pr-4 py-3 bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#129DC0] transition-all"
                 />
               </div>
               <select 
                 value={filters.category}
                 onChange={(e) => setFilters(prev => ({ ...prev, category: e.target.value }))}
-                className="py-3 px-4 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#129DC0]"
+                className="py-3 px-4 bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#129DC0]"
               >
                 <option value="">All Categories</option>
                 {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
@@ -233,7 +233,7 @@ const PriceManagementDashboard: React.FC = () => {
               <select 
                 value={filters.priceType}
                 onChange={(e) => setFilters(prev => ({ ...prev, priceType: e.target.value }))}
-                className="py-3 px-4 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#129DC0]"
+                className="py-3 px-4 bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#129DC0]"
               >
                 <option value="">All Price Types</option>
                 <option value="STANDARD">Standard</option>
@@ -244,7 +244,7 @@ const PriceManagementDashboard: React.FC = () => {
               </select>
               <button 
                 onClick={handleExportCSV}
-                className="flex items-center justify-center gap-2 px-6 py-3 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 text-xs font-black uppercase tracking-widest rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 text-xs font-black uppercase tracking-widest rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
               >
                 <Download size={16} />
                 Export CSV
@@ -252,7 +252,7 @@ const PriceManagementDashboard: React.FC = () => {
             </div>
 
             {/* Table */}
-            <div className="bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -357,7 +357,7 @@ const PriceManagementDashboard: React.FC = () => {
                     <button 
                       disabled={page === 1}
                       onClick={() => setPage(p => p - 1)}
-                      className="p-2 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-xl disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+                      className="p-2 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-xl disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
                     >
                       <ChevronLeft size={16} />
                     </button>
@@ -369,7 +369,7 @@ const PriceManagementDashboard: React.FC = () => {
                           className={`w-8 h-8 rounded-xl text-xs font-black ${
                             page === i + 1 
                               ? 'bg-[#129DC0] text-white' 
-                              : 'bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 text-gray-500 hover:bg-gray-50'
+                              : 'bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 text-gray-500 hover:bg-gray-50'
                           }`}
                         >
                           {i + 1}
@@ -380,7 +380,7 @@ const PriceManagementDashboard: React.FC = () => {
                     <button 
                       disabled={page === totalPages}
                       onClick={() => setPage(p => p + 1)}
-                      className="p-2 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-xl disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+                      className="p-2 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-xl disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
                     >
                       <ChevronRight size={16} />
                     </button>
@@ -414,7 +414,7 @@ const PriceManagementDashboard: React.FC = () => {
 
         {activeTab === 'history' && (
           <div className="space-y-8 max-w-5xl mx-auto">
-            <div className="bg-white dark:bg-[#1e2029] p-8 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm text-center">
+            <div className="bg-white dark:bg-nocturne p-8 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm text-center">
               <HistoryIcon size={48} className="mx-auto mb-4 text-[#129DC0] opacity-20" />
               <h2 className="text-xl font-black uppercase tracking-tight mb-2">Item Pricing History Audit</h2>
               <p className="text-sm text-gray-500 mb-8 max-w-md mx-auto">
@@ -432,7 +432,7 @@ const PriceManagementDashboard: React.FC = () => {
                 />
                 
                 {historySearchResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl z-50 overflow-hidden">
                     {historySearchResults.map(item => (
                       <button
                         key={item.id}
@@ -536,7 +536,7 @@ const FuturePricesPanelWithCancel = () => {
 
   return (
     <div className="space-y-6">
-       <div className="bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+       <div className="bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
         <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-[#181a21]/50">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500">
@@ -728,8 +728,8 @@ const NewVersionSlideOver: React.FC<{
     <div className="fixed inset-0 z-[100] flex justify-end">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose} />
       
-      <div className="relative w-full max-w-xl bg-white dark:bg-[#1e2029] shadow-2xl h-full flex flex-col animate-slide-in-right overflow-y-auto">
-        <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 bg-white/80 dark:bg-[#1e2029]/80 backdrop-blur-md z-10">
+      <div className="relative w-full max-w-xl bg-white dark:bg-nocturne shadow-2xl h-full flex flex-col animate-slide-in-right overflow-y-auto">
+        <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 bg-white/80 dark:bg-nocturne/80 backdrop-blur-md z-10">
           <div>
             <span className="text-[10px] font-black uppercase tracking-widest text-[#129DC0] mb-1 block">Pricing Revision</span>
             <h2 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-tight">New Price Version</h2>
@@ -741,7 +741,7 @@ const NewVersionSlideOver: React.FC<{
           {/* Context Card */}
           <div className="bg-gray-50 dark:bg-[#181a21] p-6 rounded-3xl border border-gray-100 dark:border-gray-800">
             <div className="flex gap-4 items-center mb-6">
-              <div className="w-14 h-14 bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 flex items-center justify-center text-[#129DC0] shadow-sm">
+              <div className="w-14 h-14 bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800 flex items-center justify-center text-[#129DC0] shadow-sm">
                 <Package size={28} />
               </div>
               <div>
@@ -751,11 +751,11 @@ const NewVersionSlideOver: React.FC<{
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 bg-white dark:bg-[#1e2029] rounded-xl border border-gray-100 dark:border-gray-800 text-center">
+              <div className="p-3 bg-white dark:bg-nocturne rounded-xl border border-gray-100 dark:border-gray-800 text-center">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active Price</p>
                 <p className="text-lg font-black text-gray-900 dark:text-white">${item.sell_price_ex_gst.toFixed(2)}</p>
               </div>
-              <div className="p-3 bg-white dark:bg-[#1e2029] rounded-xl border border-gray-100 dark:border-gray-800 text-center">
+              <div className="p-3 bg-white dark:bg-nocturne rounded-xl border border-gray-100 dark:border-gray-800 text-center">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Landed Cost</p>
                 <p className="text-lg font-black text-[#129DC0]">${costBasis.toFixed(2)}</p>
               </div>
@@ -870,7 +870,7 @@ const NewVersionSlideOver: React.FC<{
               </div>
             )}
 
-            <div className="pt-4 sticky bottom-0 bg-white dark:bg-[#1e2029] pb-8">
+            <div className="pt-4 sticky bottom-0 bg-white dark:bg-nocturne pb-8">
               <button type="submit"
                 disabled={loading}
                 className="w-full py-4 bg-[#129DC0] text-white text-sm font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-[#129DC0]/20 hover:bg-[#0f87a8] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-3"

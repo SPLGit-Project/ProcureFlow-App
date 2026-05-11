@@ -12,18 +12,65 @@ import {
     SESSION_WARNING_WINDOW_MS,
     writeSessionLogoutNotice
 } from '../utils/sessionState.ts';
-import {
-    MOCK_USERS,
-    MOCK_ROLES,
-    MOCK_SITES,
-    MOCK_SUPPLIERS,
-    MOCK_ITEMS,
-    MOCK_CATALOG,
-    MOCK_SNAPSHOTS,
-    MOCK_POS,
-    MOCK_WORKFLOW_STEPS,
-    MOCK_NOTIFICATIONS
-} from '../services/mockData.ts';
+import type { DevelopmentFixtures } from '../services/developmentFixtures.ts';
+
+const DEFAULT_HOME_EXPERIENCE = {
+    greetingMode: 'random' as const,
+    greetingText: '',
+    quoteMode: 'random' as const,
+    quoteText: '',
+    messageType: 'quote' as const,
+};
+
+const DEFAULT_BRANDING: AppBranding = {
+    appName: 'MercerFlow',
+    logoUrl: '',
+    primaryColor: '#2563eb',
+    secondaryColor: '#1e2029',
+    fontFamily: 'sans',
+    sidebarTheme: 'system',
+    homeExperience: DEFAULT_HOME_EXPERIENCE,
+};
+
+const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
+    previewEnabled: true,
+    previewWriteBlock: true,
+    goLiveEnabled: false,
+    uiRevampEnabled: true,
+    smartBuyingV2Enabled: true,
+    integrationsEnabled: false,
+    approvedCatalogueEnforced: false,
+};
+
+const DEFAULT_MARGIN_THRESHOLDS: MarginThresholds = {
+    defaultPercent: 25,
+    standard: 25,
+    contract: 20,
+    customerSpecific: 20,
+    promotional: 15,
+    customerGroup: 25,
+};
+
+const loadDevelopmentFixtures = async (): Promise<DevelopmentFixtures | null> => {
+    if (!import.meta.env.DEV) return null;
+    const fixtures = await import('../services/developmentFixtures.ts');
+    return fixtures.getDevelopmentFixtures();
+};
+
+const normalizeBranding = (value?: Partial<AppBranding> | null): AppBranding => ({
+    ...DEFAULT_BRANDING,
+    ...(value || {}),
+    appName: value?.appName || DEFAULT_BRANDING.appName,
+    logoUrl: value?.logoUrl || DEFAULT_BRANDING.logoUrl,
+    primaryColor: value?.primaryColor || DEFAULT_BRANDING.primaryColor,
+    secondaryColor: value?.secondaryColor || DEFAULT_BRANDING.secondaryColor,
+    fontFamily: value?.fontFamily || DEFAULT_BRANDING.fontFamily,
+    sidebarTheme: value?.sidebarTheme || DEFAULT_BRANDING.sidebarTheme,
+    homeExperience: {
+        ...DEFAULT_HOME_EXPERIENCE,
+        ...(value?.homeExperience || {}),
+    },
+});
 
 // Helper to get raw site filter from localStorage or user defaults
 const getInitialSiteIds = (): string[] => {
@@ -43,6 +90,7 @@ const getInitialSiteIds = (): string[] => {
 };
 
 const isLocalQaMode = (): boolean => {
+    if (!import.meta.env.DEV) return false;
     if (typeof globalThis.window === 'undefined') return false;
     const host = globalThis.location.hostname;
     const isLocalhost = host === 'localhost' || host === '127.0.0.1';
@@ -209,58 +257,20 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const qaMode = isLocalQaMode();
-  const qaUser = React.useMemo<User>(() => ({
-      ...(MOCK_USERS.find(u => u.role === 'ADMIN') || MOCK_USERS[0]),
-      id: '00000000-0000-0000-0000-000000000000',
-      name: 'QA Admin',
-      email: 'qa.admin@splservices.com.au',
-      role: 'ADMIN',
-      realRole: 'ADMIN',
-      status: 'APPROVED',
-      siteIds: MOCK_SITES.map(s => s.id)
-  }), []);
-
-  const mockPosWithSiteIds = React.useMemo(() => {
-      return MOCK_POS.map((po, idx) => {
-          const fallbackSite = MOCK_SITES[idx % MOCK_SITES.length];
-          const siteId = (po as unknown as { siteId?: string }).siteId || fallbackSite.id;
-          const site = (po as unknown as { site?: string }).site || fallbackSite.name;
-          return {
-              ...po,
-              siteId,
-              site
-          };
-      }) as PORequest[];
-  }, []);
-
-  const [users, setUsers] = useState<User[]>(() => qaMode ? [...MOCK_USERS] : []);
-  const [currentUser, setCurrentUser] = useState<User | null>(() => qaMode ? qaUser : null);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => qaMode);
+  const [users, setUsers] = useState<User[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   // Updated Multi-Site State
   const [activeSiteIds, _setActiveSiteIds] = useState<string[]>(getInitialSiteIds());
   
-  const [isLoadingAuth, setIsLoadingAuth] = useState(() => !qaMode);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isPendingApproval, setIsPendingApproval] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(() => !qaMode);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   
-  const [roles, setRoles] = useState<RoleDefinition[]>(() => qaMode ? [...MOCK_ROLES] : []);
-
-  const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
-    previewEnabled: true,
-    previewWriteBlock: true,
-    goLiveEnabled: false,
-    uiRevampEnabled: true,
-    smartBuyingV2Enabled: true,
-    integrationsEnabled: false,
-    approvedCatalogueEnforced: false,
-  };
+  const [roles, setRoles] = useState<RoleDefinition[]>([]);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(DEFAULT_FEATURE_FLAGS);
 
-  const DEFAULT_MARGIN_THRESHOLDS: MarginThresholds = {
-    defaultPercent: 25, standard: 25, contract: 20,
-    customerSpecific: 20, promotional: 15, customerGroup: 25,
-  };
   const [marginThresholds, setMarginThresholds] = useState<MarginThresholds>(DEFAULT_MARGIN_THRESHOLDS);
 
   // Auth Config is now managed in the backend (env vars/Azure)
@@ -300,26 +310,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // Branding State
   const [branding, setBranding] = useState<AppBranding>(() => {
       const saved = localStorage.getItem('app-branding');
-      // Backward compatibility check or default
       if (saved) {
-          const parsed = JSON.parse(saved);
-          return {
-              appName: parsed.appName || 'ProcureFlow',
-              logoUrl: parsed.logoUrl || '',
-              primaryColor: parsed.primaryColor || '#2563eb', // Default Blue
-              secondaryColor: parsed.secondaryColor || '#1e2029', // Default Dark
-              fontFamily: parsed.fontFamily || 'sans',
-              sidebarTheme: parsed.sidebarTheme || 'system'
-          };
+          try {
+              return normalizeBranding(JSON.parse(saved));
+          } catch {
+              return DEFAULT_BRANDING;
+          }
       }
-      return {
-          appName: 'ProcureFlow',
-          logoUrl: '', 
-          primaryColor: '#2563eb',
-          secondaryColor: '#1e2029',
-          fontFamily: 'sans',
-          sidebarTheme: 'system'
-      };
+      return DEFAULT_BRANDING;
   });
 
   const persistSessionActivity = useCallback((userId: string, force = false) => {
@@ -348,12 +346,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   }, [persistSessionActivity]);
 
   // Data State
-  const [pos, setPos] = useState<PORequest[]>(() => qaMode ? mockPosWithSiteIds : []);
-  const [suppliers, setSuppliers] = useState<Supplier[]>(() => qaMode ? [...MOCK_SUPPLIERS] : []);
-  const [items, setItems] = useState<Item[]>(() => qaMode ? [...MOCK_ITEMS] : []);
-  const [sites, setSites] = useState<Site[]>(() => qaMode ? [...MOCK_SITES] : []);
-  const [catalog, setCatalog] = useState<SupplierCatalogItem[]>(() => qaMode ? [...MOCK_CATALOG] : []);
-  const [stockSnapshots, setStockSnapshots] = useState<SupplierStockSnapshot[]>(() => qaMode ? [...MOCK_SNAPSHOTS] : []);
+  const [pos, setPos] = useState<PORequest[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [catalog, setCatalog] = useState<SupplierCatalogItem[]>([]);
+  const [stockSnapshots, setStockSnapshots] = useState<SupplierStockSnapshot[]>([]);
   
   // New State
   const [mappings, setMappings] = useState<SupplierProductMap[]>([]);
@@ -361,8 +359,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [attributeOptions, setAttributeOptions] = useState<AttributeOption[]>([]);
 
   // Admin Data State
-  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>(() => qaMode ? [...MOCK_WORKFLOW_STEPS] : []);
-  const [notificationRules, setNotificationRules] = useState<NotificationRule[]>(() => qaMode ? [...MOCK_NOTIFICATIONS] : []);
+  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
+  const [notificationRules, setNotificationRules] = useState<NotificationRule[]>([]);
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
   const [idleSecondsRemaining, setIdleSecondsRemaining] = useState<number | null>(null);
 
@@ -399,9 +397,17 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     useEffect(() => {
         if (!isAuthenticated) return;
         if (activeSiteIds.length > 0) return;
+        const hasStoredActiveSiteSelection = localStorage.getItem('activeSiteIds') !== null;
+        if (hasStoredActiveSiteSelection) return;
         
         if (qaMode) {
-            const defaults = MOCK_SITES.slice(0, 3).map(s => s.id);
+            const availableSiteIds = sites.map(s => s.id);
+            const allowedSiteIds = currentUser?.role === 'ADMIN'
+                ? availableSiteIds
+                : currentUser?.siteIds?.length
+                    ? currentUser.siteIds
+                    : availableSiteIds;
+            const defaults = sites.filter(s => allowedSiteIds.includes(s.id)).slice(0, 3).map(s => s.id);
             _setActiveSiteIds(defaults);
             localStorage.setItem('activeSiteIds', JSON.stringify(defaults));
             return;
@@ -422,6 +428,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
              savePreferences({ activeSiteIds: [sites[0].id] });
         }
     }, [qaMode, activeSiteIds.length, isAuthenticated, currentUser, sites]);
+
+    useEffect(() => {
+        if (!isAuthenticated || !currentUser || currentUser.role === 'ADMIN') return;
+        if (!currentUser.siteIds || currentUser.siteIds.length === 0) {
+            if (activeSiteIds.length > 0) {
+                _setActiveSiteIds([]);
+                localStorage.setItem('activeSiteIds', JSON.stringify([]));
+                savePreferences({ activeSiteIds: [] });
+            }
+            return;
+        }
+
+        const validatedIds = activeSiteIds.filter(id => currentUser.siteIds.includes(id));
+        if (validatedIds.length !== activeSiteIds.length) {
+            _setActiveSiteIds(validatedIds);
+            localStorage.setItem('activeSiteIds', JSON.stringify(validatedIds));
+            savePreferences({ activeSiteIds: validatedIds });
+        }
+    }, [activeSiteIds, currentUser, isAuthenticated]);
 
     // --- Computed: Sites the current user has access to ---
     const userSites = React.useMemo(() => {
@@ -448,6 +473,42 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         return pos.filter(p => activeSiteIds.includes(p.siteId));
     }, [pos, activeSiteIds]);
 
+  const hydrateDevelopmentData = useCallback((fixtures: DevelopmentFixtures) => {
+      setUsers([...fixtures.users]);
+      setSites([...fixtures.sites]);
+      setSuppliers([...fixtures.suppliers]);
+      setItems([...fixtures.items]);
+      setCatalog([...fixtures.catalog]);
+      setStockSnapshots([...fixtures.stockSnapshots]);
+      setPos([...fixtures.pos]);
+      setWorkflowSteps([...fixtures.workflowSteps]);
+      setNotificationRules([...fixtures.notificationRules]);
+      setMappings([]);
+      setAvailability([]);
+      setTeamsWebhookUrl('');
+      setAttributeOptions([]);
+      setFeatureFlags(DEFAULT_FEATURE_FLAGS);
+      setMarginThresholds(DEFAULT_MARGIN_THRESHOLDS);
+  }, []);
+
+  const startDevelopmentSession = useCallback(async () => {
+      const fixtures = await loadDevelopmentFixtures();
+      if (!fixtures) {
+          setIsLoadingAuth(false);
+          setIsLoadingData(false);
+          return false;
+      }
+
+      hydrateDevelopmentData(fixtures);
+      setRoles([...fixtures.roles]);
+      setCurrentUser(fixtures.adminUser);
+      setIsAuthenticated(true);
+      setIsPendingApproval(false);
+      setIsLoadingAuth(false);
+      setIsLoadingData(false);
+      return true;
+  }, [hydrateDevelopmentData]);
+
   // Data Loading
   const lastFetchTime = React.useRef<number>(0);
   const reloadData = useCallback(async (silent: boolean = false, force: boolean = false) => {
@@ -457,21 +518,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             return;
         }
         if (qaMode) {
-            setRoles([...MOCK_ROLES]);
-            setUsers([...MOCK_USERS]);
-            setSites([...MOCK_SITES]);
-            setSuppliers([...MOCK_SUPPLIERS]);
-            setItems([...MOCK_ITEMS]);
-            setCatalog([...MOCK_CATALOG]);
-            setStockSnapshots([...MOCK_SNAPSHOTS]);
-            setPos([...mockPosWithSiteIds]);
-            setWorkflowSteps([...MOCK_WORKFLOW_STEPS]);
-            setNotificationRules([...MOCK_NOTIFICATIONS]);
-            setMappings([]);
-            setAvailability([]);
-            setTeamsWebhookUrl('');
-            setAttributeOptions([]);
-            setFeatureFlags(DEFAULT_FEATURE_FLAGS);
+            const fixtures = await loadDevelopmentFixtures();
+            if (fixtures) {
+                setRoles([...fixtures.roles]);
+                hydrateDevelopmentData(fixtures);
+            }
             if (!silent) setIsLoadingData(false);
             return;
         }
@@ -548,7 +599,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setMappings(fetchedMappings);
             setAvailability(fetchedAvailability);
             setTeamsWebhookUrl(fetchedTeamsUrl);
-            if (fetchedBranding) setBranding(fetchedBranding);
+            if (fetchedBranding) setBranding(normalizeBranding(fetchedBranding));
             setAttributeOptions(fetchedOptions);
             if (fetchedFeatureFlags) setFeatureFlags(fetchedFeatureFlags);
             if (fetchedMarginThresholds) setMarginThresholds(fetchedMarginThresholds);
@@ -559,7 +610,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         } finally {
             if (!silent) setIsLoadingData(false);
         }
-    }, [activeSiteIds, qaMode, mockPosWithSiteIds, isAuthenticated, currentUser?.id]);
+    }, [activeSiteIds, qaMode, isAuthenticated, currentUser?.id, hydrateDevelopmentData]);
 
     // Trigger reload when active site changes
     useEffect(() => {
@@ -590,14 +641,22 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             try {
                 const raw = JSON.parse(testUserJson) as User & { permissions?: PermissionId[] };
                 const { permissions: perms, ...mockUser } = raw;
-                if (perms) {
-                    // Synthesise a role so hasPermission() works without Supabase roles
-                    setRoles([{ id: mockUser.role, name: 'Test Role', description: '', permissions: perms, isSystem: false }]);
-                }
-                setCurrentUser(mockUser as User);
-                setIsAuthenticated(true);
-                setIsPendingApproval(false);
-                setIsLoadingAuth(false);
+                void (async () => {
+                    const fixtures = await loadDevelopmentFixtures();
+                    if (!mounted) return;
+                    if (fixtures) {
+                        hydrateDevelopmentData(fixtures);
+                    }
+                    if (perms) {
+                        // Synthesise a role so hasPermission() works without Supabase roles.
+                        setRoles([{ id: mockUser.role, name: 'Test Role', description: '', permissions: perms, isSystem: false }]);
+                    }
+                    setCurrentUser(mockUser as User);
+                    setIsAuthenticated(true);
+                    setIsPendingApproval(false);
+                    setIsLoadingAuth(false);
+                    setIsLoadingData(false);
+                })();
                 return () => { mounted = false; };
             } catch {
                 // malformed test user — fall through to normal auth
@@ -606,11 +665,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
 
     if (qaMode) {
-        setCurrentUser(qaUser);
-        setIsAuthenticated(true);
-        setIsPendingApproval(false);
-        setIsLoadingAuth(false);
-        reloadData(true);
+        void (async () => {
+            if (!mounted) return;
+            await startDevelopmentSession();
+        })();
         return () => {
             mounted = false;
         };
@@ -1227,10 +1285,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   }
 
   const updateBranding = async (newBranding: AppBranding) => {
-      setBranding(newBranding);
+      const normalizedBranding = normalizeBranding(newBranding);
+      setBranding(normalizedBranding);
       try {
-          await db.updateBranding(newBranding);
-          logAction('BRANDING_UPDATED', { primaryColor: newBranding.primaryColor, appName: newBranding.appName });
+          await db.updateBranding(normalizedBranding);
+          logAction('BRANDING_UPDATED', { primaryColor: normalizedBranding.primaryColor, appName: normalizedBranding.appName });
       } catch (e) {
           console.error("Failed to persist branding", e);
       }
@@ -1238,22 +1297,15 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // --- Auth Operations ---
   const login = async () => {
-      if (qaMode) {
-          setCurrentUser(qaUser);
-          setIsAuthenticated(true);
-          setIsPendingApproval(false);
-          setIsLoadingAuth(false);
-          reloadData(true);
+      if (import.meta.env.DEV && (qaMode || !isSupabaseConfigured)) {
+          localStorage.setItem('pf_qa_mode', '1');
+          await startDevelopmentSession();
           return;
       }
 
       if (!isSupabaseConfigured) {
-          localStorage.setItem('pf_qa_mode', '1');
-          setCurrentUser(qaUser);
-          setIsAuthenticated(true);
-          setIsPendingApproval(false);
-          setIsLoadingAuth(false);
-          reloadData(true);
+          alert('Authentication is not configured. Please contact your system administrator.');
+          logAction('LOGIN_CONFIGURATION_MISSING', {});
           return;
       }
 
@@ -1762,7 +1814,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         // Teams (Global Check)
         const sendTeams = Array.from(targets.values()).some(t => t.teams);
         if (sendTeams && teamsWebhookUrl) {
-             const message = `**ProcureFlow Notification**\n\nEvent: ${event}\nData: ${JSON.stringify(data, null, 2)}`;
+             const message = `**MercerFlow Notification**\n\nEvent: ${event}\nData: ${JSON.stringify(data, null, 2)}`;
              try {
                 await fetch(teamsWebhookUrl, { method: 'POST', body: JSON.stringify({ text: message }) });
                 logAction('NOTIFICATION_SENT_TEAMS', { event, data });
@@ -1798,7 +1850,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                      await svc.sendMail({
                          to: target.emailAddress,
                          from: currentUser?.email || '',
-                         subject: `ProcureFlow Notification: ${event}`,
+                         subject: `MercerFlow Notification: ${event}`,
                          html: `<p>Event: ${event}</p><p>Details:</p><pre>${JSON.stringify(data, null, 2)}</pre>`,
                          siteId,
                          invitedByName: 'System Notification'

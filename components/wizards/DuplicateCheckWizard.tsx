@@ -87,7 +87,7 @@ function RequestContext({ request }: { request: ItemRequest }) {
   ].filter(Boolean);
 
   return (
-    <aside className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
+    <aside className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
       <div>
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Proposed Item Code</p>
         <p className="font-mono text-sm font-bold text-[var(--color-brand)]">{generateItemCode(request.item_description)}</p>
@@ -295,12 +295,12 @@ export default function DuplicateCheckWizard() {
               <p className="text-sm text-gray-500 mt-1">Confirm the item need before searching the catalogue.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-5 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl">
+              <div className="p-5 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl">
                 <FileText size={18} className="text-[var(--color-brand)] mb-3" />
                 <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Type</p>
                 <p className="font-bold text-gray-900 dark:text-white">{request.request_type.replaceAll('_', ' ')}</p>
               </div>
-              <div className="p-5 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl">
+              <div className="p-5 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl">
                 <Package size={18} className="text-[var(--color-brand)] mb-3" />
                 <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Priority</p>
                 <p className="font-bold text-gray-900 dark:text-white">{request.is_urgent ? 'Urgent' : 'Standard'}</p>
@@ -374,7 +374,7 @@ export default function DuplicateCheckWizard() {
                           ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
                           : tier.isPerfect
                           ? `${tier.border} ${tier.bg}`
-                          : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-700'
+                          : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne hover:border-gray-300 dark:hover:border-gray-700'
                       }`}
                     >
                       <SimilarityBadge score={item.similarity_score} />
@@ -415,10 +415,10 @@ export default function DuplicateCheckWizard() {
                       disabled={blocked}
                       className={`p-4 rounded-2xl border text-left transition-all ${
                         blocked
-                          ? 'opacity-40 cursor-not-allowed border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029]'
+                          ? 'opacity-40 cursor-not-allowed border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne'
                           : outcome === value
                           ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
-                          : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-700'
+                          : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne hover:border-gray-300 dark:hover:border-gray-700'
                       }`}
                     >
                       <p className="font-bold text-gray-900 dark:text-white">{label}</p>
@@ -468,7 +468,7 @@ export default function DuplicateCheckWizard() {
               <p className="text-sm text-gray-500 mt-1">Review the recorded outcome before advancing the workflow.</p>
             </div>
 
-            <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-6 space-y-5">
+            <div className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-6 space-y-5">
               <div className="flex items-center gap-3">
                 {outcome === 'USE_EXISTING'
                   ? <Link2 size={18} className="text-[var(--color-brand)]" />

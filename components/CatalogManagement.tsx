@@ -514,7 +514,7 @@ const CatalogManagement = ({
                     /* 5-LEVEL HIERARCHY TAXONOMY VIEW */
                     <div ref={scrollContainerRef} className="flex-1 flex gap-3 md:gap-4 overflow-x-auto p-2 sm:p-3 md:p-4 custom-scrollbar scroll-smooth">
                         {/* 1. POOLS */}
-                        <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden ${minimizedColumns['POOL'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
+                        <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden ${minimizedColumns['POOL'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
                             <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
                                 {!minimizedColumns['POOL'] && (
                                     <h4 className="text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
@@ -577,7 +577,7 @@ const CatalogManagement = ({
 
                         {/* 2. CATALOGS */}
                         {selectedPoolId && (
-                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['CATALOG'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
+                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['CATALOG'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
                                     {!minimizedColumns['CATALOG'] && (
                                         <h4 className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
@@ -636,7 +636,7 @@ const CatalogManagement = ({
 
                         {/* 3. TYPES */}
                         {selectedCatalogId && (
-                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['TYPE'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
+                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['TYPE'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
                                     {!minimizedColumns['TYPE'] && (
                                         <h4 className="text-xs font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center gap-2">
@@ -694,7 +694,7 @@ const CatalogManagement = ({
 
                         {/* 4. CATEGORIES */}
                         {selectedTypeId && (
-                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['CATEGORY'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
+                            <div className={`transition-all duration-300 flex flex-col bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ${minimizedColumns['CATEGORY'] ? 'min-w-[80px] w-[80px]' : 'min-w-[220px] w-[220px] sm:min-w-[260px] sm:w-[260px] md:min-w-[280px] md:w-[280px]'}`}>
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
                                     {!minimizedColumns['CATEGORY'] && (
                                         <h4 className="text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-2">
@@ -751,7 +751,7 @@ const CatalogManagement = ({
 
                         {/* 5. SUB-CATEGORIES */}
                         {selectedParentId && (
-                            <div className="min-w-[220px] sm:min-w-[260px] md:min-w-[280px] flex flex-col bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+                            <div className="min-w-[220px] sm:min-w-[260px] md:min-w-[280px] flex flex-col bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
                                 <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between items-center">
                                     <h4 className="text-xs font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 flex items-center gap-2">
                                         <Tag size={14} /> Sub-Categories
@@ -782,7 +782,7 @@ const CatalogManagement = ({
                     </div>
                 ) : viewMode === 'LIST' ? (
                     /* TRADITIONAL LIST VIEW (For non-taxonomy types) */
-                    <div className="flex-1 bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden flex flex-col">
+                    <div className="flex-1 bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden flex flex-col">
                         <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-6 bg-gray-50/50 dark:bg-gray-800/30">
                             <div className="relative w-full md:w-80 lg:w-96">
                                 <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -989,7 +989,7 @@ const CatalogManagement = ({
             {isModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-gray-950/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={() => setIsModalOpen(false)} />
-                    <div className="relative bg-white dark:bg-[#1e2029] rounded-3xl md:rounded-[40px] shadow-[0_35px_80px_-15px_rgba(0,0,0,0.8)] w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-800 animate-in slide-in-from-bottom-12 duration-500 flex flex-col max-h-[92dvh]">
+                    <div className="relative bg-white dark:bg-nocturne rounded-3xl md:rounded-[40px] shadow-[0_35px_80px_-15px_rgba(0,0,0,0.8)] w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-800 animate-in slide-in-from-bottom-12 duration-500 flex flex-col max-h-[92dvh]">
                         {/* Modal Header */}
                         <div className="px-4 sm:px-6 md:px-10 py-5 sm:py-6 md:py-8 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gradient-to-br from-gray-50 to-white dark:from-[#1e2029] dark:to-[#181a21] flex-shrink-0">
                             <div className="flex items-center gap-4 sm:gap-6">

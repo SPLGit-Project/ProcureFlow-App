@@ -152,7 +152,7 @@ const HistoryView = () => {
                     </div>
                 ) : (
                     historyPos.map(po => (
-                        <div key={po.id} className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm transition-all hover:shadow-md overflow-hidden">
+                        <div key={po.id} className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm transition-all hover:shadow-md overflow-hidden">
                             {/* Header Row */}
                             <div 
                                 onClick={() => toggleExpand(po.id)}
@@ -183,7 +183,7 @@ const HistoryView = () => {
 
                             {/* Expanded Lifecycle View */}
                             {expandedId === po.id && (
-                                <div className="p-6 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029]">
+                                <div className="p-6 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne">
                                     {renderLifecycle(po)}
                                 </div>
                             )}

@@ -29,7 +29,7 @@ const AccountDrawer = ({ isOpen, onClose }: AccountDrawerProps) => {
             ></div>
 
             {/* Drawer Content */}
-            <div className={`relative w-full max-w-sm bg-white dark:bg-[#1e2029] h-full shadow-2xl flex flex-col border-l border-default animate-slide-in-right`}>
+            <div className={`relative w-full max-w-sm bg-white dark:bg-nocturne h-full shadow-2xl flex flex-col border-l border-default animate-slide-in-right`}>
                 
                 {/* Header */}
                 <div className="p-6 border-b border-default bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">
@@ -159,7 +159,7 @@ const AccountDrawer = ({ isOpen, onClose }: AccountDrawerProps) => {
                         SIGN OUT
                     </button>
                     <p className="text-[10px] text-center text-tertiary dark:text-gray-500 font-bold mt-4 uppercase tracking-[0.2em] opacity-50">
-                        ProcureFlow Enterprise v5.0.1
+                        MercerFlow Enterprise v5.0.1
                     </p>
                 </div>
             </div>

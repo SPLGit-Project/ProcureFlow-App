@@ -91,7 +91,7 @@ const InAppNotifications: React.FC<InAppNotificationsProps> = ({
 
             {/* Dropdown */}
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-96 bg-white dark:bg-[#1e2029] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 z-50 animate-fade-in overflow-hidden">
+                <div className="absolute right-0 mt-2 w-96 bg-white dark:bg-nocturne rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 z-50 animate-fade-in overflow-hidden">
                     {/* Header */}
                     <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5">
                         <div className="flex items-center justify-between">

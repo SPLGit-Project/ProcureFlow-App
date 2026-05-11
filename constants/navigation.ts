@@ -13,9 +13,10 @@ export interface NavItemConfig {
 
 export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     // ── Workspace ──
-    { id: 'dashboard', path: '/', label: 'Dashboard', iconName: 'LayoutDashboard', permission: 'view_dashboard', isSystem: true, category: 'Workspace' },
+    { id: 'home', path: '/', label: 'Home', iconName: 'House', permission: 'view_dashboard', isSystem: true, category: 'Workspace' },
 
     // ── Procurement ──
+    { id: 'dashboard', path: '/procurement/dashboard', label: 'Dashboard', iconName: 'LayoutDashboard', permission: 'view_dashboard', isSystem: true, category: 'Procurement' },
     { id: 'create', path: '/create', label: 'Create Request', iconName: 'PlusCircle', permission: 'create_request', category: 'Procurement' },
     { id: 'requests', path: '/requests', label: 'Requests', iconName: 'FileText', permission: 'view_dashboard', category: 'Procurement' },
     { id: 'smart-buying', path: '/smart-buying', label: 'Smart Buying', iconName: 'BarChart3', permission: 'manage_development', category: 'Procurement' },

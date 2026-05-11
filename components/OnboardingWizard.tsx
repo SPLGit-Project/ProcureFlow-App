@@ -82,13 +82,13 @@ const OnboardingWizard = () => {
     if (isExpired) {
         return (
             <div className="min-h-screen bg-app flex items-center justify-center p-4">
-                <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-full max-w-lg p-8 text-center animate-fade-in">
+                <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-full max-w-lg p-8 text-center animate-fade-in">
                     <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
                         <Clock size={32} />
                     </div>
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Invitation Expired</h2>
                     <p className="text-gray-600 dark:text-gray-400 mb-8">
-                        Your invitation to join ProcureFlow has expired (48h limit). Please contact your administrator to re-send your welcome email.
+                        Your invitation to join MercerFlow has expired (48h limit). Please contact your administrator to re-send your welcome email.
                     </p>
                     <button type="button" onClick={() => logout()} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium flex items-center justify-center gap-2 w-full">
                         <LogOut size={16} /> Sign Out
@@ -101,7 +101,7 @@ const OnboardingWizard = () => {
     if (step === 3) {
         return (
             <div className="min-h-screen bg-app flex items-center justify-center p-4">
-                <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-full max-w-lg p-8 text-center animate-fade-in">
+                <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-full max-w-lg p-8 text-center animate-fade-in">
                     <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
                         <CheckCircle2 size={32} />
                     </div>
@@ -119,11 +119,11 @@ const OnboardingWizard = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-[#15171e] flex flex-col items-center justify-center p-4">
-            <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 w-full max-w-2xl overflow-hidden flex flex-col h-[600px]">
+            <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 w-full max-w-2xl overflow-hidden flex flex-col h-[600px]">
                 
                 {/* Header */}
                 <div className="bg-[var(--color-brand)] p-6 text-white text-center">
-                    <h1 className="text-2xl font-bold">Welcome to ProcureFlow</h1>
+                    <h1 className="text-2xl font-bold">Welcome to MercerFlow</h1>
                     <p className="text-blue-100 mt-1">Let's get you set up, {currentUser?.name.split(' ')[0]}</p>
                 </div>
 

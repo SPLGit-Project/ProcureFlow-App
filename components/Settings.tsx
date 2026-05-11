@@ -12,14 +12,15 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3, Sparkles
 } from 'lucide-react';
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
 import { supabase } from '../lib/supabaseClient.ts';
-import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog } from '../types.ts';
+import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding } from '../types.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { useLocation } from 'react-router-dom';
+import { BrandLogo } from './BrandLogo.tsx';
 // AdminAccessHub removed — access approvals no longer used
 import AdminMigration from './AdminMigration.tsx';
 
@@ -659,13 +660,43 @@ const Settings = () => {
   const [siteForm, setSiteForm] = useState({ name: '', suburb: '', address: '', state: '', zip: '', contactPerson: '' });
 
   // --- Branding Form State ---
-  const [brandingForm, setBrandingForm] = useState({
+  const [brandingForm, setBrandingForm] = useState<AppBranding>({
       appName: branding.appName,
       logoUrl: branding.logoUrl,
       primaryColor: branding.primaryColor,
       secondaryColor: branding.secondaryColor,
       fontFamily: branding.fontFamily,
+      sidebarTheme: branding.sidebarTheme || 'system',
+      menuConfig: branding.menuConfig,
+      emailTemplate: branding.emailTemplate,
+      homeExperience: {
+          greetingMode: branding.homeExperience?.greetingMode || 'random',
+          greetingText: branding.homeExperience?.greetingText || '',
+          quoteMode: branding.homeExperience?.quoteMode || 'random',
+          quoteText: branding.homeExperience?.quoteText || '',
+          messageType: branding.homeExperience?.messageType || 'quote',
+      },
   });
+
+  useEffect(() => {
+      setBrandingForm({
+          appName: branding.appName,
+          logoUrl: branding.logoUrl,
+          primaryColor: branding.primaryColor,
+          secondaryColor: branding.secondaryColor,
+          fontFamily: branding.fontFamily,
+          sidebarTheme: branding.sidebarTheme || 'system',
+          menuConfig: branding.menuConfig,
+          emailTemplate: branding.emailTemplate,
+          homeExperience: {
+              greetingMode: branding.homeExperience?.greetingMode || 'random',
+              greetingText: branding.homeExperience?.greetingText || '',
+              quoteMode: branding.homeExperience?.quoteMode || 'random',
+              quoteText: branding.homeExperience?.quoteText || '',
+              messageType: branding.homeExperience?.messageType || 'quote',
+          },
+      });
+  }, [branding]);
 
   // --- Invite Wizard State ---
   const [inviteStep, setInviteStep] = useState<1 | 2>(1);
@@ -1384,7 +1415,7 @@ if __name__ == "__main__":
 
       {activeTab === 'PROFILE' && (
           <div className="animate-fade-in max-w-2xl">
-              <div className="bg-white dark:bg-[#1e2029] rounded-2xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
+              <div className="bg-white dark:bg-nocturne rounded-2xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">User Profile</h2>
                   
                   <div className="flex flex-col md:flex-row gap-8 items-start">
@@ -1478,7 +1509,7 @@ if __name__ == "__main__":
 
             {activeTab === 'CATALOG' && (
         <div className="animate-fade-in space-y-6">
-            <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
                 <div className="mb-6 flex justify-between items-start">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -1506,7 +1537,7 @@ if __name__ == "__main__":
 
       {activeTab === 'STOCK' && (
           <div className="space-y-6 animate-fade-in">
-             <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
+             <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
                   
                   {/* Supplier Selector Header */}
                   <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 bg-gray-50 dark:bg-white/5 p-4 rounded-xl border border-gray-200 dark:border-gray-800">
@@ -1713,7 +1744,7 @@ if __name__ == "__main__":
              </div>
              {isSnapshotFormOpen && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Add Stock Snapshot</h2>
                         <form onSubmit={handleAddSnapshot} className="space-y-4">
                             <div><label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Supplier</label><select className="input-field mt-1" value={snapSupplierId} onChange={e => setSnapSupplierId(e.target.value)}>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
@@ -1745,7 +1776,7 @@ if __name__ == "__main__":
                       {/* Mapping Health Dashboard */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                           {/* Card 1: Confirmed (Good) */}
-                          <div className="bg-white dark:bg-[#1e2029] p-4 rounded-xl border-l-4 border-green-500 shadow-sm flex items-center justify-between">
+                          <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-green-500 shadow-sm flex items-center justify-between">
                               <div>
                                   <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Ready for POs</p>
                                   <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappings.filter(m => m.mappingStatus === 'CONFIRMED').length}</p>
@@ -1757,7 +1788,7 @@ if __name__ == "__main__":
                           </div>
 
                           {/* Card 2: Proposed (Action) */}
-                          <div className="bg-white dark:bg-[#1e2029] p-4 rounded-xl border-l-4 border-yellow-400 shadow-sm flex items-center justify-between relative overflow-hidden group hover:shadow-md transition-shadow cursor-pointer" onClick={() => setMappingSubTab('PROPOSED')}>
+                          <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-yellow-400 shadow-sm flex items-center justify-between relative overflow-hidden group hover:shadow-md transition-shadow cursor-pointer" onClick={() => setMappingSubTab('PROPOSED')}>
                               <div className="relative z-10">
                                   <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Needs Review</p>
                                   <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappings.filter(m => m.mappingStatus === 'PROPOSED').length}</p>
@@ -1770,7 +1801,7 @@ if __name__ == "__main__":
                           </div>
 
                           {/* Card 3: Unmapped (Critical) */}
-                          <div className="bg-white dark:bg-[#1e2029] p-4 rounded-xl border-l-4 border-red-500 shadow-sm flex items-center justify-between">
+                          <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-red-500 shadow-sm flex items-center justify-between">
                               <div>
                                   <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Unmapped Stock</p>
                                   <p className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -1870,7 +1901,7 @@ if __name__ == "__main__":
                   </button>
               </div>
 
-              <div className="table-shell bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
+              <div className="table-shell bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
                   {mappingSubTab === 'MEMORY' ? (
                       <div className="p-0">
                           <div className="p-4 bg-purple-50 dark:bg-purple-900/10 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center">
@@ -2116,7 +2147,7 @@ if __name__ == "__main__":
 
       {activeTab === 'SUPPLIERS' && (
         <div className="space-y-6 animate-fade-in">
-             <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
+             <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
                  <div className="flex justify-end mb-4"><button type="button" onClick={() => openSupplierForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Supplier</button></div>
                  <div className="table-shell">
                     <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[700px]">
@@ -2136,7 +2167,7 @@ if __name__ == "__main__":
              </div>
              {isSupplierFormOpen && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{editingSupplier ? 'Edit Supplier' : 'New Supplier'}</h2>
                         <form onSubmit={handleSupplierFormSubmit} className="space-y-5">
                             <div>
@@ -2175,7 +2206,7 @@ if __name__ == "__main__":
 
       {activeTab === 'SITES' && (
         <div className="space-y-6 animate-fade-in">
-             <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
+             <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
                  <div className="flex justify-end mb-4"><button type="button" onClick={() => openSiteForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Site</button></div>
                  <div className="table-shell">
                     <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[700px]">
@@ -2197,7 +2228,7 @@ if __name__ == "__main__":
              </div>
              {isSiteFormOpen && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{editingSite ? 'Edit Site' : 'New Site'}</h2>
                         <form onSubmit={handleSiteFormSubmit} className="space-y-5">
                             <div>
@@ -2249,7 +2280,7 @@ if __name__ == "__main__":
           <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Branding Code Restored */}
                 <div className="space-y-6">
-                    <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
+                    <div className="bg-white dark:bg-nocturne p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Visual Identity</h3>
                         
                         <div className="space-y-5">
@@ -2265,11 +2296,17 @@ if __name__ == "__main__":
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Logo</label>
                                 <div className="flex items-center gap-4">
-                                    <div className="w-16 h-16 rounded-xl bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 flex items-center justify-center overflow-hidden relative group">
+                                    <div className="relative group">
                                         {brandingForm.logoUrl ? (
-                                            <img src={brandingForm.logoUrl} className="w-full h-full object-contain" />
+                                            <BrandLogo
+                                                appName={brandingForm.appName}
+                                                logoUrl={brandingForm.logoUrl}
+                                                size="lg"
+                                            />
                                         ) : (
-                                            <Image size={24} className="text-gray-300"/>
+                                            <div className="w-16 h-16 rounded-xl bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 flex items-center justify-center overflow-hidden shadow-sm">
+                                                <Image size={24} className="text-gray-300"/>
+                                            </div>
                                         )}
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer" onClick={() => logoInputRef.current?.click()}>
                                             <Edit2 size={16} className="text-white"/>
@@ -2310,11 +2347,153 @@ if __name__ == "__main__":
                 </div>
 
                 <div className="space-y-6">
-                    <div className="bg-white dark:bg-[#1e2029] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
+                    <div className="bg-white dark:bg-nocturne p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Theme Colors</h3>
                         <div className="space-y-8">
                              <ColorPicker label="Primary Brand Color" value={brandingForm.primaryColor} onChange={c => setBrandingForm({...brandingForm, primaryColor: c})} />
                              <ColorPicker label="Secondary Color" value={brandingForm.secondaryColor} onChange={c => setBrandingForm({...brandingForm, secondaryColor: c})} />
+                        </div>
+                    </div>
+
+                    <div className="bg-white dark:bg-nocturne p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
+                        <div className="flex items-start justify-between gap-4 mb-6">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Home Experience</h3>
+                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 leading-5">
+                                    Control the greeting and daily message shown on the MercerFlow home screen.
+                                </p>
+                            </div>
+                            <Sparkles size={20} className="text-[var(--color-brand)]" />
+                        </div>
+
+                        <div className="space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Greeting source</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                        { id: 'random', label: 'Randomised' },
+                                        { id: 'custom', label: 'Admin set' },
+                                    ].map(option => (
+                                        <button
+                                            key={option.id}
+                                            type="button"
+                                            onClick={() => setBrandingForm(prev => ({
+                                                ...prev,
+                                                homeExperience: {
+                                                    ...(prev.homeExperience || { greetingMode: 'random', quoteMode: 'random', messageType: 'quote' }),
+                                                    greetingMode: option.id as 'custom' | 'random',
+                                                },
+                                            }))}
+                                            className={`rounded-xl border px-3 py-2 text-xs font-black transition-all ${
+                                                brandingForm.homeExperience?.greetingMode === option.id
+                                                    ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/10 text-[var(--color-brand)]'
+                                                    : 'border-gray-200 text-gray-500 hover:border-gray-300 dark:border-gray-700 dark:text-gray-300 dark:hover:border-gray-600'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <textarea
+                                    className="input-field mt-3 min-h-[82px]"
+                                    disabled={brandingForm.homeExperience?.greetingMode !== 'custom'}
+                                    placeholder="Good day, {first_name}. Your workspace is focused."
+                                    value={brandingForm.homeExperience?.greetingText || ''}
+                                    onChange={e => setBrandingForm(prev => ({
+                                        ...prev,
+                                        homeExperience: {
+                                            ...(prev.homeExperience || { greetingMode: 'custom', quoteMode: 'random', messageType: 'quote' }),
+                                            greetingText: e.target.value,
+                                        },
+                                    }))}
+                                />
+                                <p className="mt-2 text-[10px] font-medium text-gray-400">Available tokens: {'{first_name}'}, {'{name}'}, {'{site_label}'}, {'{app_name}'}</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Message type</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                        { id: 'quote', label: 'Quote' },
+                                        { id: 'announcement', label: 'Announcement' },
+                                    ].map(option => (
+                                        <button
+                                            key={option.id}
+                                            type="button"
+                                            onClick={() => setBrandingForm(prev => ({
+                                                ...prev,
+                                                homeExperience: {
+                                                    ...(prev.homeExperience || { greetingMode: 'random', quoteMode: 'random', messageType: 'quote' }),
+                                                    messageType: option.id as 'quote' | 'announcement',
+                                                    quoteMode: option.id === 'announcement' ? 'custom' : (prev.homeExperience?.quoteMode || 'random'),
+                                                },
+                                            }))}
+                                            className={`rounded-xl border px-3 py-2 text-xs font-black transition-all ${
+                                                (brandingForm.homeExperience?.messageType || 'quote') === option.id
+                                                    ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/10 text-[var(--color-brand)]'
+                                                    : 'border-gray-200 text-gray-500 hover:border-gray-300 dark:border-gray-700 dark:text-gray-300 dark:hover:border-gray-600'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="mt-2 text-[10px] font-medium text-gray-400">
+                                    Use Quote for the rotating daily focus, or Announcement for a fixed admin message to all users.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    {(brandingForm.homeExperience?.messageType || 'quote') === 'announcement' ? 'Announcement source' : 'Daily quote source'}
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                        { id: 'random', label: 'Quote of today' },
+                                        { id: 'custom', label: 'Admin set' },
+                                    ].map(option => (
+                                        <button
+                                            key={option.id}
+                                            type="button"
+                                            disabled={(brandingForm.homeExperience?.messageType || 'quote') === 'announcement' && option.id === 'random'}
+                                            onClick={() => setBrandingForm(prev => ({
+                                                ...prev,
+                                                homeExperience: {
+                                                    ...(prev.homeExperience || { greetingMode: 'random', quoteMode: 'random', messageType: 'quote' }),
+                                                    quoteMode: option.id as 'custom' | 'random',
+                                                },
+                                            }))}
+                                            className={`rounded-xl border px-3 py-2 text-xs font-black transition-all ${
+                                                brandingForm.homeExperience?.quoteMode === option.id
+                                                    ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/10 text-[var(--color-brand)]'
+                                                    : 'border-gray-200 text-gray-500 hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:border-gray-600'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <textarea
+                                    className="input-field mt-3 min-h-[82px]"
+                                    disabled={brandingForm.homeExperience?.quoteMode !== 'custom'}
+                                    placeholder={(brandingForm.homeExperience?.messageType || 'quote') === 'announcement'
+                                        ? 'System maintenance is scheduled for Friday at 4:00 PM.'
+                                        : 'Progress improves when the next best action is obvious.'}
+                                    value={brandingForm.homeExperience?.quoteText || ''}
+                                    onChange={e => setBrandingForm(prev => ({
+                                        ...prev,
+                                        homeExperience: {
+                                            ...(prev.homeExperience || { greetingMode: 'random', quoteMode: 'custom', messageType: 'quote' }),
+                                            quoteText: e.target.value,
+                                        },
+                                    }))}
+                                />
+                                <p className="mt-2 text-[10px] font-medium text-gray-400">
+                                    {(brandingForm.homeExperience?.messageType || 'quote') === 'announcement'
+                                        ? 'Announcements are fixed until an admin changes or switches them back to Quote.'
+                                        : 'Random mode rotates leadership and continuous-improvement messages daily.'}
+                                </p>
+                            </div>
                         </div>
                     </div>
                     
@@ -2348,7 +2527,7 @@ if __name__ == "__main__":
                    return (
                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                            {/* Total */}
-                           <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-[var(--color-brand)] transition-all">
+                           <div className="bg-white dark:bg-nocturne p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-[var(--color-brand)] transition-all">
                                <div className="w-12 h-12 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center group-hover:scale-110 transition-transform">
                                    <Users size={24}/>
                                </div>
@@ -2358,7 +2537,7 @@ if __name__ == "__main__":
                                </div>
                            </div>
                            {/* Active */}
-                           <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-green-200 dark:border-green-800/50 flex items-center gap-4 group hover:border-green-400 transition-all">
+                           <div className="bg-white dark:bg-nocturne p-5 rounded-2xl shadow-sm border border-green-200 dark:border-green-800/50 flex items-center gap-4 group hover:border-green-400 transition-all">
                                <div className="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 text-green-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                                    <CheckCircle size={24}/>
                                </div>
@@ -2368,7 +2547,7 @@ if __name__ == "__main__":
                                </div>
                            </div>
                            {/* Pending */}
-                           <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 flex items-center gap-4 group hover:border-amber-400 transition-all">
+                           <div className="bg-white dark:bg-nocturne p-5 rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 flex items-center gap-4 group hover:border-amber-400 transition-all">
                                <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                                    <Clock size={24}/>
                                </div>
@@ -2384,7 +2563,7 @@ if __name__ == "__main__":
                                </div>
                            </div>
                            {/* Archived */}
-                           <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-gray-400 transition-all">
+                           <div className="bg-white dark:bg-nocturne p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-gray-400 transition-all">
                                <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                                    <Archive size={24}/>
                                </div>
@@ -2527,7 +2706,7 @@ if __name__ == "__main__":
                   };
 
                   return (
-                      <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 overflow-hidden">
+                      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 overflow-hidden">
                           {/* Panel Header */}
                           <div className="px-6 py-4 border-b border-amber-100 dark:border-amber-800/40 flex items-center justify-between bg-amber-50/60 dark:bg-amber-900/10">
                               <div className="flex items-center gap-3">
@@ -2589,7 +2768,7 @@ if __name__ == "__main__":
 
 
               {/* Global Directory */}
-              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+              <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
                   <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4">
                       <div>
                           <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Global User Directory</h3>
@@ -2815,7 +2994,7 @@ if __name__ == "__main__":
           <div className="animate-fade-in space-y-6">
               {/* Security Dashboard Header */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-purple-400 transition-all">
+                  <div className="bg-white dark:bg-nocturne p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-purple-400 transition-all">
                       <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/20 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                           <Shield size={24}/>
                       </div>
@@ -2827,7 +3006,7 @@ if __name__ == "__main__":
                       </div>
                   </div>
 
-                  <div className="bg-white dark:bg-[#1e2029] p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-blue-400 transition-all">
+                  <div className="bg-white dark:bg-nocturne p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-blue-400 transition-all">
                       <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/20 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                           <Globe size={24}/>
                       </div>
@@ -2844,7 +3023,7 @@ if __name__ == "__main__":
               <div className="flex flex-col md:flex-row gap-6 h-auto md:h-[calc(100vh-200px)] min-h-[600px]">
 
               {/* Sidebar: Roles List */}
-              <div className="w-full md:w-80 flex-shrink-0 bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden max-h-[400px] md:max-h-none">
+              <div className="w-full md:w-80 flex-shrink-0 bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden max-h-[400px] md:max-h-none">
                   <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
                       <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Security Roles</h3>
                       <button type="button" onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl text-[var(--color-brand)] transition-all active:scale-95 shadow-sm bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800"><Plus size={18}/></button>
@@ -2876,7 +3055,7 @@ if __name__ == "__main__":
               </div>
 
               {/* Main Content: Role Details */}
-              <div className="flex-1 bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden">
+              <div className="flex-1 bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden">
                   {activeRole && activeRole.id !== 'ALL' && activeRole.id !== 'PENDING_TAB' ? (
                       <>
                           {/* Header */}
@@ -2900,7 +3079,7 @@ if __name__ == "__main__":
                                   <div className="p-6 space-y-8">
                                       {activeRole.id !== 'ALL' && (
                                           <div className="bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-                                              <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-white dark:bg-[#1e2029]">
+                                              <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-white dark:bg-nocturne">
                                                   <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><Lock size={14}/> Role Permissions</h3>
                                                   <div className="flex items-center gap-2">
                                                       {roleSaveStatus === 'saved' && (
@@ -3015,7 +3194,7 @@ if __name__ == "__main__":
                    </button>
               </div>
 
-              <div className="table-shell bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
+              <div className="table-shell bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
                   <table className="dense-admin-table text-gray-500 dark:text-gray-400 min-w-[900px]">
                       <thead className="table-header">
                           <tr>
@@ -3083,7 +3262,7 @@ if __name__ == "__main__":
               {/* Rule Configuration Modal */}
               {isRuleModalOpen && editingRule && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-4xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-4xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
                         {/* Header */}
                         <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-white/5">
                             <div>
@@ -3248,7 +3427,7 @@ if __name__ == "__main__":
 
               {isTeamsConfigOpen && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-md p-6 animate-slide-up">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-md p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white flex items-center gap-2">Microsoft Teams Configuration</h2>
                         <div className="space-y-4">
                             <div>
@@ -3303,7 +3482,7 @@ if __name__ == "__main__":
                  {/* Manual Mapping Modal */}
              {isManualMapOpen && mappingSource && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Map Item Manually</h2>
                         <div className="space-y-4">
                             <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-100 dark:border-gray-800">
@@ -3385,7 +3564,7 @@ if __name__ == "__main__":
                           </div>
                       </div>
 
-                      <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 space-y-6">
+                      <div className="bg-white dark:bg-nocturne rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 space-y-6">
 
 
                            <div>
@@ -3409,7 +3588,7 @@ if __name__ == "__main__":
                                   className="input-field w-full font-medium"
                                   value={emailSubject}
                                   onChange={(e) => setEmailSubject(e.target.value)}
-                                  placeholder="Welcome to ProcureFlow"
+                                  placeholder="Welcome to MercerFlow"
                                />
                            </div>
 
@@ -3466,7 +3645,7 @@ if __name__ == "__main__":
                  if (!step) return null;
                  return (
                     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                        <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-2xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
+                        <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-2xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
                             
                             {/* Header */}
                             <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-white/5">
@@ -3741,7 +3920,7 @@ if __name__ == "__main__":
               {/* Role Creator Modal (Only for creating new roles now) */}
               {isRoleEditorOpen && !activeRole && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Create New Role</h2>
                         <div className="space-y-5">
                             <div>
@@ -3778,7 +3957,7 @@ if __name__ == "__main__":
                {/* Invite User Wizard (Replaces Directory Modal) */}
                {isDirectoryModalOpen && (
                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-[95%] max-w-2xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
+                       <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-2xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
                            
                             {/* Header */}
                             <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-white/5">
@@ -3823,9 +4002,9 @@ if __name__ == "__main__":
                                    <div className="space-y-6">
                                        {/* Tab Switcher */}
                                        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-full md:w-fit">
-                                           <button type="button" onClick={() => setInviteTab('SEARCH')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'SEARCH' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Search Users & Directory</button>
-                                           <button type="button" onClick={() => setInviteTab('MEMBERS')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MEMBERS' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Active Members</button>
-                                           <button type="button" onClick={() => setInviteTab('MANUAL')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MANUAL' ? 'bg-white dark:bg-[#1e2029] shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Manual Entry</button>
+                                           <button type="button" onClick={() => setInviteTab('SEARCH')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'SEARCH' ? 'bg-white dark:bg-nocturne shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Search Users & Directory</button>
+                                           <button type="button" onClick={() => setInviteTab('MEMBERS')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MEMBERS' ? 'bg-white dark:bg-nocturne shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Active Members</button>
+                                           <button type="button" onClick={() => setInviteTab('MANUAL')} className={`flex-1 md:flex-none px-4 py-2 rounded-md text-xs font-bold transition-all ${inviteTab === 'MANUAL' ? 'bg-white dark:bg-nocturne shadow text-[var(--color-brand)]' : 'text-gray-500'}`}>Manual Entry</button>
                                        </div>
 
                                        {inviteTab === 'SEARCH' ? (
@@ -4007,7 +4186,7 @@ if __name__ == "__main__":
                                                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--color-brand)] to-[var(--color-brand-secondary,var(--color-brand))] flex items-center justify-center text-white font-black text-xl shadow-lg">
                                                      {inviteForm.name.charAt(0)}
                                                  </div>
-                                                 <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white dark:bg-[#1e2029] rounded-xl shadow-md flex items-center justify-center">
+                                                 <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white dark:bg-nocturne rounded-xl shadow-md flex items-center justify-center">
                                                      <User size={14} className="text-[var(--color-brand)]" />
                                                  </div>
                                              </div>

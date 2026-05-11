@@ -118,8 +118,8 @@ function StatusTimeline({ status }: StatusTimelineProps) {
                     isDone
                       ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white'
                       : isActive
-                      ? 'bg-white dark:bg-[#1e2029] border-[var(--color-brand)] text-[var(--color-brand)]'
-                      : 'bg-white dark:bg-[#1e2029] border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600'
+                      ? 'bg-white dark:bg-nocturne border-[var(--color-brand)] text-[var(--color-brand)]'
+                      : 'bg-white dark:bg-nocturne border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600'
                   }`}>
                     {isDone
                       ? <Check size={12} strokeWidth={3} />
@@ -217,7 +217,7 @@ export default function MyItemRequests() {
       </div>
 
       {/* Table card */}
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col">
+      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col">
 
         {/* Toolbar */}
         <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row gap-4 justify-between">

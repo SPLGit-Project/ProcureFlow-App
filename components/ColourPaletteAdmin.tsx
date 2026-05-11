@@ -69,7 +69,7 @@ function ColourForm({ initial, onSave, onCancel, isSaving, isNew }: ColourFormPr
       </h3>
 
       {/* Live preview */}
-      <div className="flex items-center gap-4 p-4 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl">
+      <div className="flex items-center gap-4 p-4 bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-xl">
         <Swatch colour={preview} size="lg" />
         <div>
           <p className="font-bold text-gray-900 dark:text-white">{form.label || 'Preview'}</p>
@@ -89,7 +89,7 @@ function ColourForm({ initial, onSave, onCancel, isSaving, isNew }: ColourFormPr
             value={form.label}
             onChange={e => set({ label: e.target.value })}
             placeholder="e.g. Dusty Rose"
-            className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]"
+            className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]"
           />
         </div>
 
@@ -102,7 +102,7 @@ function ColourForm({ initial, onSave, onCancel, isSaving, isNew }: ColourFormPr
             value={form.code}
             onChange={e => set({ code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) })}
             placeholder="e.g. DR"
-            className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]"
+            className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]"
           />
         </div>
 
@@ -113,7 +113,7 @@ function ColourForm({ initial, onSave, onCancel, isSaving, isNew }: ColourFormPr
             type="number"
             value={form.sort_order}
             onChange={e => set({ sort_order: Number(e.target.value) })}
-            className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]"
+            className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]"
           />
         </div>
 
@@ -126,7 +126,7 @@ function ColourForm({ initial, onSave, onCancel, isSaving, isNew }: ColourFormPr
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-bold transition-all ${
               form.is_active
                 ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
-                : 'bg-gray-50 dark:bg-[#1e2029] border-gray-200 dark:border-gray-700 text-gray-400'
+                : 'bg-gray-50 dark:bg-nocturne border-gray-200 dark:border-gray-700 text-gray-400'
             }`}
           >
             <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${form.is_active ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300'}`}>
@@ -149,7 +149,7 @@ function ColourForm({ initial, onSave, onCancel, isSaving, isNew }: ColourFormPr
               className={`flex-1 py-2.5 rounded-xl border text-xs font-black uppercase tracking-widest transition-all ${
                 form.pattern_type === pt
                   ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-500 bg-white dark:bg-[#1e2029]'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-500 bg-white dark:bg-nocturne'
               }`}
             >
               {pt}
@@ -169,13 +169,13 @@ function ColourForm({ initial, onSave, onCancel, isSaving, isNew }: ColourFormPr
               type="color"
               value={form.primary_hex}
               onChange={e => set({ primary_hex: e.target.value })}
-              className="w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer p-0.5 bg-white dark:bg-[#1e2029]"
+              className="w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer p-0.5 bg-white dark:bg-nocturne"
             />
             <input
               value={form.primary_hex}
               onChange={e => set({ primary_hex: e.target.value })}
               placeholder="#RRGGBB"
-              className="flex-1 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]"
+              className="flex-1 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]"
             />
           </div>
         </div>
@@ -188,13 +188,13 @@ function ColourForm({ initial, onSave, onCancel, isSaving, isNew }: ColourFormPr
                 type="color"
                 value={form.secondary_hex ?? '#FFFFFF'}
                 onChange={e => set({ secondary_hex: e.target.value })}
-                className="w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer p-0.5 bg-white dark:bg-[#1e2029]"
+                className="w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer p-0.5 bg-white dark:bg-nocturne"
               />
               <input
                 value={form.secondary_hex ?? ''}
                 onChange={e => set({ secondary_hex: e.target.value || null })}
                 placeholder="#RRGGBB"
-                className="flex-1 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]"
+                className="flex-1 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]"
               />
             </div>
           </div>
@@ -352,7 +352,7 @@ const ColourPaletteAdmin: React.FC = () => {
         )}
 
         {/* Colour list */}
-        <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl overflow-hidden">
+        <div className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-2xl overflow-hidden">
           {/* Header */}
           <div className="px-6 py-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 grid grid-cols-[2rem_1fr_5rem_6rem_6rem_5rem] gap-4 items-center">
             {['', 'Colour', 'Code', 'Pattern', 'Status', ''].map((h, i) => (

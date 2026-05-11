@@ -103,7 +103,7 @@ function NumberInput({
 
 function ContextPanel({ request, item }: { request: ItemRequest; item: PricingItem }) {
   return (
-    <aside className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
+    <aside className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
       <div>
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pricing Request</p>
         <p className="font-mono text-sm font-bold text-[var(--color-brand)]">{request.request_number}</p>
@@ -350,7 +350,7 @@ export default function PricingSetupWizard() {
               ].map(([Icon, label, value]) => {
                 const DisplayIcon = Icon as typeof Package;
                 return (
-                  <div key={label as string} className="p-5 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl">
+                  <div key={label as string} className="p-5 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl">
                     <DisplayIcon size={18} className="text-[var(--color-brand)] mb-3" />
                     <p className="text-xs font-black text-gray-400 uppercase tracking-widest">{label as string}</p>
                     <p className="text-sm font-bold text-gray-900 dark:text-white mt-1">{value as string}</p>
@@ -449,7 +449,7 @@ export default function PricingSetupWizard() {
                 <button
                   key={key}
                   onClick={() => setSale(prev => ({ ...prev, [key]: !prev[key as keyof SalePricingData] } as SalePricingData))}
-                  className={`p-4 rounded-2xl border text-left font-bold transition-all ${sale[key as keyof SalePricingData] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300'}`}
+                  className={`p-4 rounded-2xl border text-left font-bold transition-all ${sale[key as keyof SalePricingData] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300'}`}
                 >
                   {label}
                 </button>
@@ -468,12 +468,12 @@ export default function PricingSetupWizard() {
               <p className="text-sm text-gray-500 mt-1">Review calculated margin before the request moves to approval.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-6 rounded-2xl bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800">
+              <div className="p-6 rounded-2xl bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800">
                 <ReceiptText size={18} className="text-[var(--color-brand)] mb-3" />
                 <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Cost Basis</p>
                 <p className="text-2xl font-black text-gray-900 dark:text-white">${costBasis.toFixed(2)}</p>
               </div>
-              <div className="p-6 rounded-2xl bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800">
+              <div className="p-6 rounded-2xl bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800">
                 <DollarSign size={18} className="text-[var(--color-brand)] mb-3" />
                 <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Sell Price</p>
                 <p className="text-2xl font-black text-gray-900 dark:text-white">${sale.sell_price_ex_gst.toFixed(2)}</p>
@@ -502,20 +502,20 @@ export default function PricingSetupWizard() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {purchaseEnabled && (
-                <div className="p-5 rounded-2xl bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800">
+                <div className="p-5 rounded-2xl bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800">
                   <Truck size={18} className="text-[var(--color-brand)] mb-3" />
                   <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Purchase</p>
                   <p className="text-sm font-bold text-gray-900 dark:text-white">{purchase.currency} {purchase.purchase_price_ex_gst.toFixed(2)} + {purchase.freight_handling_cost.toFixed(2)} freight</p>
                 </div>
               )}
               {saleEnabled && (
-                <div className="p-5 rounded-2xl bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800">
+                <div className="p-5 rounded-2xl bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800">
                   <DollarSign size={18} className="text-[var(--color-brand)] mb-3" />
                   <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Sale</p>
                   <p className="text-sm font-bold text-gray-900 dark:text-white">{sale.price_type} / ${sale.sell_price_ex_gst.toFixed(2)} / {sale.sale_uom}</p>
                 </div>
               )}
-              <div className="p-5 rounded-2xl bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800">
+              <div className="p-5 rounded-2xl bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800">
                 <CheckCircle2 size={18} className="text-[var(--color-brand)] mb-3" />
                 <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Next Stage</p>
                 <p className="text-sm font-bold text-gray-900 dark:text-white">Approval Pending</p>

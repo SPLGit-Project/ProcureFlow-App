@@ -112,7 +112,7 @@ export async function recordApprovalDecision(input: {
 }): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   const effectiveUserId = user?.id ?? input.actorId ?? '00000000-0000-0000-0000-000000000000';
-  if (!user && !input.actorId && typeof window !== 'undefined' && !localStorage.getItem('pf_qa_mode')) {
+  if (!user && !input.actorId) {
     throw new Error('Not authenticated');
   }
 

@@ -470,7 +470,7 @@ const ItemMasterCheckGuide: React.FC = () => {
                 className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left ${
                   (step as any).isGate
                     ? 'bg-purple-50 dark:bg-purple-900/10 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/20'
-                    : 'bg-white dark:bg-[#1e2029] border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/5'
+                    : 'bg-white dark:bg-nocturne border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/5'
                 }`}
               >
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
@@ -597,7 +597,7 @@ const SpecificationFieldsGuide: React.FC = () => {
         const FIcon = field.icon;
         const isOpen = openField === field.id;
         return (
-          <div key={field.id} className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl overflow-hidden">
+          <div key={field.id} className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-2xl overflow-hidden">
             <button
               onClick={() => setOpenField(isOpen ? null : field.id)}
               className="w-full flex items-center gap-4 p-4 text-left hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
@@ -689,7 +689,7 @@ const UrgencyGuide: React.FC = () => {
                     ? 'border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/10'
                     : isOther
                     ? 'border-dashed border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                    : 'border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700 bg-white dark:bg-[#1e2029]'
+                    : 'border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700 bg-white dark:bg-nocturne'
                 }`}
               >
                 <div className={`w-5 h-5 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center transition-all ${
@@ -744,7 +744,7 @@ const UrgencyGuide: React.FC = () => {
 
         {showUrgency && (
           <div className="mt-3 space-y-3">
-            <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl p-4 space-y-3">
+            <div className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-2xl p-4 space-y-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">When to Use</div>
                 <div className="space-y-2">
@@ -888,7 +888,7 @@ const AfterSubmitGuide: React.FC = () => {
       </div>
 
       {/* Stage detail */}
-      <div className="rounded-2xl border p-5 bg-white dark:bg-[#1e2029]"
+      <div className="rounded-2xl border p-5 bg-white dark:bg-nocturne"
         style={{ borderColor: `${stage.color}40` }}>
         <div className="flex items-start gap-4 mb-4">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-white shadow-md"
@@ -982,7 +982,7 @@ const ItemCreationContent: React.FC = () => {
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all border ${
                 isActive
                   ? 'bg-purple-500 text-white border-purple-500 shadow-md shadow-purple-500/20'
-                  : 'bg-white dark:bg-[#1e2029] text-gray-500 border-gray-200 dark:border-gray-800 hover:border-purple-200 dark:hover:border-purple-800 hover:text-purple-600'
+                  : 'bg-white dark:bg-nocturne text-gray-500 border-gray-200 dark:border-gray-800 hover:border-purple-200 dark:hover:border-purple-800 hover:text-purple-600'
               }`}
             >
               <TabIcon size={13} />
@@ -993,7 +993,7 @@ const ItemCreationContent: React.FC = () => {
       </div>
 
       {/* Guide content */}
-      <div className="bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 min-h-[400px]">
+      <div className="bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 min-h-[400px]">
         <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-100 dark:border-gray-800">
           {(() => {
             const currentTab = GUIDE_TABS.find(t => t.id === activeGuide);
@@ -1057,7 +1057,7 @@ const HelpGuide = () => {
             'On Desktop: Use the "Install App" button in the bottom right corner.',
             'On iOS: Tap "Share" and select "Add to Home Screen".',
             'On Android: Follow the browser prompt or go to settings -> Install App.',
-            'ProcureFlow works offline and provides a faster, fullscreen experience when installed.'
+            'MercerFlow works offline and provides a faster, fullscreen experience when installed.'
           ]
         }
       ]
@@ -1298,7 +1298,7 @@ const HelpGuide = () => {
   const faqs = [
     {
       q: 'How do I reset my password?',
-      a: 'ProcureFlow integrates with your company single sign-on. Please reset your password via your corporate security portal (e.g., Azure AD/Office 365).'
+      a: 'MercerFlow integrates with your company single sign-on. Please reset your password via your corporate security portal (e.g., Azure AD/Office 365).'
     },
     {
       q: 'What determines the approval threshold?',
@@ -1319,7 +1319,7 @@ const HelpGuide = () => {
     <div className="max-w-7xl mx-auto pb-20 animate-fade-in px-4">
       <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
         <div>
-          <PageHeader title="Help & Support" subtitle={`Master every feature of ${branding.appName || 'ProcureFlow'}.`} />
+          <PageHeader title="Help & Support" subtitle={`Master every feature of ${branding.appName || 'MercerFlow'}.`} />
         </div>
         <div className="relative w-full md:w-96 group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[var(--color-brand)] transition-colors" size={20} />
@@ -1328,7 +1328,7 @@ const HelpGuide = () => {
             placeholder="Search guides or FAQs..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl py-4 pl-12 pr-4 shadow-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none transition-all"
+            className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl py-4 pl-12 pr-4 shadow-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none transition-all"
           />
         </div>
       </div>
@@ -1375,7 +1375,7 @@ const HelpGuide = () => {
             ) : (
               <div className="space-y-8 animate-fade-in-up">
                 {categories.find(c => c.id === selectedCategory)?.guides.map((guide) => (
-                  <div key={guide.id} className="bg-white dark:bg-[#1e2029] rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden hover:border-[var(--color-brand)]/30 transition-all">
+                  <div key={guide.id} className="bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden hover:border-[var(--color-brand)]/30 transition-all">
                     <div className={`p-8 bg-gradient-to-br from-${categories.find(c => c.id === selectedCategory)?.color}-50 to-white dark:from-white/5 dark:to-transparent`}>
                       <div className="flex items-center gap-3 mb-6">
                         <div className={`w-12 h-12 rounded-2xl bg-${categories.find(c => c.id === selectedCategory)?.color}-100 dark:bg-${categories.find(c => c.id === selectedCategory)?.color}-500/10 flex items-center justify-center text-${categories.find(c => c.id === selectedCategory)?.color}-600 dark:text-${categories.find(c => c.id === selectedCategory)?.color}-400 shadow-sm`}>
@@ -1406,7 +1406,7 @@ const HelpGuide = () => {
           ) : (
             <div className="space-y-4 animate-fade-in-up max-w-3xl">
               {filteredFaqs.map((faq, idx) => (
-                <div key={idx} className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                <div key={idx} className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
                   <button
                     onClick={() => setOpenFaqIndex(openFaqIndex === idx ? null : idx)}
                     className="w-full flex items-center justify-between p-6 text-left hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"

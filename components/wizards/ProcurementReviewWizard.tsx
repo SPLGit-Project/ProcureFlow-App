@@ -92,7 +92,7 @@ const ProcurementReviewWizard: React.FC = () => {
         <h2 className="text-xl font-black text-gray-900 dark:text-white">Request Summary</h2>
         <p className="text-sm text-gray-500 mt-1">Review what was submitted before filling in technical details.</p>
       </div>
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
         {[
           { label: 'Proposed Code', value: request.proposed_code || request.item_code || '—' },
           { label: 'Description', value: request.description || request.item_description || '—' },
@@ -200,7 +200,7 @@ const ProcurementReviewWizard: React.FC = () => {
         <h2 className="text-xl font-black text-gray-900 dark:text-white">Confirm & Forward to Master Data</h2>
         <p className="text-sm text-gray-500 mt-1">Once forwarded, Master Data will do a final QA review. You won't be able to edit after this point.</p>
       </div>
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
         {[
           { label: 'Material', value: material || '—' },
           { label: 'GSM', value: gsm ? `${gsm} g/m²` : 'Not provided' },

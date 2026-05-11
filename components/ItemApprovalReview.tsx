@@ -34,7 +34,7 @@ const FieldRow = ({ label, value }: { label: string; value?: string | number | b
 const SectionToggle = ({ title, children }: { title: string; children: React.ReactNode }) => {
   const [open, setOpen] = useState(true);
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] overflow-hidden">
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen(prev => !prev)}
@@ -74,7 +74,7 @@ const ItemApprovalReview: React.FC<ItemApprovalReviewProps> = ({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
@@ -204,7 +204,7 @@ const ItemApprovalReview: React.FC<ItemApprovalReviewProps> = ({
         </SectionToggle>
       )}
 
-      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <MessageSquare size={16} /> Decision

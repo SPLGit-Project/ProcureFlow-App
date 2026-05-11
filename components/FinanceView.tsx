@@ -174,9 +174,9 @@ const FinanceView = () => {
         helpLinkTarget="finance-capitalization"
       />
 
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
          {/* Filters */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] flex flex-col gap-4">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne flex flex-col gap-4">
              {/* Row 1: Search + Site Filter */}
              <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
                  <div className="relative flex-1 min-w-0">
@@ -256,7 +256,7 @@ const FinanceView = () => {
                 const fullyCapitalised = po.deliveries.every(d => d.lines.every(l => l.data.isCapitalised));
 
                 return (
-                    <div key={po.poId} className="bg-white dark:bg-[#1e2029]">
+                    <div key={po.poId} className="bg-white dark:bg-nocturne">
                         {/* PO Header */}
                         <div 
                             className="px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors"
@@ -338,7 +338,7 @@ const FinanceView = () => {
                         {isExpanded && (
                             <div className="border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#15171e]/50 px-3 sm:px-4 md:pl-10 md:pr-4 pb-6 pt-2 space-y-4">
                                 {po.deliveries.map(del => (
-                                    <div key={del.deliveryId} className="bg-white dark:bg-[#1e2029] rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                                    <div key={del.deliveryId} className="bg-white dark:bg-nocturne rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
                                         <div className="bg-gray-50 dark:bg-white/5 px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <Calendar size={12}/> Delivery: {del.date}
@@ -458,7 +458,7 @@ const FinanceView = () => {
                                                                         <FileText size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
                                                                         <input 
                                                                             type="text"
-                                                                            className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 pl-7 text-xs text-gray-900 dark:text-white focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none"
+                                                                            className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 pl-7 text-xs text-gray-900 dark:text-white focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none"
                                                                             value={line.data.invoiceNumber || ''}
                                                                             placeholder="INV-..."
                                                                             onChange={(e) => handleInvoiceChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
@@ -471,7 +471,7 @@ const FinanceView = () => {
                                                                         <DollarSign size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
                                                                         <input 
                                                                             type="text"
-                                                                            className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 pl-7 text-xs text-gray-900 dark:text-white focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none"
+                                                                            className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 pl-7 text-xs text-gray-900 dark:text-white focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] outline-none"
                                                                             value={line.data.freightAmount || ''}
                                                                             placeholder="0.00"
                                                                             onChange={(e) => handleFreightChange(po.poId, del.deliveryId, line.lineId, e.target.value)}
@@ -480,7 +480,7 @@ const FinanceView = () => {
                                                                 </div>
                                                             </div>
 
-                                                            <div className="flex items-center justify-between bg-white dark:bg-[#1e2029] p-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                                                            <div className="flex items-center justify-between bg-white dark:bg-nocturne p-2 rounded-lg border border-gray-200 dark:border-gray-700">
                                                                 <div className="flex flex-col">
                                                                     <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Capitalise</span>
                                                                     <span className="text-[10px] text-gray-400">{line.data.isCapitalised ? 'Asset' : 'Expense'}</span>
@@ -496,7 +496,7 @@ const FinanceView = () => {
                                                             {line.data.isCapitalised && (
                                                                 <div>
                                                                     <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Cap Date</label>
-                                                                    <div className="flex items-center gap-2 bg-white dark:bg-[#1e2029] border border-green-200 dark:border-green-800 rounded-lg px-3 py-2">
+                                                                    <div className="flex items-center gap-2 bg-white dark:bg-nocturne border border-green-200 dark:border-green-800 rounded-lg px-3 py-2">
                                                                         <Calendar size={14} className="text-green-600 dark:text-green-400"/>
                                                                         <input 
                                                                             type="month" 
@@ -542,7 +542,7 @@ const FinanceView = () => {
 
       {bulkCapModalState.isOpen && (
           <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={(e) => e.stopPropagation()}>
-              <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-sm w-full p-6 border border-gray-200 dark:border-gray-800" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-sm w-full p-6 border border-gray-200 dark:border-gray-800" onClick={(e) => e.stopPropagation()}>
                   <div className="mb-4">
                       <h2 className="text-xl font-bold text-gray-900 dark:text-white">Confirm Capitalisation</h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">

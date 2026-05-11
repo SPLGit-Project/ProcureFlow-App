@@ -810,7 +810,7 @@ const AdminMigration = () => {
         const remainingCount = unknownSkus.size;
 
         return (
-             <div className="bg-white dark:bg-[#1e2029] p-8 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl max-w-4xl mx-auto animate-fade-in text-gray-900 dark:text-gray-100">
+             <div className="bg-white dark:bg-nocturne p-8 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl max-w-4xl mx-auto animate-fade-in text-gray-900 dark:text-gray-100">
                  <div className="flex justify-between items-center mb-6">
                      <div>
                          <h2 className="text-2xl font-bold flex items-center gap-3">
@@ -983,7 +983,7 @@ const AdminMigration = () => {
 
             {/* Step 1: Upload */}
             {step === 'UPLOAD' && (
-                <div className="bg-white dark:bg-[#1e2029] p-12 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 text-center">
+                <div className="bg-white dark:bg-nocturne p-12 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 text-center">
                     <div {...getRootProps()} className="cursor-pointer">
                         <input {...getInputProps()} />
                         <div className="w-20 h-20 bg-[var(--color-brand)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -1000,7 +1000,7 @@ const AdminMigration = () => {
 
             {/* Step 2: Mapping */}
             {step === 'MAP' && (
-                <div className="bg-white dark:bg-[#1e2029] p-8 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm animate-fade-in">
+                <div className="bg-white dark:bg-nocturne p-8 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm animate-fade-in">
                     <div className="flex justify-between items-center mb-8">
                         <div>
                             <h2 className="text-2xl font-bold mb-1">Map Your Columns</h2>
@@ -1114,7 +1114,7 @@ const AdminMigration = () => {
 
             {/* Step 3: Preview */}
             {(step === 'PREVIEW' || step === 'IMPORTING' || step === 'DONE') && (
-                <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col h-[600px] animate-fade-in">
+                <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col h-[600px] animate-fade-in">
                     <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50 dark:bg-[#15171e]">
                          <div className="flex items-center gap-4 w-full md:w-auto">
                              <button type="button" onClick={() => setStep('MAP')} className="text-gray-500 hover:text-gray-900 transition-colors p-2 hover:bg-gray-200 rounded-lg"><ArrowLeft size={20} /></button>
@@ -1144,7 +1144,7 @@ const AdminMigration = () => {
 
                     <div className="flex-1 overflow-auto p-4 space-y-4 bg-gray-50/50 dark:bg-black/10">
                         {previewData.map((po, poIdx) => (
-                            <div key={poIdx} className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm overflow-hidden transition-all hover:shadow-md">
+                            <div key={poIdx} className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm overflow-hidden transition-all hover:shadow-md">
                                 {/* PO Header */}
                                 <div className="p-4 bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800 flex flex-wrap gap-4 justify-between items-center">
                                     <div className="flex items-center gap-3">
@@ -1243,7 +1243,7 @@ const AdminMigration = () => {
             {/* Manager Modal */}
             {showManager && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-[#1e2029] w-full max-w-2xl rounded-2xl shadow-2xl max-h-[80vh] flex flex-col">
+                    <div className="bg-white dark:bg-nocturne w-full max-w-2xl rounded-2xl shadow-2xl max-h-[80vh] flex flex-col">
                         <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
                             <h3 className="text-xl font-bold">Migration Memory Manager</h3>
                             <button type="button" onClick={() => setShowManager(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><X size={20}/></button>

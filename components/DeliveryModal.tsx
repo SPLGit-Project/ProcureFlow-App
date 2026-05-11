@@ -135,7 +135,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
 
     return (
         <div className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-3xl w-full flex flex-col max-h-[90vh] animate-slide-up">
+            <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-3xl w-full flex flex-col max-h-[90vh] animate-slide-up">
                 <div className="p-5 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center shrink-0">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -317,7 +317,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                                         </div>
                                         
                                         {isSearchOpen && (searchQuery.length > 0 || availableItems.length > 0) && (
-                                            <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-10 max-h-60 overflow-y-auto">
+                                            <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-10 max-h-60 overflow-y-auto">
                                                 {availableItems.length > 0 ? (
                                                     availableItems.map(item => (
                                                         <button

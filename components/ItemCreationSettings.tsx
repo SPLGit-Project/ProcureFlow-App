@@ -75,7 +75,7 @@ function MarginThresholdsSection() {
     ];
 
     return (
-        <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+        <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
             <h3 className="font-semibold text-gray-900 dark:text-white">Margin Thresholds</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">Approval warning triggers when sell margin % falls below these values.</p>
 
@@ -190,7 +190,7 @@ function ApprovalRulesSection() {
     };
 
     return (
-        <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+        <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
             <div className="flex items-center justify-between">
                 <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">Approval Rules</h3>
@@ -361,7 +361,7 @@ function SkuCodeMapsSection() {
     };
 
     return (
-        <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+        <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
             <div className="flex items-center justify-between">
                 <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">SKU Code Maps</h3>

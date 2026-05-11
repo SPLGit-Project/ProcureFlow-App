@@ -124,7 +124,7 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                     <div className="fixed inset-0 z-40 md:hidden" onClick={() => setIsOpen(false)} />
                     
                     <div className={`
-                        z-50 bg-white dark:bg-[#1e2029] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden
+                        z-50 bg-white dark:bg-nocturne rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden
                         animate-in fade-in zoom-in-95 duration-150 origin-top
                         fixed left-4 right-4 bottom-4 top-auto max-h-[70vh]
                         md:absolute md:top-full md:left-0 md:right-auto md:bottom-auto md:mt-1.5 md:min-w-[280px] md:max-h-[500px] md:w-max

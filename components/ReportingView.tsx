@@ -108,7 +108,7 @@ const ReportingView = () => {
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
                 {/* valid reports sidebar */}
                 <div className="xl:col-span-1 space-y-2">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-2">
+                    <div className="bg-white dark:bg-nocturne rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-2">
                         <div className="flex flex-col sm:flex-row xl:flex-col gap-2">
                             <button 
                                 type="button"
@@ -149,7 +149,7 @@ const ReportingView = () => {
 
                 {/* Main Content */}
                 <div className="xl:col-span-3">
-                    <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-[420px] md:min-h-[500px] flex flex-col">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-[420px] md:min-h-[500px] flex flex-col">
                         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                             <div className="min-w-0">
                                 <h2 className="font-bold text-gray-900 dark:text-white">

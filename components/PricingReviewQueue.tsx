@@ -59,7 +59,7 @@ export default function PricingReviewQueue() {
         <button
           onClick={() => fetchRequests(true)}
           disabled={isRefreshing}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
         >
           <RefreshCcw size={14} className={isRefreshing ? 'animate-spin' : ''} />
           Refresh Queue
@@ -73,7 +73,7 @@ export default function PricingReviewQueue() {
           ))
         ) : requests.length > 0 ? (
           requests.map(request => (
-            <div key={request.id} className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl p-6 hover:shadow-lg transition-all relative overflow-hidden">
+            <div key={request.id} className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-2xl p-6 hover:shadow-lg transition-all relative overflow-hidden">
               {request.is_urgent && (
                 <div className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-black uppercase tracking-widest rounded-bl-xl">
                   Urgent

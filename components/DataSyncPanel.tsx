@@ -46,7 +46,7 @@ const statusBadge = (status: BcSiteSyncStatus) => {
   if (status.isRunning)
     return <span className="rounded-full border border-blue-200 bg-blue-50 dark:bg-blue-500/10 dark:border-blue-500/20 text-blue-700 dark:text-blue-300 text-[10px] font-bold px-2 py-0.5 flex items-center gap-1"><RefreshCw size={9} className="animate-spin" /> Running</span>;
   if (!status.config.enabled)
-    return <span className="rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] text-gray-500 text-[10px] font-bold px-2 py-0.5">Disabled</span>;
+    return <span className="rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne text-gray-500 text-[10px] font-bold px-2 py-0.5">Disabled</span>;
   if (status.lastSyncedAt)
     return <span className="rounded-full border border-emerald-200 bg-emerald-50 dark:bg-emerald-500/10 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5">Active</span>;
   return <span className="rounded-full border border-amber-200 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5">Pending</span>;
@@ -347,7 +347,7 @@ const DataSyncPanel: React.FC = () => {
 
       {/* Azure DB config panel */}
       {showAzureConfig && (
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <Database size={15} /> Azure Database Connection
@@ -406,7 +406,7 @@ const DataSyncPanel: React.FC = () => {
         ].map(stat => {
           const Icon = stat.icon;
           return (
-            <div key={stat.label} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-4">
+            <div key={stat.label} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-4">
               <Icon size={18} className={`${stat.color} mb-2`} />
               <div className="text-xl font-black text-gray-900 dark:text-white">{stat.value}</div>
               <div className="text-xs font-bold text-gray-500 uppercase mt-0.5">{stat.label}</div>
@@ -435,7 +435,7 @@ const DataSyncPanel: React.FC = () => {
       </div>
 
       {/* Architecture note */}
-      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
         <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
           <Activity size={14} /> Sync Architecture
         </h3>

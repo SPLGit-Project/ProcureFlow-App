@@ -761,7 +761,7 @@ const PODetail = () => {
       </button>
 
       {/* Header Info */}
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4 md:p-6 mb-6">
+      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4 md:p-6 mb-6">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-6">
            <div>
               <div className="flex flex-wrap items-center gap-3 mb-2">
@@ -984,13 +984,13 @@ const PODetail = () => {
                      {steps.map((step) => {
                          const status = getStepStatus(step.num);
                          return (
-                             <div key={step.num} className="flex flex-col items-center px-4 bg-white dark:bg-[#1e2029]">
+                             <div key={step.num} className="flex flex-col items-center px-4 bg-white dark:bg-nocturne">
                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-300
                                     ${status === 'complete' ? 'bg-green-500 border-green-500 text-white shadow-green-500/30 shadow-md' : 
                                       status === 'current' ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white shadow-[var(--color-brand)]/30 shadow-md scale-110' : 
                                       status === 'error' ? 'bg-red-500 border-red-500 text-white' :
                                       status === 'warning' ? 'bg-amber-500 border-amber-500 text-white shadow-amber-500/30 shadow-md' :
-                                      'bg-white dark:bg-[#1e2029] border-gray-200 dark:border-gray-700 text-gray-400'
+                                      'bg-white dark:bg-nocturne border-gray-200 dark:border-gray-700 text-gray-400'
                                     }`}>
                                      {status === 'complete' ? <CheckCircle size={16}/> : status === 'warning' ? <AlertTriangle size={16}/> : step.num}
                                  </div>
@@ -1011,14 +1011,14 @@ const PODetail = () => {
           <button type="button" onClick={() => setActiveTab('AUDIT')} className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'AUDIT' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>Audit Log</button>
       </div>
       
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[300px]">
+      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[300px]">
           {activeTab === 'LINES' && (
               <div className="overflow-x-auto">
                   {isEditing && (
                       <div className="p-4 md:p-5 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-[#15171e]">
                           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                               <div className="flex items-start gap-3">
-                                  <div className="w-10 h-10 rounded-xl bg-white dark:bg-[#1e2029] text-[var(--color-brand)] dark:text-blue-300 flex items-center justify-center border border-gray-200 dark:border-gray-700 shadow-sm">
+                                  <div className="w-10 h-10 rounded-xl bg-white dark:bg-nocturne text-[var(--color-brand)] dark:text-blue-300 flex items-center justify-center border border-gray-200 dark:border-gray-700 shadow-sm">
                                       <Plus size={18} />
                                   </div>
                                   <div>
@@ -1028,7 +1028,7 @@ const PODetail = () => {
                                       </p>
                                   </div>
                               </div>
-                              <div className="inline-flex items-center gap-2 self-start md:self-center px-3 py-1.5 rounded-full text-[11px] font-bold border border-gray-200 text-gray-600 bg-white dark:border-gray-700 dark:text-gray-300 dark:bg-[#1e2029]">
+                              <div className="inline-flex items-center gap-2 self-start md:self-center px-3 py-1.5 rounded-full text-[11px] font-bold border border-gray-200 text-gray-600 bg-white dark:border-gray-700 dark:text-gray-300 dark:bg-nocturne">
                                   {addableItems.length} active items
                               </div>
                           </div>
@@ -1053,7 +1053,7 @@ const PODetail = () => {
                                           }}
                                           onKeyDown={handleAddItemSearchKeyDown}
                                           placeholder={addableItems.length === 0 ? 'No active items available to add' : 'Search SKU, item name, category...'}
-                                          className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] disabled:opacity-60 disabled:cursor-not-allowed"
+                                          className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] disabled:opacity-60 disabled:cursor-not-allowed"
                                           disabled={addableItems.length === 0}
                                       />
                                       {isAddItemPickerOpen && addableItems.length > 0 && (
@@ -1112,7 +1112,7 @@ const PODetail = () => {
                                       )}
                                   </div>
                                   {selectedAddItem ? (
-                                      <div className="mt-2 inline-flex items-center gap-2 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs">
+                                      <div className="mt-2 inline-flex items-center gap-2 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs">
                                           <span className="font-mono font-bold text-[var(--color-brand)]">{selectedAddItem.sku}</span>
                                           <span className="text-gray-700 dark:text-gray-300">{selectedAddItem.name}</span>
                                       </div>
@@ -1123,12 +1123,12 @@ const PODetail = () => {
                               <div className="lg:col-span-2">
                                   <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Price Option</label>
                                   {!selectedAddItem ? (
-                                      <div className="h-[42px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] px-3 flex items-center text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                      <div className="h-[42px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne px-3 flex items-center text-xs font-semibold text-gray-500 dark:text-gray-400">
                                           Select item first
                                       </div>
                                   ) : selectedAddItemPriceOptions.length > 1 ? (
                                       <select
-                                          className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
+                                          className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
                                           value={addItemPriceOptionId}
                                           onChange={(e) => {
                                               const nextOptionId = e.target.value;
@@ -1146,7 +1146,7 @@ const PODetail = () => {
                                           ))}
                                       </select>
                                   ) : (
-                                      <div className="h-[42px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] px-3 flex items-center text-xs font-semibold text-gray-500 dark:text-gray-300">
+                                      <div className="h-[42px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne px-3 flex items-center text-xs font-semibold text-gray-500 dark:text-gray-300">
                                           {selectedAddItemPriceOptions[0]?.label || 'Standard'}
                                       </div>
                                   )}
@@ -1159,7 +1159,7 @@ const PODetail = () => {
                                       step="1"
                                       value={addItemQty}
                                       onChange={(e) => setAddItemQty(e.target.value)}
-                                      className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
+                                      className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
                                   />
                               </div>
                               <div className="lg:col-span-2">
@@ -1170,7 +1170,7 @@ const PODetail = () => {
                                       step="0.01"
                                       value={addItemPrice}
                                       onChange={(e) => setAddItemPrice(e.target.value)}
-                                      className="w-full bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
+                                      className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
                                   />
                               </div>
                               <div className="lg:col-span-2 flex lg:justify-end">
@@ -1326,7 +1326,7 @@ const PODetail = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <div className="p-4 bg-white dark:bg-[#1e2029]">
+                                <div className="p-4 bg-white dark:bg-nocturne">
                                     <table className="w-full text-sm">
                                         <thead>
                                             <tr className="text-xs text-tertiary dark:text-gray-500 text-left uppercase">
@@ -1469,7 +1469,7 @@ const PODetail = () => {
 
       {isConcurRequestModalOpen && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800 transform transition-all scale-100">
+            <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800 transform transition-all scale-100">
                 <div className="mb-4">
                     <h2 className="text-xl font-bold text-primary dark:text-white">Enter Concur Request</h2>
                     <p className="text-sm text-secondary dark:text-gray-400 mt-1">
@@ -1495,7 +1495,7 @@ const PODetail = () => {
 
       {isConcurModalOpen && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800 transform transition-all scale-100">
+            <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800 transform transition-all scale-100">
                 <div className="mb-4">
                     <h2 className="text-xl font-bold text-primary dark:text-white">Link Concur PO</h2>
                     <p className="text-sm text-secondary dark:text-gray-400 mt-1">
@@ -1524,7 +1524,7 @@ const PODetail = () => {
 
       {isStatusModalOpen && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-sm w-full p-6 border border-gray-200 dark:border-gray-800">
+            <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-sm w-full p-6 border border-gray-200 dark:border-gray-800">
                 <div className="mb-4">
                     <h2 className="text-lg font-bold text-primary dark:text-white flex items-center gap-2">
                         <Shield size={20} className="text-amber-500"/> Force Status Update

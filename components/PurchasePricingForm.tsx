@@ -225,7 +225,7 @@ export const PurchasePricingForm: React.FC<PurchasePricingFormProps> = ({
       </div>
 
       {/* Existing Prices Table */}
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden">
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#181a21]/50 flex items-center gap-2">
           <History size={18} className="text-[#129DC0]" />
           <h3 className="font-bold text-gray-900 dark:text-white uppercase text-sm tracking-widest">Price History & Status</h3>
@@ -299,7 +299,7 @@ export const PurchasePricingForm: React.FC<PurchasePricingFormProps> = ({
       </div>
 
       {/* Add New Price Form */}
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden">
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#181a21]/50 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Plus size={18} className="text-[#129DC0]" />

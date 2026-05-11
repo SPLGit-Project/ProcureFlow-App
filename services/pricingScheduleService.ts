@@ -201,35 +201,6 @@ export async function executePricingSchedule(scheduleId: string): Promise<{ pric
 }
 
 export async function getPricingSchedules(): Promise<PricingSchedule[]> {
-  if (import.meta.env.VITE_QA_MODE === '1') {
-    return [
-      {
-        id: 'sch-1',
-        schedule_name: 'FY26 Annual Uplift',
-        status: 'DRAFT',
-        basis: 'CPI',
-        uplift_method: 'PERCENTAGE_INCREASE',
-        uplift_value: 3.5,
-        new_effective_from: '2026-07-01',
-        created_at: new Date().toISOString(),
-        created_by: 'qa-admin'
-      },
-      {
-        id: 'sch-2',
-        schedule_name: 'Mid-Year Contract Review',
-        status: 'APPROVED',
-        basis: 'BUSINESS_DECISION',
-        uplift_method: 'PERCENTAGE_INCREASE',
-        uplift_value: 2.0,
-        new_effective_from: '2026-06-15',
-        created_at: new Date().toISOString(),
-        created_by: 'qa-admin',
-        approved_at: new Date().toISOString(),
-        approved_by: 'qa-admin'
-      }
-    ] as PricingSchedule[];
-  }
-
   const { data, error } = await supabase.from('pricing_schedules')
     .select('*').order('created_at', { ascending: false });
   if (error) throw new Error(error.message);

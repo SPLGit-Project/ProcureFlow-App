@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 import { Shield } from 'lucide-react';
 import { consumeSessionLogoutNotice } from '../utils/sessionState.ts';
+import { BrandLogo } from './BrandLogo.tsx';
 
 const Login = () => {
   const { login, isAuthenticated, branding, isLoadingAuth } = useApp();
@@ -19,15 +20,15 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-app flex flex-col items-center justify-center p-4">
        
-       <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 p-8 w-full max-w-md animate-slide-up">
+       <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 p-8 w-full max-w-md animate-slide-up">
            <div className="flex flex-col items-center mb-8">
-               {branding.logoUrl ? (
-                   <img src={branding.logoUrl} alt="Logo" className="h-12 object-contain mb-4"/>
-               ) : (
-                   <div className="w-12 h-12 bg-gradient-to-br from-[var(--color-brand)] to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl mb-4 shadow-lg">
-                       {branding.appName.charAt(0)}
-                   </div>
-               )}
+               <BrandLogo
+                   appName={branding.appName}
+                   logoUrl={branding.logoUrl}
+                   size="md"
+                   className="mb-4"
+                   fallbackClassName="bg-gradient-to-br from-[var(--color-brand)] to-purple-600 text-white shadow-lg"
+               />
                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{branding.appName}</h1>
                <p className="text-gray-500 dark:text-gray-400 mt-2 text-center">Sign in to access your dashboard</p>
            </div>

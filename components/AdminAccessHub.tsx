@@ -256,7 +256,7 @@ const AdminAccessHub = () => {
         <>
             <div className="space-y-6 animate-fade-in">
             {/* Directory Search / Quick Invite */}
-            <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm p-6">
+            <div className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm p-6">
                 <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-1 relative">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -318,7 +318,7 @@ const AdminAccessHub = () => {
             </div>
 
             {/* Pending Inbox Integration */}
-            <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden min-h-[400px]">
+            <div className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden min-h-[400px]">
                 <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex justify-between items-center">
                     <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
                         <Clock size={14} className="text-amber-500"/> Pending Approvals & Invitations
@@ -364,13 +364,13 @@ const AdminAccessHub = () => {
             {/* Grant Access Modal (Shared for Approval & Add) */}
             {selectedUser && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in" onClick={() => setSelectedUser(null)}>
-                    <div className="bg-white dark:bg-[#1e2029] rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] border border-white/10" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white dark:bg-nocturne rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] border border-white/10" onClick={e => e.stopPropagation()}>
                         <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
                             <div>
                                 <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Review Access</h3>
                                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Configuring {selectedUser.name}</p>
                             </div>
-                            <button onClick={() => setSelectedUser(null)} className="w-10 h-10 flex items-center justify-center bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800"><X size={20} className="text-gray-400" /></button>
+                            <button onClick={() => setSelectedUser(null)} className="w-10 h-10 flex items-center justify-center bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800"><X size={20} className="text-gray-400" /></button>
                         </div>
                         
                         <div className="p-8 overflow-y-auto space-y-8 custom-scrollbar">

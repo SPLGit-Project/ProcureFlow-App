@@ -114,7 +114,7 @@ export const PriceHistoryPanel: React.FC<PriceHistoryPanelProps> = ({
               <p className="text-sm text-gray-400 italic">No price history yet</p>
             </div>
           ) : (
-            <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+            <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-[#181a21]/50 border-b border-gray-200 dark:border-gray-800">
@@ -190,7 +190,7 @@ export const PriceHistoryPanel: React.FC<PriceHistoryPanelProps> = ({
               <p className="text-sm text-gray-400 italic">No price history yet</p>
             </div>
           ) : (
-            <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+            <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-[#181a21]/50 border-b border-gray-200 dark:border-gray-800">

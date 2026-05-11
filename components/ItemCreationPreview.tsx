@@ -641,7 +641,7 @@ const ItemCreationPreview = () => {
   if (!canUsePreview) {
     return (
       <div className="h-full flex items-center justify-center p-8">
-        <div className="max-w-md rounded-2xl border border-red-200 dark:border-red-900/40 bg-white dark:bg-[#1e2029] p-8 text-center shadow-sm">
+        <div className="max-w-md rounded-2xl border border-red-200 dark:border-red-900/40 bg-white dark:bg-nocturne p-8 text-center shadow-sm">
           <ShieldCheck className="mx-auto text-red-500 mb-4" size={42} />
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Preview Access Restricted</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
@@ -669,7 +669,7 @@ const ItemCreationPreview = () => {
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
             <ShieldCheck size={14} /> Preview writes only
           </span>
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${config?.goLiveEnabled ? 'border-red-200 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-[#1e2029] dark:text-gray-300'}`}>
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${config?.goLiveEnabled ? 'border-red-200 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-nocturne dark:text-gray-300'}`}>
             <AlertTriangle size={14} /> Go-live {config?.goLiveEnabled ? 'enabled' : 'disabled'}
           </span>
           <button
@@ -704,7 +704,7 @@ const ItemCreationPreview = () => {
       {activeTab === 'WORKBENCH' && (
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6">
           <div className="space-y-6">
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
               <div className="flex items-center justify-between gap-4 mb-5">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white">Request Context</h2>
@@ -801,7 +801,7 @@ const ItemCreationPreview = () => {
               </div>
             </div>
 
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Item Definition and MD SKU</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <label className="space-y-1.5 md:col-span-2">
@@ -869,7 +869,7 @@ const ItemCreationPreview = () => {
               </div>
             </div>
 
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Pricing and Availability</h2>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="space-y-4">
@@ -998,7 +998,7 @@ const ItemCreationPreview = () => {
               )}
             </div>
 
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white">Preview Actions</h2>
@@ -1033,7 +1033,7 @@ const ItemCreationPreview = () => {
           </div>
 
           <div className="space-y-6">
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Duplicate Result</h2>
               {latestDuplicateCheck ? (
                 <div className="space-y-3">
@@ -1073,7 +1073,7 @@ const ItemCreationPreview = () => {
               )}
             </div>
 
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Recent Requests</h2>
               <div className="space-y-2 max-h-[520px] overflow-y-auto">
                 {bundles.slice(0, 8).map(bundle => (
@@ -1102,7 +1102,7 @@ const ItemCreationPreview = () => {
         return (
           <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-6">
             <div className="space-y-3">
-              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-4">
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-4">
                 <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Preview Request Queue</h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Select a request to review and record an approval decision.</p>
                 <div className="space-y-2 max-h-[640px] overflow-y-auto">
@@ -1177,7 +1177,7 @@ const ItemCreationPreview = () => {
 
       {activeTab === 'CATALOGUE' && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">Preview Catalogue API Shape</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">Read-only combined view for validating future Salesforce, Bundle, and LinenHub consumption.</p>
@@ -1188,7 +1188,7 @@ const ItemCreationPreview = () => {
               <option value="PREVIEW">Preview only</option>
             </select>
           </div>
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] overflow-hidden">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-gray-50 dark:bg-white/5 text-xs uppercase text-gray-500">
@@ -1217,7 +1217,7 @@ const ItemCreationPreview = () => {
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] overflow-hidden">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne overflow-hidden">
             <div className="p-5 border-b border-gray-200 dark:border-gray-800">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">Publication Event Queue</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">Per-request simulation of publication events across external targets.</p>
@@ -1307,12 +1307,12 @@ const ItemCreationPreview = () => {
       {activeTab === 'SHADOW' && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5"><ClipboardCheck className="text-emerald-500 mb-3" /><div className="text-2xl font-black text-gray-900 dark:text-white">{shadowMetrics.approved}</div><div className="text-xs font-bold uppercase text-gray-500">Approved Preview</div></div>
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5"><AlertTriangle className="text-amber-500 mb-3" /><div className="text-2xl font-black text-gray-900 dark:text-white">{shadowMetrics.blockedSkus}</div><div className="text-xs font-bold uppercase text-gray-500">SKU Exceptions</div></div>
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5"><Package className="text-blue-500 mb-3" /><div className="text-2xl font-black text-gray-900 dark:text-white">{shadowMetrics.belowMargin}</div><div className="text-xs font-bold uppercase text-gray-500">Margin Exceptions</div></div>
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5"><XCircle className="text-red-500 mb-3" /><div className="text-2xl font-black text-gray-900 dark:text-white">{shadowMetrics.publicationFailures}</div><div className="text-xs font-bold uppercase text-gray-500">Publication Failures</div></div>
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5"><ClipboardCheck className="text-emerald-500 mb-3" /><div className="text-2xl font-black text-gray-900 dark:text-white">{shadowMetrics.approved}</div><div className="text-xs font-bold uppercase text-gray-500">Approved Preview</div></div>
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5"><AlertTriangle className="text-amber-500 mb-3" /><div className="text-2xl font-black text-gray-900 dark:text-white">{shadowMetrics.blockedSkus}</div><div className="text-xs font-bold uppercase text-gray-500">SKU Exceptions</div></div>
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5"><Package className="text-blue-500 mb-3" /><div className="text-2xl font-black text-gray-900 dark:text-white">{shadowMetrics.belowMargin}</div><div className="text-xs font-bold uppercase text-gray-500">Margin Exceptions</div></div>
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5"><XCircle className="text-red-500 mb-3" /><div className="text-2xl font-black text-gray-900 dark:text-white">{shadowMetrics.publicationFailures}</div><div className="text-xs font-bold uppercase text-gray-500">Publication Failures</div></div>
           </div>
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] p-5">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Operational Shadow Scenarios</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {requestTypeOptions.map(type => {

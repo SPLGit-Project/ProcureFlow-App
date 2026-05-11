@@ -149,24 +149,24 @@ const ItemRequestDetail = () => {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="p-4 bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800">
+            <div className="p-4 bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800">
               <User size={14} className="text-[var(--color-brand)] mb-2" />
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Requester</p>
               <p className="text-sm font-bold text-gray-900 dark:text-white truncate">User ID: {request.requestor_id.substring(0, 8)}</p>
             </div>
-            <div className="p-4 bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800">
+            <div className="p-4 bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800">
               <Tag size={14} className="text-[var(--color-brand)] mb-2" />
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</p>
               <p className="text-sm font-bold text-gray-900 dark:text-white">{request.request_type.replace('_', ' ')}</p>
             </div>
-            <div className="p-4 bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800">
+            <div className="p-4 bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800">
               <Clock size={14} className="text-[var(--color-brand)] mb-2" />
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Submitted</p>
               <p className="text-sm font-bold text-gray-900 dark:text-white">
                 {request.submitted_at ? new Date(request.submitted_at).toLocaleDateString() : 'Draft'}
               </p>
             </div>
-            <div className="p-4 bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800">
+            <div className="p-4 bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800">
               <Layers size={14} className="text-[var(--color-brand)] mb-2" />
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Target Systems</p>
               <div className="flex gap-1 mt-1">
@@ -221,14 +221,14 @@ const ItemRequestDetail = () => {
       {/* Main Content */}
       <div className="animate-slide-up">
         {activeTab === 'history' ? (
-          <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-8 shadow-sm">
+          <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-8 shadow-sm">
              <PriceHistoryPanel itemId={request.resulting_item_id || request.id} />
           </div>
         ) : (
           <>
           <div className="space-y-8">
             {request.status === 'DUPLICATE_REVIEW' ? (
-              <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-10 text-center space-y-4">
+              <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-10 text-center space-y-4">
                 <div className="w-14 h-14 bg-[var(--color-brand)]/10 rounded-2xl flex items-center justify-center mx-auto text-[var(--color-brand)]">
                   <ExternalLink size={24} />
                 </div>
@@ -246,7 +246,7 @@ const ItemRequestDetail = () => {
                 </button>
               </div>
             ) : request.status === 'DATA_REVIEW' ? (
-              <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-10 text-center space-y-4">
+              <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-10 text-center space-y-4">
                 <div className="w-14 h-14 bg-[var(--color-brand)]/10 rounded-2xl flex items-center justify-center mx-auto text-[var(--color-brand)]">
                   <ExternalLink size={24} />
                 </div>
@@ -264,7 +264,7 @@ const ItemRequestDetail = () => {
                 </button>
               </div>
             ) : request.status === 'PRICING_REVIEW' ? (
-              <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-10 text-center space-y-4">
+              <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-10 text-center space-y-4">
                 <div className="w-14 h-14 bg-[var(--color-brand)]/10 rounded-2xl flex items-center justify-center mx-auto text-[var(--color-brand)]">
                   <ExternalLink size={24} />
                 </div>
@@ -282,7 +282,7 @@ const ItemRequestDetail = () => {
                 </button>
               </div>
             ) : request.status === 'APPROVAL_PENDING' ? (
-              <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-10 text-center space-y-4">
+              <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-10 text-center space-y-4">
                 <div className="w-14 h-14 bg-[var(--color-brand)]/10 rounded-2xl flex items-center justify-center mx-auto text-[var(--color-brand)]">
                   <ExternalLink size={24} />
                 </div>
@@ -319,7 +319,7 @@ const ItemRequestDetail = () => {
                 <PublicationStatusPanel itemId={request.resulting_item_id!} />
               </div>
             ) : (
-              <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-12 text-center space-y-4">
+              <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-12 text-center space-y-4">
                 <div className="w-16 h-16 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center justify-center mx-auto text-gray-300">
                   <CheckCircle2 size={32} />
                 </div>
@@ -350,7 +350,7 @@ const ItemRequestDetail = () => {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#1e2029] rounded-3xl p-8 max-w-md w-full shadow-2xl border border-gray-200 dark:border-gray-800 animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-nocturne rounded-3xl p-8 max-w-md w-full shadow-2xl border border-gray-200 dark:border-gray-800 animate-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-red-100 dark:bg-red-900/20 text-red-600 rounded-2xl flex items-center justify-center mb-6">
               <AlertCircle size={32} />
             </div>

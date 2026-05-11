@@ -200,7 +200,7 @@ export default function ItemApprovalQueue() {
                                 className={`w-full text-left p-4 rounded-2xl border transition-all ${
                                     selectedId === item.id
                                         ? 'border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20 shadow-sm'
-                                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne hover:border-gray-300 dark:hover:border-gray-600'
                                 }`}
                             >
                                 <div className="flex items-start justify-between gap-2 mb-2">

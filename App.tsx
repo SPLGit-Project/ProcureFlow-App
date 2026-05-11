@@ -22,6 +22,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Lazy Load Heavy Components
+const Home = lazy(() => import('./components/Home.tsx'));
 const Dashboard = lazy(() => import('./components/Dashboard.tsx'));
 const POList = lazy(() => import('./components/POList.tsx'));
 const POCreate = lazy(() => import('./components/POCreate.tsx'));
@@ -97,7 +98,10 @@ function App() {
             <Route path="/pending-approval" element={<PendingApproval />} />
             
             <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
-              <Route index element={<Suspense fallback={<LoadingSpinner />}><Dashboard /></Suspense>} />
+              <Route index element={<Suspense fallback={<LoadingSpinner />}><Home /></Suspense>} />
+              <Route path="dashboard" element={<Navigate to="/procurement/dashboard" replace />} />
+              <Route path="procurement" element={<Navigate to="/procurement/dashboard" replace />} />
+              <Route path="procurement/dashboard" element={<Suspense fallback={<LoadingSpinner />}><Dashboard /></Suspense>} />
               
               <Route path="requests" element={<Suspense fallback={<LoadingSpinner />}><POList filter="ALL" /></Suspense>} />
               <Route path="approvals" element={<Suspense fallback={<LoadingSpinner />}><ApprovalQueue /></Suspense>} />

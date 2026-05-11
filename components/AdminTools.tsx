@@ -55,7 +55,7 @@ const AdminTools = () => {
             />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-3xl shadow-sm p-8 flex flex-col justify-between group hover:shadow-xl transition-all border-b-4 border-b-amber-500">
+                <div className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-3xl shadow-sm p-8 flex flex-col justify-between group hover:shadow-xl transition-all border-b-4 border-b-amber-500">
                     <div>
                         <div className="w-14 h-14 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                             <Play className="text-amber-500" size={28} />
@@ -85,7 +85,7 @@ const AdminTools = () => {
                     </button>
                 </div>
 
-                <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-3xl shadow-sm p-8 flex flex-col justify-center items-center text-center border-dashed border-2">
+                <div className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-3xl shadow-sm p-8 flex flex-col justify-center items-center text-center border-dashed border-2">
                     <div className="w-14 h-14 bg-gray-100 dark:bg-white/5 rounded-2xl flex items-center justify-center mb-6">
                         <CheckCircle className="text-gray-300" size={28} />
                     </div>

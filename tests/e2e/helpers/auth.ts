@@ -17,18 +17,26 @@ const DEFAULT_PERMISSIONS = [
     'view_active_requests', 'view_completed_requests',
 ];
 
-export async function injectTestUser(page: Page, permissions: string[] = DEFAULT_PERMISSIONS) {
-    await page.addInitScript((perms) => {
+export async function injectTestUser(
+    page: Page,
+    permissions: string[] = DEFAULT_PERMISSIONS,
+    siteIds: string[] = ['site-1']
+) {
+    await page.addInitScript(({ perms, allowedSiteIds }) => {
+        if (!localStorage.getItem('pf_test_user')) {
+            localStorage.removeItem('activeSiteIds');
+            localStorage.removeItem('activeSiteId');
+        }
         localStorage.setItem('pf_test_user', JSON.stringify({
             id: 'test-user-id',
             name: 'Test User',
             email: 'test@splservices.com.au',
             role: 'beta_tester',
-            avatar: '🧪',
+            avatar: 'QA',
             permissions: perms,
-            siteIds: ['site-1'],
+            siteIds: allowedSiteIds,
         }));
-    }, permissions);
+    }, { perms: permissions, allowedSiteIds: siteIds });
 }
 
 /** Navigate and wait for React to mount before assertions. */
@@ -44,12 +52,16 @@ export async function injectTestUserWithFlags(
     flags: Record<string, boolean> = {}
 ) {
     await page.addInitScript(({ perms, featureFlags }) => {
+        if (!localStorage.getItem('pf_test_user')) {
+            localStorage.removeItem('activeSiteIds');
+            localStorage.removeItem('activeSiteId');
+        }
         localStorage.setItem('pf_test_user', JSON.stringify({
             id: 'test-user-id',
             name: 'Test User',
             email: 'test@splservices.com.au',
             role: 'beta_tester',
-            avatar: '🧪',
+            avatar: 'QA',
             permissions: perms,
             siteIds: ['site-1'],
         }));

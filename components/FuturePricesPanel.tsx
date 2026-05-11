@@ -52,7 +52,7 @@ export const FuturePricesPanel: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center space-x-2 animate-pulse bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800">
+      <div className="p-8 flex items-center justify-center space-x-2 animate-pulse bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800">
         <RefreshCw className="text-[#129DC0] animate-spin" size={20} />
         <span className="text-sm font-medium text-gray-400 uppercase tracking-widest">Scanning Future Pricing...</span>
       </div>
@@ -72,7 +72,7 @@ export const FuturePricesPanel: React.FC = () => {
   }
 
   return (
-    <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+    <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
       <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-[#181a21]/50">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500">

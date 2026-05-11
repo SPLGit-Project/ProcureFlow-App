@@ -58,7 +58,7 @@ const EMPTY_FORM: ItemDefinitionPayload = {
 
 function RequestContext({ request, proposedCode }: { request: ItemRequest; proposedCode: string }) {
   return (
-    <aside className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
+    <aside className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
       <div>
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Item Code</p>
         <p className="font-mono text-sm font-bold text-[var(--color-brand)]">{proposedCode || generateItemCode(request.item_description)}</p>
@@ -509,7 +509,7 @@ export default function ItemDefinitionWizard() {
                   <button
                     key={key}
                     onClick={() => update({ [key]: !form[key] } as Partial<ItemDefinitionPayload>)}
-                    className={`p-4 rounded-2xl border text-left font-bold transition-all ${form[key] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300'}`}
+                    className={`p-4 rounded-2xl border text-left font-bold transition-all ${form[key] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300'}`}
                   >
                     {label}
                   </button>
@@ -529,7 +529,7 @@ export default function ItemDefinitionWizard() {
                   <button
                     key={key}
                     onClick={() => update({ [key]: !form[key as keyof ItemDefinitionPayload] } as Partial<ItemDefinitionPayload>)}
-                    className={`p-4 rounded-2xl border text-left transition-all ${form[key as keyof ItemDefinitionPayload] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300'}`}
+                    className={`p-4 rounded-2xl border text-left transition-all ${form[key as keyof ItemDefinitionPayload] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300'}`}
                   >
                     <p className="font-bold">{label}</p>
                     {fromRequest && <p className="text-[10px] opacity-60 mt-0.5">Requested by originator</p>}
@@ -549,7 +549,7 @@ export default function ItemDefinitionWizard() {
                   <button
                     key={key}
                     onClick={() => update({ [key]: !form[key] } as Partial<ItemDefinitionPayload>)}
-                    className={`p-4 rounded-2xl border text-left font-bold transition-all ${form[key] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300'}`}
+                    className={`p-4 rounded-2xl border text-left font-bold transition-all ${form[key] ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300'}`}
                   >
                     {label}
                   </button>
@@ -597,7 +597,7 @@ export default function ItemDefinitionWizard() {
               ].map(([Icon, label, value]) => {
                 const DisplayIcon = Icon as typeof Package;
                 return (
-                  <div key={label as string} className="p-5 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl">
+                  <div key={label as string} className="p-5 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl">
                     <DisplayIcon size={18} className="text-[var(--color-brand)] mb-3" />
                     <p className="text-xs font-black text-gray-400 uppercase tracking-widest">{label as string}</p>
                     <p className="text-sm font-bold text-gray-900 dark:text-white mt-1">{value as string}</p>

@@ -10,7 +10,7 @@ const InviteLanding = () => {
     
     const [status, setStatus] = useState<'LOADING' | 'SUCCESS' | 'ERROR'>('LOADING');
     const [message, setMessage] = useState('Verifying your invitation...');
-    const [orgName, setOrgName] = useState('ProcureFlow'); // Default, could fetch branding
+    const [orgName, setOrgName] = useState('MercerFlow'); // Default, could fetch branding
 
     useEffect(() => {
         if (!token) {
@@ -92,7 +92,7 @@ const InviteLanding = () => {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#15171e] p-4">
-            <div className="bg-white dark:bg-[#1e2029] w-full max-w-md p-8 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 text-center animate-fade-in">
+            <div className="bg-white dark:bg-nocturne w-full max-w-md p-8 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 text-center animate-fade-in">
                 
                 <div className="mb-6 flex justify-center">
                     <div className="w-16 h-16 bg-gray-100 dark:bg-white/5 rounded-2xl flex items-center justify-center">
@@ -126,7 +126,7 @@ const InviteLanding = () => {
                         onClick={() => window.location.href = '/'}
                         className="btn-primary w-full flex items-center justify-center gap-2 py-3 bg-green-600 hover:bg-green-700"
                     >
-                        Continue to Dashboard
+                        Continue Home
                     </button>
                 )}
                 

@@ -162,7 +162,7 @@ const ActiveRequestsView = () => {
                 <PageHeader title="Active Requests" subtitle="Monitor active Purchase Orders and manage SAP Concur links." />
                 
                 <div className="w-full md:w-auto overflow-x-auto pb-1">
-                    <div className="inline-flex min-w-max items-center gap-1 bg-white dark:bg-[#1e2029] p-1 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                    <div className="inline-flex min-w-max items-center gap-1 bg-white dark:bg-nocturne p-1 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
                         <button 
                             type="button"
                             onClick={() => setFilterMode('PENDING')}
@@ -195,13 +195,13 @@ const ActiveRequestsView = () => {
                     <input 
                         type="text" 
                         placeholder="Search PO #, Site, Supplier, or Requester..." 
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
 
-                <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+                <div className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-4 sm:p-5 shadow-sm">
                     <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 flex-1">
                             <div>
@@ -317,7 +317,7 @@ const ActiveRequestsView = () => {
             </div>
 
             {/* List */}
-             <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+             <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
                 <div className="hidden md:block overflow-x-auto">
                 <table className="w-full">
                     <thead className="bg-gray-50 dark:bg-[#15171e] text-left">
@@ -530,7 +530,7 @@ const ActiveRequestsView = () => {
              {/* Modal */}
              {isConcurRequestModalOpen && selectedPO && (
                 <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setIsConcurRequestModalOpen(false)}>
-                     <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800" onClick={e => e.stopPropagation()}>
+                     <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Link Concur Request</h2>
                          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                             Enter the SAP Concur Request Number for <b>{selectedPO.displayId || selectedPO.id}</b>.
@@ -571,7 +571,7 @@ const ActiveRequestsView = () => {
                         But for speed and consistency, I'll use a simple input modal here or refactor ConcurExportModal to be usable here.
                         Actually, let's just create a simpler inline modal right here for entering the ID, same as PODetail does.
                     */}
-                     <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800" onClick={e => e.stopPropagation()}>
+                     <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Link Concur PO</h2>
                          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                             Enter the SAP Concur PO Number for <b>{selectedPO.displayId || selectedPO.id}</b>.

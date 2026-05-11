@@ -77,8 +77,8 @@ function HorizontalStepper({ steps, activeStepIndex }: StepperProps) {
                   status === 'completed'
                     ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white'
                     : status === 'active'
-                    ? 'bg-white dark:bg-[#1e2029] border-[var(--color-brand)] text-[var(--color-brand)]'
-                    : 'bg-white dark:bg-[#1e2029] border-gray-200 dark:border-gray-700 text-gray-400'
+                    ? 'bg-white dark:bg-nocturne border-[var(--color-brand)] text-[var(--color-brand)]'
+                    : 'bg-white dark:bg-nocturne border-gray-200 dark:border-gray-700 text-gray-400'
                 }`}
               >
                 {status === 'completed' ? (

@@ -73,7 +73,7 @@ const ProcurementQueue = () => {
     const meta = (request.metadata ?? {}) as Record<string, unknown>;
     const proposedCode = typeof meta.proposedCode === 'string' ? meta.proposedCode : null;
     return (
-      <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl p-6 hover:shadow-lg transition-all group relative overflow-hidden">
+      <div className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-2xl p-6 hover:shadow-lg transition-all group relative overflow-hidden">
         {request.is_urgent && (
           <div className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-black uppercase tracking-widest rounded-bl-xl">
             Urgent

@@ -219,7 +219,7 @@ export default function WorkflowLifecycle({ status, requestId, userRole }: Workf
                       ? 'bg-[var(--color-brand)] text-white'
                       : isActive
                       ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/30'
-                      : 'bg-gray-100 dark:bg-[#1e2029] border-2 border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600'
+                      : 'bg-gray-100 dark:bg-nocturne border-2 border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600'
                   } ${hasSubSteps ? 'cursor-pointer hover:opacity-85' : 'cursor-default'}`}
                 >
                   {isDone ? (

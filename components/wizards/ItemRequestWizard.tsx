@@ -308,7 +308,7 @@ function CodePreviewPanel({ s1, s2, dupeStatus, dupeCount }: CodePreviewPanelPro
 
   return (
     <div className="space-y-3">
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Proposed Item Code</p>
 
         <div className="bg-gray-50 dark:bg-[#12141b] rounded-xl px-4 py-3 mb-4 min-h-[52px] flex items-center">
@@ -397,7 +397,7 @@ function Step1TypeSelector({ data, onChange }: Step1Props) {
       <div className="space-y-5">
         {header}
         <div className="flex items-center gap-3 px-4 py-3 bg-[var(--color-brand)]/5 border-2 border-[var(--color-brand)]/20 rounded-xl">
-          <div className={`p-1.5 rounded-lg bg-white dark:bg-[#1e2029] ${selected.color} shrink-0`}>
+          <div className={`p-1.5 rounded-lg bg-white dark:bg-nocturne ${selected.color} shrink-0`}>
             <Icon size={16} />
           </div>
           <Check size={14} className="text-[var(--color-brand)] shrink-0" />
@@ -429,7 +429,7 @@ function Step1TypeSelector({ data, onChange }: Step1Props) {
               onClick={() => { onChange({ request_type: card.value }); setShowSelector(false); }}
               className={`text-left p-4 rounded-2xl border-2 transition-all flex items-start gap-4 ${
                 sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 shadow-lg shadow-[var(--color-brand)]/10'
-                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne hover:border-gray-300 dark:hover:border-gray-600'
               }`}>
               <div className={`mt-0.5 p-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 ${card.color} shrink-0`}>
                 <Icon size={18} />
@@ -675,7 +675,7 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
                   onClick={() => { onChange({ categoryLabel: cat.label, categoryCode: cat.code }); collapseSection('category'); }}
                   className={`text-left p-3.5 rounded-xl border-2 transition-all flex items-center gap-3 ${
                     sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne hover:border-gray-300 dark:hover:border-gray-600'
                   }`}>
                   <span className={`font-mono text-sm font-black w-8 text-center shrink-0 px-1 py-0.5 rounded ${
                     sel ? 'bg-[var(--color-brand)] text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
@@ -715,7 +715,7 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
                         <button key={pt.code} type="button" onClick={() => handleProductTypeChange(pt)}
                           className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm transition-all ${
                             sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
-                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                           }`}>
                           <span className={`font-mono text-[10px] font-black ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>{pt.code}</span>
                           <span className="font-medium">{pt.label}</span>
@@ -754,7 +754,7 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
                     onClick={() => { onChange({ rfid: opt.val }); collapseSection('rfid'); }}
                     className={`text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${
                       sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
-                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne hover:border-gray-300 dark:hover:border-gray-600'
                     }`}>
                     <Icon size={18} className={sel ? 'text-[var(--color-brand)] mt-0.5' : 'text-gray-400 mt-0.5'} />
                     <div>
@@ -791,7 +791,7 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
                     onClick={() => { onChange({ sizeLabel: sz.label, sizeCode: sz.code }); collapseSection('size'); }}
                     className={`flex flex-col items-center px-4 py-2.5 rounded-xl border-2 transition-all min-w-[64px] ${
                       sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
-                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne hover:border-gray-300 dark:hover:border-gray-600'
                     }`}>
                     <span className={`font-mono text-sm font-black ${sel ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>{sz.code}</span>
                     <span className={`text-xs mt-0.5 ${sel ? 'font-bold text-[var(--color-brand)]' : 'text-gray-600 dark:text-gray-400'}`}>{sz.label}</span>
@@ -826,7 +826,7 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
                       }}
                       className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all gap-1.5 ${
                         sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5'
-                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne hover:border-gray-300 dark:hover:border-gray-600'
                       }`}>
                       <div className="w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 shrink-0"
                         style={colourSwatchStyle(col)} />
@@ -1039,7 +1039,7 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
                 {hasPerfectMatch ? 'Exact Match Detected — Cannot Submit' : 'Similar Items Found — Review Before Continuing'}
               </span>
             </div>
-            <div className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-[#1e2029]">
+            <div className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-nocturne">
               {scoredResults.map(item => (
                 <div key={item.id} className="flex items-center gap-3 px-4 py-3">
                   <Package size={13} className="text-gray-400 shrink-0" />
@@ -1126,7 +1126,7 @@ function Step3Context({ data, onChange, requestType }: Step3Props) {
               <button key={opt.value} type="button"
                 onClick={() => onChange({ business_reason_type: opt.value, business_reason_other: opt.value !== 'OTHER' ? '' : data.business_reason_other })}
                 className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-center gap-3 ${
-                  sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                  sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne hover:border-gray-300 dark:hover:border-gray-600'
                 }`}>
                 <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${sel ? 'border-[var(--color-brand)] bg-[var(--color-brand)]' : 'border-gray-300 dark:border-gray-600'}`}>
                   {sel && <Check size={9} strokeWidth={3} className="text-white" />}
@@ -1169,7 +1169,7 @@ function Step3Context({ data, onChange, requestType }: Step3Props) {
             return (
               <button key={sys.key} type="button" onClick={() => onChange({ [sys.key]: !active } as any)}
                 className={`text-left p-4 rounded-2xl border-2 transition-all flex items-start gap-3 ${
-                  active ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600'
+                  active ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne hover:border-gray-300 dark:hover:border-gray-600'
                 }`}>
                 <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${active ? 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
                   <Icon size={16} />
@@ -1190,7 +1190,7 @@ function Step3Context({ data, onChange, requestType }: Step3Props) {
 
       {/* Urgency */}
       <section className="space-y-3">
-        <div className={`flex items-center justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all ${data.is_urgent ? 'border-red-400 bg-red-50 dark:bg-red-500/5' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029]'}`}
+        <div className={`flex items-center justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all ${data.is_urgent ? 'border-red-400 bg-red-50 dark:bg-red-500/5' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne'}`}
           onClick={() => onChange({ is_urgent: !data.is_urgent, urgent_reason: '' })} role="checkbox" aria-checked={data.is_urgent} tabIndex={0}
           onKeyDown={e => e.key === ' ' && onChange({ is_urgent: !data.is_urgent, urgent_reason: '' })}>
           <div className="flex items-center gap-3">
@@ -1277,14 +1277,14 @@ function Step4Review({ step1, step2, step3, onPrevious }: Step4Props) {
       </div>
 
       {/* Code summary */}
-      <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-6 space-y-3">
+      <div className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-6 space-y-3">
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Generated Item Code</p>
         <p className="font-mono font-black text-2xl text-gray-900 dark:text-white tracking-widest">{code}</p>
         <p className="text-sm text-gray-500">{buildItemDescription(step2)}</p>
       </div>
 
       {/* Summary table */}
-      <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
+      <div className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-3.5 bg-gray-50 dark:bg-[#15171e]/50 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3">
           {typeCard && <div className={`p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 ${typeCard.color}`}><typeCard.icon size={14} /></div>}
           <span className="font-bold text-sm text-gray-900 dark:text-white">{typeCard?.label}</span>
@@ -1338,7 +1338,7 @@ function Step4Review({ step1, step2, step3, onPrevious }: Step4Props) {
                     {missing.length} optional {missing.length === 1 ? 'attribute' : 'attributes'} not provided
                   </p>
                 </div>
-                <div className="bg-white dark:bg-[#1e2029] divide-y divide-amber-50 dark:divide-amber-500/10">
+                <div className="bg-white dark:bg-nocturne divide-y divide-amber-50 dark:divide-amber-500/10">
                   {missing.map(m => (
                     <div key={m.field} className="flex items-start gap-3 px-4 py-2.5">
                       <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1.5" />
@@ -1408,11 +1408,11 @@ function ReviewContextPanel({ step1, step2 }: { step1: Step1Data; step2: Step2Da
   ];
   return (
     <div className="space-y-4">
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Your Item Code</p>
         <p className="font-mono font-black text-xl text-gray-900 dark:text-white tracking-widest">{code}</p>
       </div>
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">What Happens Next</p>
         <div className="relative">
           {STAGES.map((s, i) => {
@@ -1420,7 +1420,7 @@ function ReviewContextPanel({ step1, step2 }: { step1: Step1Data; step2: Step2Da
             return (
               <div key={s.label} className="relative flex gap-3">
                 <div className="flex flex-col items-center" style={{ width: 28, flexShrink: 0 }}>
-                  <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center z-10 shrink-0 ${s.done ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white' : s.active ? 'border-[var(--color-brand)] bg-white dark:bg-[#1e2029] text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] text-gray-300 dark:text-gray-700'}`}>
+                  <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center z-10 shrink-0 ${s.done ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white' : s.active ? 'border-[var(--color-brand)] bg-white dark:bg-nocturne text-[var(--color-brand)]' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne text-gray-300 dark:text-gray-700'}`}>
                     {s.done ? <Check size={12} strokeWidth={3} /> : <span className="text-[9px] font-black">{i + 1}</span>}
                   </div>
                   {!isLast && <div className={`w-px flex-1 my-1 ${s.done ? 'bg-[var(--color-brand)]/40' : 'bg-gray-200 dark:bg-gray-700'}`} style={{ minHeight: 16 }} />}

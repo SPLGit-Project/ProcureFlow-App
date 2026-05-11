@@ -116,7 +116,7 @@ const MasterDataQueue = () => {
     const meta = (request.metadata ?? {}) as Record<string, unknown>;
     const missingFields = Array.isArray(meta.procurement_missing_fields) ? meta.procurement_missing_fields as string[] : [];
     return (
-    <div className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-2xl p-6 hover:shadow-lg transition-all group relative overflow-hidden">
+    <div className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-2xl p-6 hover:shadow-lg transition-all group relative overflow-hidden">
       {request.is_urgent && (
         <div className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-black uppercase tracking-widest rounded-bl-xl">
           Urgent
@@ -247,7 +247,7 @@ const MasterDataQueue = () => {
         <button
           onClick={() => fetchRequests(true)}
           disabled={isRefreshing}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
         >
           <RefreshCcw size={14} className={isRefreshing ? 'animate-spin' : ''} />
           Refresh Queue
@@ -267,7 +267,7 @@ const MasterDataQueue = () => {
             onClick={() => setActiveTab(tab.id as TabType)}
             className={`flex items-center gap-3 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
               activeTab === tab.id 
-                ? 'bg-white dark:bg-[#1e2029] text-[var(--color-brand)] shadow-md border border-gray-100/50 dark:border-gray-800/50' 
+                ? 'bg-white dark:bg-nocturne text-[var(--color-brand)] shadow-md border border-gray-100/50 dark:border-gray-800/50' 
                 : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
             }`}
           >

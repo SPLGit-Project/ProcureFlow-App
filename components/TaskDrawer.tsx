@@ -84,7 +84,7 @@ const TaskDrawer: FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
             ></div>
 
             {/* Drawer Content */}
-            <div className={`relative w-full max-w-md bg-white dark:bg-[#1e2029] h-full shadow-2xl flex flex-col border-l border-default animate-slide-in-right`}>
+            <div className={`relative w-full max-w-md bg-white dark:bg-nocturne h-full shadow-2xl flex flex-col border-l border-default animate-slide-in-right`}>
                 
                 {/* Header */}
                 <div className="p-6 border-b border-default bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">

@@ -225,7 +225,7 @@ const Dashboard = () => {
       
       {/* Welcome & Site Filter */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 pb-2">
-         <PageHeader title="Dashboard" subtitle={`Overview for ${currentUser.name}`} />
+         <PageHeader title="Procurement Dashboard" subtitle={`Overview for ${currentUser.name}`} />
          
          <div className="flex gap-3 w-full md:w-auto">
              <button type="button" onClick={() => navigate('/create')} className="whitespace-nowrap bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-semibold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">
@@ -266,7 +266,7 @@ const Dashboard = () => {
             return (
               <div
                 key={kpi.label}
-                className="group bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-5 hover:shadow-lg hover:scale-[1.01] transition-all duration-150 cursor-default overflow-hidden"
+                className="group bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-5 hover:shadow-lg hover:scale-[1.01] transition-all duration-150 cursor-default overflow-hidden"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className={`p-2 rounded-xl ${kpi.good ? 'bg-[rgba(18,157,192,0.1)] text-[var(--color-tranquil)]' : 'bg-red-50 dark:bg-red-500/10 text-red-500'}`}>

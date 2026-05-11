@@ -64,7 +64,7 @@ export const PublicationStatusPanel: React.FC<PublicationStatusPanelProps> = ({ 
 
   if (isLoading && events.length === 0) {
     return (
-      <div className="p-12 flex flex-col items-center justify-center gap-4 bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800">
+      <div className="p-12 flex flex-col items-center justify-center gap-4 bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800">
         <Loader2 className="animate-spin text-[#129DC0]" size={32} />
         <p className="text-sm text-gray-500 font-bold uppercase tracking-widest">Loading Publication Status...</p>
       </div>
@@ -74,7 +74,7 @@ export const PublicationStatusPanel: React.FC<PublicationStatusPanelProps> = ({ 
   if (events.length === 0) return null;
 
   return (
-    <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-page-entry">
+    <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-page-entry">
       <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#181a21]/50 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-purple-50 dark:bg-purple-900/20 rounded-lg flex items-center justify-center text-purple-500">

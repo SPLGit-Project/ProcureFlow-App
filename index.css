@@ -63,9 +63,9 @@
 .dark {
   /* Dark Mode - Enhanced Depth */
   --bg-primary: #15171e;           /* Main background */
-  --bg-secondary: #1e2029;         /* Tiles and cards */
-  --bg-tertiary: #252831;          /* Nested elements */
-  --bg-elevated: #2b2d3b;          /* Elevated/important cards */
+  --bg-secondary: var(--color-nocturne); /* Primary dark cards match the rail */
+  --bg-tertiary: #15171e;          /* Nested elements */
+  --bg-elevated: #1e2029;          /* Elevated/important cards */
   
   --border-subtle: #2b2d3b;
   --border-default: #363945;

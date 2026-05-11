@@ -94,7 +94,7 @@ export default function DataIngestion() {
         <PageHeader title="Data Ingestion" subtitle="Upload monthly Short Supply reports" />
       </div>
 
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm p-6">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm p-6">
         <h2 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Upload Monthly Data</h2>
         <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-8 text-center bg-gray-50 dark:bg-black/20">
           <UploadCloud className="mx-auto h-12 w-12 text-gray-400 mb-4" />
@@ -128,7 +128,7 @@ export default function DataIngestion() {
         </div>
       </div>
       
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 mt-4">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 mt-4">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2">
@@ -164,7 +164,7 @@ export default function DataIngestion() {
         )}
       </div>
 
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 mt-4">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 mt-4">
         <h2 className="text-lg font-semibold mb-2 text-gray-800 dark:text-white flex items-center gap-2">
           <Terminal size={20} className="text-amber-500" />
           Operational Metrics Reference

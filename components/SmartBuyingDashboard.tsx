@@ -356,7 +356,7 @@ export default function SmartBuyingDashboard() {
 
             {/* ── HISTORY VIEW ─────────────────────────────────────────────── */}
             {activeView === 'history' && (
-                <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+                <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
                     <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-white/5">
                         <h2 className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                             <History size={16} className="text-[var(--color-brand)]" />
@@ -419,7 +419,7 @@ export default function SmartBuyingDashboard() {
 
                         {/* Data Source — only shown when v2 is enabled */}
                         {v2Enabled && (
-                            <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
+                            <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
                                 <h2 className="text-sm font-bold tracking-wider uppercase text-gray-500 dark:text-slate-400 mb-4">Data Source</h2>
                                 <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-sm mb-4">
                                     <button
@@ -473,7 +473,7 @@ export default function SmartBuyingDashboard() {
                         )}
 
                         {/* Model Constraints */}
-                        <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
+                        <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
                             <h2 className="text-sm font-bold tracking-wider uppercase text-gray-500 dark:text-slate-400 mb-6">Model Constraints</h2>
                             <div className="space-y-6">
                                 <div>
@@ -540,7 +540,7 @@ export default function SmartBuyingDashboard() {
                     </div>
 
                     {/* RIGHT COLUMN: Allocation table */}
-                    <div className="lg:col-span-3 bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
+                    <div className="lg:col-span-3 bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
                         <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
                             <h2 className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                                 <BarChart3 size={18} className="text-[var(--color-brand)]" />

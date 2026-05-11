@@ -188,7 +188,7 @@ const PricingSchedulesList = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-[#1e2029] p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
+        <div className="bg-white dark:bg-nocturne p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/10 flex items-center justify-center text-amber-600">
               <Clock size={20} />
@@ -199,7 +199,7 @@ const PricingSchedulesList = () => {
           </div>
           <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Awaiting Approval</h3>
         </div>
-        <div className="bg-white dark:bg-[#1e2029] p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
+        <div className="bg-white dark:bg-nocturne p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/10 flex items-center justify-center text-emerald-600">
               <CheckCircle2 size={20} />
@@ -210,7 +210,7 @@ const PricingSchedulesList = () => {
           </div>
           <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Ready to Execute</h3>
         </div>
-        <div className="bg-white dark:bg-[#1e2029] p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
+        <div className="bg-white dark:bg-nocturne p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/10 flex items-center justify-center text-indigo-600">
               <Calendar size={20} />
@@ -232,7 +232,7 @@ const PricingSchedulesList = () => {
             placeholder="Search schedules by name or reference..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none transition-all"
+            className="w-full pl-12 pr-4 py-3 bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none transition-all"
           />
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto">
@@ -240,7 +240,7 @@ const PricingSchedulesList = () => {
           <select 
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="flex-1 md:w-48 py-3 px-4 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none"
+            className="flex-1 md:w-48 py-3 px-4 bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand)] outline-none"
           >
             <option value="ALL">All Statuses</option>
             <option value="DRAFT">Draft</option>
@@ -269,7 +269,7 @@ const PricingSchedulesList = () => {
           filteredSchedules.map((schedule) => (
             <div 
               key={schedule.id}
-              className="bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-3xl p-6 hover:shadow-xl hover:border-[var(--color-brand)]/20 transition-all group"
+              className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-3xl p-6 hover:shadow-xl hover:border-[var(--color-brand)]/20 transition-all group"
             >
               <div className="flex flex-col md:flex-row justify-between gap-6">
                 <div className="flex-1">

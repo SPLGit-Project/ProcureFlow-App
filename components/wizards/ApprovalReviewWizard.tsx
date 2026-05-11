@@ -72,7 +72,7 @@ function SlaPanel({ instance }: { instance: ApprovalInstance | null }) {
 
 function ContextPanel({ request, activeInstance }: { request: ItemRequest; activeInstance: ApprovalInstance | null }) {
   return (
-    <aside className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
+    <aside className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-5 space-y-4">
       <div>
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Approval Request</p>
         <p className="font-mono text-sm font-bold text-[var(--color-brand)]">{request.request_number}</p>
@@ -224,7 +224,7 @@ export default function ApprovalReviewWizard() {
               <h2 className="text-xl font-black text-gray-900 dark:text-white">Request overview</h2>
               <p className="text-sm text-gray-500 mt-1">Review the requestor context and SLA before approving.</p>
             </div>
-            <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
+            <div className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
               <FieldRow label="Request" value={request.request_number} />
               <FieldRow label="Type" value={request.request_type.replaceAll('_', ' ')} />
               <FieldRow label="Description" value={request.item_description} />
@@ -235,7 +235,7 @@ export default function ApprovalReviewWizard() {
               <FieldRow label="Priority" value={request.is_urgent ? 'Urgent' : 'Standard'} />
             </div>
             {decisions.length > 0 && (
-              <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
+              <div className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
                 <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Prior Decisions</p>
                 <div className="space-y-3">
                   {decisions.map(prior => (
@@ -257,7 +257,7 @@ export default function ApprovalReviewWizard() {
               <p className="text-sm text-gray-500 mt-1">Validate the item master data created by the Master Data team.</p>
             </div>
             {item ? (
-              <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
+              <div className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
                 <FieldRow label="SKU" value={item.sku} />
                 <FieldRow label="Name" value={item.name} />
                 <FieldRow label="Description" value={item.description} />
@@ -279,7 +279,7 @@ export default function ApprovalReviewWizard() {
               <p className="text-sm text-gray-500 mt-1">Review purchase and sell pricing before making a decision.</p>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
+              <div className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
                 <TruckIconFallback />
                 <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Purchase Pricing</p>
                 {purchasePrices.length > 0 ? purchasePrices.map(price => (
@@ -289,7 +289,7 @@ export default function ApprovalReviewWizard() {
                   </div>
                 )) : <p className="text-sm text-gray-400">No purchase prices recorded.</p>}
               </div>
-              <div className="bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
+              <div className="bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
                 <DollarSign size={18} className="text-[var(--color-brand)] mb-3" />
                 <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Sell Pricing</p>
                 {sellPrices.length > 0 ? sellPrices.map(price => (
@@ -320,7 +320,7 @@ export default function ApprovalReviewWizard() {
                   <button
                     key={value as string}
                     onClick={() => setDecision(value as DecisionType)}
-                    className={`p-4 rounded-2xl border text-left transition-all ${decision === value ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029]'}`}
+                    className={`p-4 rounded-2xl border text-left transition-all ${decision === value ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne'}`}
                   >
                     <DisplayIcon size={18} className="text-[var(--color-brand)] mb-3" />
                     <p className="font-bold text-gray-900 dark:text-white">{label as string}</p>

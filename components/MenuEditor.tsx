@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-    LayoutDashboard, PlusCircle, FileText, CheckCircle, Activity, 
+    LayoutDashboard, House, PlusCircle, FileText, CheckCircle, Activity, 
     DollarSign, BarChart3, Clock, Settings, HelpCircle, 
     Eye, EyeOff, ArrowUp, ArrowDown, Save, RotateCcw,
     ListTodo, ListChecks, TrendingUp, ShieldCheck, ChevronRight, GripVertical
@@ -22,7 +22,7 @@ const MenuEditor = () => {
 
     // Icon Mapping (Must match Layout.tsx)
     const iconMap: Record<string, any> = {
-        LayoutDashboard, PlusCircle, FileText, CheckCircle, Activity, 
+        LayoutDashboard, House, PlusCircle, FileText, CheckCircle, Activity, 
         DollarSign, BarChart3, Clock, Settings, HelpCircle,
         ListTodo, ListChecks, TrendingUp, ShieldCheck
     };
@@ -191,7 +191,7 @@ const MenuEditor = () => {
 
             <div className="space-y-8">
                 {groupedItems.map((group, gIdx) => (
-                    <section key={group.category} className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden transition-all">
+                    <section key={group.category} className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden transition-all">
                         {/* Group Header */}
                         <div className="px-6 py-4 bg-gray-50/50 dark:bg-gray-800/30 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between group">
                             <div className="flex items-center gap-3">

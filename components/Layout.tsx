@@ -20,6 +20,7 @@ import {
   FileText,
   FlaskConical,
   HelpCircle,
+  House,
   LayoutDashboard,
   ListChecks,
   ListTodo,
@@ -44,6 +45,7 @@ import VersionBadge from './VersionBadge';
 import { MultiSiteSelector } from './MultiSiteSelector';
 import TaskDrawer from './TaskDrawer';
 import AccountDrawer from './AccountDrawer';
+import { BrandLogo } from './BrandLogo';
 
 const SIDEBAR_COLLAPSED_KEY = 'pf-sidebar-collapsed';
 const REVAMP_EXPANDED_KEY = 'pf-revamp-sidebar-expanded';
@@ -131,6 +133,7 @@ const Layout = () => {
     FileText,
     FlaskConical,
     CheckCircle,
+    House,
     ClipboardCheck,
     ClipboardList: TaskIcon,
     ListTodo,
@@ -185,7 +188,7 @@ const Layout = () => {
     () => navItems.find(item => item.path === location.pathname),
     [navItems, location.pathname]
   );
-
+  const isHomeRoute = location.pathname === '/';
   const pageTitle = React.useMemo(() => {
     if (currentNavItem) return currentNavItem.label;
     if (location.pathname.startsWith('/requests/')) return 'Request Details';
@@ -194,7 +197,7 @@ const Layout = () => {
       .filter(Boolean)
       .map(segment => toTitleCase(segment))
       .join(' / ');
-    return fallback || 'Dashboard';
+    return fallback || 'Home';
   }, [location.pathname, currentNavItem]);
 
   const isSidebarDark = branding.sidebarTheme === 'brand' || branding.sidebarTheme === 'dark';
@@ -202,7 +205,7 @@ const Layout = () => {
   const sidebarBaseClass =
     'fixed inset-y-0 left-0 z-50 w-72 transform transition-all duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto flex flex-col border-r border-gray-200 dark:border-gray-800 backdrop-blur-xl';
 
-  let sidebarThemeClass = 'bg-white/95 dark:bg-[#1e2029]/95';
+  let sidebarThemeClass = 'bg-white/95 dark:bg-nocturne/95';
   if (branding.sidebarTheme === 'dark') sidebarThemeClass = 'bg-[#1e2029] text-white border-r-0';
   else if (branding.sidebarTheme === 'light') sidebarThemeClass = 'bg-white text-gray-800';
   else if (branding.sidebarTheme === 'brand') sidebarThemeClass = 'bg-[var(--color-brand)] text-white border-r-0';
@@ -257,17 +260,7 @@ const Layout = () => {
             <div
               className={`pt-4 pb-3 shrink-0 flex items-center transition-all duration-300 ${isRevampExpanded ? 'px-2 gap-3' : 'px-2 justify-center'}`}
             >
-              {branding.logoUrl ? (
-                <img
-                  src={branding.logoUrl}
-                  alt="Logo"
-                  className="w-12 h-12 object-contain rounded-xl shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-xl bg-tranquil flex items-center justify-center font-bold text-white shadow-md shadow-tranquil/30 text-[20px] leading-none shrink-0">
-                  {branding.appName.charAt(0)}
-                </div>
-              )}
+              <BrandLogo appName={branding.appName} logoUrl={branding.logoUrl} size="md" />
               {isRevampExpanded && (
                 <span className="text-white font-bold text-sm truncate">{branding.appName}</span>
               )}
@@ -404,24 +397,34 @@ const Layout = () => {
                   <X size={20} />
                 </button>
               </div>
-              <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-                {navItems.map(item => {
-                  const Icon = item.icon;
-                  return (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all
-                        ${isActive ? 'bg-tranquil text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'}`
-                      }
+              <nav className="flex-1 overflow-y-auto p-3 space-y-1" aria-label="All navigation">
+                {groupedNavItems.map((group, groupIndex) => (
+                  <React.Fragment key={group.category}>
+                    <div
+                      data-testid={`mobile-nav-group-${group.category.toLowerCase().replace(/\s+/g, '-')}`}
+                      className={`px-3 pb-1 pt-4 text-[10px] font-bold uppercase tracking-widest text-white/30 ${groupIndex === 0 ? 'pt-1' : ''}`}
                     >
-                      <Icon size={18} className="shrink-0" />
-                      {item.label}
-                    </NavLink>
-                  );
-                })}
+                      {group.category}
+                    </div>
+                    {group.items.map(item => {
+                      const Icon = item.icon;
+                      return (
+                        <NavLink
+                          key={item.path}
+                          to={item.path}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className={({ isActive }) =>
+                            `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all
+                            ${isActive ? 'bg-tranquil text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'}`
+                          }
+                        >
+                          <Icon size={18} className="shrink-0" />
+                          {item.label}
+                        </NavLink>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
               </nav>
             </div>
           )}
@@ -435,7 +438,7 @@ const Layout = () => {
               {(() => {
                 const PageTitleIcon = currentNavItem?.icon ?? null;
                 return (
-                <header className="pointer-events-auto bg-white/90 dark:bg-[#1a1d27]/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center gap-3 px-4">
+                <header className="pointer-events-auto bg-white/90 dark:bg-nocturne backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/60 dark:border-white/5 h-14 flex items-center gap-3 px-4">
                   {/* Left: page identity + optional Cancel */}
                   <div className="flex items-center gap-3 min-w-0 shrink-0">
                     <button
@@ -456,7 +459,7 @@ const Layout = () => {
                       </button>
                     )}
                     {PageTitleIcon && (
-                      <div className="shrink-0 w-8 h-8 rounded-xl bg-tranquil flex items-center justify-center shadow-sm shadow-tranquil/30">
+                      <div className="hidden shrink-0 w-8 h-8 rounded-xl bg-tranquil sm:flex items-center justify-center shadow-sm shadow-tranquil/30">
                         <PageTitleIcon size={16} className="text-white" />
                       </div>
                     )}
@@ -478,6 +481,16 @@ const Layout = () => {
                   </div>
                   {/* Center: step indicator (wizards) or admin tab bar (Settings portal) */}
                   <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0">
+                    {isHomeRoute && userSites.length > 0 && (
+                      <div className="hidden sm:block w-[230px] md:w-[300px]">
+                        <MultiSiteSelector
+                          sites={userSites}
+                          selectedSiteIds={activeSiteIds}
+                          onChange={setActiveSiteIds}
+                          variant={theme === 'dark' ? 'brand' : 'light'}
+                        />
+                      </div>
+                    )}
                     {pageMeta.stepInfo && (
                       <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 select-none">
                         <span className="text-[10px] font-black uppercase tracking-widest text-tranquil">
@@ -491,7 +504,7 @@ const Layout = () => {
                     )}
                   </div>
                   {/* Right: actions */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1 md:gap-2 shrink-0">
                     {pageMeta.wizardActions && (
                       <>
                         {/* Autosave */}
@@ -529,19 +542,37 @@ const Layout = () => {
                         </button>
                       </>
                     )}
+                    <NavLink
+                      to="/"
+                      className={({ isActive }) =>
+                        `relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95 ${
+                          isActive ? 'ring-2 ring-white/40 dark:ring-white/20' : ''
+                        }`
+                      }
+                      title="Home"
+                    >
+                      <House size={18} />
+                    </NavLink>
                     <button
                       onClick={() => setIsTaskDrawerOpen(true)}
-                      className="relative bg-tranquil text-white p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
+                      className="relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
                       title="Task Center"
                     >
-                      <TaskIcon size={19} />
+                      <TaskIcon size={18} />
                       <span className="absolute top-1 right-1 w-2 h-2 bg-red-400 rounded-full border-2 border-tranquil animate-pulse" />
                     </button>
                     <button
-                      className="bg-tranquil text-white p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
+                      className="bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
                       title="Notifications"
                     >
-                      <Bell size={19} />
+                      <Bell size={18} />
+                    </button>
+                    <button
+                      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                      className="md:hidden bg-tranquil text-white p-2 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95"
+                      title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                    >
+                      {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                     </button>
                   </div>
                 </header>
@@ -584,15 +615,12 @@ const Layout = () => {
         <div
           className={`p-4 md:py-5 flex items-center gap-3 shrink-0 ${isSidebarCollapsed ? 'md:px-3' : 'md:px-5'}`}
         >
-          {branding.logoUrl ? (
-            <img src={branding.logoUrl} alt="Logo" className="w-8 h-8 object-contain shrink-0" />
-          ) : (
-            <div
-              className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-md shrink-0 ${isSidebarDark ? 'bg-white text-[var(--color-brand)]' : 'bg-gradient-to-br from-[var(--color-brand)] to-purple-600 text-white'}`}
-            >
-              {branding.appName.charAt(0)}
-            </div>
-          )}
+          <BrandLogo
+            appName={branding.appName}
+            logoUrl={branding.logoUrl}
+            size="sm"
+            fallbackClassName={isSidebarDark ? 'bg-white text-[var(--color-brand)]' : 'bg-gradient-to-br from-[var(--color-brand)] to-purple-600 text-white'}
+          />
 
           {!isSidebarCollapsed && (
             <h1 className="text-lg font-bold tracking-tight truncate flex-1" title={branding.appName}>
@@ -730,7 +758,6 @@ const Layout = () => {
               </span>
             </div>
           )}
-
           <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
             {pageMeta.wizardActions && (
               <>
@@ -768,6 +795,17 @@ const Layout = () => {
                 </button>
               </>
             )}
+            <NavLink
+              to="/"
+              className={({ isActive }) =>
+                `relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95 ${
+                  isActive ? 'bg-gray-100 text-[var(--color-brand)] dark:bg-white/5 dark:text-white' : ''
+                }`
+              }
+              title="Home"
+            >
+              <House size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
+            </NavLink>
             <button
               onClick={() => setIsTaskDrawerOpen(true)}
               className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"

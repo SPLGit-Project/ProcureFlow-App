@@ -108,6 +108,14 @@ export interface EmailTemplate {
   fromEmail?: string;
 }
 
+export interface HomeExperienceConfig {
+  greetingMode: 'custom' | 'random';
+  greetingText?: string;
+  quoteMode: 'custom' | 'random';
+  quoteText?: string;
+  messageType?: 'quote' | 'announcement';
+}
+
 export interface AppBranding {
   appName: string;
   logoUrl: string;
@@ -119,6 +127,7 @@ export interface AppBranding {
   // Menu Configuration
   menuConfig?: MenuItemConfig[];
   emailTemplate?: EmailTemplate;
+  homeExperience?: HomeExperienceConfig;
 }
 
 export interface MenuItemConfig {

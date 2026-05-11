@@ -572,7 +572,7 @@ const POCreate = () => {
       </div>
 
       {/* Selection Panel */}
-      <div className="shrink-0 bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 transition-all duration-300">
+      <div className="shrink-0 bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 transition-all duration-300">
         {/* Toggle Header */}
         <div 
             className="p-4 flex items-center justify-between cursor-pointer group"
@@ -743,10 +743,10 @@ const POCreate = () => {
           
           {/* Left: Catalog Grid */}
           <div 
-             className={`flex flex-col bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-0 transition-all duration-300 ${isCatalogExpanded ? 'flex-1' : 'w-20 py-6 items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5'}`}
+             className={`flex flex-col bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-0 transition-all duration-300 ${isCatalogExpanded ? 'flex-1' : 'w-20 py-6 items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5'}`}
              onClick={!isCatalogExpanded ? () => setIsCatalogExpanded(true) : undefined}
           >
-             <div className={`p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1e2029] flex items-center gap-3 shrink-0 rounded-t-2xl ${isCatalogExpanded ? '' : 'justify-center border-none bg-transparent p-0'}`}>
+             <div className={`p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne flex items-center gap-3 shrink-0 rounded-t-2xl ${isCatalogExpanded ? '' : 'justify-center border-none bg-transparent p-0'}`}>
                 {isCatalogExpanded ? (
                     <>
                         <Search size={18} className="text-gray-400"/>
@@ -838,7 +838,7 @@ const POCreate = () => {
           {/* Item Detail Modal */}
           {selectedDetailItem && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-                <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                     <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-start bg-gray-50 dark:bg-white/5">
                         <div>
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">{selectedDetailItem.name}</h3>
@@ -975,8 +975,8 @@ const POCreate = () => {
           )}
 
           {/* Desktop Right: Sticky Cart */}
-          <div className={`hidden md:flex flex-col bg-white dark:bg-[#1e2029] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-0 transition-all duration-300 ${isCartExpanded ? (isCatalogExpanded ? 'w-[380px]' : 'flex-1') : 'w-20'}`}>
-             <div className={`p-4 border-b border-gray-200 dark:border-gray-800 flex items-center ${isCartExpanded ? 'justify-between' : 'justify-center'} bg-white dark:bg-[#1e2029] rounded-t-2xl transition-all`}>
+          <div className={`hidden md:flex flex-col bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-0 transition-all duration-300 ${isCartExpanded ? (isCatalogExpanded ? 'w-[380px]' : 'flex-1') : 'w-20'}`}>
+             <div className={`p-4 border-b border-gray-200 dark:border-gray-800 flex items-center ${isCartExpanded ? 'justify-between' : 'justify-center'} bg-white dark:bg-nocturne rounded-t-2xl transition-all`}>
                 {isCartExpanded ? (
                     <>
                         <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2 truncate">
@@ -1024,7 +1024,7 @@ const POCreate = () => {
 
         </div>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-white dark:bg-[#1e2029] rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 min-h-[400px]">
+        <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-white dark:bg-nocturne rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 min-h-[400px]">
             <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center mb-4">
                 <Package size={32} />
             </div>
@@ -1034,7 +1034,7 @@ const POCreate = () => {
 
       {/* Mobile Sticky Bottom Bar */}
       <div className="fixed inset-x-0 bottom-0 md:hidden z-30">
-          <div className="bg-white dark:bg-[#1e2029] border-t border-gray-200 dark:border-gray-800 shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
+          <div className="bg-white dark:bg-nocturne border-t border-gray-200 dark:border-gray-800 shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
               <div className="mx-auto w-full max-w-screen-sm flex flex-col gap-2 px-3 pt-3 pb-safe">
                   <button
                       type="button"
@@ -1064,7 +1064,7 @@ const POCreate = () => {
       {isMobileCartOpen && (
           <div className="fixed inset-0 z-50 md:hidden">
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsMobileCartOpen(false)}></div>
-              <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-[#1e2029] rounded-t-2xl shadow-2xl h-[85vh] flex flex-col transition-transform transform translate-y-0 pb-safe">
+              <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-nocturne rounded-t-2xl shadow-2xl h-[85vh] flex flex-col transition-transform transform translate-y-0 pb-safe">
                   <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between shrink-0">
                       <h3 className="font-bold text-lg text-gray-900 dark:text-white">Current Order</h3>
                       <button type="button" onClick={() => setIsMobileCartOpen(false)} className="p-2 bg-gray-100 dark:bg-white/10 rounded-full"><X size={18}/></button>

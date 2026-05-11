@@ -107,7 +107,7 @@ function StatCard({
     <div className={`border rounded-2xl px-5 py-4 flex flex-col gap-1 transition-colors ${
       highlight
         ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
-        : 'bg-white dark:bg-[#1e2029] border-gray-100 dark:border-gray-800'
+        : 'bg-white dark:bg-nocturne border-gray-100 dark:border-gray-800'
     }`}>
       <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</span>
       <span className={`text-2xl font-black ${highlight ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}`}>
@@ -350,7 +350,7 @@ export default function ItemCatalogue() {
             className={`flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest rounded-xl border transition-all ${
               filterActiveOnly
                 ? 'bg-emerald-500 text-white border-emerald-500 shadow-md shadow-emerald-500/25 hover:bg-emerald-600'
-                : 'bg-white dark:bg-[#1e2029] border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'
+                : 'bg-white dark:bg-nocturne border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5'
             }`}
           >
             <CheckCircle size={14} className={filterActiveOnly ? 'text-white' : 'text-gray-400'} />
@@ -361,14 +361,14 @@ export default function ItemCatalogue() {
 
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
           >
             <Download size={14} /> Export
           </button>
           <button
             onClick={() => loadData(true)}
             disabled={isRefreshing}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-[#1e2029] border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-500 bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm"
           >
             <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} /> Refresh
           </button>
@@ -416,7 +416,7 @@ export default function ItemCatalogue() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
                 activeTab === tab.id
-                  ? 'bg-white dark:bg-[#1e2029] text-[var(--color-brand)] shadow-md border border-gray-100/50 dark:border-gray-800/50'
+                  ? 'bg-white dark:bg-nocturne text-[var(--color-brand)] shadow-md border border-gray-100/50 dark:border-gray-800/50'
                   : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
               }`}
             >
@@ -438,7 +438,7 @@ export default function ItemCatalogue() {
               placeholder="Search name or SAP code…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#1e2029] text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30 w-56"
+              className="pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30 w-56"
             />
           </div>
           <button
@@ -446,7 +446,7 @@ export default function ItemCatalogue() {
             className={`flex items-center gap-2 px-3 py-2 text-xs font-black uppercase tracking-widest rounded-xl border transition-all ${
               showFilters || (filterPool || filterCatalog || filterRfid !== null)
                 ? 'bg-[var(--color-brand)]/10 border-[var(--color-brand)]/30 text-[var(--color-brand)]'
-                : 'border-gray-200 dark:border-gray-700 text-gray-500 bg-white dark:bg-[#1e2029] hover:bg-gray-50 dark:hover:bg-white/5'
+                : 'border-gray-200 dark:border-gray-700 text-gray-500 bg-white dark:bg-nocturne hover:bg-gray-50 dark:hover:bg-white/5'
             }`}
           >
             <SlidersHorizontal size={14} />
@@ -474,7 +474,7 @@ export default function ItemCatalogue() {
             <select
               value={filterPool}
               onChange={e => setFilterPool(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300"
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300"
             >
               <option value="">All Pools</option>
               {allPools.map(p => <option key={p} value={p}>{p}</option>)}
@@ -485,7 +485,7 @@ export default function ItemCatalogue() {
             <select
               value={filterCatalog}
               onChange={e => setFilterCatalog(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300"
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300"
             >
               <option value="">All Catalogues</option>
               {allCatalogs.map(c => <option key={c} value={c}>{c}</option>)}
@@ -496,7 +496,7 @@ export default function ItemCatalogue() {
             <select
               value={filterRfid === null ? '' : filterRfid ? 'yes' : 'no'}
               onChange={e => setFilterRfid(e.target.value === '' ? null : e.target.value === 'yes')}
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#1e2029] text-gray-700 dark:text-gray-300"
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300"
             >
               <option value="">All</option>
               <option value="yes">RFID Only</option>
@@ -507,7 +507,7 @@ export default function ItemCatalogue() {
       )}
 
       {/* Table */}
-      <div className="bg-white dark:bg-[#1e2029] rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+      <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
 
         <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center gap-3 flex-wrap">
           <Package size={16} className="text-[var(--color-brand)]" />
@@ -664,7 +664,7 @@ export default function ItemCatalogue() {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-4 py-3 text-right sticky right-0 bg-white dark:bg-[#1e2029] shadow-[-8px_0_10px_-8px_rgba(0,0,0,0.06)]">
+                      <td className="px-4 py-3 text-right sticky right-0 bg-white dark:bg-nocturne shadow-[-8px_0_10px_-8px_rgba(0,0,0,0.06)]">
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => setEditingItem(item)}
@@ -717,7 +717,7 @@ export default function ItemCatalogue() {
       {/* Audit history modal */}
       {auditItem && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#1e2029] rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="bg-white dark:bg-nocturne rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">

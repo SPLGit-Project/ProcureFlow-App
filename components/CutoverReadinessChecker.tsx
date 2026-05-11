@@ -259,7 +259,7 @@ const CutoverReadinessChecker = () => {
         <button 
           onClick={runChecks} 
           disabled={isRefreshing}
-          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-lg text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all shadow-sm disabled:opacity-50"
         >
           <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
           {isRefreshing ? 'Checking...' : 'Refresh Checks'}
@@ -269,7 +269,7 @@ const CutoverReadinessChecker = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="md:col-span-2 space-y-4">
           {checks.map(check => (
-            <div key={check.id} className="bg-white dark:bg-[#1e2029] rounded-2xl p-5 border border-gray-200 dark:border-gray-800 shadow-sm flex items-start gap-4 transition-all hover:border-[var(--color-brand)]/30">
+            <div key={check.id} className="bg-white dark:bg-nocturne rounded-2xl p-5 border border-gray-200 dark:border-gray-800 shadow-sm flex items-start gap-4 transition-all hover:border-[var(--color-brand)]/30">
               <div className="mt-1">
                 {check.status === 'PASS' && <CheckCircle className="text-emerald-500" size={24} />}
                 {check.status === 'FAIL' && <XCircle className="text-red-500" size={24} />}
@@ -321,7 +321,7 @@ const CutoverReadinessChecker = () => {
               <button
                 onClick={handleEnableRequests}
                 disabled={isProcessing}
-                className="w-full flex items-center justify-between p-4 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-xl hover:border-[var(--color-brand)] transition-all group shadow-sm disabled:opacity-50"
+                className="w-full flex items-center justify-between p-4 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-xl hover:border-[var(--color-brand)] transition-all group shadow-sm disabled:opacity-50"
               >
                 <div className="text-left">
                   <p className="text-sm font-bold text-gray-900 dark:text-white">Enable Item Requests</p>
@@ -333,7 +333,7 @@ const CutoverReadinessChecker = () => {
               <button
                 onClick={() => setIsEnforceModalOpen(true)}
                 disabled={isProcessing || hasCriticalFail}
-                className={`w-full flex items-center justify-between p-4 border rounded-xl transition-all group shadow-sm disabled:opacity-50 ${hasCriticalFail ? 'bg-gray-100 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700' : 'bg-white dark:bg-[#1e2029] border-gray-200 dark:border-gray-800 hover:border-[var(--color-brand)]'}`}
+                className={`w-full flex items-center justify-between p-4 border rounded-xl transition-all group shadow-sm disabled:opacity-50 ${hasCriticalFail ? 'bg-gray-100 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700' : 'bg-white dark:bg-nocturne border-gray-200 dark:border-gray-800 hover:border-[var(--color-brand)]'}`}
               >
                 <div className="text-left">
                   <p className="text-sm font-bold text-gray-900 dark:text-white">Enforce Catalogue Pricing</p>
