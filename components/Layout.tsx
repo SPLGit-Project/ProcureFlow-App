@@ -322,32 +322,7 @@ const Layout = () => {
               )}
             </div>
 
-            {/* Site selector — accessible from anywhere in the rail */}
-            {userSites.length > 0 && (
-              <div className={`shrink-0 border-t border-white/10 pt-2 ${isRevampExpanded ? 'px-3 pb-2' : 'px-2 pb-2 flex justify-center'}`}>
-                {isRevampExpanded ? (
-                  <MultiSiteSelector
-                    sites={userSites}
-                    selectedSiteIds={activeSiteIds}
-                    onChange={setActiveSiteIds}
-                    variant="brand"
-                  />
-                ) : (
-                  <button type="button"
-                    onClick={() => setIsRevampExpanded(true)}
-                    className="relative p-2.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all flex items-center justify-center"
-                    title={activeSiteIds.length > 0 ? `${activeSiteIds.length} site${activeSiteIds.length > 1 ? 's' : ''} selected — expand to change` : 'No site selected — expand to select'}
-                  >
-                    <MapPin size={17} />
-                    {activeSiteIds.length > 0 && (
-                      <span className="absolute -top-1 -right-1 w-4 h-4 text-[9px] font-bold rounded-full bg-tranquil text-white flex items-center justify-center">
-                        {activeSiteIds.length}
-                      </span>
-                    )}
-                  </button>
-                )}
-              </div>
-            )}
+
 
             {/* Bottom — expand toggle + theme + avatar */}
             <div className={`flex flex-col gap-2 pb-4 pt-2 shrink-0 ${isRevampExpanded ? 'px-3 items-stretch' : 'items-center'}`}>
@@ -506,8 +481,8 @@ const Layout = () => {
                     </div>
                   </div>
                   {/* Center: step indicator (wizards) or admin tab bar (Settings portal) */}
-                  <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0">
-                    {isHomeRoute && userSites.length > 0 && (
+                  <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0 pr-2">
+                    {userSites.length > 0 && (
                       <div className="hidden sm:block w-[230px] md:w-[300px]">
                         <MultiSiteSelector
                           sites={userSites}
