@@ -109,7 +109,7 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                 </span>
                 <div className="flex items-center gap-1.5 shrink-0">
                     {selectedSiteIds.length > 0 && selectedSiteIds.length < sites.length && (
-                        <span className="bg-blue-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                        <span className="bg-tranquil shadow-sm shadow-tranquil/30 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                             {selectedSiteIds.length}
                         </span>
                     )}
@@ -124,92 +124,100 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                     <div className="fixed inset-0 z-40 md:hidden" onClick={() => setIsOpen(false)} />
                     
                     <div className={`
-                        z-50 bg-white dark:bg-nocturne rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden
-                        animate-in fade-in zoom-in-95 duration-150 origin-top
-                        fixed left-4 right-4 bottom-4 top-auto max-h-[70vh]
-                        md:absolute md:top-full md:left-0 md:right-auto md:bottom-auto md:mt-1.5 md:min-w-[280px] md:max-h-[500px] md:w-max
+                        z-50 bg-white dark:bg-nocturne shadow-2xl border border-gray-200 dark:border-white/10 overflow-hidden
+                        animate-in fade-in slide-in-from-bottom-4 md:zoom-in-95 duration-200
+                        fixed left-0 right-0 bottom-0 top-auto rounded-t-2xl rounded-b-none max-h-[85vh]
+                        md:absolute md:top-full md:left-0 md:right-auto md:bottom-auto md:mt-2 md:min-w-[300px] md:max-h-[450px] md:w-max md:rounded-xl md:slide-in-from-top-2
                         flex flex-col
                     `}>
+                        {/* Mobile Drag Handle */}
+                        <div className="md:hidden pt-3 pb-1 flex justify-center bg-white dark:bg-nocturne">
+                            <div className="w-10 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full" />
+                        </div>
+
                         {/* Header */}
-                        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/80 dark:bg-white/5 sticky top-0 z-10">
+                        <div className="px-4 py-3 md:py-3 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-white/95 dark:bg-nocturne/95 backdrop-blur-sm sticky top-0 z-10 shrink-0">
                             <div className="flex items-center gap-2">
-                                <MapPin size={14} className="text-gray-400" />
-                                <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Site Access</span>
+                                <MapPin size={14} className="text-tranquil dark:text-tranquil/80" />
+                                <span className="text-xs font-bold tracking-wide text-gray-900 dark:text-white">Site Access</span>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-2">
-                                    <button 
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-white/5 p-1 rounded-lg">
+                                    <button type="button"
                                         onClick={() => onChange(sites.map(s => s.id))}
-                                        className="text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 hover:underline"
+                                        className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-white/10 shadow-sm transition-all"
                                     >
                                         All
                                     </button>
-                                    <span className="text-gray-300 dark:text-gray-700 text-[10px]">|</span>
-                                    <button 
+                                    <button type="button"
                                         onClick={() => onChange([])}
-                                        className="text-[11px] font-bold uppercase tracking-wider text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:underline"
+                                        className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md text-gray-500 dark:text-gray-400 hover:text-red-600 hover:bg-white dark:hover:bg-white/10 dark:hover:text-red-400 shadow-sm transition-all"
                                     >
                                         None
                                     </button>
                                 </div>
-                                <span className="text-[11px] text-gray-400 font-semibold bg-gray-100 dark:bg-white/10 px-2 py-0.5 rounded-full">
+                                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 ml-1">
                                     {selectedSiteIds.length}/{sites.length}
                                 </span>
                                 {/* Close button for mobile */}
-                                <button 
+                                <button type="button"
                                     onClick={() => setIsOpen(false)}
-                                    className="md:hidden p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full text-gray-400"
+                                    className="md:hidden ml-2 p-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/20 rounded-full text-gray-500 dark:text-gray-300 transition-colors"
                                 >
-                                    <X size={16} />
+                                    <X size={14} />
                                 </button>
                             </div>
                         </div>
 
-                        {/* Site List - flex-1 min-h-0 allows it to scroll correctly within parent constraints */}
-                        <div className="overflow-y-auto p-2 flex-1 min-h-0">
+                        {/* Site List */}
+                        <div className="overflow-y-auto p-2 md:p-3 flex-1 min-h-0 scrollbar-hide">
                             {sites.length === 0 ? (
                                 <div className="p-8 text-center text-sm text-gray-400 italic">
                                     No sites assigned to your account.
                                 </div>
                             ) : (
-                                sites.map((site, index) => {
-                                    const isSelected = selectedSiteIds.includes(site.id);
-                                    return (
-                                        <div 
-                                            key={site.id}
-                                            onClick={() => handleToggle(site.id)}
-                                            className={`
-                                                flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer mb-1 transition-all
-                                                active:scale-[0.98] select-none
-                                                ${isSelected 
-                                                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800' 
-                                                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
-                                                }
-                                            `}
-                                        >
-                                            {/* Checkbox */}
-                                            <div className={`
-                                                w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0
-                                                ${isSelected 
-                                                    ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
-                                                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-transparent'
-                                                }
-                                            `}>
-                                                {isSelected && <Check size={12} strokeWidth={3} />}
-                                            </div>
+                                <div className="flex flex-col gap-1">
+                                    {sites.map((site, index) => {
+                                        const isSelected = selectedSiteIds.includes(site.id);
+                                        return (
+                                            <div 
+                                                key={site.id}
+                                                onClick={() => handleToggle(site.id)}
+                                                className={`
+                                                    group flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200
+                                                    active:scale-[0.98] select-none
+                                                    ${isSelected 
+                                                        ? 'bg-tranquil/5 dark:bg-tranquil/10 text-tranquil dark:text-white' 
+                                                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
+                                                    }
+                                                `}
+                                            >
+                                                {/* Checkbox */}
+                                                <div className={`
+                                                    w-4 h-4 rounded-[4px] border-2 flex items-center justify-center transition-all shrink-0
+                                                    ${isSelected 
+                                                        ? 'bg-tranquil border-tranquil text-white' 
+                                                        : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-transparent group-hover:border-tranquil/50'
+                                                    }
+                                                `}>
+                                                    {isSelected && <Check size={10} strokeWidth={3} />}
+                                                </div>
 
-                                            {/* Site Avatar */}
-                                            <div className={`w-8 h-8 ${getColor(index)} rounded-lg flex items-center justify-center shrink-0 shadow-sm`}>
-                                                <span className="text-white text-[10px] font-bold tracking-wide">{getInitials(site.name)}</span>
-                                            </div>
+                                                {/* Site Avatar */}
+                                                <div className={`w-7 h-7 ${getColor(index)} rounded-lg flex items-center justify-center shrink-0 shadow-sm opacity-90 group-hover:opacity-100 transition-opacity`}>
+                                                    <span className="text-white text-[9px] font-bold tracking-wide">{getInitials(site.name)}</span>
+                                                </div>
 
-                                            {/* Site Name */}
-                                            <div className="flex-1 min-w-0">
-                                                <div className="font-semibold truncate text-sm">{site.name}</div>
+                                                {/* Site Name */}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className={`truncate text-sm ${isSelected ? 'font-semibold' : 'font-medium'}`}>
+                                                        {site.name}
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    );
-                                })
+                                        );
+                                    })}
+                                </div>
                             )}
                         </div>
                     </div>
