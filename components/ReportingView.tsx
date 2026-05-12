@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { FileText, Download, BarChart3, TrendingUp, AlertCircle, CheckCircle2, Package } from 'lucide-react';
 import PageHeader from './PageHeader.tsx';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 
 type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'FINANCE_SUMMARY' | 'PO_STATUS';
 
@@ -12,6 +13,8 @@ const ReportingView = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [reportData, setReportData] = useState<Record<string, string | number>[]>([]);
     const [lastRun, setLastRun] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'CHART' | 'RAW_DATA'>('CHART');
+    const [chartMetric, setChartMetric] = useState<'DATE' | 'SUPPLIER' | 'SITE'>('DATE');
 
     const runReport = () => {
         setIsLoading(true);
@@ -122,6 +125,29 @@ const ReportingView = () => {
         document.body.removeChild(link);
     };
 
+    const getChartData = () => {
+        if (reportData.length === 0) return [];
+        const aggregated: Record<string, number> = {};
+        reportData.forEach(row => {
+            let key = '';
+            if (chartMetric === 'DATE') key = String(row.deliveryDate || 'Unknown');
+            else if (chartMetric === 'SUPPLIER') key = String(row.supplier || 'Unknown');
+            else if (chartMetric === 'SITE') key = String(row.site || 'Unknown');
+            
+            if (!aggregated[key]) aggregated[key] = 0;
+            aggregated[key] += Number(row.totalPrice || 0);
+        });
+        
+        return Object.entries(aggregated)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => {
+                if (chartMetric === 'DATE') return a.name.localeCompare(b.name);
+                return b.value - a.value;
+            });
+    };
+
+    const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4'];
+
     return (
         <div className="space-y-6 pb-20 animate-fade-in">
             <PageHeader title="Reports & Analytics" subtitle="Generate reports for delivery tracking and financial auditing." />
@@ -201,6 +227,41 @@ const ReportingView = () => {
                             </div>
                         </div>
 
+                        {activeReport === 'ALL_DELIVERIES' && reportData.length > 0 && !isLoading && (
+                            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex flex-wrap items-center justify-between gap-4">
+                                <div className="flex bg-white dark:bg-[#15171e] p-1 rounded-lg border border-gray-200 dark:border-gray-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setViewMode('CHART')}
+                                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'CHART' ? 'bg-[var(--color-brand)] text-white shadow-sm' : 'text-secondary dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+                                    >
+                                        Interactive Chart
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setViewMode('RAW_DATA')}
+                                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'RAW_DATA' ? 'bg-[var(--color-brand)] text-white shadow-sm' : 'text-secondary dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+                                    >
+                                        Raw Data
+                                    </button>
+                                </div>
+                                {viewMode === 'CHART' && (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-tertiary dark:text-gray-500">Group By:</span>
+                                        <select
+                                            value={chartMetric}
+                                            onChange={(e) => setChartMetric(e.target.value as any)}
+                                            className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                        >
+                                            <option value="DATE">Delivery Date</option>
+                                            <option value="SUPPLIER">Supplier</option>
+                                            <option value="SITE">Site</option>
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="flex-1 p-0 overflow-x-auto">
                             {reportData.length === 0 && !isLoading ? (
                                 <div className="flex flex-col items-center justify-center h-full text-tertiary dark:text-gray-400 space-y-4 py-20">
@@ -211,6 +272,25 @@ const ReportingView = () => {
                                         <h3 className="text-sm font-medium text-gray-900 dark:text-white">No Data Generated</h3>
                                         <p className="text-xs mt-1">Click "Run report" to generate the latest data.</p>
                                     </div>
+                                </div>
+                            ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
+                                <div className="h-[400px] w-full p-6">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={getChartData()} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} vertical={false} />
+                                            <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 12, fill: '#888' }} />
+                                            <YAxis tickFormatter={(val) => `$${val.toLocaleString()}`} tick={{ fontSize: 12, fill: '#888' }} />
+                                            <RechartsTooltip 
+                                                formatter={(value: number) => [`$${value.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 'Total Value']}
+                                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                            />
+                                            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                                                {getChartData().map((_, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </div>
                             ) : (
                                 <table className="w-full min-w-[760px] text-sm text-left">
