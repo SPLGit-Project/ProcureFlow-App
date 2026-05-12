@@ -233,6 +233,7 @@ interface AppContextType {
   updateItem: (item: Item) => Promise<void>;
   deleteItem: (itemId: string) => Promise<void>;
   archiveItem: (itemId: string) => Promise<void>;
+  reactivateItem: (itemId: string) => Promise<void>;
 
   // Supplier CRUD
   addSupplier: (s: Supplier) => Promise<void>;
@@ -2517,6 +2518,18 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
   };
 
+  const reactivateItem = async (itemId: string) => {
+        try {
+            await db.reactivateItem(itemId);
+            setItems(prev => prev.map(i => i.id === itemId ? { ...i, activeFlag: true } : i));
+            logAction('ITEM_REACTIVATED', { itemId });
+        } catch (e) {
+             console.error(e);
+             alert("Failed to restore item");
+             logAction('ITEM_REACTIVATE_FAILED', { itemId, error: (e as Error).message });
+        }
+  };
+
   const addSupplier = async (s: Supplier) => {
         try {
             await db.addSupplier(s);
@@ -2637,7 +2650,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: importMasterProducts,
     getAttributeOptions, upsertAttributeOption, deleteAttributeOption,
     getEffectiveStock,
-    addItem, updateItem, deleteItem, archiveItem,
+    addItem, updateItem, deleteItem, archiveItem, reactivateItem,
     addSupplier, updateSupplier, deleteSupplier,
     addSite, updateSite, deleteSite,
     

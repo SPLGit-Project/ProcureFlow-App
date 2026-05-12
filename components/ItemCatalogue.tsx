@@ -124,6 +124,7 @@ export default function ItemCatalogue() {
   const {
     updateItem,
     archiveItem,
+    reactivateItem,
     reloadData,
     suppliers,
     attributeOptions,
@@ -151,6 +152,7 @@ export default function ItemCatalogue() {
   const [editingItem, setEditingItem] = useState<ItemRow | null>(null);
   const [auditItem, setAuditItem] = useState<ItemRow | null>(null);
   const [confirmArchive, setConfirmArchive] = useState<ItemRow | null>(null);
+  const [confirmReactivate, setConfirmReactivate] = useState<ItemRow | null>(null);
 
   // ── Load data ─────────────────────────────────────────────────────────────
 
@@ -328,6 +330,18 @@ export default function ItemCatalogue() {
       await Promise.all([loadData(true), reloadData(true)]);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to archive item');
+    }
+  };
+
+  const handleReactivateConfirm = async () => {
+    if (!confirmReactivate) return;
+    try {
+      await reactivateItem(confirmReactivate.id);
+      success(`"${confirmReactivate.name}" restored to active catalogue`);
+      setConfirmReactivate(null);
+      await Promise.all([loadData(true), reloadData(true)]);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to restore item');
     }
   };
 
@@ -680,13 +694,21 @@ export default function ItemCatalogue() {
                           >
                             <History size={15} />
                           </button>
-                          {!isInactive && (
+                          {!isInactive ? (
                             <button
                               onClick={() => setConfirmArchive(item)}
                               title="Archive item"
                               className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
                             >
                               <Archive size={15} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmReactivate(item)}
+                              title="Restore item"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all"
+                            >
+                              <RefreshCw size={15} />
                             </button>
                           )}
                         </div>
@@ -758,6 +780,17 @@ export default function ItemCatalogue() {
         variant="danger"
         onConfirm={handleArchiveConfirm}
         onCancel={() => setConfirmArchive(null)}
+      />
+
+      {/* Reactivate confirm */}
+      <ConfirmDialog
+        isOpen={!!confirmReactivate}
+        title="Restore Item?"
+        message={`Restore "${confirmReactivate?.name}" (${confirmReactivate?.sku}) to the active catalogue? It will become available for new requests immediately.`}
+        confirmLabel="Restore Item"
+        variant="success"
+        onConfirm={handleReactivateConfirm}
+        onCancel={() => setConfirmReactivate(null)}
       />
     </div>
   );

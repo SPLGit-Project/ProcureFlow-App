@@ -1368,6 +1368,11 @@ export const db = {
         if (error) throw error;
     },
 
+    reactivateItem: async (itemId: string): Promise<void> => {
+        const { error } = await supabase.from('items').update({ active_flag: true }).eq('id', itemId);
+        if (error) throw error;
+    },
+
     calculateMappingScore: (
         snap: any, 
         item: any, 
