@@ -2731,7 +2731,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     users, roles, teamsWebhookUrl, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
-    reloadData, siteName, featureFlags, marginThresholds
+    reloadData, siteName, featureFlags, marginThresholds, cachedReports, cachedRunTimes, setReportCache
   ]);
 
   return (

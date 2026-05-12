@@ -7,7 +7,7 @@ interface ConfirmDialogProps {
     message: string;
     confirmLabel?: string;
     cancelLabel?: string;
-    variant?: 'danger' | 'warning' | 'info';
+    variant?: 'danger' | 'warning' | 'info' | 'success';
     onConfirm: () => void;
     onCancel: () => void;
 }
@@ -39,6 +39,13 @@ export const ConfirmDialog = ({
                     iconColor: 'text-amber-600 dark:text-amber-400',
                     confirmBtn: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-500/20',
                     ring: 'ring-amber-500'
+                };
+            case 'success':
+                return {
+                    iconBg: 'bg-emerald-100 dark:bg-emerald-900/30',
+                    iconColor: 'text-emerald-600 dark:text-emerald-400',
+                    confirmBtn: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20',
+                    ring: 'ring-emerald-500'
                 };
             case 'info':
             default:
