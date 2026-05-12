@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Check, ChevronDown, MapPin, X } from 'lucide-react';
-import { Site } from '../types';
+import { Site } from '../types.ts';
 
 interface MultiSiteSelectorProps {
     sites: Site[];
