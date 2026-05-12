@@ -11,8 +11,20 @@ const ReportingView = () => {
     const { pos } = useApp();
     const [activeReport, setActiveReport] = useState<ReportType>('OUTSTANDING_DELIVERIES');
     const [isLoading, setIsLoading] = useState(false);
-    const [reportData, setReportData] = useState<Record<string, string | number>[]>([]);
-    const [lastRun, setLastRun] = useState<string | null>(null);
+    const [cachedReports, setCachedReports] = useState<Record<ReportType, Record<string, string | number>[] | null>>({
+        OUTSTANDING_DELIVERIES: null,
+        ALL_DELIVERIES: null,
+        FINANCE_SUMMARY: null,
+        PO_STATUS: null
+    });
+    const [cachedRunTimes, setCachedRunTimes] = useState<Record<ReportType, string | null>>({
+        OUTSTANDING_DELIVERIES: null,
+        ALL_DELIVERIES: null,
+        FINANCE_SUMMARY: null,
+        PO_STATUS: null
+    });
+    const reportData = cachedReports[activeReport] || [];
+    const lastRun = cachedRunTimes[activeReport];
     const [viewMode, setViewMode] = useState<'CHART' | 'RAW_DATA'>('CHART');
     const [chartMetric, setChartMetric] = useState<'DATE' | 'SUPPLIER' | 'SITE'>('DATE');
 
@@ -103,8 +115,8 @@ const ReportingView = () => {
                 }));
             }
 
-            setReportData(data);
-            setLastRun(new Date().toLocaleTimeString());
+            setCachedReports(prev => ({ ...prev, [activeReport]: data }));
+            setCachedRunTimes(prev => ({ ...prev, [activeReport]: new Date().toLocaleTimeString() }));
             setIsLoading(false);
         }, 800);
     };
@@ -159,7 +171,7 @@ const ReportingView = () => {
                         <div className="flex flex-col sm:flex-row xl:flex-col gap-2">
                             <button 
                                 type="button"
-                                onClick={() => { setActiveReport('OUTSTANDING_DELIVERIES'); setReportData([]); }}
+                                onClick={() => setActiveReport('OUTSTANDING_DELIVERIES')}
                                 className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'OUTSTANDING_DELIVERIES' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
                                 <AlertCircle size={18}/>
@@ -167,7 +179,7 @@ const ReportingView = () => {
                             </button>
                             <button 
                                 type="button"
-                                onClick={() => { setActiveReport('ALL_DELIVERIES'); setReportData([]); }}
+                                onClick={() => setActiveReport('ALL_DELIVERIES')}
                                 className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'ALL_DELIVERIES' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
                                 <Package size={18}/>
@@ -175,7 +187,7 @@ const ReportingView = () => {
                             </button>
                             <button 
                                 type="button"
-                                onClick={() => { setActiveReport('FINANCE_SUMMARY'); setReportData([]); }}
+                                onClick={() => setActiveReport('FINANCE_SUMMARY')}
                                 className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'FINANCE_SUMMARY' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
                                 <TrendingUp size={18}/>
@@ -183,7 +195,7 @@ const ReportingView = () => {
                             </button>
                             <button 
                                 type="button"
-                                onClick={() => { setActiveReport('PO_STATUS'); setReportData([]); }}
+                                onClick={() => setActiveReport('PO_STATUS')}
                                 className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'PO_STATUS' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
                                 <FileText size={18}/>
@@ -246,8 +258,14 @@ const ReportingView = () => {
                                     </button>
                                 </div>
                                 {viewMode === 'CHART' && (
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-medium text-tertiary dark:text-gray-500">Group By:</span>
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                            <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Value:</span>
+                                            ${getChartData().reduce((sum, item) => sum + item.value, 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </div>
+                                        <div className="h-4 w-px bg-gray-300 dark:bg-gray-700"></div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-medium text-tertiary dark:text-gray-500">Group By:</span>
                                         <select
                                             value={chartMetric}
                                             onChange={(e) => setChartMetric(e.target.value as any)}
@@ -257,6 +275,7 @@ const ReportingView = () => {
                                             <option value="SUPPLIER">Supplier</option>
                                             <option value="SITE">Site</option>
                                         </select>
+                                        </div>
                                     </div>
                                 )}
                             </div>
