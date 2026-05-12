@@ -1,11 +1,11 @@
 
 import { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { FileText, Download, BarChart3, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { FileText, Download, BarChart3, TrendingUp, AlertCircle, CheckCircle2, Package } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { POStatus } from '../types.ts';
 
-type ReportType = 'OUTSTANDING_DELIVERIES' | 'FINANCE_SUMMARY' | 'PO_STATUS';
+type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'FINANCE_SUMMARY' | 'PO_STATUS';
 
 const ReportingView = () => {
     const { pos } = useApp();
@@ -66,6 +66,28 @@ const ReportingView = () => {
                          });
                      });
                  });
+            } else if (activeReport === 'ALL_DELIVERIES') {
+                 pos.forEach(po => {
+                     if (!po.deliveries || po.deliveries.length === 0) return;
+                     po.deliveries.forEach(del => {
+                         del.lines.forEach(line => {
+                             const poLine = po.lines.find(l => l.id === line.poLineId);
+                             data.push({
+                                 id: line.id,
+                                 site: po.site,
+                                 poNumber: poLine?.concurPoNumber || po.lines[0]?.concurPoNumber || 'Pending',
+                                 supplier: po.supplierName,
+                                 item: poLine ? poLine.itemName : 'Unknown Item',
+                                 qty: line.quantity,
+                                 price: poLine ? poLine.unitPrice : 0,
+                                 totalPrice: line.quantity * (poLine ? poLine.unitPrice : 0),
+                                 deliveryDate: del.date,
+                                 docket: del.docketNumber || '-',
+                                 receivedBy: del.receivedBy || 'System'
+                             });
+                         });
+                     });
+                 });
             } else if (activeReport === 'PO_STATUS') {
                 data = pos.map(po => ({
                     id: po.id,
@@ -120,6 +142,14 @@ const ReportingView = () => {
                             </button>
                             <button 
                                 type="button"
+                                onClick={() => { setActiveReport('ALL_DELIVERIES'); setReportData([]); }}
+                                className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'ALL_DELIVERIES' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                            >
+                                <Package size={18}/>
+                                All Deliveries
+                            </button>
+                            <button 
+                                type="button"
                                 onClick={() => { setActiveReport('FINANCE_SUMMARY'); setReportData([]); }}
                                 className={`w-full sm:shrink-0 xl:w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeReport === 'FINANCE_SUMMARY' ? 'bg-[var(--color-brand)] text-white' : 'text-secondary dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                             >
@@ -141,6 +171,7 @@ const ReportingView = () => {
                         <h4 className="text-xs font-bold text-blue-800 dark:text-blue-300 uppercase mb-2">Report Description</h4>
                         <p className="text-xs text-blue-600 dark:text-blue-400 leading-relaxed">
                             {activeReport === 'OUTSTANDING_DELIVERIES' && "Shows all PO line items that have been approved or active but not yet fully received. Useful for tracking backorders and pending shipments."}
+                            {activeReport === 'ALL_DELIVERIES' && "Comprehensive log of all completed deliveries across all sites, including received quantities and item pricing."}
                             {activeReport === 'FINANCE_SUMMARY' && "Detailed breakdown of all received goods with their capitalization status and invoice numbers. Use this for month-end reconciliation."}
                             {activeReport === 'PO_STATUS' && "High-level overview of all Purchase Orders and their current approval status in the workflow."}
                         </p>
@@ -154,6 +185,7 @@ const ReportingView = () => {
                             <div className="min-w-0">
                                 <h2 className="font-bold text-gray-900 dark:text-white">
                                     {activeReport === 'OUTSTANDING_DELIVERIES' && 'Outstanding Deliveries Report'}
+                                    {activeReport === 'ALL_DELIVERIES' && 'All Deliveries Log'}
                                     {activeReport === 'FINANCE_SUMMARY' && 'Finance Capitalization Summary'}
                                     {activeReport === 'PO_STATUS' && 'All PO Status Report'}
                                 </h2>
@@ -195,6 +227,17 @@ const ReportingView = () => {
                                                     <th className="px-6 py-4 text-center text-orange-500">Remaining</th>
                                                 </>
                                             )}
+                                            {activeReport === 'ALL_DELIVERIES' && (
+                                                <>
+                                                    <th className="px-6 py-4">Delivery Date / Docket</th>
+                                                    <th className="px-6 py-4">PO # / Supplier</th>
+                                                    <th className="px-6 py-4">Site</th>
+                                                    <th className="px-6 py-4">Item</th>
+                                                    <th className="px-6 py-4 text-center">Qty</th>
+                                                    <th className="px-6 py-4 text-right">Unit Price</th>
+                                                    <th className="px-6 py-4 text-right">Total Price</th>
+                                                </>
+                                            )}
                                             {activeReport === 'FINANCE_SUMMARY' && (
                                                 <>
                                                     <th className="px-6 py-4">Received / Docket</th>
@@ -230,6 +273,23 @@ const ReportingView = () => {
                                                         <td className="px-6 py-3 text-center">{row.ordered}</td>
                                                         <td className="px-6 py-3 text-center text-green-600">{row.received}</td>
                                                         <td className="px-6 py-3 text-center font-bold text-orange-500 bg-orange-50 dark:bg-orange-900/10">{row.remaining}</td>
+                                                    </>
+                                                )}
+                                                {activeReport === 'ALL_DELIVERIES' && (
+                                                    <>
+                                                        <td className="px-6 py-3">
+                                                            <div className="font-bold text-gray-900 dark:text-white">{row.deliveryDate}</div>
+                                                            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.docket}</div>
+                                                        </td>
+                                                        <td className="px-6 py-3">
+                                                            <div className="font-medium text-gray-900 dark:text-white">{row.supplier}</div>
+                                                            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.poNumber}</div>
+                                                        </td>
+                                                        <td className="px-6 py-3 text-secondary dark:text-gray-300">{row.site}</td>
+                                                        <td className="px-6 py-3 text-secondary dark:text-gray-300 max-w-[200px] truncate" title={row.item}>{row.item}</td>
+                                                        <td className="px-6 py-3 text-center font-medium">{row.qty}</td>
+                                                        <td className="px-6 py-3 text-right text-secondary dark:text-gray-400">${row.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                        <td className="px-6 py-3 text-right font-bold text-gray-900 dark:text-white">${row.totalPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                                                     </>
                                                 )}
                                                 {activeReport === 'FINANCE_SUMMARY' && (
