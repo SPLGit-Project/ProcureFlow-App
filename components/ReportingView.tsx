@@ -169,12 +169,22 @@ const ReportingView = () => {
         const aggregated: Record<string, number> = {};
         reportData.forEach(row => {
             let key = '';
-            if (chartMetric === 'DATE') key = String(row.deliveryDate || 'Unknown');
+            if (chartMetric === 'DATE') {
+                key = String(row.deliveryDate || row.date || 'Unknown');
+            }
             else if (chartMetric === 'SUPPLIER') key = String(row.supplier || 'Unknown');
             else if (chartMetric === 'SITE') key = String(row.site || 'Unknown');
             
             if (!aggregated[key]) aggregated[key] = 0;
-            aggregated[key] += Number(row.totalPrice || 0);
+            
+            let val = 0;
+            if (activeReport === 'ALL_DELIVERIES') {
+                val = Number(row.totalPrice || 0);
+            } else if (activeReport === 'DELIVERY_VARIANCE') {
+                val = Number(row.pendingValue || 0);
+            }
+            
+            aggregated[key] += val;
         });
         
         return Object.entries(aggregated)
@@ -276,7 +286,7 @@ const ReportingView = () => {
                             </div>
                         </div>
 
-                        {activeReport === 'ALL_DELIVERIES' && reportData.length > 0 && !isLoading && (
+                        {(activeReport === 'ALL_DELIVERIES' || activeReport === 'DELIVERY_VARIANCE') && reportData.length > 0 && !isLoading && (
                             <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex flex-wrap items-center justify-between gap-4">
                                 <div className="flex bg-white dark:bg-[#15171e] p-1 rounded-lg border border-gray-200 dark:border-gray-800">
                                     <button
@@ -297,7 +307,7 @@ const ReportingView = () => {
                                 {viewMode === 'CHART' && (
                                     <div className="flex items-center gap-4">
                                         <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                            <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Value:</span>
+                                            <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total {activeReport === 'DELIVERY_VARIANCE' ? 'Variance' : 'Value'}:</span>
                                             ${getChartData().reduce((sum, item) => sum + item.value, 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </div>
                                         <div className="h-4 w-px bg-gray-300 dark:bg-gray-700"></div>
@@ -308,7 +318,7 @@ const ReportingView = () => {
                                             onChange={(e) => setChartMetric(e.target.value as any)}
                                             className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                         >
-                                            <option value="DATE">Delivery Date</option>
+                                            {(activeReport === 'ALL_DELIVERIES' || activeReport === 'DELIVERY_VARIANCE') && <option value="DATE">{activeReport === 'DELIVERY_VARIANCE' ? 'PO Date' : 'Delivery Date'}</option>}
                                             <option value="SUPPLIER">Supplier</option>
                                             <option value="SITE">Site</option>
                                         </select>
@@ -329,7 +339,7 @@ const ReportingView = () => {
                                         <p className="text-xs mt-1">Click "Run report" to generate the latest data.</p>
                                     </div>
                                 </div>
-                            ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
+                            ) : (activeReport === 'ALL_DELIVERIES' || activeReport === 'DELIVERY_VARIANCE') && viewMode === 'CHART' ? (
                                 <div className="h-[400px] w-full p-6">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart data={getChartData()} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
@@ -337,7 +347,7 @@ const ReportingView = () => {
                                             <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 12, fill: '#888' }} />
                                             <YAxis tickFormatter={(val) => `$${val.toLocaleString()}`} tick={{ fontSize: 12, fill: '#888' }} />
                                             <RechartsTooltip 
-                                                formatter={(value: number) => [`$${value.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 'Total Value']}
+                                                formatter={(value: number) => [`$${value.toLocaleString(undefined, {minimumFractionDigits: 2})}`, activeReport === 'DELIVERY_VARIANCE' ? 'Pending Variance' : 'Total Value']}
                                                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                             />
                                             <Bar dataKey="value" radius={[4, 4, 0, 0]}>
