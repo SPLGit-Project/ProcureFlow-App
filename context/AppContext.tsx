@@ -252,6 +252,11 @@ interface AppContextType {
   // Margin Thresholds
   marginThresholds: MarginThresholds;
   updateMarginThresholds: (thresholds: Partial<MarginThresholds>) => Promise<void>;
+
+  // Report Caching
+  cachedReports: Record<string, any[] | null>;
+  cachedRunTimes: Record<string, string | null>;
+  setReportCache: (report: string, data: any[]) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -273,6 +278,29 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(DEFAULT_FEATURE_FLAGS);
 
   const [marginThresholds, setMarginThresholds] = useState<MarginThresholds>(DEFAULT_MARGIN_THRESHOLDS);
+
+  // Report Caching State
+  const [cachedReports, setCachedReports] = useState<Record<string, any[] | null>>({
+    OUTSTANDING_DELIVERIES: null,
+    ALL_DELIVERIES: null,
+    DELIVERY_VARIANCE: null,
+    FINANCE_SUMMARY: null,
+    PO_STATUS: null,
+    DELIVERY_RECONCILIATION: null
+  });
+  const [cachedRunTimes, setCachedRunTimes] = useState<Record<string, string | null>>({
+    OUTSTANDING_DELIVERIES: null,
+    ALL_DELIVERIES: null,
+    DELIVERY_VARIANCE: null,
+    FINANCE_SUMMARY: null,
+    PO_STATUS: null,
+    DELIVERY_RECONCILIATION: null
+  });
+
+  const setReportCache = useCallback((report: string, data: any[]) => {
+    setCachedReports(prev => ({ ...prev, [report]: data }));
+    setCachedRunTimes(prev => ({ ...prev, [report]: new Date().toLocaleTimeString() }));
+  }, []);
 
   // Auth Config is now managed in the backend (env vars/Azure)
 
@@ -2694,6 +2722,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         await db.updateMarginThresholds(thresholds);
         setMarginThresholds(prev => ({ ...prev, ...thresholds }));
     },
+
+    cachedReports,
+    cachedRunTimes,
+    setReportCache
   }), [
     currentUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, theme, branding,

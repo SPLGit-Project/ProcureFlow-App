@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import {
     AlertCircle,
@@ -8,7 +8,9 @@ import {
     FileText,
     Package,
     Search,
-    TrendingUp
+    TrendingUp,
+    Layers,
+    ArrowRightLeft
 } from 'lucide-react';
 import PageHeader from './PageHeader.tsx';
 import {
@@ -24,7 +26,7 @@ import {
 } from 'recharts';
 import type { PORequest, POStatus } from '../types.ts';
 
-type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS';
+type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION';
 type ReportRow = Record<string, string | number>;
 type ViewMode = 'CHART' | 'RAW_DATA';
 type ChartMetric = 'DATE' | 'SUPPLIER' | 'SITE';
@@ -52,10 +54,30 @@ interface DeliveryVarianceReportRow extends ReportRow {
     supplier: string;
     site: string;
     item: string;
+    requestDate: string;
+    deliveryDate: string;
     qtyOrdered: number;
     qtyReceived: number;
     deltaQty: number;
     unitPrice: number;
+    varianceValue: number;
+    status: POStatus;
+}
+
+interface DeliveryReconciliationRow extends ReportRow {
+    id: string;
+    poNumber: string;
+    supplier: string;
+    site: string;
+    item: string;
+    orderedQty: number;
+    receivedQty: number;
+    pendingQty: number;
+    overQty: number;
+    unitPrice: number;
+    orderedValue: number;
+    receivedValue: number;
+    pendingValue: number;
     varianceValue: number;
     status: POStatus;
 }
@@ -70,7 +92,8 @@ const REPORT_TITLES: Record<ReportType, string> = {
     ALL_DELIVERIES: 'All Deliveries Log',
     DELIVERY_VARIANCE: 'Delivery Variance Analysis',
     FINANCE_SUMMARY: 'Finance Capitalization Summary',
-    PO_STATUS: 'All PO Status Report'
+    PO_STATUS: 'All PO Status Report',
+    DELIVERY_RECONCILIATION: 'Full Delivery Reconciliation'
 };
 
 const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
@@ -78,10 +101,11 @@ const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
     ALL_DELIVERIES: 'Comprehensive log of all completed deliveries across all sites, including received quantities and item pricing.',
     DELIVERY_VARIANCE: 'Exception-only view of pending, over-delivered, and short-closed delivery lines that need review.',
     FINANCE_SUMMARY: 'Detailed breakdown of all received goods with their capitalization status and invoice numbers. Use this for month-end reconciliation.',
-    PO_STATUS: 'High-level overview of all Purchase Orders and their current approval status in the workflow.'
+    PO_STATUS: 'High-level overview of all Purchase Orders and their current approval status in the workflow.',
+    DELIVERY_RECONCILIATION: 'Complete picture of order fulfillment. Compare ordered vs. received quantities across all PO lines to identify pending amounts and value variances.'
 };
 
-const DELIVERY_REPORTS: ReportType[] = ['OUTSTANDING_DELIVERIES', 'DELIVERY_VARIANCE'];
+const DELIVERY_REPORTS: ReportType[] = ['OUTSTANDING_DELIVERIES', 'DELIVERY_VARIANCE', 'DELIVERY_RECONCILIATION'];
 const ACTIVE_DELIVERY_STATUSES: POStatus[] = ['ACTIVE', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST', 'VARIANCE_PENDING'];
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4'];
 
@@ -92,6 +116,16 @@ const statusLabel = (status: string) => status.replaceAll('_', ' ');
 const reportFileName = (report: ReportType) => `${report === 'OUTSTANDING_DELIVERIES' ? 'outstanding-deliveries' : report === 'DELIVERY_VARIANCE' ? 'delivery-variance' : report.toLowerCase().replaceAll('_', '-')}-${new Date().toISOString().split('T')[0]}.csv`;
 
 const getPoNumber = (po: PORequest, linePoNumber?: string) => linePoNumber || po.concurPoNumber || po.lines[0]?.concurPoNumber || 'Pending';
+
+const getLatestDeliveryDateForLine = (po: PORequest, poLineId: string) => {
+    const dates = (po.deliveries || [])
+        .filter((delivery) => delivery.lines.some((line) => line.poLineId === poLineId))
+        .map((delivery) => delivery.date)
+        .filter(Boolean)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+    return dates[0] || '-';
+};
 
 const buildOutstandingDeliveryRows = (pos: PORequest[]): OutstandingDeliveryReportRow[] => {
     const rows = pos.flatMap((po) => {
@@ -148,6 +182,8 @@ const buildDeliveryVarianceRows = (pos: PORequest[]): DeliveryVarianceReportRow[
             supplier: po.supplierName,
             site: po.site,
             item: line.itemName,
+            requestDate: po.requestDate,
+            deliveryDate: getLatestDeliveryDateForLine(po, line.id),
             qtyOrdered: ordered,
             qtyReceived: received,
             deltaQty,
@@ -229,6 +265,40 @@ const buildPoStatusRows = (pos: PORequest[]): ReportRow[] => pos.map((po) => ({
     lineCount: po.lines.length
 }));
 
+const buildReconciliationRows = (pos: PORequest[]): DeliveryReconciliationRow[] => {
+    return pos.flatMap((po) => po.lines.map((line) => {
+        const ordered = Number(line.quantityOrdered || 0);
+        const received = Number(line.quantityReceived || 0);
+        const unitPrice = Number(line.unitPrice || 0);
+        
+        const pendingQty = Math.max(0, ordered - received);
+        const overQty = Math.max(0, received - ordered);
+        
+        const orderedValue = ordered * unitPrice;
+        const receivedValue = received * unitPrice;
+        const pendingValue = pendingQty * unitPrice;
+        const varianceValue = receivedValue - orderedValue;
+
+        return {
+            id: line.id,
+            poNumber: getPoNumber(po, line.concurPoNumber),
+            supplier: po.supplierName,
+            site: po.site,
+            item: line.itemName,
+            orderedQty: ordered,
+            receivedQty: received,
+            pendingQty,
+            overQty,
+            unitPrice,
+            orderedValue,
+            receivedValue,
+            pendingValue,
+            varianceValue,
+            status: po.status
+        };
+    })).sort((a, b) => b.orderedValue - a.orderedValue);
+};
+
 const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
     if (report === 'OUTSTANDING_DELIVERIES') {
         return [
@@ -253,11 +323,32 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'supplier', label: 'Supplier' },
             { key: 'site', label: 'Site' },
             { key: 'item', label: 'Item' },
+            { key: 'requestDate', label: 'Request Raised Date' },
+            { key: 'deliveryDate', label: 'Latest Delivery Date' },
             { key: 'qtyOrdered', label: 'Ordered Qty' },
             { key: 'qtyReceived', label: 'Received Qty' },
             { key: 'deltaQty', label: 'Delta Qty' },
             { key: 'unitPrice', label: 'Unit Price' },
             { key: 'varianceValue', label: 'Variance Value' },
+            { key: 'status', label: 'PO Status' }
+        ];
+    }
+
+    if (report === 'DELIVERY_RECONCILIATION') {
+        return [
+            { key: 'poNumber', label: 'PO Number' },
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'site', label: 'Site' },
+            { key: 'item', label: 'Item' },
+            { key: 'orderedQty', label: 'Ordered Qty' },
+            { key: 'receivedQty', label: 'Received Qty' },
+            { key: 'pendingQty', label: 'Pending Qty' },
+            { key: 'overQty', label: 'Over Qty' },
+            { key: 'unitPrice', label: 'Unit Price' },
+            { key: 'orderedValue', label: 'Ordered Value' },
+            { key: 'receivedValue', label: 'Delivered Value' },
+            { key: 'pendingValue', label: 'Pending Value' },
+            { key: 'varianceValue', label: 'Value Variance' },
             { key: 'status', label: 'PO Status' }
         ];
     }
@@ -275,28 +366,21 @@ const buildCsv = (report: ReportType, data: ReportRow[]) => {
 };
 
 const ReportingView = () => {
-    const { pos } = useApp();
-    const [activeReport, setActiveReport] = useState<ReportType>('OUTSTANDING_DELIVERIES');
+    const { pos, cachedReports, cachedRunTimes, setReportCache } = useApp();
+    const [activeReport, setActiveReport] = useState<ReportType>(() => {
+        const saved = sessionStorage.getItem('pf_active_report');
+        return (saved as ReportType) || 'OUTSTANDING_DELIVERIES';
+    });
     const [isLoading, setIsLoading] = useState(false);
     const [viewMode, setViewMode] = useState<ViewMode>('CHART');
     const [chartMetric, setChartMetric] = useState<ChartMetric>('SUPPLIER');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSite, setSelectedSite] = useState('ALL');
     const [selectedSupplier, setSelectedSupplier] = useState('ALL');
-    const [cachedReports, setCachedReports] = useState<Record<ReportType, ReportRow[] | null>>({
-        OUTSTANDING_DELIVERIES: null,
-        ALL_DELIVERIES: null,
-        DELIVERY_VARIANCE: null,
-        FINANCE_SUMMARY: null,
-        PO_STATUS: null
-    });
-    const [cachedRunTimes, setCachedRunTimes] = useState<Record<ReportType, string | null>>({
-        OUTSTANDING_DELIVERIES: null,
-        ALL_DELIVERIES: null,
-        DELIVERY_VARIANCE: null,
-        FINANCE_SUMMARY: null,
-        PO_STATUS: null
-    });
+
+    useEffect(() => {
+        sessionStorage.setItem('pf_active_report', activeReport);
+    }, [activeReport]);
 
     const reportData = cachedReports[activeReport] || [];
     const lastRun = cachedRunTimes[activeReport];
@@ -334,6 +418,16 @@ const ReportingView = () => {
         const avgCompletion = outstandingRows.length ? outstandingRows.reduce((sum, row) => sum + row.completionPct, 0) / outstandingRows.length : 0;
         return { totalValue, totalUnits, avgCompletion, lineCount: outstandingRows.length };
     }, [outstandingRows]);
+    const reconciliationRows = visibleReportData as DeliveryReconciliationRow[];
+
+    const reconciliationSummary = useMemo(() => {
+        const totalOrdered = reconciliationRows.reduce((sum, row) => sum + row.orderedValue, 0);
+        const totalReceived = reconciliationRows.reduce((sum, row) => sum + row.receivedValue, 0);
+        const totalPending = reconciliationRows.reduce((sum, row) => sum + row.pendingValue, 0);
+        const totalVariance = reconciliationRows.reduce((sum, row) => sum + row.varianceValue, 0);
+        return { totalOrdered, totalReceived, totalPending, totalVariance, lineCount: reconciliationRows.length };
+    }, [reconciliationRows]);
+
     const varianceSummary = useMemo(() => {
         const pending = varianceRows.filter((row) => row.exceptionType === 'Pending');
         const over = varianceRows.filter((row) => row.exceptionType === 'Over delivered');
@@ -374,10 +468,11 @@ const ReportingView = () => {
                 data = buildAllDeliveriesRows(pos);
             } else if (activeReport === 'PO_STATUS') {
                 data = buildPoStatusRows(pos);
+            } else if (activeReport === 'DELIVERY_RECONCILIATION') {
+                data = buildReconciliationRows(pos);
             }
 
-            setCachedReports((prev) => ({ ...prev, [activeReport]: data }));
-            setCachedRunTimes((prev) => ({ ...prev, [activeReport]: new Date().toLocaleTimeString() }));
+            setReportCache(activeReport, data);
             setIsLoading(false);
         }, 500);
     };
@@ -461,6 +556,7 @@ const ReportingView = () => {
                             <ReportButton active={activeReport === 'OUTSTANDING_DELIVERIES'} icon={AlertCircle} label="Outstanding Deliveries" onClick={() => switchReport('OUTSTANDING_DELIVERIES')} />
                             <ReportButton active={activeReport === 'ALL_DELIVERIES'} icon={Package} label="All Deliveries" onClick={() => switchReport('ALL_DELIVERIES')} />
                             <ReportButton active={activeReport === 'DELIVERY_VARIANCE'} icon={TrendingUp} label="Delivery Variance" onClick={() => switchReport('DELIVERY_VARIANCE')} />
+                            <ReportButton active={activeReport === 'DELIVERY_RECONCILIATION'} icon={Layers} label="Full Reconciliation" onClick={() => switchReport('DELIVERY_RECONCILIATION')} />
                             <ReportButton active={activeReport === 'FINANCE_SUMMARY'} icon={TrendingUp} label="Finance Summary" onClick={() => switchReport('FINANCE_SUMMARY')} />
                             <ReportButton active={activeReport === 'PO_STATUS'} icon={FileText} label="PO Status Report" onClick={() => switchReport('PO_STATUS')} />
                         </div>
@@ -595,6 +691,8 @@ const ReportingView = () => {
                                 <OutstandingDeliveryVisual rows={outstandingRows} summary={outstandingSummary} chartData={outstandingChartData} />
                             ) : activeReport === 'DELIVERY_VARIANCE' && viewMode === 'CHART' ? (
                                 <DeliveryVarianceVisual rows={varianceRows} summary={varianceSummary} chartData={varianceChartData} />
+                            ) : activeReport === 'DELIVERY_RECONCILIATION' && viewMode === 'CHART' ? (
+                                <DeliveryReconciliationVisual rows={reconciliationRows} summary={reconciliationSummary} />
                             ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
                                 <AllDeliveriesVisual data={getChartData()} />
                             ) : (
@@ -762,6 +860,77 @@ const AllDeliveriesVisual = ({ data }: { data: Array<{ name: string; value: numb
     </div>
 );
 
+
+
+const DeliveryReconciliationVisual = ({ rows, summary }: { rows: DeliveryReconciliationRow[]; summary: { totalOrdered: number; totalReceived: number; totalPending: number; totalVariance: number; lineCount: number } }) => {
+    const chartData = useMemo(() => {
+        const grouped: Record<string, { name: string; ordered: number; received: number; pending: number }> = {};
+        rows.forEach(row => {
+            const key = row.supplier;
+            grouped[key] ||= { name: key, ordered: 0, received: 0, pending: 0 };
+            grouped[key].ordered += row.orderedValue;
+            grouped[key].received += row.receivedValue;
+            grouped[key].pending += row.pendingValue;
+        });
+        return Object.values(grouped).sort((a, b) => b.ordered - a.ordered).slice(0, 10);
+    }, [rows]);
+
+    return (
+        <div data-testid="reconciliation-report-visual" className="p-4 md:p-6 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <MetricCard label="Total Ordered" value={currency(summary.totalOrdered)} sub={`${summary.lineCount} lines reconciled`} icon={Package} color="bg-blue-600" />
+                <MetricCard label="Total Received" value={currency(summary.totalReceived)} sub="Delivered value to date" icon={CheckCircle2} color="bg-emerald-600" />
+                <MetricCard label="Pending Value" value={currency(summary.totalPending)} sub="Remaining value to be delivered" icon={AlertCircle} color="bg-orange-500" />
+                <MetricCard label="Net Variance" value={currency(summary.totalVariance)} sub="Difference (Received - Ordered)" icon={ArrowRightLeft} color={summary.totalVariance >= 0 ? 'bg-emerald-500' : 'bg-red-500'} />
+            </div>
+
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                <div className="flex items-center justify-between gap-3 mb-6">
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">Ordered vs. Received Value</h3>
+                        <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Top 10 suppliers by ordered volume</p>
+                    </div>
+                </div>
+                <div className="h-[360px] min-w-[600px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 60 }}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
+                            <XAxis dataKey="name" angle={-35} textAnchor="end" height={80} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
+                            <YAxis tickFormatter={(value) => `$${Number(value).toLocaleString()}`} tick={{ fontSize: 11, fill: '#888' }} />
+                            <RechartsTooltip formatter={(value: number) => currency(value)} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                            <Bar dataKey="ordered" name="Ordered Value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="received" name="Received Value" fill="#10b981" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                 <div className="p-4 rounded-xl bg-orange-50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/30">
+                     <h4 className="text-sm font-bold text-orange-900 dark:text-orange-400 flex items-center gap-2 mb-2">
+                         <AlertCircle size={16} /> Pending Fulfillment
+                     </h4>
+                     <p className="text-xs text-orange-700 dark:text-orange-500/80 leading-relaxed">
+                         There is currently {currency(summary.totalPending)} in pending orders that have not yet been received. 
+                         Check the "Outstanding Deliveries" report for a detailed follow-up list.
+                     </p>
+                 </div>
+                 <div className={`p-4 rounded-xl border ${summary.totalVariance >= 0 ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30' : 'bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30'}`}>
+                     <h4 className={`text-sm font-bold flex items-center gap-2 mb-2 ${summary.totalVariance >= 0 ? 'text-emerald-900 dark:text-emerald-400' : 'text-red-900 dark:text-red-400'}`}>
+                         <ArrowRightLeft size={16} /> Variance Insight
+                     </h4>
+                     <p className={`text-xs leading-relaxed ${summary.totalVariance >= 0 ? 'text-emerald-700 dark:text-emerald-500/80' : 'text-red-700 dark:text-red-500/80'}`}>
+                         {summary.totalVariance >= 0 
+                            ? `You have received ${currency(summary.totalVariance)} more than originally ordered. This may indicate over-deliveries or price increases.`
+                            : `You have a shortfall of ${currency(Math.abs(summary.totalVariance))} between ordered and received value.`}
+                     </p>
+                 </div>
+            </div>
+        </div>
+    );
+};
+
 const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: ReportRow[] }) => (
     <table className="w-full min-w-[900px] text-sm text-left">
         <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0">
@@ -796,12 +965,26 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-5 py-4">PO # / Supplier</th>
                         <th className="px-5 py-4">Site</th>
                         <th className="px-5 py-4">Item</th>
+                        <th className="px-5 py-4">Request Raised</th>
+                        <th className="px-5 py-4">Latest Delivery</th>
                         <th className="px-5 py-4 text-center">Ordered</th>
                         <th className="px-5 py-4 text-center">Received</th>
                         <th className="px-5 py-4 text-center">Delta</th>
                         <th className="px-5 py-4 text-right">Unit Price</th>
                         <th className="px-5 py-4 text-right text-orange-500">Variance Value</th>
                         <th className="px-5 py-4">Status</th>
+                    </>
+                )}
+                {activeReport === 'DELIVERY_RECONCILIATION' && (
+                    <>
+                        <th className="px-5 py-4">PO # / Supplier</th>
+                        <th className="px-5 py-4">Item</th>
+                        <th className="px-5 py-4 text-center">Ordered</th>
+                        <th className="px-5 py-4 text-center">Received</th>
+                        <th className="px-5 py-4 text-center">Pending</th>
+                        <th className="px-5 py-4 text-right">Ordered Value</th>
+                        <th className="px-5 py-4 text-right">Delivered Value</th>
+                        <th className="px-5 py-4 text-right">Variance</th>
                     </>
                 )}
                 {activeReport === 'FINANCE_SUMMARY' && (
@@ -826,15 +1009,41 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
             </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {rows.map((row, idx) => (
-                <tr key={`${row.id}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                    {activeReport === 'OUTSTANDING_DELIVERIES' && <OutstandingDeliveryRow row={row as OutstandingDeliveryReportRow} />}
-                    {activeReport === 'ALL_DELIVERIES' && <AllDeliveryRow row={row} />}
-                    {activeReport === 'DELIVERY_VARIANCE' && <DeliveryVarianceRow row={row as DeliveryVarianceReportRow} />}
-                    {activeReport === 'FINANCE_SUMMARY' && <FinanceRow row={row} />}
-                    {activeReport === 'PO_STATUS' && <PoStatusRow row={row} />}
-                </tr>
-            ))}
+            {activeReport === 'DELIVERY_RECONCILIATION' ? (
+                rows.map((row) => {
+                    const r = row as DeliveryReconciliationRow;
+                    return (
+                        <tr key={row.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
+                            <td className="px-5 py-4">
+                                <p className="font-bold text-gray-900 dark:text-white">{r.poNumber}</p>
+                                <p className="text-xs text-tertiary dark:text-gray-500">{r.supplier}</p>
+                            </td>
+                            <td className="px-5 py-4">
+                                <p className="text-gray-900 dark:text-white">{r.item}</p>
+                                <p className="text-[10px] text-tertiary dark:text-gray-500">{r.site}</p>
+                            </td>
+                            <td className="px-5 py-4 text-center font-medium">{numberValue(r.orderedQty)}</td>
+                            <td className="px-5 py-4 text-center font-medium">{numberValue(r.receivedQty)}</td>
+                            <td className="px-5 py-4 text-center font-bold text-orange-500">{numberValue(r.pendingQty)}</td>
+                            <td className="px-5 py-4 text-right font-medium">{currency(r.orderedValue)}</td>
+                            <td className="px-5 py-4 text-right font-medium">{currency(r.receivedValue)}</td>
+                            <td className={`px-5 py-4 text-right font-bold ${r.varianceValue > 0 ? 'text-red-500' : r.varianceValue < 0 ? 'text-orange-500' : 'text-emerald-500'}`}>
+                                {r.varianceValue > 0 ? '+' : ''}{currency(r.varianceValue)}
+                            </td>
+                        </tr>
+                    );
+                })
+            ) : (
+                rows.map((row, idx) => (
+                    <tr key={`${row.id}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                        {activeReport === 'OUTSTANDING_DELIVERIES' && <OutstandingDeliveryRow row={row as OutstandingDeliveryReportRow} />}
+                        {activeReport === 'ALL_DELIVERIES' && <AllDeliveryRow row={row} />}
+                        {activeReport === 'DELIVERY_VARIANCE' && <DeliveryVarianceRow row={row as DeliveryVarianceReportRow} />}
+                        {activeReport === 'FINANCE_SUMMARY' && <FinanceRow row={row} />}
+                        {activeReport === 'PO_STATUS' && <PoStatusRow row={row} />}
+                    </tr>
+                ))
+            )}
         </tbody>
     </table>
 );
@@ -874,6 +1083,8 @@ const DeliveryVarianceRow = ({ row }: { row: DeliveryVarianceReportRow }) => (
         <td className="px-5 py-3">
             <div className="text-xs font-medium text-gray-900 dark:text-white max-w-[220px] truncate" title={row.item}>{row.item}</div>
         </td>
+        <td className="px-5 py-3 text-xs text-secondary dark:text-gray-400 whitespace-nowrap">{row.requestDate}</td>
+        <td className="px-5 py-3 text-xs text-secondary dark:text-gray-400 whitespace-nowrap">{row.deliveryDate}</td>
         <td className="px-5 py-3 text-center">{numberValue(row.qtyOrdered)}</td>
         <td className="px-5 py-3 text-center text-green-600">{numberValue(row.qtyReceived)}</td>
         <td className={`px-5 py-3 text-center font-bold ${row.deltaQty < 0 ? 'text-orange-500' : 'text-red-500'}`}>{numberValue(row.deltaQty)}</td>

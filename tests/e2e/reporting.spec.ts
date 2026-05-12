@@ -12,9 +12,17 @@ const REPORT_PERMISSIONS = [
     'receive_goods',
 ];
 
+const injectReportingUser = async (page: Parameters<typeof injectTestUser>[0]) => {
+    await injectTestUser(page, REPORT_PERMISSIONS, ['site-1', 'site-2', 'site-7']);
+    await page.addInitScript(() => {
+        localStorage.setItem('activeSiteIds', JSON.stringify(['site-1', 'site-2', 'site-7']));
+        sessionStorage.removeItem('pf_active_report');
+    });
+};
+
 test.describe('Delivery reports', () => {
     test('outstanding deliveries shows action dashboard and exports filtered CSV', async ({ page }) => {
-        await injectTestUser(page, REPORT_PERMISSIONS, ['site-1', 'site-2', 'site-7']);
+        await injectReportingUser(page);
         await gotoAndWait(page, '/reports');
 
         await page.getByRole('button', { name: /Run Report/i }).click();
@@ -41,7 +49,7 @@ test.describe('Delivery reports', () => {
     });
 
     test('delivery variance shows exception-only dashboard and exports CSV', async ({ page }) => {
-        await injectTestUser(page, REPORT_PERMISSIONS, ['site-1', 'site-2', 'site-7']);
+        await injectReportingUser(page);
         await gotoAndWait(page, '/reports');
 
         await page.getByRole('button', { name: /Delivery Variance/i }).click();
@@ -54,6 +62,8 @@ test.describe('Delivery reports', () => {
 
         await page.getByRole('button', { name: /Raw Data/i }).click();
         await expect(page.getByRole('columnheader', { name: 'Exception' })).toBeVisible();
+        await expect(page.getByRole('columnheader', { name: 'Request Raised' })).toBeVisible();
+        await expect(page.getByRole('columnheader', { name: 'Latest Delivery' })).toBeVisible();
         await expect(page.getByText('Over delivered')).not.toBeVisible();
 
         const downloadPromise = page.waitForEvent('download');
@@ -66,12 +76,14 @@ test.describe('Delivery reports', () => {
 
         const csv = await readFile(filePath!, 'utf8');
         expect(csv).toContain('"Exception Type"');
+        expect(csv).toContain('"Request Raised Date"');
+        expect(csv).toContain('"Latest Delivery Date"');
         expect(csv).toContain('"Pending"');
     });
 
     test('delivery report visuals fit a mobile viewport', async ({ page }) => {
         await page.setViewportSize({ width: 390, height: 844 });
-        await injectTestUser(page, REPORT_PERMISSIONS, ['site-1', 'site-2', 'site-7']);
+        await injectReportingUser(page);
         await gotoAndWait(page, '/reports');
 
         await page.getByRole('button', { name: /Run Report/i }).click();
