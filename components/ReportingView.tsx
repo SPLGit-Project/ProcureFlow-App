@@ -2,8 +2,7 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { FileText, Download, BarChart3, TrendingUp, AlertCircle, CheckCircle2, Package } from 'lucide-react';
-import PageHeader from './PageHeader';
-import { POStatus } from '../types.ts';
+import PageHeader from './PageHeader.tsx';
 
 type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'FINANCE_SUMMARY' | 'PO_STATUS';
 
@@ -11,14 +10,14 @@ const ReportingView = () => {
     const { pos } = useApp();
     const [activeReport, setActiveReport] = useState<ReportType>('OUTSTANDING_DELIVERIES');
     const [isLoading, setIsLoading] = useState(false);
-    const [reportData, setReportData] = useState<any[]>([]);
+    const [reportData, setReportData] = useState<Record<string, string | number>[]>([]);
     const [lastRun, setLastRun] = useState<string | null>(null);
 
     const runReport = () => {
         setIsLoading(true);
         // Simulate calculation delay
         setTimeout(() => {
-            let data: any[] = [];
+            let data: Record<string, string | number>[] = [];
             
             if (activeReport === 'OUTSTANDING_DELIVERIES') {
                 // Filter POs that are ACTIVE or APPROVED_PENDING_CONCUR (if they have lines to show)
@@ -286,10 +285,10 @@ const ReportingView = () => {
                                                             <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.poNumber}</div>
                                                         </td>
                                                         <td className="px-6 py-3 text-secondary dark:text-gray-300">{row.site}</td>
-                                                        <td className="px-6 py-3 text-secondary dark:text-gray-300 max-w-[200px] truncate" title={row.item}>{row.item}</td>
+                                                        <td className="px-6 py-3 text-secondary dark:text-gray-300 max-w-[200px] truncate" title={String(row.item)}>{row.item}</td>
                                                         <td className="px-6 py-3 text-center font-medium">{row.qty}</td>
-                                                        <td className="px-6 py-3 text-right text-secondary dark:text-gray-400">${row.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                                                        <td className="px-6 py-3 text-right font-bold text-gray-900 dark:text-white">${row.totalPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                        <td className="px-6 py-3 text-right text-secondary dark:text-gray-400">${Number(row.price).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                        <td className="px-6 py-3 text-right font-bold text-gray-900 dark:text-white">${Number(row.totalPrice).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                                                     </>
                                                 )}
                                                 {activeReport === 'FINANCE_SUMMARY' && (
@@ -303,7 +302,7 @@ const ReportingView = () => {
                                                             <div className="text-xs text-tertiary dark:text-gray-400">{row.poNumber}</div>
                                                         </td>
                                                         <td className="px-6 py-3 font-mono text-xs">{row.invoice}</td>
-                                                        <td className="px-6 py-3 text-right font-medium">${row.amount.toLocaleString()}</td>
+                                                        <td className="px-6 py-3 text-right font-medium">${Number(row.amount).toLocaleString()}</td>
                                                         <td className="px-6 py-3 text-center">
                                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${row.isCapitalised === 'Yes' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-secondary dark:bg-white/10 dark:text-gray-400'}`}>
                                                                 {row.isCapitalised}
@@ -315,14 +314,14 @@ const ReportingView = () => {
                                                  {activeReport === 'PO_STATUS' && (
                                                     <>
                                                         <td className="px-6 py-3">
-                                                            <div className="font-bold text-gray-900 dark:text-white">{row.displayId || row.id.substring(0,8)}</div>
+                                                            <div className="font-bold text-gray-900 dark:text-white">{row.displayId || String(row.id).substring(0,8)}</div>
                                                             <div className="text-xs text-tertiary dark:text-gray-500">{row.supplier}</div>
                                                         </td>
                                                         <td className="px-6 py-3">
                                                             <div className="text-sm">{row.requester}</div>
                                                             <div className="text-xs text-tertiary dark:text-gray-400">{row.date}</div>
                                                         </td>
-                                                        <td className="px-6 py-3 text-right font-medium">${row.total.toLocaleString()}</td>
+                                                        <td className="px-6 py-3 text-right font-medium">${Number(row.total).toLocaleString()}</td>
                                                         <td className="px-6 py-3 text-center">{row.lineCount}</td>
                                                         <td className="px-6 py-3">
                                                             <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase border ${
@@ -330,7 +329,7 @@ const ReportingView = () => {
                                                                 row.status === 'REJECTED' ? 'bg-red-50 text-red-700 border-red-200' :
                                                                 'bg-gray-50 text-secondary border-gray-200'
                                                             }`}>
-                                                                {row.status.replace('_', ' ')}
+                                                                {String(row.status).replace('_', ' ')}
                                                             </span>
                                                         </td>
                                                     </>

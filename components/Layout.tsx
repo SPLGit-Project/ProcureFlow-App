@@ -187,7 +187,7 @@ const Layout = () => {
     () => navItems.find(item => item.path === location.pathname),
     [navItems, location.pathname]
   );
-  const isHomeRoute = location.pathname === '/';
+
   const pageTitle = React.useMemo(() => {
     if (currentNavItem) return currentNavItem.label;
     if (location.pathname.startsWith('/requests/')) return 'Request Details';
@@ -269,7 +269,7 @@ const Layout = () => {
             <div className="relative flex-1 min-h-0">
               <nav
                 ref={navRef}
-                className={`h-full flex flex-col gap-1 w-full py-2 overflow-y-auto custom-scrollbar transition-all duration-300 ${isRevampExpanded ? 'px-3' : 'px-2 items-center'}`}
+                className={`h-full flex flex-col gap-1 w-full py-2 overflow-y-auto scrollbar-hide transition-all duration-300 ${isRevampExpanded ? 'px-3' : 'px-2 items-center'}`}
               >
                 {groupedNavItems.map((group, gIdx) => (
                   <React.Fragment key={group.category}>
