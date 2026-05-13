@@ -38,6 +38,8 @@ interface OutstandingDeliveryReportRow extends ReportRow {
     supplier: string;
     site: string;
     item: string;
+    latestDeliveryDate: string;
+    deliveryDates: string;
     ordered: number;
     received: number;
     remaining: number;
@@ -127,6 +129,16 @@ const getLatestDeliveryDateForLine = (po: PORequest, poLineId: string) => {
     return dates[0] || '-';
 };
 
+const getDeliveryDatesForLine = (po: PORequest, poLineId: string) => {
+    const dates = Array.from(new Set((po.deliveries || [])
+        .filter((delivery) => delivery.lines.some((line) => line.poLineId === poLineId))
+        .map((delivery) => delivery.date)
+        .filter(Boolean)))
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+    return dates.length > 0 ? dates.join('; ') : '-';
+};
+
 const buildOutstandingDeliveryRows = (pos: PORequest[]): OutstandingDeliveryReportRow[] => {
     const rows = pos.flatMap((po) => {
         if (!ACTIVE_DELIVERY_STATUSES.includes(po.status)) return [];
@@ -144,6 +156,8 @@ const buildOutstandingDeliveryRows = (pos: PORequest[]): OutstandingDeliveryRepo
                 supplier: po.supplierName,
                 site: po.site,
                 item: line.itemName,
+                latestDeliveryDate: getLatestDeliveryDateForLine(po, line.id),
+                deliveryDates: getDeliveryDatesForLine(po, line.id),
                 ordered,
                 received,
                 remaining,
@@ -306,6 +320,8 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'supplier', label: 'Supplier' },
             { key: 'site', label: 'Site' },
             { key: 'item', label: 'Item' },
+            { key: 'latestDeliveryDate', label: 'Latest Delivery Date' },
+            { key: 'deliveryDates', label: 'Delivery Dates' },
             { key: 'ordered', label: 'Ordered Qty' },
             { key: 'received', label: 'Received Qty' },
             { key: 'remaining', label: 'Remaining Qty' },
@@ -382,7 +398,7 @@ const ReportingView = () => {
         sessionStorage.setItem('pf_active_report', activeReport);
     }, [activeReport]);
 
-    const reportData = cachedReports[activeReport] || [];
+    const reportData = (cachedReports[activeReport] || []) as ReportRow[];
     const lastRun = cachedRunTimes[activeReport];
     const isDeliveryReport = DELIVERY_REPORTS.includes(activeReport);
     const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport;

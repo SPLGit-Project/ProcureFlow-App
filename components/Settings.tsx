@@ -17,7 +17,7 @@ import {
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
 import { supabase } from '../lib/supabaseClient.ts';
-import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding } from '../types.ts';
+import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType } from '../types.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { useLocation } from 'react-router-dom';
 import { BrandLogo } from './BrandLogo.tsx';
@@ -346,7 +346,7 @@ const Settings = () => {
               if(data && data.length > 0) {
                   setWorkflowConfigs(data.map((wf: {
                       id: string;
-                      workflow_type: string;
+                      workflow_type: WorkflowType;
                       is_enabled: boolean;
                       email_enabled: boolean;
                       email_subject: string;

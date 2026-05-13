@@ -44,6 +44,8 @@ test.describe('Delivery reports', () => {
 
         const csv = await readFile(filePath!, 'utf8');
         expect(csv).toContain('"Remaining Value"');
+        expect(csv).toContain('"Latest Delivery Date"');
+        expect(csv).toContain('"Delivery Dates"');
         expect(csv).toContain('Bath Towel - White');
         expect(csv).not.toContain('Premium Cotton Sheet');
     });
