@@ -140,6 +140,8 @@ interface AppContextType {
   createRole: (role: RoleDefinition) => Promise<void>;
   updateRole: (role: RoleDefinition) => Promise<void>;
   deleteRole: (roleId: string) => Promise<void>;
+  isUserAdmin: () => boolean;
+
   
   // Teams Integration
   teamsWebhookUrl: string;
@@ -254,9 +256,9 @@ interface AppContextType {
   updateMarginThresholds: (thresholds: Partial<MarginThresholds>) => Promise<void>;
 
   // Report Caching
-  cachedReports: Record<string, any[] | null>;
+  cachedReports: Record<string, unknown[] | null>;
   cachedRunTimes: Record<string, string | null>;
-  setReportCache: (report: string, data: any[]) => void;
+  setReportCache: (report: string, data: unknown[]) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -280,7 +282,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [marginThresholds, setMarginThresholds] = useState<MarginThresholds>(DEFAULT_MARGIN_THRESHOLDS);
 
   // Report Caching State
-  const [cachedReports, setCachedReports] = useState<Record<string, any[] | null>>({
+  const [cachedReports, setCachedReports] = useState<Record<string, unknown[] | null>>({
     OUTSTANDING_DELIVERIES: null,
     ALL_DELIVERIES: null,
     DELIVERY_VARIANCE: null,
@@ -297,7 +299,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     DELIVERY_RECONCILIATION: null
   });
 
-  const setReportCache = useCallback((report: string, data: any[]) => {
+  const setReportCache = useCallback((report: string, data: unknown[]) => {
     setCachedReports(prev => ({ ...prev, [report]: data }));
     setCachedRunTimes(prev => ({ ...prev, [report]: new Date().toLocaleTimeString() }));
   }, []);
@@ -1524,6 +1526,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       return roleDef ? roleDef.permissions.includes(permissionId) : false;
   };
 
+  const isUserAdmin = (): boolean => currentUser?.role === 'ADMIN';
+
+
   const createRole = async (role: RoleDefinition) => {
     setRoles(prev => [...prev, role]);
     try {
@@ -2662,7 +2667,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const contextValue = React.useMemo(() => ({
     currentUser, isAuthenticated, activeSiteIds, setActiveSiteIds, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
     users, updateUserRole, updateUserAccess, addUser, archiveUser, reloadData,
-    roles, permissions: [], hasPermission, createRole, updateRole, deleteRole,
+    roles, permissions: [], hasPermission, createRole, updateRole, deleteRole, isUserAdmin,
     teamsWebhookUrl, updateTeamsWebhook,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
     suppliers, items, sites, userSites, catalog, stockSnapshots,

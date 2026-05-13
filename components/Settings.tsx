@@ -28,10 +28,10 @@ import StockMappingConfirmation from './StockMappingConfirmation.tsx';
 import { EnhancedParseResult, ColumnMapping, DateColumn } from '../utils/fileParser.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { AuditLogViewer } from './AuditLogViewer.tsx';
-import DataSyncPanel from './DataSyncPanel';
-import SmartBuyingSettings from './SmartBuyingSettings';
-import ItemCreationSettings from './ItemCreationSettings';
-import PageHeader from './PageHeader';
+import DataSyncPanel from './DataSyncPanel.tsx';
+import SmartBuyingSettings from './SmartBuyingSettings.tsx';
+import ItemCreationSettings from './ItemCreationSettings.tsx';
+import PageHeader from './PageHeader.tsx';
 import * as XLSX from 'xlsx';
 import ItemSetupManagement from './ItemSetupManagement.tsx';
 import MenuEditor from './MenuEditor.tsx';
@@ -40,6 +40,9 @@ import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { HierarchyManager } from '../utils/hierarchyManager.ts';
 import { seedCatalogData } from '../utils/catalogSeeder.ts';
 import SimpleWorkflowConfig from './SimpleWorkflowConfig.tsx';
+
+
+import RoleTreeManager from './RoleTreeManager.tsx';
 
 
 const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, icon: React.ElementType, category: 'Sidebar Navigation' | 'Admin Portal' | 'Operational Actions' | 'Development' }[] = [
@@ -267,7 +270,7 @@ const Settings = () => {
   const [selectedAuditItem, setSelectedAuditItem] = useState<Item | null>(null);
   
   // --- Workflow Configurations State ---
-  const [workflowConfigs, setWorkflowConfigs] = useState<any[]>([
+  const [workflowConfigs, setWorkflowConfigs] = useState<WorkflowConfiguration[]>([
       {
           id: '1',
           workflowType: 'APPROVAL',
@@ -341,7 +344,20 @@ const Settings = () => {
               if (error) throw error;
               
               if(data && data.length > 0) {
-                  setWorkflowConfigs(data.map((wf: any) => ({
+                  setWorkflowConfigs(data.map((wf: {
+                      id: string;
+                      workflow_type: string;
+                      is_enabled: boolean;
+                      email_enabled: boolean;
+                      email_subject: string;
+                      email_body: string;
+                      inapp_enabled: boolean;
+                      inapp_title: string;
+                      inapp_message: string;
+                      recipient_type: 'ROLE' | 'USER' | 'REQUESTER' | 'CUSTOM';
+                      recipient_id: string;
+                      escalation_hours: number;
+                  }) => ({
                       id: wf.id,
                       workflowType: wf.workflow_type,
                       isEnabled: wf.is_enabled,
@@ -411,7 +427,7 @@ const Settings = () => {
       }
   };
 
-  const [fieldRegistry, setFieldRegistry] = useState<any[]>([]);
+  const [fieldRegistry, setFieldRegistry] = useState<unknown[]>([]);
   
   useEffect(() => {
      getItemFieldRegistry().then(setFieldRegistry).catch(console.error);
@@ -3078,90 +3094,28 @@ if __name__ == "__main__":
                           <div className="flex-1 overflow-y-auto custom-scrollbar">
                                   <div className="p-6 space-y-8">
                                       {activeRole.id !== 'ALL' && (
-                                          <div className="bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-                                              <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-white dark:bg-nocturne">
-                                                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><Lock size={14}/> Role Permissions</h3>
-                                                  <div className="flex items-center gap-2">
-                                                      {roleSaveStatus === 'saved' && (
-                                                          <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold animate-fade-in">
-                                                              <CheckCircle size={12} /> Saved
-                                                          </span>
-                                                      )}
-                                                      {roleSaveStatus === 'saving' && (
-                                                          <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold">
-                                                              <Loader2 size={12} className="animate-spin" /> Saving...
-                                                          </span>
-                                                      )}
-                                                      <span className="px-2 py-1 rounded bg-[var(--color-brand)]/10 text-[var(--color-brand)] text-[10px] font-bold">{activeRole.permissions.length} Active Rules</span>
-                                                  </div>
-                                              </div>
-                                              <div className="p-6">
-                                                  <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-8">
-                                                       {['Sidebar Navigation', 'Admin Portal', 'Operational Actions', 'Development'].map((category) => {
-                                                           const categoryPerms = AVAILABLE_PERMISSIONS.filter(p => (p as any).category === category);
-                                                           const allCategoryIds = categoryPerms.map(p => p.id);
-                                                           const isAllSelected = allCategoryIds.every(id => activeRole.permissions.includes(id));
-                                                           
-                                                           return (
-                                                               <div key={category} className="space-y-3">
-                                                                   <div className="flex items-center justify-between pl-1">
-                                                                       <div className="flex items-center gap-2"><div className="p-1.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-400">{category === 'Sidebar Navigation' ? <Layout size={12}/> : category === 'Admin Portal' ? <SettingsIcon size={12}/> : category === 'Development' ? <Code size={12}/> : <Zap size={12}/>}</div><div className="text-[11px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">{category}</div></div>
-                                                                       <button type="button" 
-                                                                           onClick={() => {
-                                                                               let newPerms: PermissionId[];
-                                                                               if (isAllSelected) {
-                                                                                   newPerms = activeRole.permissions.filter(p => !allCategoryIds.includes(p));
-                                                                               } else {
-                                                                                   newPerms = Array.from(new Set([...activeRole.permissions, ...allCategoryIds]));
-                                                                               }
-                                                                               const updatedRole = { ...activeRole, permissions: newPerms };
-                                                                               setRoleSaveStatus('saving');
-                                                                               updateRole(updatedRole).then(() => { setRoleSaveStatus('saved'); setTimeout(() => setRoleSaveStatus('idle'), 3000); });
-                                                                               setActiveRole(updatedRole);
-                                                                           }}
-                                                                           className="text-[9px] font-bold text-[var(--color-brand)] hover:underline uppercase tracking-tighter"
-                                                                       >
-                                                                           {isAllSelected ? 'Deselect All' : 'Select All'}
-                                                                       </button>
-                                                                   </div>
-                                                                   <div className="bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 rounded-xl divide-y divide-gray-50 dark:divide-gray-800/50">
-                                                                       {categoryPerms.map(perm => {  const isEnabled = activeRole.permissions.includes(perm.id); const Icon = (perm as any).icon || Shield;
-                                                                           
-                                                                           return (
-                                                                               <div key={perm.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
-                                                                                   <div className="flex items-center gap-3 flex-1 min-w-0"><div className={`p-2 rounded-xl transition-colors ${isEnabled ? 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]' : 'bg-gray-50 dark:bg-gray-800 text-gray-400 group-hover:bg-gray-100 dark:group-hover:bg-gray-700'}`}><Icon size={16}/></div><div className="min-w-0">
-                                                                                       <div className="font-bold text-xs text-gray-900 dark:text-white leading-tight truncate">{perm.label}</div>
-                                                                                       <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{perm.description}</div></div></div>
-                                                                                   <button type="button" 
-                                                                                       disabled={activeRole.id === 'ADMIN' && perm.id === 'manage_settings'} 
-                                                                                       onClick={() => {
-                                                                                           const newPerms = isEnabled 
-                                                                                               ? activeRole.permissions.filter(p => p !== perm.id)
-                                                                                               : [...activeRole.permissions, perm.id];
-                                                                                           const updatedRole = { ...activeRole, permissions: newPerms };
-                                                                                           setRoleSaveStatus('saving');
-                                                                                           updateRole(updatedRole).then(() => { setRoleSaveStatus('saved'); setTimeout(() => setRoleSaveStatus('idle'), 3000); });
-                                                                                           setActiveRole(updatedRole);
-                                                                                       }}
-                                                                                       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 ${isEnabled ? 'bg-[var(--color-brand)]' : 'bg-gray-200 dark:bg-gray-700'}`}
-                                                                                   >
-                                                                                       <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isEnabled ? 'translate-x-[1.25rem]' : 'translate-x-[0.25rem]'}`} />
-                                                                                   </button>
-                                                                               </div>
-                                                                           );
-                                                                       })}
-                                                                   </div>
-                                                               </div>
-                                                           );
-                                                       })}
-                                                  </div>
-                                              </div>
-                                          </div>
+                                          <RoleTreeManager 
+                                              activeRole={activeRole}
+                                              saveStatus={roleSaveStatus}
+                                              onUpdatePermissions={async (newPerms) => {
+                                                  const updatedRole = { ...activeRole, permissions: newPerms };
+                                                  setRoleSaveStatus('saving');
+                                                  try {
+                                                      await updateRole(updatedRole);
+                                                      setRoleSaveStatus('saved');
+                                                      setActiveRole(updatedRole);
+                                                      setTimeout(() => setRoleSaveStatus('idle'), 3000);
+                                                  } catch (e) {
+                                                      console.error("Failed to save role", e);
+                                                      setRoleSaveStatus('idle');
+                                                  }
+                                              }}
+                                          />
                                       )}
 
-                                          </div>
-                                      </div>
-                                  </>
+                                  </div>
+                              </div>
+                          </>
                       ) : (
                           <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
                               <div className="w-20 h-20 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">

@@ -36,7 +36,10 @@ export type PermissionId =
   | 'view_sell_pricing'
   | 'override_margin_threshold'
   | 'manage_pricing_schedules'
-  | 'publish_items';
+  | 'publish_items'
+  | 'view_audit_logs'
+  | 'manage_branding'
+  | 'manage_sites';
 
 export interface FeatureFlags {
   previewEnabled: boolean;
@@ -941,11 +944,11 @@ export interface PricingSchedule {
   preview_item_count?: number;
   preview_prices_to_create?: number;
   preview_flagged_count?: number;
-  preview_sample?: any;
+  preview_sample?: unknown;
   executed_at?: string;
   executed_by?: string;
   prices_created?: number;
-  execution_errors?: any;
+  execution_errors?: unknown;
   created_by?: string;
   approved_by?: string;
   approved_at?: string;
