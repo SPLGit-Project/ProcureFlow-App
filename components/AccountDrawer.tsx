@@ -17,6 +17,7 @@ const AccountDrawer = ({ isOpen, onClose }: AccountDrawerProps) => {
     const { currentUser, roles, switchRole, logout } = useApp();
     const navigate = useNavigate();
     const [isRoleSwitcherExpanded, setIsRoleSwitcherExpanded] = React.useState(false);
+    const canSwitchRoles = (currentUser?.realRole || currentUser?.role) === 'ADMIN';
 
     if (!isOpen) return null;
 
@@ -103,7 +104,7 @@ const AccountDrawer = ({ isOpen, onClose }: AccountDrawerProps) => {
                     </div>
 
                     {/* Role Switcher (Admin Only) */}
-                    {currentUser?.realRole === 'ADMIN' && (
+                    {canSwitchRoles && (
                         <div className="bg-gray-50 dark:bg-white/5 border border-default rounded-3xl overflow-hidden transition-all">
                             <button 
                                 type="button"

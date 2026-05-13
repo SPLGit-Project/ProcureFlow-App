@@ -165,6 +165,7 @@ const Layout = () => {
       .sort((a, b) => a.order - b.order)
       .filter(item => {
         if (item.id === 'item-creation-preview' && !(featureFlags?.previewEnabled ?? false)) return false;
+        if (item.anyPermissions?.length) return item.anyPermissions.some(permission => hasPermission(permission));
         return !item.permission || hasPermission(item.permission);
       });
   }, [branding.menuConfig, hasPermission, featureFlags?.previewEnabled]);

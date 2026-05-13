@@ -46,6 +46,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         permissions: [
             { id: 'view_items', label: 'Catalogue Browser', description: 'Browse and search the item catalogue', type: 'SCREEN' },
             { id: 'view_stock', label: 'Inventory Levels', description: 'View real-time stock and snapshots', type: 'SCREEN' },
+            { id: 'manage_item_requests', label: 'Item Requests', description: 'Submit and manage item creation requests', type: 'ACTION' },
             { id: 'manage_items', label: 'Item Management', description: 'Create, edit, and archive items', type: 'ACTION' },
             { id: 'manage_item_definition', label: 'Definition Logic', description: 'Manage item master data queue', type: 'ACTION' },
             { id: 'approve_item_requests', label: 'Item Approvals', description: 'Approve new item creation requests', type: 'ACTION' },
@@ -80,8 +81,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         icon: Shield,
         permissions: [
             { id: 'view_security', label: 'Security Panel', description: 'Manage roles and user permissions', type: 'SCREEN' },
+            { id: 'view_suppliers', label: 'Supplier Directory', description: 'View and search supplier records', type: 'SCREEN' },
             { id: 'view_sites', label: 'Site Directory', description: 'View and search company sites', type: 'SCREEN' },
+            { id: 'view_workflow', label: 'Workflow Designer', description: 'View approval workflows', type: 'SCREEN' },
             { id: 'view_notifications', label: 'Notification Config', description: 'Configure system alerts', type: 'SCREEN' },
+            { id: 'view_branding', label: 'Branding Panel', description: 'View branding and home experience settings', type: 'SCREEN' },
             { id: 'view_audit_logs', label: 'Audit Logs', description: 'View system-wide activity logs', type: 'SCREEN' },
             { id: 'manage_settings', label: 'System Settings', description: 'Manage global app configurations', type: 'ACTION' },
             { id: 'manage_suppliers', label: 'Supplier Admin', description: 'Manage supplier master records', type: 'ACTION' },

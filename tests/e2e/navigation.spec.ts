@@ -88,6 +88,49 @@ test.describe('Navigation and feature flag gating', () => {
         await expect(page.getByRole('link', { name: /Item Catalogue/i })).toBeVisible();
     });
 
+    test('settings nav item visible with a settings screen permission', async ({ page }) => {
+        await page.addInitScript(() => {
+            localStorage.setItem('pf-revamp-sidebar-expanded', 'true');
+        });
+        await injectTestUser(page, ['view_security']);
+        await gotoAndWait(page, '/');
+        await expect(page.getByRole('link', { name: /Admin Panel/i })).toBeVisible();
+
+        await gotoAndWait(page, '/settings');
+        await expect(page.getByRole('button', { name: /Security Roles/i })).toBeVisible();
+        await expect(page.getByRole('button', { name: /Menu Config/i })).not.toBeVisible();
+    });
+
+    test('admin switch view keeps selected role across navigation', async ({ page }) => {
+        await page.addInitScript(() => {
+            localStorage.setItem('pf_qa_mode', '1');
+            localStorage.setItem('pf-revamp-sidebar-expanded', 'true');
+            localStorage.removeItem('pf_test_user');
+            localStorage.removeItem('activeSiteIds');
+            localStorage.removeItem('activeSiteId');
+        });
+
+        await gotoAndWait(page, '/');
+        await page.getByRole('button', { name: /Charlie Admin/i }).click();
+        await page.getByRole('button', { name: /Switch View/i }).click();
+        await page.getByText('Master Data View').click();
+
+        await expect(page.getByRole('link', { name: /Admin Tools/i })).not.toBeVisible();
+        await expect(page.getByRole('link', { name: /Approval Rules/i })).not.toBeVisible();
+        await expect(page.getByRole('link', { name: /Master Data Queue/i })).toBeVisible();
+        await expect(page.getByRole('link', { name: /Item Catalogue/i })).toBeVisible();
+
+        await page.mouse.click(20, 20);
+        await page.getByRole('link', { name: /Master Data Queue/i }).click();
+        await expect(page).toHaveURL(/\/items\/master-data-queue$/);
+        await expect(page.locator('text=Access Restricted')).not.toBeVisible();
+
+        await page.getByRole('link', { name: 'Home', exact: true }).first().click();
+        await expect(page).toHaveURL(/\/$/);
+        await expect(page.getByRole('link', { name: /Admin Tools/i })).not.toBeVisible();
+        await expect(page.getByRole('link', { name: /Master Data Queue/i })).toBeVisible();
+    });
+
     test('home header site selector is only shown on home', async ({ page }) => {
         await injectTestUser(page);
         await gotoAndWait(page, '/');

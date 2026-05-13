@@ -267,6 +267,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const qaMode = isLocalQaMode();
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [, setSessionRoleOverride] = useState<UserRole | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   // Updated Multi-Site State
@@ -396,6 +397,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [idleSecondsRemaining, setIdleSecondsRemaining] = useState<number | null>(null);
 
   const currentUserRef = React.useRef<User | null>(currentUser);
+  const rolesRef = React.useRef<RoleDefinition[]>(roles);
+  const sessionRoleOverrideRef = React.useRef<UserRole | null>(null);
   const logoutReasonRef = React.useRef<'manual' | 'idle' | null>(null);
   const logoutInProgressRef = React.useRef(false);
   const lastSessionActivityRef = React.useRef(Date.now());
@@ -404,6 +407,63 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   useEffect(() => {
       currentUserRef.current = currentUser;
   }, [currentUser]);
+
+  useEffect(() => {
+      rolesRef.current = roles;
+  }, [roles]);
+
+  const setRoleOverride = useCallback((roleId: UserRole | null) => {
+      sessionRoleOverrideRef.current = roleId;
+      setSessionRoleOverride(roleId);
+  }, []);
+
+  const clearRoleOverride = useCallback(() => {
+      setRoleOverride(null);
+  }, [setRoleOverride]);
+
+  const applySessionRoleOverride = useCallback((user: User): User => {
+      const realRole = user.realRole || user.role;
+      const overrideRole = sessionRoleOverrideRef.current;
+
+      if (realRole !== 'ADMIN') {
+          if (overrideRole) clearRoleOverride();
+          return { ...user, realRole, role: realRole };
+      }
+
+      const knownRoles = rolesRef.current;
+      const hasValidOverride = !!overrideRole && (
+          knownRoles.length === 0 || knownRoles.some(role => role.id === overrideRole)
+      );
+
+      if (!hasValidOverride) {
+          if (overrideRole) clearRoleOverride();
+          return { ...user, realRole, role: realRole };
+      }
+
+      return { ...user, realRole, role: overrideRole };
+  }, [clearRoleOverride]);
+
+  useEffect(() => {
+      const overrideRole = sessionRoleOverrideRef.current;
+      if (!overrideRole || roles.length === 0) return;
+
+      if (!roles.some(role => role.id === overrideRole)) {
+          clearRoleOverride();
+          setCurrentUser(prev => {
+              if (!prev) return prev;
+              const realRole = prev.realRole || prev.role;
+              return realRole === 'ADMIN' ? { ...prev, role: realRole, realRole } : prev;
+          });
+      }
+  }, [roles, clearRoleOverride]);
+
+  useEffect(() => {
+      if (!currentUser) return;
+      const realRole = currentUser.realRole || currentUser.role;
+      if (realRole !== 'ADMIN' && sessionRoleOverrideRef.current) {
+          clearRoleOverride();
+      }
+  }, [currentUser?.realRole, currentUser?.role, clearRoleOverride]);
 
   // --- Active Site Logic (Multi) ---
     const setActiveSiteIds = (ids: string[]) => {
@@ -532,13 +592,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       hydrateDevelopmentData(fixtures);
       setRoles([...fixtures.roles]);
+      clearRoleOverride();
       setCurrentUser(fixtures.adminUser);
       setIsAuthenticated(true);
       setIsPendingApproval(false);
       setIsLoadingAuth(false);
       setIsLoadingData(false);
       return true;
-  }, [hydrateDevelopmentData]);
+  }, [clearRoleOverride, hydrateDevelopmentData]);
 
   // Data Loading
   const lastFetchTime = React.useRef<number>(0);
@@ -773,6 +834,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 }
             } else if (eventType === 'SIGNED_OUT') {
                 console.log("Auth: Signed out");
+                clearRoleOverride();
                 setCurrentUser(null);
                 setIsAuthenticated(false);
                 setIsPendingApproval(false);
@@ -1113,7 +1175,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             if (mounted) {
                 console.log("Auth: Successfully authenticated user:", userData.email, "Status:", userData.status);
                 
-                setCurrentUser(userData);
+                setCurrentUser(applySessionRoleOverride(userData));
                 setIsAuthenticated(true);
                 setIsPendingApproval(userData.status !== 'APPROVED');
                 persistSessionActivity(userData.id, true);
@@ -1409,6 +1471,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           writeSessionLogoutNotice({ reason, createdAt: Date.now() });
       }
 
+      clearRoleOverride();
+
       if (qaMode) {
           setIsAuthenticated(false);
           setCurrentUser(null);
@@ -1607,15 +1671,23 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const switchRole = (roleId: UserRole) => {
       if (!currentUser) return;
-      // Note: This is a session switch if they have the right realRole
-      setCurrentUser(prev => prev ? ({ ...prev, role: roleId }) : null);
+      const realRole = currentUser.realRole || currentUser.role;
+      const targetRole = roles.find(role => role.id === roleId);
+      if (realRole !== 'ADMIN' || !targetRole) {
+          console.warn('Role switch denied: only real admins can switch to an existing role.');
+          return;
+      }
+
+      setRoleOverride(roleId === realRole ? null : roleId);
+      setCurrentUser(prev => prev ? ({ ...prev, realRole, role: roleId }) : null);
       logAction('USER_ROLE_SWITCHED', { userId: currentUser.id, email: currentUser.email, newRole: roleId, oldRole: currentUser.role });
   };
 
   const updateUserRole = (userId: string, role: UserRole) => {
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
       if (currentUser?.id === userId) {
-          setCurrentUser(prev => prev ? ({ ...prev, role }) : null);
+          if (role !== 'ADMIN') clearRoleOverride();
+          setCurrentUser(prev => prev ? ({ ...prev, realRole: role, role }) : null);
       }
       // Persistence handled by updateUserAccess for full updates
       const user = users.find(u => u.id === userId);
@@ -1632,7 +1704,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
       
       if (currentUser?.id === userId) {
-          setCurrentUser(prev => prev ? ({ ...prev, role, siteIds }) : null);
+          if (role !== 'ADMIN') clearRoleOverride();
+          setCurrentUser(prev => prev ? ({ ...prev, realRole: role, role, siteIds }) : null);
       }
 
       try {

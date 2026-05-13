@@ -35,6 +35,11 @@ export const MOCK_ROLES: RoleDefinition[] = [
         id: 'APPROVER', name: 'Approver', description: 'Can authorize requests.', isSystem: true,
         permissions: ['view_dashboard', 'view_all_requests', 'approve_requests'] 
     },
+    {
+        id: 'MASTER_DATA', name: 'Master Data', description: 'Manages item master data workflow.',
+        isSystem: false,
+        permissions: ['view_dashboard', 'view_items', 'manage_item_requests', 'manage_item_definition', 'publish_items', 'view_all_requests']
+    },
     { 
         id: 'ADMIN', name: 'Administrator', description: 'Full system access.', isSystem: true,
         permissions: [

@@ -7,9 +7,25 @@ export interface NavItemConfig {
     label: string;
     iconName: string; // We store string, map to icon component in Layout
     permission?: PermissionId;
+    anyPermissions?: PermissionId[];
     isSystem?: boolean; // If true, cannot be deleted (though we only hide for now)
     category?: string; // Used for sidebar grouping in revamp mode
 }
+
+export const SETTINGS_ACCESS_PERMISSIONS: PermissionId[] = [
+    'view_items',
+    'view_stock',
+    'view_mapping',
+    'view_suppliers',
+    'view_sites',
+    'view_workflow',
+    'view_security',
+    'view_notifications',
+    'view_branding',
+    'view_audit_logs',
+    'manage_settings',
+    'manage_items',
+];
 
 export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     // ── Workspace ──
@@ -45,7 +61,7 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     { id: 'admin-tools', path: '/admin/tools', label: 'Admin Tools', iconName: 'Activity', permission: 'manage_settings', category: 'Admin' },
     { id: 'admin-cutover', path: '/admin/cutover', label: 'Cutover Readiness', iconName: 'ShieldCheck', permission: 'manage_settings', category: 'Admin' },
     { id: 'admin-colours', path: '/admin/colours', label: 'Colour Palette', iconName: 'Activity', permission: 'manage_settings', category: 'Admin' },
-    { id: 'settings', path: '/settings', label: 'Admin Panel', iconName: 'Settings', permission: 'manage_settings', isSystem: true, category: 'Admin' },
+    { id: 'settings', path: '/settings', label: 'Admin Panel', iconName: 'Settings', anyPermissions: SETTINGS_ACCESS_PERMISSIONS, isSystem: true, category: 'Admin' },
 
     // ── System ──
     { id: 'help', path: '/help', label: 'Help & Support', iconName: 'HelpCircle', isSystem: true, category: 'System' },

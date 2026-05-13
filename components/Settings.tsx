@@ -854,7 +854,7 @@ const Settings = () => {
       { id: 'MENU', label: 'Menu Config', icon: ListFilter, permission: 'manage_settings' },
       { id: 'MIGRATION', label: 'Data Migration', icon: Upload, permission: 'manage_settings' },
       { id: 'EMAIL', label: 'Email Templates', icon: Mail, permission: 'manage_settings' },
-      { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'manage_settings' },
+      { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'view_audit_logs' },
       { id: 'DATA_SYNC', label: 'Data Sync', icon: Database, permission: 'manage_settings' },
       { id: 'SMART_BUYING',    label: 'Smart Buying',   icon: BarChart3, permission: 'manage_settings' },
       { id: 'ITEM_CREATION',   label: 'Item Creation',  icon: Package,   permission: 'manage_items' }
