@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 import { Shield } from 'lucide-react';
 import { consumeSessionLogoutNotice } from '../utils/sessionState.ts';
-import { BrandLogo } from './BrandLogo.tsx';
+import mercerFlowLogo from '../docs/Logo Branding/APP-LOGOS/MercerFlow-Logo.png';
 
 const Login = () => {
   const { login, isAuthenticated, branding, isLoadingAuth } = useApp();
@@ -20,16 +20,15 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-app flex flex-col items-center justify-center p-4">
        
-       <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 p-8 w-full max-w-md animate-slide-up">
+       <div className="bg-white dark:bg-[#171315] rounded-2xl shadow-xl border border-gray-200 dark:border-[#171315] p-8 w-full max-w-md animate-slide-up">
            <div className="flex flex-col items-center mb-8">
-               <BrandLogo
-                   appName={branding.appName}
-                   logoUrl={branding.logoUrl}
-                   size="md"
-                   className="mb-4"
-                   fallbackClassName="bg-gradient-to-br from-[var(--color-brand)] to-purple-600 text-white shadow-lg"
-               />
-               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{branding.appName}</h1>
+               <div className="mb-5 flex w-full justify-center">
+                   <img
+                       src={mercerFlowLogo}
+                       alt="MercerFlow logo"
+                       className="w-full max-w-[260px] rounded-xl border border-white/5 object-contain shadow-[0_18px_50px_rgba(0,0,0,0.22)] dark:border-transparent dark:shadow-none sm:max-w-[300px]"
+                   />
+               </div>
                <p className="text-gray-500 dark:text-gray-400 mt-2 text-center">Sign in to access your dashboard</p>
            </div>
 

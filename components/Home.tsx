@@ -1,12 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  ArrowRight,
-  BarChart3,
-  BookOpen,
-  ClipboardCheck,
-  DollarSign,
-} from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { ItemRequest } from '../types';
 import { useApp } from '../context/AppContext';
 import PageHeader from './PageHeader';
@@ -16,23 +10,28 @@ import {
   getRequestsForPricing,
 } from '../services/itemRequestService';
 
-type IconType = React.ComponentType<{ size?: number; className?: string }>;
+import catalogFlowLogo from '../docs/Logo Branding/APP-LOGOS/CatalogFlow-Logo.png';
+import priceFlowLogo from '../docs/Logo Branding/APP-LOGOS/PriceFlow-Logo.png';
+import procureFlowLogo from '../docs/Logo Branding/APP-LOGOS/ProcureFlow-Logo.png';
 
 interface CommandApp {
   id: string;
   title: string;
+  brandName: string;
   label: string;
   description: string;
   path: string;
-  icon: IconType;
+  logo: string;
+  logoPosition?: string;
   visible: boolean;
   metric: number | string;
   metricLabel: string;
+  metricLabelShort: string;
   detail: string;
   signals: string[];
-  accent: string;
-  iconTone: string;
-  glow: string;
+  brandColor: string;
+  brandRgb: string;
+  brandGlow: string;
 }
 
 interface HomeInsightState {
@@ -151,11 +150,7 @@ export default function Home() {
       if (currentUser?.role !== 'ADMIN' && po.requesterId !== currentUser?.id) return false;
       return po.lines.some(line => (line.quantityOrdered - (line.quantityReceived || 0)) > 0 && !line.isForceClosed);
     }).length;
-    const uncapitalisedLines = hasPermission('manage_finance')
-      ? pos.flatMap(po => po.deliveries.flatMap(delivery => delivery.lines)).filter(line => !line.isCapitalised).length
-      : 0;
-
-    return { pendingApprovals, pendingConcur, openDeliveries, uncapitalisedLines };
+    return { pendingApprovals, pendingConcur, openDeliveries };
   }, [currentUser?.id, currentUser?.role, hasPermission, pos]);
 
   const itemSignals = React.useMemo(() => {
@@ -180,89 +175,77 @@ export default function Home() {
       {
         id: 'items',
         title: 'Item Management',
+        brandName: 'CatalogFlow',
         label: 'Catalogue lifecycle',
         description: 'Govern requests, queues, and catalogue visibility.',
         path: hasPermission('manage_item_definition') ? '/items/master-data-queue' : '/items/my-requests',
-        icon: BookOpen,
+        logo: catalogFlowLogo,
+        logoPosition: 'center 66%',
         visible: hasPermission('view_dashboard') || hasPermission('view_items') || hasPermission('manage_item_definition'),
         metric: itemSignals.activeMyItems + itemSignals.masterDataQueue + itemSignals.myRevisionRequired,
         metricLabel: 'item signals',
+        metricLabelShort: 'signals',
         detail: 'Create item requests, respond to revisions, complete master-data review, and inspect catalogue readiness.',
         signals: [
           `${itemSignals.masterDataQueue} setup queue`,
           `${itemSignals.myRevisionRequired} revisions`,
           `${itemSignals.activeMyItems} in your flow`,
         ],
-        accent: 'from-emerald-300/30 via-emerald-500/15 to-tranquil/10 text-emerald-100',
-        iconTone: '!text-emerald-500 dark:!text-emerald-200',
-        glow: 'shadow-emerald-500/15',
+        brandColor: '#9d4edd',
+        brandRgb: '157,78,221',
+        brandGlow: 'rgba(157,78,221,0.24)',
       },
       {
         id: 'procurement',
         title: 'Procurement',
+        brandName: 'ProcureFlow',
         label: 'Request operations',
         description: 'Move purchase activity from request to receiving.',
         path: '/procurement/dashboard',
-        icon: ClipboardCheck,
+        logo: procureFlowLogo,
+        logoPosition: 'center 66%',
         visible: hasPermission('view_dashboard'),
         metric: procurementSignals.pendingApprovals + procurementSignals.pendingConcur + procurementSignals.openDeliveries,
         metricLabel: 'procurement signals',
+        metricLabelShort: 'signals',
         detail: 'Review the request pipeline, resolve approvals, link Concur references, and monitor active delivery work.',
         signals: [
           `${procurementSignals.pendingApprovals} approvals`,
           `${procurementSignals.pendingConcur} Concur links`,
           `${procurementSignals.openDeliveries} receiving actions`,
         ],
-        accent: 'from-tranquil/35 via-cyan-400/15 to-sky-500/10 text-cyan-100',
-        iconTone: '!text-cyan-500 dark:!text-cyan-100',
-        glow: 'shadow-cyan-500/15',
+        brandColor: '#ff8a00',
+        brandRgb: '255,138,0',
+        brandGlow: 'rgba(255,138,0,0.24)',
       },
       {
         id: 'pricing',
         title: 'Pricing',
+        brandName: 'PriceFlow',
         label: 'Price governance',
         description: 'Resolve price reviews and future schedules.',
         path: hasPermission('manage_sell_pricing') ? '/pricing/dashboard' : '/items/pricing-queue',
-        icon: DollarSign,
+        logo: priceFlowLogo,
+        logoPosition: 'center 66%',
         visible: hasPermission('manage_sell_pricing') || hasPermission('manage_purchase_pricing') || hasPermission('manage_pricing_schedules'),
         metric: itemSignals.pricingQueue,
         metricLabel: 'pricing reviews',
+        metricLabelShort: 'reviews',
         detail: 'Resolve pricing queues, maintain price records, and prepare schedule activity before catalogue approval.',
         signals: [
           `${itemSignals.pricingQueue} open reviews`,
           hasPermission('manage_pricing_schedules') ? 'Schedules enabled' : 'Queue access',
           'Margin-aware review',
         ],
-        accent: 'from-amber-300/35 via-yellow-500/15 to-orange-500/10 text-amber-100',
-        iconTone: '!text-amber-500 dark:!text-amber-100',
-        glow: 'shadow-amber-500/15',
-      },
-      {
-        id: 'finance',
-        title: 'Finance',
-        label: 'Financial review',
-        description: 'Check capitalisation and cost impact.',
-        path: '/finance',
-        icon: BarChart3,
-        visible: hasPermission('view_finance') || hasPermission('manage_finance'),
-        metric: procurementSignals.uncapitalisedLines,
-        metricLabel: 'finance checks',
-        detail: 'Review capitalisation, received-goods finance signals, invoice details, and cost reporting.',
-        signals: [
-          `${procurementSignals.uncapitalisedLines} checks`,
-          'Reports available',
-          'Cost impact view',
-        ],
-        accent: 'from-indigo-300/30 via-blue-500/15 to-violet-500/10 text-blue-100',
-        iconTone: '!text-blue-500 dark:!text-blue-100',
-        glow: 'shadow-blue-500/15',
+        brandColor: '#58bf43',
+        brandRgb: '88,191,67',
+        brandGlow: 'rgba(88,191,67,0.24)',
       },
     ];
 
     return apps.filter(app => app.visible);
   }, [hasPermission, itemSignals, procurementSignals]);
 
-  const activeApp = commandApps.find(app => app.id === activeAppId) ?? null;
   const firstName = currentUser?.name?.split(' ')[0] || 'there';
   const fullName = currentUser?.name || firstName;
   const siteLabel = activeSiteIds.length === 0
@@ -319,57 +302,141 @@ export default function Home() {
             <div className="mb-4 flex items-end justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-tranquil">App drawer</p>
-                <h2 className="mt-1 text-xl font-black leading-tight text-gray-950 dark:text-white">MercerFlow Apps</h2>
+                <h2 className="mt-1 text-lg font-black leading-tight text-gray-950 sm:text-xl dark:text-white">MercerFlow Apps</h2>
               </div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-white/30">{commandApps.length} available</p>
             </div>
 
             {commandApps.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+              <div className="grid grid-cols-2 items-start gap-3 sm:gap-4 xl:grid-cols-3">
                 {commandApps.map(app => {
-                  const Icon = app.icon;
-                  const isActive = activeApp?.id === app.id;
+                  const isActive = activeAppId === app.id;
+                  const appTileStyle = {
+                    '--app-color': app.brandColor,
+                    '--app-rgb': app.brandRgb,
+                    boxShadow: isActive
+                      ? `0 26px 56px ${app.brandGlow}, 0 10px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.95)`
+                      : '0 18px 42px rgba(15,23,42,0.13), 0 7px 16px rgba(15,23,42,0.06), inset 0 2px 0 rgba(255,255,255,0.95)',
+                  } as React.CSSProperties;
                   return (
-                    <button
+                    <article
                       key={app.id}
-                      type="button"
-                      onClick={() => setActiveAppId(isActive ? null : app.id)}
-                      aria-expanded={isActive}
-                      className={`group relative min-h-[126px] transform-gpu overflow-hidden rounded-[1.25rem] border p-3 text-left transition-all duration-300 sm:min-h-[172px] sm:rounded-[1.35rem] sm:p-4 lg:min-h-[194px] ${
+                      style={appTileStyle}
+                      className={`group relative transform-gpu overflow-hidden rounded-[1.25rem] border text-left transition-all duration-300 sm:rounded-[1.35rem] ${
                         isActive
-                          ? `-translate-y-1 scale-[1.02] border-tranquil/70 bg-white shadow-[0_24px_50px_rgba(18,157,192,0.22),0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] dark:bg-[#1d2029] dark:shadow-2xl ${app.glow}`
-                          : 'border-gray-200/85 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.13),0_7px_16px_rgba(15,23,42,0.06),0_2px_0_rgba(255,255,255,0.95)_inset] hover:-translate-y-1 hover:border-tranquil/35 hover:shadow-[0_26px_55px_rgba(15,23,42,0.16),0_9px_18px_rgba(15,23,42,0.07),0_2px_0_rgba(255,255,255,0.95)_inset] active:translate-y-0 dark:border-white/10 dark:bg-[#15171e] dark:shadow-[0_18px_42px_rgba(0,0,0,0.3)] dark:hover:border-white/22 dark:hover:bg-[#1d2029]'
+                          ? 'border-[color:var(--app-color)] bg-white dark:bg-[#1d2029]'
+                          : 'min-h-[184px] border-gray-200/85 bg-white hover:-translate-y-1 hover:border-[color:var(--app-color)] active:translate-y-0 sm:min-h-[252px] dark:border-white/10 dark:bg-[#15171e] dark:hover:border-[color:var(--app-color)] dark:hover:bg-[#1d2029]'
                       }`}
                     >
-                      <div className={`absolute inset-x-0 top-0 h-16 bg-gradient-to-br ${app.accent} opacity-55 transition-opacity group-hover:opacity-80 sm:h-24 dark:opacity-70 dark:group-hover:opacity-100`} />
-                      <div className="absolute inset-x-4 bottom-0 h-px bg-white/80 dark:bg-white/5" />
-                      <div className="relative flex h-full flex-col justify-between">
-                        <div>
-                          <div className="mb-2 flex items-start justify-between sm:mb-3">
-                            <span className={`flex h-10 w-10 items-center justify-center rounded-[1rem] border border-white/60 bg-gradient-to-br ${app.accent} shadow-[0_10px_24px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.65)] backdrop-blur sm:h-12 sm:w-12 sm:rounded-[1.05rem] dark:border-white/15`}>
-                              <Icon size={21} className={`${app.iconTone} sm:size-6`} />
-                            </span>
-                            <span className={`flex h-7 w-7 items-center justify-center rounded-xl border transition-all sm:h-9 sm:w-9 sm:rounded-2xl ${
-                              isActive ? 'rotate-90 border-tranquil bg-tranquil text-white' : 'border-gray-200 bg-white/65 text-gray-500 group-hover:bg-tranquil group-hover:text-white dark:border-white/10 dark:bg-nocturne/40 dark:text-white/55'
-                            }`}>
-                              <ArrowRight size={14} className="sm:size-4" />
-                            </span>
+                      <div
+                        className={`absolute inset-x-0 top-0 opacity-90 transition-opacity group-hover:opacity-100 ${isActive ? 'h-[170px] sm:h-[210px]' : 'h-[92px] sm:h-[134px]'}`}
+                        style={{
+                          background: `linear-gradient(135deg, rgba(${app.brandRgb},0.16), rgba(${app.brandRgb},0.04) 46%, rgba(255,255,255,0) 100%)`,
+                        }}
+                      />
+                      <div className="relative flex h-full flex-col">
+                        <button
+                          type="button"
+                          onClick={() => setActiveAppId(isActive ? null : app.id)}
+                          aria-expanded={isActive}
+                          aria-label={`${isActive ? 'Collapse' : 'Expand'} ${app.brandName}`}
+                          className="relative block w-full text-left"
+                        >
+                          <div className="relative m-2 overflow-hidden rounded-[1rem] border border-white/15 bg-[#100d0f] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:m-3 sm:rounded-[1.1rem]">
+                            <div className="relative overflow-hidden">
+                              <div
+                                className="absolute inset-0"
+                                style={{
+                                  background: `radial-gradient(circle at 80% 35%, rgba(${app.brandRgb},0.26), transparent 36%), linear-gradient(135deg, #1a1416 0%, #080809 100%)`,
+                                }}
+                              />
+                              <img
+                                src={app.logo}
+                                alt={`${app.brandName} logo`}
+                                className="relative h-[128px] w-full object-cover opacity-95 transition duration-300 group-hover:scale-[1.03] group-hover:opacity-100 sm:h-[176px]"
+                                style={{ objectPosition: app.logoPosition || 'center' }}
+                              />
+                              <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/55 to-transparent" />
+                              <span
+                                className="absolute bottom-2 right-2 h-2.5 w-8 rounded-full shadow-[0_0_18px_rgba(var(--app-rgb),0.72)] sm:w-10"
+                                style={{ backgroundColor: app.brandColor }}
+                                aria-hidden="true"
+                              />
+                            </div>
                           </div>
-                          <p className="hidden text-[9px] font-black uppercase tracking-widest text-gray-500 sm:block dark:text-white/55">{app.label}</p>
-                          <h2 className="mt-1 text-[15px] font-black leading-tight text-gray-950 sm:text-xl dark:text-white">{app.title}</h2>
-                          <p className="mt-2 hidden text-sm leading-5 text-gray-600 sm:line-clamp-2 dark:text-white/70">{app.description}</p>
-                        </div>
-                        <div className="mt-2 flex items-end justify-between sm:mt-4">
+                        </button>
+
+                        <div className={`flex min-h-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4 ${isActive ? 'gap-4 pt-1 sm:gap-4' : 'justify-between'}`}>
                           <div>
-                            <p className="text-xl font-black text-gray-950 sm:text-2xl dark:text-white">{app.metric}</p>
-                            <p className="max-w-[84px] truncate text-[8px] font-black uppercase tracking-widest text-gray-500 sm:max-w-none sm:text-[9px] dark:text-white/50">{app.metricLabel}</p>
+                            <div className="mb-1 flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-[8px] font-black uppercase tracking-[0.18em] text-gray-500 sm:text-[10px] sm:tracking-widest dark:text-white/50">{app.label}</p>
+                                <h2 className="mt-2 text-lg font-black leading-tight text-gray-950 sm:text-2xl dark:text-white">{app.brandName}</h2>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setActiveAppId(isActive ? null : app.id)}
+                                aria-label={`${isActive ? 'Collapse details for' : 'Expand details for'} ${app.brandName}`}
+                                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border transition-all sm:h-9 sm:w-9 sm:rounded-2xl ${
+                                  isActive
+                                    ? 'rotate-90 border-[color:var(--app-color)] bg-[color:var(--app-color)] text-white'
+                                    : 'border-gray-200 bg-white/80 text-gray-500 group-hover:bg-[color:var(--app-color)] group-hover:text-white dark:border-white/10 dark:bg-nocturne/40 dark:text-white/55'
+                                }`}
+                              >
+                                <ArrowRight size={14} className="sm:size-4" />
+                              </button>
+                            </div>
+                            {isActive && (
+                              <div className="mt-3 space-y-3">
+                                <p className="text-xs font-semibold leading-5 text-gray-600 sm:text-sm sm:leading-6 dark:text-white/72">{app.description}</p>
+                                <p className="text-xs font-medium leading-5 text-gray-600 sm:text-sm sm:leading-6 dark:text-white/60">{app.detail}</p>
+                              </div>
+                            )}
                           </div>
-                          <span className="hidden rounded-full border border-gray-200 bg-white/70 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-gray-500 sm:inline-flex dark:border-white/10 dark:bg-white/10 dark:text-white/55">
-                            {isActive ? 'Selected' : 'Open view'}
-                          </span>
+
+                          {isActive && (
+                            <div className="grid gap-2">
+                              {app.signals.map(signal => (
+                                <div
+                                  key={signal}
+                                  className="rounded-xl border border-gray-200 bg-white/75 px-3 py-2 text-[11px] font-bold leading-4 text-gray-600 sm:text-xs dark:border-white/10 dark:bg-[#11141b] dark:text-white/70"
+                                >
+                                  {signal}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className={`flex gap-3 ${isActive ? 'mt-auto flex-col items-stretch border-t border-gray-200/80 pt-4 dark:border-white/10 sm:gap-4' : 'mt-3 items-end justify-between sm:mt-4'}`}>
+                            <div>
+                              <p className={`font-black text-gray-950 dark:text-white ${isActive ? 'text-2xl sm:text-4xl' : 'text-xl sm:text-2xl'}`}>{app.metric}</p>
+                              <p className="max-w-[96px] truncate text-[8px] font-black uppercase tracking-widest text-gray-500 sm:max-w-none sm:text-[9px] dark:text-white/50">
+                                <span className="sm:hidden">{app.metricLabelShort}</span>
+                                <span className="hidden sm:inline">{app.metricLabel}</span>
+                              </p>
+                            </div>
+                            {isActive ? (
+                              <button
+                                type="button"
+                                onClick={() => navigate(app.path)}
+                                className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-black text-white shadow-lg transition hover:brightness-105 active:scale-[0.98] sm:px-5 sm:text-sm"
+                                style={{
+                                  backgroundColor: app.brandColor,
+                                  boxShadow: `0 14px 28px ${app.brandGlow}`,
+                                }}
+                              >
+                                Open app
+                                <ArrowRight size={15} />
+                              </button>
+                            ) : (
+                              <span className="hidden rounded-full border border-gray-200 bg-white/70 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-gray-500 sm:inline-flex dark:border-white/10 dark:bg-white/10 dark:text-white/55">
+                                View
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </button>
+                    </article>
                   );
                 })}
               </div>
@@ -378,37 +445,6 @@ export default function Home() {
                 No module apps are available for your current access. Contact an administrator if this looks incorrect.
               </div>
             )}
-
-            <div className={`grid transition-all duration-300 ease-out ${activeApp ? 'mt-4 grid-rows-[1fr] opacity-100' : 'mt-0 grid-rows-[0fr] opacity-0'}`}>
-              <div className="overflow-hidden">
-                {activeApp && (
-                  <div className="rounded-[1.35rem] border border-gray-200/80 bg-white/80 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_16px_35px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#15171e] dark:shadow-inner">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-tranquil">App expanded</p>
-                        <h3 className="mt-1 text-2xl font-black text-gray-950 dark:text-white">{activeApp.title}</h3>
-                        <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600 dark:text-white/60">{activeApp.detail}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => navigate(activeApp.path)}
-                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-tranquil px-5 py-3 text-sm font-black text-white shadow-lg shadow-tranquil/20 transition hover:bg-[#0f87a8] active:scale-[0.98]"
-                      >
-                        Open {activeApp.title}
-                        <ArrowRight size={16} />
-                      </button>
-                    </div>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                      {activeApp.signals.map(signal => (
-                        <div key={signal} className="rounded-xl border border-gray-200 bg-white/75 px-3 py-2 text-xs font-bold text-gray-600 dark:border-white/10 dark:bg-[#11141b] dark:text-white/70">
-                          {signal}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         </div>
       </section>
