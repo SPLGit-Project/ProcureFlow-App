@@ -281,33 +281,68 @@ const Layout = () => {
                         {group.category}
                       </div>
                     )}
-                    {group.items.map(item => {
+                    {group.items.filter(item => !item.parentId).map(item => {
                       const Icon = item.icon;
+                      const children = group.items.filter(c => c.parentId === item.id);
                       return (
-                        <NavLink
-                          key={item.path}
-                          to={item.path}
-                          title={isRevampExpanded ? undefined : item.label}
-                          className={({ isActive }) =>
-                            `relative flex items-center rounded-xl transition-all duration-150 group w-full
-                            ${isRevampExpanded ? 'px-3 py-2.5 gap-3' : 'justify-center p-3'}
-                            ${isActive
-                              ? 'bg-tranquil text-white shadow-md shadow-tranquil/30'
-                              : 'text-white/50 hover:bg-white/10 hover:text-white'}`
-                          }
-                        >
-                          {({ isActive }) => (
-                            <>
-                              <Icon size={18} className="shrink-0" />
-                              {isRevampExpanded && (
-                                <span className="text-sm font-medium truncate">{item.label}</span>
-                              )}
-                              {isActive && !isRevampExpanded && (
-                                <span className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-tranquil rounded-l-full opacity-80" />
-                              )}
-                            </>
+                        <React.Fragment key={item.path}>
+                          <NavLink
+                            to={item.path}
+                            title={isRevampExpanded ? undefined : item.label}
+                            className={({ isActive }) =>
+                              `relative flex items-center rounded-xl transition-all duration-150 group w-full
+                              ${isRevampExpanded ? 'px-3 py-2.5 gap-3' : 'justify-center p-3'}
+                              ${isActive
+                                ? 'bg-tranquil text-white shadow-md shadow-tranquil/30'
+                                : 'text-white/50 hover:bg-white/10 hover:text-white'}`
+                            }
+                          >
+                            {({ isActive }) => (
+                              <>
+                                <Icon size={18} className="shrink-0" />
+                                {isRevampExpanded && (
+                                  <span className="text-sm font-medium truncate">{item.label}</span>
+                                )}
+                                {isActive && !isRevampExpanded && (
+                                  <span className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-tranquil rounded-l-full opacity-80" />
+                                )}
+                              </>
+                            )}
+                          </NavLink>
+                          {children.length > 0 && (
+                            <div className={`space-y-0.5 ${isRevampExpanded ? 'ml-3 pl-2 border-l-2 border-white/10' : 'items-center flex flex-col gap-0.5'}`}>
+                              {children.map(child => {
+                                const CIcon = child.icon;
+                                return (
+                                  <NavLink
+                                    key={child.path}
+                                    to={child.path}
+                                    title={isRevampExpanded ? undefined : child.label}
+                                    className={({ isActive }) =>
+                                      `relative flex items-center rounded-lg transition-all duration-150 group w-full
+                                      ${isRevampExpanded ? 'px-2.5 py-2 gap-2.5' : 'justify-center p-2.5'}
+                                      ${isActive
+                                        ? 'bg-tranquil/80 text-white'
+                                        : 'text-white/40 hover:bg-white/10 hover:text-white'}`
+                                    }
+                                  >
+                                    {({ isActive }) => (
+                                      <>
+                                        <CIcon size={14} className="shrink-0 opacity-80" />
+                                        {isRevampExpanded && (
+                                          <span className="text-xs font-medium truncate">{child.label}</span>
+                                        )}
+                                        {isActive && !isRevampExpanded && (
+                                          <span className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-tranquil rounded-l-full opacity-80" />
+                                        )}
+                                      </>
+                                    )}
+                                  </NavLink>
+                                );
+                              })}
+                            </div>
                           )}
-                        </NavLink>
+                        </React.Fragment>
                       );
                     })}
                     {gIdx < groupedNavItems.length - 1 && !isRevampExpanded && (
@@ -410,21 +445,44 @@ const Layout = () => {
                     >
                       {group.category}
                     </div>
-                    {group.items.map(item => {
+                    {group.items.filter(item => !item.parentId).map(item => {
                       const Icon = item.icon;
+                      const children = group.items.filter(c => c.parentId === item.id);
                       return (
-                        <NavLink
-                          key={item.path}
-                          to={item.path}
-                          onClick={() => setIsMobileMenuOpen(false)}
-                          className={({ isActive }) =>
-                            `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all
-                            ${isActive ? 'bg-tranquil text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'}`
-                          }
-                        >
-                          <Icon size={18} className="shrink-0" />
-                          {item.label}
-                        </NavLink>
+                        <React.Fragment key={item.path}>
+                          <NavLink
+                            to={item.path}
+                            onClick={() => setIsMobileMenuOpen(false)}
+                            className={({ isActive }) =>
+                              `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all
+                              ${isActive ? 'bg-tranquil text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'}`
+                            }
+                          >
+                            <Icon size={18} className="shrink-0" />
+                            {item.label}
+                          </NavLink>
+                          {children.length > 0 && (
+                            <div className="ml-4 pl-3 border-l-2 border-white/10 space-y-0.5">
+                              {children.map(child => {
+                                const CIcon = child.icon;
+                                return (
+                                  <NavLink
+                                    key={child.path}
+                                    to={child.path}
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                    className={({ isActive }) =>
+                                      `flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all
+                                      ${isActive ? 'bg-tranquil/80 text-white' : 'text-white/50 hover:bg-white/10 hover:text-white'}`
+                                    }
+                                  >
+                                    <CIcon size={14} className="shrink-0 opacity-80" />
+                                    {child.label}
+                                  </NavLink>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </React.Fragment>
@@ -690,26 +748,65 @@ const Layout = () => {
               Menu
             </p>
           )}
-          {navItems.map(item => {
+          {navItems.filter(item => !item.parentId).map(item => {
             const Icon = item.icon;
+            const children = navItems.filter(c => c.parentId === item.id);
             return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={({ isActive }) => getNavLinkClass(isActive)}
-                title={isSidebarCollapsed ? item.label : undefined}
-              >
-                {({ isActive }) => (
-                  <>
-                    <span
-                      className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-r-full transition-opacity ${isActive ? (isSidebarDark ? 'bg-white/85' : 'bg-[var(--color-brand)]') : 'opacity-0'}`}
-                    />
-                    <Icon size={18} className="shrink-0" />
-                    {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
-                  </>
+              <React.Fragment key={item.path}>
+                <NavLink
+                  to={item.path}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={({ isActive }) => getNavLinkClass(isActive)}
+                  title={isSidebarCollapsed ? item.label : undefined}
+                >
+                  {({ isActive }) => (
+                    <>
+                      <span
+                        className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-r-full transition-opacity ${isActive ? (isSidebarDark ? 'bg-white/85' : 'bg-[var(--color-brand)]') : 'opacity-0'}`}
+                      />
+                      <Icon size={18} className="shrink-0" />
+                      {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
+                    </>
+                  )}
+                </NavLink>
+                {children.length > 0 && (
+                  <div className={`space-y-0.5 mt-0.5 mb-1 ${!isSidebarCollapsed ? 'ml-3 pl-2.5 border-l-2 border-gray-200 dark:border-gray-700' : ''}`}>
+                    {children.map(child => {
+                      const CIcon = child.icon;
+                      return (
+                        <NavLink
+                          key={child.path}
+                          to={child.path}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className={({ isActive }) => {
+                            const compactClass = isSidebarCollapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-3 py-2';
+                            const base = `relative flex items-center rounded-lg transition-all duration-200 font-medium text-xs group ${compactClass}`;
+                            if (isSidebarDark) {
+                              return isActive
+                                ? `${base} bg-white/20 text-white shadow-sm`
+                                : `${base} text-white/60 hover:bg-white/10 hover:text-white`;
+                            }
+                            return isActive
+                              ? `${base} bg-[rgba(var(--color-brand-rgb),0.1)] text-[var(--color-brand)] shadow-sm`
+                              : `${base} text-secondary dark:text-slate-500 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-primary dark:hover:text-white`;
+                          }}
+                          title={isSidebarCollapsed ? child.label : undefined}
+                        >
+                          {({ isActive }) => (
+                            <>
+                              <span
+                                className={`absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full transition-opacity ${isActive ? (isSidebarDark ? 'bg-white/85' : 'bg-[var(--color-brand)]') : 'opacity-0'}`}
+                              />
+                              <CIcon size={14} className="shrink-0 opacity-80" />
+                              {!isSidebarCollapsed && <span className="truncate">{child.label}</span>}
+                            </>
+                          )}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
                 )}
-              </NavLink>
+              </React.Fragment>
             );
           })}
         </nav>

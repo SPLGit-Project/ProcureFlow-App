@@ -10,6 +10,7 @@ export interface NavItemConfig {
     anyPermissions?: PermissionId[];
     isSystem?: boolean; // If true, cannot be deleted (though we only hide for now)
     category?: string; // Used for sidebar grouping in revamp mode
+    parentId?: string; // If set, renders as a sub-item beneath the parent nav entry
 }
 
 export const SETTINGS_ACCESS_PERMISSIONS: PermissionId[] = [
@@ -36,10 +37,10 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     { id: 'create', path: '/create', label: 'Create Request', iconName: 'PlusCircle', permission: 'create_request', category: 'Procurement' },
     { id: 'requests', path: '/requests', label: 'Requests', iconName: 'FileText', permission: 'view_dashboard', category: 'Procurement' },
     { id: 'smart-buying', path: '/smart-buying', label: 'Smart Buying', iconName: 'BarChart3', permission: 'manage_development', category: 'Procurement' },
-    { id: 'approvals', path: '/approvals', label: 'Approvals', iconName: 'CheckCircle', permission: 'approve_item_requests', category: 'Procurement' },
-    { id: 'active-requests', path: '/active-requests', label: 'Active Requests', iconName: 'Activity', permission: 'view_active_requests', category: 'Procurement' },
-    { id: 'completed', path: '/completed', label: 'Completed', iconName: 'Clock', permission: 'view_completed_requests', category: 'Procurement' },
-    { id: 'finance', path: '/finance', label: 'Finance Review', iconName: 'DollarSign', permission: 'view_finance', category: 'Procurement' },
+    { id: 'approvals',       path: '/approvals',       label: 'Approvals',        iconName: 'CheckCircle', permission: 'approve_item_requests',  category: 'Procurement', parentId: 'requests' },
+    { id: 'active-requests', path: '/active-requests', label: 'Active Requests',  iconName: 'Activity',    permission: 'view_active_requests',  category: 'Procurement', parentId: 'requests' },
+    { id: 'completed',       path: '/completed',       label: 'Completed',        iconName: 'Clock',       permission: 'view_completed_requests', category: 'Procurement', parentId: 'requests' },
+    { id: 'finance',         path: '/finance',         label: 'Finance Review',   iconName: 'DollarSign', permission: 'view_finance',           category: 'Procurement' },
 
     // ── Items ──
     { id: 'my-item-requests', path: '/items/my-requests', label: 'My Item Requests', iconName: 'ClipboardList', permission: 'view_dashboard', category: 'Items' },
