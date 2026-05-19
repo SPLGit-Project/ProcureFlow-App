@@ -64,6 +64,7 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     { id: 'settings', path: '/settings', label: 'Admin Panel', iconName: 'Settings', anyPermissions: SETTINGS_ACCESS_PERMISSIONS, isSystem: true, category: 'Admin' },
 
     // ── System ──
-    { id: 'help', path: '/help', label: 'Help & Support', iconName: 'HelpCircle', isSystem: true, category: 'System' },
+    { id: 'help',  path: '/help',  label: 'Help & Support', iconName: 'HelpCircle', isSystem: true, category: 'System' },
+    { id: 'about', path: '/about', label: 'About',          iconName: 'Info',        isSystem: true, category: 'System' },
 ];
 

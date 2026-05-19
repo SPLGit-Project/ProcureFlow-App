@@ -30,6 +30,7 @@ const PODetail = lazy(() => import('./components/PODetail.tsx'));
 const FinanceView = lazy(() => import('./components/FinanceView.tsx'));
 const Settings = lazy(() => import('./components/Settings.tsx'));
 const HelpGuide = lazy(() => import('./components/HelpGuide.tsx'));
+const AboutPage  = lazy(() => import('./components/AboutPage.tsx'));
 const ReportingView = lazy(() => import('./components/ReportingView.tsx'));
 const HistoryView = lazy(() => import('./components/HistoryView.tsx'));
 const ActiveRequestsView = lazy(() => import('./components/ActiveRequestsView.tsx'));
@@ -113,7 +114,8 @@ function App() {
               <Route path="settings" element={<Suspense fallback={<LoadingSpinner />}><Settings /></Suspense>} />
               <Route path="reports" element={<Suspense fallback={<LoadingSpinner />}><ReportingView /></Suspense>} />
               <Route path="history" element={<Suspense fallback={<LoadingSpinner />}><HistoryView /></Suspense>} />
-              <Route path="help" element={<Suspense fallback={<LoadingSpinner />}><HelpGuide /></Suspense>} />
+              <Route path="help"  element={<Suspense fallback={<LoadingSpinner />}><HelpGuide /></Suspense>} />
+              <Route path="about" element={<Suspense fallback={<LoadingSpinner />}><AboutPage /></Suspense>} />
               <Route path="smart-buying" element={<Suspense fallback={<LoadingSpinner />}><SmartBuyingDashboard /></Suspense>} />
               <Route path="data-ingest" element={<Suspense fallback={<LoadingSpinner />}><DataIngestion /></Suspense>} />
               <Route path="item-creation-preview" element={<Navigate to="/items/new-request" replace />} />

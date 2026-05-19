@@ -21,6 +21,7 @@ import {
   FlaskConical,
   HelpCircle,
   House,
+  Info,
   LayoutDashboard,
   ListChecks,
   ListTodo,
@@ -145,7 +146,8 @@ const Layout = () => {
     Clock,
     ShieldCheck,
     Settings,
-    HelpCircle
+    HelpCircle,
+    Info
   };
 
   const navItems = React.useMemo(() => {
