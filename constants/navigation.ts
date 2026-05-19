@@ -39,6 +39,7 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     { id: 'approvals', path: '/approvals', label: 'Approvals', iconName: 'CheckCircle', permission: 'approve_item_requests', category: 'Procurement' },
     { id: 'active-requests', path: '/active-requests', label: 'Active Requests', iconName: 'Activity', permission: 'view_active_requests', category: 'Procurement' },
     { id: 'completed', path: '/completed', label: 'Completed', iconName: 'Clock', permission: 'view_completed_requests', category: 'Procurement' },
+    { id: 'finance', path: '/finance', label: 'Finance Review', iconName: 'DollarSign', permission: 'view_finance', category: 'Procurement' },
 
     // ── Items ──
     { id: 'my-item-requests', path: '/items/my-requests', label: 'My Item Requests', iconName: 'ClipboardList', permission: 'view_dashboard', category: 'Items' },
@@ -52,9 +53,8 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     { id: 'pricing-dashboard', path: '/pricing/dashboard', label: 'Price Management', iconName: 'DollarSign', permission: 'manage_sell_pricing', category: 'Pricing' },
     { id: 'pricing-schedules', path: '/pricing/schedules', label: 'Pricing Schedules', iconName: 'TrendingUp', permission: 'manage_pricing_schedules', category: 'Pricing' },
 
-    // ── Finance ──
-    { id: 'finance', path: '/finance', label: 'Finance Review', iconName: 'DollarSign', permission: 'view_finance', category: 'Finance' },
-    { id: 'reports', path: '/reports', label: 'Reports', iconName: 'BarChart3', permission: 'view_finance', category: 'Finance' },
+    // ── Reports & Analytics ──
+    { id: 'reports', path: '/reports', label: 'Reports', iconName: 'BarChart3', permission: 'view_finance', category: 'Reports & Analytics' },
 
     // ── Admin ──
     { id: 'approval-rules', path: '/admin/approval-rules', label: 'Approval Rules', iconName: 'ShieldCheck', permission: 'manage_settings', category: 'Admin' },
