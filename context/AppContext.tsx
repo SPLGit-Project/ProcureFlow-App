@@ -1017,7 +1017,20 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     _setTheme(pTheme);
                     localStorage.setItem('app-theme', pTheme);
                 }
-                if (pSites && Array.isArray(pSites)) {
+                // Only restore DB site preferences when there is NO existing localStorage
+                // selection. localStorage is the authoritative source for an active session
+                // (it reflects the user's most recent explicit choice). The DB copy acts as
+                // a cross-device / first-login fallback only — we must not let a token
+                // refresh or background auth event silently overwrite the user's selection.
+                const hasCurrentLocalSelection = (() => {
+                    try {
+                        const raw = localStorage.getItem('activeSiteIds');
+                        if (!raw) return false;
+                        const parsed = JSON.parse(raw) as unknown;
+                        return Array.isArray(parsed) && (parsed as unknown[]).length > 0;
+                    } catch { return false; }
+                })();
+                if (!hasCurrentLocalSelection && pSites && Array.isArray(pSites) && pSites.length > 0) {
                     _setActiveSiteIds(pSites);
                     localStorage.setItem('activeSiteIds', JSON.stringify(pSites));
                 }
@@ -1181,25 +1194,40 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 persistSessionActivity(userData.id, true);
                 
                 // Initialize Active Site Context
+                // IMPORTANT: Read from localStorage rather than the `activeSiteIds` React
+                // state variable to avoid stale-closure capture. handleUserAuth is defined
+                // inside a useEffect that runs once on mount; the closed-over `activeSiteIds`
+                // value may be [] even when a valid selection already exists in localStorage,
+                // causing a spurious reset to a single site on every token refresh.
+                const currentSiteIds = (() => {
+                    try {
+                        const raw = localStorage.getItem('activeSiteIds');
+                        if (!raw) return [] as string[];
+                        const parsed = JSON.parse(raw) as unknown;
+                        return Array.isArray(parsed) ? (parsed as string[]) : ([] as string[]);
+                    } catch { return [] as string[]; }
+                })();
+
                 if (userData.role !== 'ADMIN') {
                      if (userData.siteIds && userData.siteIds.length > 0) {
                          // Ensure currently selected sites are valid for this user
-                         const validIds = activeSiteIds.filter(id => userData.siteIds.includes(id));
+                         const validIds = currentSiteIds.filter(id => userData.siteIds.includes(id));
                          
                          if (validIds.length === 0) {
-                             // Default to their first available site if selection is invalid
-                             // Use _setActiveSiteIds directly to avoid async timing issues
+                             // Default to ALL assigned sites (not just the first) so
+                             // multi-site users see their full data set on first load.
                              if(mounted) {
-                                 _setActiveSiteIds([userData.siteIds[0]]);
-                                 localStorage.setItem('activeSiteIds', JSON.stringify([userData.siteIds[0]]));
+                                 _setActiveSiteIds(userData.siteIds);
+                                 localStorage.setItem('activeSiteIds', JSON.stringify(userData.siteIds));
                              }
-                         } else if (validIds.length !== activeSiteIds.length) {
-                             // Update to only valid ones
+                         } else if (validIds.length !== currentSiteIds.length) {
+                             // Trim to only the sites this user is permitted to see
                              if(mounted) {
                                  _setActiveSiteIds(validIds);
                                  localStorage.setItem('activeSiteIds', JSON.stringify(validIds));
                              }
                          }
+                         // else: currentSiteIds are fully valid — leave them untouched
                      } else {
                          // No access to any sites
                          if(mounted) {
