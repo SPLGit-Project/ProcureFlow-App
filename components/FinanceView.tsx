@@ -167,7 +167,7 @@ const FinanceView = () => {
   };
 
   return (
-    <div className="h-full flex flex-col space-y-4 md:space-y-6 overflow-hidden pb-20 md:pb-0 animate-fade-in">
+    <div className="flex-1 min-h-0 flex flex-col space-y-4 md:space-y-6 overflow-hidden pb-20 md:pb-0 animate-fade-in">
       <div className="shrink-0">
         <PageHeader
           title="Finance Review"

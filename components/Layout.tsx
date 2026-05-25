@@ -81,7 +81,30 @@ const Layout = () => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem(REVAMP_EXPANDED_KEY) === 'true';
   });
-  const [pageMeta, setPageMeta] = React.useState<PageMeta>({});
+  const [metaRegistry, setMetaRegistry] = React.useState<Record<string, PageMeta>>({});
+
+  const pageMeta = React.useMemo(() => {
+    return Object.values(metaRegistry).reduce<PageMeta>((acc, curr) => {
+      const next = { ...acc, ...curr };
+      if (acc.wizardActions && curr.wizardActions) {
+        next.wizardActions = { ...acc.wizardActions, ...curr.wizardActions };
+      }
+      return next;
+    }, {});
+  }, [metaRegistry]);
+
+  const registerMeta = React.useCallback((id: string, meta: PageMeta) => {
+    setMetaRegistry(prev => ({ ...prev, [id]: meta }));
+  }, []);
+
+  const unregisterMeta = React.useCallback((id: string) => {
+    setMetaRegistry(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
   const [navCanScrollDown, setNavCanScrollDown] = React.useState(false);
   const navRef = React.useRef<HTMLElement>(null);
   const location = useLocation();
@@ -232,7 +255,7 @@ const Layout = () => {
     const sidebarW = isRevampExpanded ? '212px' : '64px';
 
     return (
-      <PageMetaContext.Provider value={{ setMeta: setPageMeta }}>
+      <PageMetaContext.Provider value={{ registerMeta, unregisterMeta }}>
         <div
           className="flex h-[100dvh] bg-app text-secondary dark:text-slate-300 font-sans selection:bg-tranquil selection:text-white transition-colors duration-200"
           style={{
@@ -653,7 +676,7 @@ const Layout = () => {
             </div>
 
             <main className={`flex-1 overflow-y-auto ${pageMeta.disableBodyScroll ? 'md:overflow-hidden' : ''} overflow-x-hidden p-3 sm:p-4 md:p-6 flex flex-col pb-20 md:pb-8`}>
-              <div className="animate-page-entry">
+              <div className={`animate-page-entry ${pageMeta.disableBodyScroll ? 'flex-1 flex flex-col min-h-0' : ''}`}>
                 <Outlet />
               </div>
             </main>
@@ -668,10 +691,11 @@ const Layout = () => {
   // ─── END REVAMPED LAYOUT ────────────────────────────────────────────────────
 
   return (
-    <div
-      className="flex h-[100dvh] bg-app text-secondary dark:text-slate-300 font-sans selection:bg-[var(--color-brand)] selection:text-white transition-colors duration-200"
-      style={{ fontFamily: 'var(--font-family)' }}
-    >
+    <PageMetaContext.Provider value={{ registerMeta, unregisterMeta }}>
+      <div
+        className="flex h-[100dvh] bg-app text-secondary dark:text-slate-300 font-sans selection:bg-[var(--color-brand)] selection:text-white transition-colors duration-200"
+        style={{ fontFamily: 'var(--font-family)' }}
+      >
       <PwaInstaller />
 
       {isMobileMenuOpen && (
@@ -987,6 +1011,7 @@ const Layout = () => {
 
       <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
     </div>
+    </PageMetaContext.Provider>
   );
 };
 

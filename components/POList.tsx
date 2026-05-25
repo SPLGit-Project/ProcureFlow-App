@@ -371,7 +371,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
   };
 
   return (
-    <div className="h-full flex flex-col space-y-4 md:space-y-6 overflow-hidden pb-20 md:pb-0">
+    <div className="flex-1 min-h-0 flex flex-col space-y-4 md:space-y-6 overflow-hidden pb-20 md:pb-0">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
         <div>
           <PageHeader

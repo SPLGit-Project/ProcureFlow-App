@@ -1394,7 +1394,7 @@ if __name__ == "__main__":
   );
 
   return (
-    <div className="h-full flex flex-col overflow-hidden max-w-7xl mx-auto pb-12 px-4 md:px-8">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden max-w-7xl mx-auto pb-12 px-4 md:px-8">
       {/* Page header — only shown in classic mode; revamp header handles title */}
       {!uiRevamp && (
         <div className="py-6 md:py-8">

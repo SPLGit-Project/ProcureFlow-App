@@ -30,9 +30,15 @@ export interface PageMeta {
   disableBodyScroll?: boolean;
 }
 
-const PageMetaContext = React.createContext<{
-  setMeta: (meta: PageMeta) => void;
-}>({ setMeta: () => {} });
+export interface PageMetaContextType {
+  registerMeta: (id: string, meta: PageMeta) => void;
+  unregisterMeta: (id: string) => void;
+}
+
+const PageMetaContext = React.createContext<PageMetaContextType>({
+  registerMeta: () => {},
+  unregisterMeta: () => {},
+});
 
 export default PageMetaContext;
 
@@ -40,7 +46,13 @@ export default PageMetaContext;
 export const WizardActionsContext = React.createContext<WizardActions | null>(null);
 
 export const useSetPageMeta = (meta: PageMeta) => {
-  const { setMeta } = React.useContext(PageMetaContext);
+  const { registerMeta, unregisterMeta } = React.useContext(PageMetaContext);
+  const idRef = React.useRef<string | null>(null);
+  if (idRef.current === null) {
+    idRef.current = Math.random().toString(36).substring(2, 9);
+  }
+  const id = idRef.current;
+
   // Key tracks every value that should trigger a header re-render.
   // Callback functions are NOT included — they are stable ref-wrappers
   // (see ItemRequestWizardShell) so the key never goes stale for them.
@@ -62,9 +74,13 @@ export const useSetPageMeta = (meta: PageMeta) => {
         ].join(':')
       : '',
   ].join('|');
+
   React.useEffect(() => {
-    setMeta(meta);
-    return () => setMeta({});
+    registerMeta(id, meta);
+    return () => {
+      unregisterMeta(id);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, id]);
 };
+
