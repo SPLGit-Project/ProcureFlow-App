@@ -1774,7 +1774,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       const nextRoleIds = getAssignedRoleIds({ role, realRole: role, roleIds });
       
-      const updatedUser = { ...user, role, realRole: role, roleIds: nextRoleIds, siteIds };
+      // Auto-approve user if their access is actively updated while they were pending approval (SSO flow)
+      const nextStatus = user.status === 'PENDING_APPROVAL' ? 'APPROVED' : user.status;
+      const updatedUser = { ...user, role, realRole: role, roleIds: nextRoleIds, siteIds, status: nextStatus };
       setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
       
       if (currentUser?.id === userId) {
@@ -1849,6 +1851,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const success = await sendWelcomeEmail(email, name, siteId);
       
       if (success) {
+          // Since SSO is configured, once the welcome email is sent, the user is immediately considered approved and active.
+          const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+          if (user) {
+              await db.updateUserStatus(user.id, 'APPROVED');
+          }
           // Reload all data to refresh invitation status and expiry
           await reloadData();
           logAction('WELCOME_EMAIL_RESENT', { toEmail: email, name, siteId });
