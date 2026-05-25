@@ -197,6 +197,7 @@ interface AppContextType {
   updateUserAccess: (userId: string, role: UserRole, roleIds: UserRole[], siteIds: string[]) => Promise<void>;
   addUser: (user: User, shouldSendInvite?: boolean) => Promise<void>;
   archiveUser: (userId: string) => Promise<void>;
+  reinstateUser: (userId: string) => Promise<void>;
   permissions: Permission[];
   hasPermission: (permissionId: PermissionId) => boolean;
   createRole: (role: RoleDefinition) => Promise<void>;
@@ -1875,6 +1876,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
 
+  const reinstateUser = async (userId: string) => {
+      // Optimistic update — move back to Pending so admin can manage them
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'PENDING_APPROVAL' } : u));
+      try {
+          await db.updateUserStatus(userId, 'PENDING_APPROVAL');
+          logAction('USER_REINSTATED', { userId });
+      } catch (e) {
+          console.error("Failed to reinstate user", e);
+          reloadData();
+          logAction('USER_REINSTATE_FAILED', { userId, error: (e as Error).message });
+      }
+  };
+
   // --- CRUD Operations ---
 
   // --- Workflow Operations ---
@@ -2813,7 +2827,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // --- Context Value Memoization ---
   const contextValue = React.useMemo(() => ({
     currentUser, isAuthenticated, activeSiteIds, setActiveSiteIds, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
-    users, updateUserRole, updateUserAccess, addUser, archiveUser, reloadData,
+    users, updateUserRole, updateUserAccess, addUser, archiveUser, reinstateUser, reloadData,
     roles, permissions: [], hasPermission, createRole, updateRole, deleteRole, isUserAdmin,
     teamsWebhookUrl, updateTeamsWebhook,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 

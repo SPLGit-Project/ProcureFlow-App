@@ -124,7 +124,7 @@ const Settings = () => {
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping, deleteMapping, getMappingMemory, syncItemsFromSnapshots,
     // New Admin Caps
-    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, archiveUser, searchDirectory,
+    getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, archiveUser, reinstateUser, searchDirectory,
     archiveItem, getAuditLogs,
     // Catalog Management
     attributeOptions, upsertAttributeOption, deleteAttributeOption,
@@ -161,6 +161,11 @@ const Settings = () => {
   // Data Loading
   const { toasts, dismissToast, success, error, warning } = useToast();
   const [resendingUserId, setResendingUserId] = useState<string | null>(null);
+  const [showArchivedPanel, setShowArchivedPanel] = useState(false);
+  const [managingAccessUserId, setManagingAccessUserId] = useState<string | null>(null);
+  const [pendingGrantRole, setPendingGrantRole] = useState<string>('');
+  const [pendingGrantSiteIds, setPendingGrantSiteIds] = useState<string[]>([]);
+  const [isGrantingAccess, setIsGrantingAccess] = useState(false);
 
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<AdminTab>('PROFILE');
@@ -2596,35 +2601,130 @@ if __name__ == "__main__":
                                    <div className="text-2xl font-black text-gray-900 dark:text-white">{activeUsers.length}</div>
                                </div>
                            </div>
-                           {/* Pending */}
-                           <div className="bg-white dark:bg-nocturne p-5 rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 flex items-center gap-4 group hover:border-amber-400 transition-all">
-                               <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                   <Clock size={24}/>
-                               </div>
-                               <div>
-                                   <div className="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Pending</div>
-                                   <div className="text-2xl font-black text-gray-900 dark:text-white">{pendingUsers.length}</div>
-                                   {pendingUsers.length > 0 && (
-                                       <div className="flex items-center gap-2 mt-1">
-                                           {invitedPendingCount > 0 && <span className="text-[9px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">{invitedPendingCount} invited</span>}
-                                           {neverInvitedCount > 0 && <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded">{neverInvitedCount} not invited</span>}
-                                       </div>
-                                   )}
-                               </div>
-                           </div>
-                           {/* Archived */}
-                           <div className="bg-white dark:bg-nocturne p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center gap-4 group hover:border-gray-400 transition-all">
-                               <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                   <Archive size={24}/>
-                               </div>
-                               <div>
-                                   <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Archived</div>
-                                   <div className="text-2xl font-black text-gray-900 dark:text-white">{archivedUsers.length}</div>
-                               </div>
-                           </div>
+                           {/* Pending — clickable to scroll to pending panel */}
+                            <div
+                                className="bg-white dark:bg-nocturne p-5 rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 flex items-center gap-4 group hover:border-amber-400 transition-all cursor-pointer"
+                                onClick={() => { document.getElementById('pending-access-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+                                title="View pending access requests"
+                            >
+                                <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <Clock size={24}/>
+                                </div>
+                                <div>
+                                    <div className="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Pending</div>
+                                    <div className="text-2xl font-black text-gray-900 dark:text-white">{pendingUsers.length}</div>
+                                    {pendingUsers.length > 0 && (
+                                        <div className="flex items-center gap-2 mt-1">
+                                            {invitedPendingCount > 0 && <span className="text-[9px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">{invitedPendingCount} invited</span>}
+                                            {neverInvitedCount > 0 && <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded">{neverInvitedCount} not invited</span>}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            {/* Archived — clickable to toggle archived panel */}
+                            <div
+                                className={`bg-white dark:bg-nocturne p-5 rounded-2xl shadow-sm border transition-all cursor-pointer select-none ${
+                                    showArchivedPanel
+                                        ? 'border-gray-500 ring-2 ring-gray-400/30'
+                                        : 'border-gray-200 dark:border-gray-800 hover:border-gray-400'
+                                } flex items-center gap-4 group`}
+                                onClick={() => setShowArchivedPanel(v => !v)}
+                                title={showArchivedPanel ? 'Hide archived users' : 'Show archived users'}
+                            >
+                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform ${
+                                    showArchivedPanel ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                                }`}>
+                                    <Archive size={24}/>
+                                </div>
+                                <div>
+                                    <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Archived</div>
+                                    <div className="text-2xl font-black text-gray-900 dark:text-white">{archivedUsers.length}</div>
+                                    <div className="text-[9px] text-gray-400 mt-0.5">{showArchivedPanel ? 'Click to hide' : 'Click to view'}</div>
+                                </div>
+                            </div>
                        </div>
                    );
                })()}
+
+              {/* Archived Users Panel — shown when showArchivedPanel is true */}
+              {showArchivedPanel && (() => {
+                  const archivedUsers = users.filter(u => u.status === 'ARCHIVED');
+                  return (
+                      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-300 dark:border-gray-700 overflow-hidden animate-fade-in">
+                          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gray-50 dark:bg-gray-800/40">
+                              <div className="flex items-center gap-3">
+                                  <div className="w-9 h-9 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 flex items-center justify-center">
+                                      <Archive size={18} />
+                                  </div>
+                                  <div>
+                                      <h3 className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">Archived Users</h3>
+                                      <p className="text-[11px] text-gray-400 mt-0.5">{archivedUsers.length} user{archivedUsers.length !== 1 ? 's' : ''} archived · Reinstate to make them pending again</p>
+                                  </div>
+                              </div>
+                              <button
+                                  type="button"
+                                  onClick={() => setShowArchivedPanel(false)}
+                                  className="w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+                                  title="Close archived panel"
+                              >
+                                  <X size={16} />
+                              </button>
+                          </div>
+                          {archivedUsers.length === 0 ? (
+                              <div className="px-6 py-10 text-center text-gray-400 text-sm">No archived users.</div>
+                          ) : (
+                              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                  {archivedUsers.map(user => (
+                                      <div key={user.id} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-all">
+                                          <div className="relative shrink-0">
+                                              <div className="w-10 h-10 rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-700 shadow-sm opacity-60">
+                                                  <img src={user.avatar} className="w-full h-full object-cover bg-gray-100 dark:bg-gray-800" alt={user.name} />
+                                              </div>
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                              <div className="font-black text-sm text-gray-700 dark:text-gray-300 uppercase tracking-tight leading-none">
+                                                  {user.name || user.email?.split('@')[0] || 'Unknown'}
+                                              </div>
+                                              <div className="text-xs text-gray-400 font-medium mt-0.5">{user.email}</div>
+                                              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tight border bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400">
+                                                      <Archive size={9} /> Archived
+                                                  </span>
+                                                  {(user.roleIds || (user.role ? [user.role] : [])).map(roleId => (
+                                                      <span key={roleId} className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-gray-100 dark:bg-gray-800 text-gray-400 opacity-60">
+                                                          {roles.find(r => r.id === roleId)?.name || roleId}
+                                                      </span>
+                                                  ))}
+                                                  {user.siteIds?.map(sid => {
+                                                      const s = sites.find(x => x.id === sid);
+                                                      return s ? (
+                                                          <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-400 uppercase">{s.name}</span>
+                                                      ) : null;
+                                                  })}
+                                              </div>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                              <button
+                                                  type="button"
+                                                  onClick={async () => {
+                                                      if (!globalThis.confirm(`Reinstate ${user.name || user.email}?\n\nThis will move them back to pending so you can grant them access.`)) return;
+                                                      await reinstateUser(user.id);
+                                                      success(`${user.name || user.email} has been reinstated to pending.`, 4000);
+                                                      document.getElementById('pending-access-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                  }}
+                                                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all shadow-sm bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-800/40 border-emerald-200 dark:border-emerald-700/50"
+                                                  title="Reinstate this user"
+                                              >
+                                                  <CheckCircle size={13} /> Reinstate
+                                              </button>
+                                          </div>
+                                      </div>
+                                  ))}
+                              </div>
+                          )}
+                      </div>
+                  );
+              })()}
 
               {/* Pending Invitations Panel — only shown when there are non-active users */}
               {(() => {
@@ -2646,7 +2746,8 @@ if __name__ == "__main__":
                       const accentColor = isNeverInvited ? 'indigo' : 'amber';
 
                       return (
-                          <div key={user.id} className={`flex items-center gap-4 px-6 py-4 hover:bg-${accentColor}-50/30 dark:hover:bg-${accentColor}-900/10 transition-all`}>
+                          <div key={user.id}>
+                              <div className={`flex items-center gap-4 px-6 py-4 hover:bg-${accentColor}-50/30 dark:hover:bg-${accentColor}-900/10 transition-all`}>
                               {/* Avatar */}
                               <div className="relative shrink-0">
                                   <div className={`w-10 h-10 rounded-xl overflow-hidden border-2 ${isNeverInvited ? 'border-indigo-200 dark:border-indigo-800/50' : 'border-amber-200 dark:border-amber-800/50'} shadow-sm`}>
@@ -2705,6 +2806,25 @@ if __name__ == "__main__":
 
                               {/* Actions */}
                               <div className="flex items-center gap-2 shrink-0">
+                                  {/* Manage Access */}
+                                  <button type="button"
+                                      onClick={() => {
+                                          const newId = managingAccessUserId === user.id ? null : user.id;
+                                          setManagingAccessUserId(newId);
+                                          if (newId) {
+                                              setPendingGrantRole(user.roleIds?.[0] || user.role || roles[0]?.id || '');
+                                              setPendingGrantSiteIds(user.siteIds || []);
+                                          }
+                                      }}
+                                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all shadow-sm ${
+                                          managingAccessUserId === user.id
+                                              ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)] hover:opacity-90'
+                                              : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)] hover:bg-[var(--color-brand)]/20 border-[var(--color-brand)]/20'
+                                      }`}
+                                      title="Manage access for this user"
+                                  >
+                                      <Shield size={13} /> {managingAccessUserId === user.id ? 'Cancel' : 'Manage Access'}
+                                  </button>
                                   <button type="button"
                                       onClick={async () => {
                                           const action = isNeverInvited ? 'Send invitation' : 'Resend invitation';
@@ -2754,11 +2874,78 @@ if __name__ == "__main__":
                                   </button>
                               </div>
                           </div>
-                      );
+                          {/* Inline Grant Access Panel */}
+                          {managingAccessUserId === user.id && (
+                              <div className="mx-6 mb-4 p-4 rounded-xl bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/20 animate-fade-in">
+                                  <div className="text-[10px] font-black text-[var(--color-brand)] uppercase tracking-widest mb-3 flex items-center gap-2">
+                                      <Shield size={12} /> Grant Access — Assign Role &amp; Sites
+                                  </div>
+                                  <div className="flex flex-wrap gap-4 items-end">
+                                      <div className="flex-1 min-w-[160px]">
+                                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Role</label>
+                                          <select
+                                              value={pendingGrantRole}
+                                              onChange={e => setPendingGrantRole(e.target.value)}
+                                              className="w-full px-3 py-2 bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg text-xs outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30"
+                                          >
+                                              {roles.map(r => (
+                                                  <option key={r.id} value={r.id}>{r.name}</option>
+                                              ))}
+                                          </select>
+                                      </div>
+                                      <div className="flex-1 min-w-[200px]">
+                                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Sites</label>
+                                          <div className="flex flex-wrap gap-1.5 p-2 bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg min-h-[34px]">
+                                              {sites.map(s => {
+                                                  const checked = pendingGrantSiteIds.includes(s.id);
+                                                  return (
+                                                      <button
+                                                          key={s.id}
+                                                          type="button"
+                                                          onClick={() => setPendingGrantSiteIds(prev =>
+                                                              prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
+                                                          )}
+                                                          className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border transition-all ${
+                                                              checked
+                                                                  ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)]'
+                                                                  : 'bg-gray-100 dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700 hover:border-[var(--color-brand)]/40'
+                                                          }`}
+                                                      >
+                                                          {s.name}
+                                                      </button>
+                                                  );
+                                              })}
+                                          </div>
+                                      </div>
+                                      <button
+                                          type="button"
+                                          disabled={isGrantingAccess || !pendingGrantRole || pendingGrantSiteIds.length === 0}
+                                          onClick={async () => {
+                                              setIsGrantingAccess(true);
+                                              try {
+                                                  await updateUserAccess(user.id, pendingGrantRole, [pendingGrantRole], pendingGrantSiteIds);
+                                                  success(`Access granted to ${user.name || user.email}`, 4000);
+                                                  setManagingAccessUserId(null);
+                                                  await reloadData();
+                                              } catch (e) {
+                                                  error('Failed to grant access. Please try again.', 5000);
+                                              } finally {
+                                                  setIsGrantingAccess(false);
+                                              }
+                                          }}
+                                          className="flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-[var(--color-brand)] text-white hover:opacity-90 border border-[var(--color-brand)] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                      >
+                                          {isGrantingAccess ? <><Loader2 size={13} className="animate-spin" /> Granting...</> : <><CheckCircle size={13} /> Grant Access</>}
+                                      </button>
+                                  </div>
+                              </div>
+                          )}
+                      </div>
+                  );
                   };
 
                   return (
-                      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 overflow-hidden">
+                      <div id="pending-access-panel" className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 overflow-hidden">
                           {/* Panel Header */}
                           <div className="px-6 py-4 border-b border-amber-100 dark:border-amber-800/40 flex items-center justify-between bg-amber-50/60 dark:bg-amber-900/10">
                               <div className="flex items-center gap-3">
