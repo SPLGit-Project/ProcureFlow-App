@@ -25,7 +25,7 @@ export const FuturePricesPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const isAdmin = currentUser?.role === 'ADMIN';
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
   const canView = hasPermission('view_sell_pricing') || hasPermission('view_purchase_pricing') || isAdmin;
 
 

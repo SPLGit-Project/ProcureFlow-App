@@ -5,6 +5,7 @@ export interface TestUser {
     name: string;
     email: string;
     role: string;
+    roleIds?: string[];
     avatar: string;
     permissions: string[];
     siteIds: string[];
@@ -32,6 +33,7 @@ export async function injectTestUser(
             name: 'Test User',
             email: 'test@splservices.com.au',
             role: 'beta_tester',
+            roleIds: ['beta_tester'],
             avatar: 'QA',
             permissions: perms,
             siteIds: allowedSiteIds,
@@ -61,6 +63,7 @@ export async function injectTestUserWithFlags(
             name: 'Test User',
             email: 'test@splservices.com.au',
             role: 'beta_tester',
+            roleIds: ['beta_tester'],
             avatar: 'QA',
             permissions: perms,
             siteIds: ['site-1'],

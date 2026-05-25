@@ -18,6 +18,7 @@ const Dashboard = () => {
   const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
   const navigate = useNavigate();
   const [isCostModalOpen, setIsCostModalOpen] = useState(false);
+  const isAdmin = currentUser.role === 'ADMIN' || currentUser.roleIds?.includes('ADMIN');
 
   // Use global filtered data directly
   const filteredPos = pos;
@@ -31,7 +32,7 @@ const Dashboard = () => {
 
   
   // --- Actionable Insights ---
-  const myPendingApprovals = currentUser.role === 'APPROVER' || currentUser.role === 'ADMIN'
+  const myPendingApprovals = currentUser.role === 'APPROVER' || currentUser.roleIds?.includes('APPROVER') || isAdmin
       ? pendingApprovals 
       : [];
       
@@ -40,7 +41,7 @@ const Dashboard = () => {
   const actionConcur = globalPendingConcur.length > 0 ? globalPendingConcur : myPendingConcurSync;
 
   const myPendingDeliveries = activeOrders.filter(p => {
-        if (currentUser.role === 'ADMIN' && activeSiteIds.length > 0) return true; // Show all for selected sites if Admin
+        if (isAdmin && activeSiteIds.length > 0) return true; // Show all for selected sites if Admin
         if (p.requesterId !== currentUser.id) return false;
         const remaining = p.lines.reduce((acc, line) => acc + (line.quantityOrdered - (line.quantityReceived || 0)), 0);
         return remaining > 0;

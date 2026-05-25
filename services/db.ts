@@ -1,7 +1,46 @@
-import { supabase } from '../lib/supabaseClient';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds } from '../types';
-import { normalizeItemCode } from '../utils/normalization';
-import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing';
+import { supabase } from '../lib/supabaseClient.ts';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds } from '../types.ts';
+import { normalizeItemCode } from '../utils/normalization.ts';
+import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
+
+
+
+// --- Fallback types for untyped Supabase results ---
+type DbItemRow = { id: string; sku: string; name: string; description: string; unit_price: number; uom: string; upq: number; category: string; sub_category: string; stock_level: number; supplier_id: string; is_rfid: boolean; is_cog: boolean; sap_item_code_raw: string; sap_item_code_norm: string; range_name: string; stock_type: string; active_flag: boolean; created_at: string; updated_at: string; item_weight: number; item_pool: string; item_catalog: string; item_type: string; rfid_flag: boolean; item_colour: string; item_pattern: string; item_material: string; item_size: string; measurements: string; cog_flag: boolean; cog_customer: string; specs: Record<string, unknown> };
+type DbSupplierRow = { id: string; name: string; contact_email: string; key_contact: string; phone: string; address: string; categories: string[] };
+type DbSupplierProductMapRow = { id: string; supplier_id: string; product_id: string; supplier_sku: string; supplier_customer_stock_code: string; match_priority: number; pack_conversion_factor: number; mapping_status: SupplierProductMap['mappingStatus']; mapping_method: SupplierProductMap['mappingMethod']; confidence_score: number; mapping_justification: SupplierProductMap['mappingJustification']; manual_override: boolean; updated_at: string };
+type DbProductAvailabilityRow = { id: string; product_id: string; supplier_id: string; available_units: number; available_order_qty: number; updated_at: string };
+type DbCatalogItemRow = { id: string; item_id: string; supplier_id: string; supplier_sku: string; price: number };
+type DbStockSnapshotRow = { id: string; supplier_id: string; supplier_sku: string; product_name: string; available_qty: number; stock_on_hand: number; committed_qty: number; back_ordered_qty: number; total_stock_qty: number; snapshot_date: string; source_report_name: string; customer_stock_code: string; range_name: string; category: string; sub_category: string; stock_type: string; carton_qty: number; soh_value_at_sell: number; sell_price: number; incoming_stock: SupplierStockSnapshot['incomingStock']; customer_stock_code_raw: string; customer_stock_code_norm: string; customer_stock_code_alt_norm: string };
+type DbPORequestRow = { id: string; display_id: string; request_date: string; requester_id: string; requester: { name: string }; site_id: string; site: { name: string }; supplier_id: string; supplier: { name: string }; status: PORequest['status']; total_amount: number; approvals: { id: string; action: ApprovalEvent['action']; date: string; approver_name: string; comments: string }[]; lines: { id: string; item_id: string; item_name: string; sku: string; quantity_ordered: number; quantity_received: number; unit_price: number; total_price: number; concur_po_number: string }[]; deliveries: { id: string; date: string; docket_number: string; received_by: string; received_by_id: string; lines: { id: string; po_line_id: string; quantity: number; invoice_number: string; is_capitalised: boolean; capitalised_date: string; freight_amount: number }[] }[]; reason_for_request: PORequest['reasonForRequest']; customer_name: string; concur_request_number: string; po_lines: { concur_po_number: string }[]; comments: string };
+type DbWorkflowStepRow = { id: string; step_name: string; approver_role: string; approver_type: WorkflowStep['approverType']; approver_id: string; condition_type: WorkflowStep['conditionType']; condition_value: number; order: number; is_active: boolean };
+type DbNotificationRuleRow = { id: string; event_type: NotificationRule['eventType']; label: string; is_active: boolean; recipients: NotificationRule['recipients'] };
+type DbAppNotificationRow = { id: string; user_id: string; title: string; message: string; is_read: boolean; link: string; created_at: string };
+type DbAttributeOptionRow = { id: string; type: AttributeOption['type']; value: string; parent_id: string; parent_ids: string[]; active_flag: boolean; created_at: string; updated_at: string };
+type DbUpdateResult = { select: (s: string, o: Record<string, unknown>) => Promise<{ error: Error | null, count: number | null }> };
+type DbSystemAuditLogRow = { id: string; action_type: string; performed_by: string; performedByName?: string; summary: Record<string, unknown>; details: Record<string, unknown>; created_at: string; };
+type DbUserRow = { id: string; auth_user_id: string; name: string; };
+// -----------------------------------------------------------
+
+type UserRoleRow = { role_id: string };
+
+const uniqueRoleIds = (primaryRole?: string, roleIds?: string[]): string[] => {
+    const roles = [primaryRole, ...(roleIds || [])].filter(Boolean) as string[];
+    return Array.from(new Set(roles));
+};
+
+const syncUserRoles = async (userId: string, primaryRole?: string, roleIds?: string[]): Promise<void> => {
+    const assignedRoles = uniqueRoleIds(primaryRole, roleIds);
+    const { error: deleteError } = await supabase.from('user_roles').delete().eq('user_id', userId);
+    if (deleteError) throw deleteError;
+
+    if (assignedRoles.length === 0) return;
+
+    const { error: insertError } = await supabase
+        .from('user_roles')
+        .insert(assignedRoles.map(roleId => ({ user_id: userId, role_id: roleId })));
+    if (insertError) throw insertError;
+};
 
 export const db = {
     getRoles: async (): Promise<RoleDefinition[]> => {
@@ -32,14 +71,27 @@ export const db = {
         if (error) throw error;
     },
 
-    getUsers: async (): Promise<User[]> => {
-        const { data, error } = await supabase.from('users').select('*');
+    getUserRoleIds: async (userId: string): Promise<string[]> => {
+        const { data, error } = await supabase
+            .from('user_roles')
+            .select('role_id')
+            .eq('user_id', userId);
         if (error) throw error;
-        return (data || []).map((u: { id: string; name: string; email: string; role_id: string; avatar: string; job_title: string; status: any; created_at: string; site_ids: string[]; invited_at: string; invitation_expires_at: string }) => ({
+        return Array.from(new Set((data || []).map((row: UserRoleRow) => row.role_id).filter(Boolean)));
+    },
+
+    getUsers: async (): Promise<User[]> => {
+        const { data, error } = await supabase.from('users').select('*, user_roles(role_id)');
+        if (error) throw error;
+        return (data || []).map((u: { id: string; name: string; email: string; role_id: string; avatar: string; job_title: string; status: User['status']; created_at: string; site_ids: string[]; invited_at: string; invitation_expires_at: string; user_roles?: UserRoleRow[] }) => {
+            const roleIds = uniqueRoleIds(u.role_id, (u.user_roles || []).map(row => row.role_id));
+            return {
             id: u.id,
             name: u.name,
             email: u.email,
             role: u.role_id,
+            realRole: u.role_id,
+            roleIds,
             avatar: u.avatar,
             jobTitle: u.job_title,
             status: u.status,
@@ -47,7 +99,8 @@ export const db = {
             siteIds: u.site_ids || [],
             invitedAt: u.invited_at,
             invitationExpiresAt: u.invitation_expires_at
-        }));
+        };
+        });
     },
 
     createUser: async (user: User): Promise<void> => {
@@ -65,6 +118,7 @@ export const db = {
             invitation_expires_at: user.invitationExpiresAt
         });
         if (error) throw error;
+        await syncUserRoles(user.id, user.role, user.roleIds);
     },
 
     upsertUser: async (user: User): Promise<void> => {
@@ -82,6 +136,7 @@ export const db = {
             invitation_expires_at: user.invitationExpiresAt
         }, { onConflict: 'id' });
         if (error) throw error;
+        await syncUserRoles(user.id, user.role, user.roleIds);
     },
     
     updateUserStatus: async (id: string, status: string): Promise<void> => {
@@ -135,6 +190,7 @@ export const db = {
             }).eq('id', existingUser.id);
             
             if (error) throw error;
+            await syncUserRoles(existingUser.id, user.role, user.roleIds);
         } else {
             // New user - insert
             const { error } = await supabase.from('users').insert({
@@ -151,6 +207,7 @@ export const db = {
                 invitation_expires_at: user.invitationExpiresAt
             });
             if (error) throw error;
+            await syncUserRoles(user.id, user.role, user.roleIds);
         }
     },
 
@@ -210,7 +267,7 @@ export const db = {
     getSuppliers: async (): Promise<Supplier[]> => {
         const { data, error } = await supabase.from('suppliers').select('*');
         if (error) throw error;
-        return data.map((s: any) => ({
+        return data.map((s: DbSupplierRow) => ({
             id: s.id,
             name: s.name,
             contactEmail: s.contact_email,
@@ -262,7 +319,7 @@ export const db = {
 
     getItems: async (): Promise<Item[]> => {
         // Fetch ALL items using pagination to avoid Supabase's default 1000-row limit
-        let allData: any[] = [];
+        let allData: DbItemRow[] = [];
         let from = 0;
         const batchSize = 1000;
         while (true) {
@@ -276,7 +333,7 @@ export const db = {
             if (data.length < batchSize) break; // Last page
             from += batchSize;
         }
-        return allData.map((i: any) => {
+        return allData.map((i: DbItemRow) => {
             const mappedItem: Item = {
                 id: i.id,
                 sku: i.sku,
@@ -335,13 +392,13 @@ export const db = {
         });
     },
 
-    getItemImportConfig: async (): Promise<any> => {
+    getItemImportConfig: async (): Promise<Record<string, unknown>> => {
         const { data, error } = await supabase.from('app_config').select('value').eq('key', 'item_import_config').single();
         if (error && error.code !== 'PGRST116') throw error; // PGRST116 = Row not found
         return data?.value || { overwrite_fields: {} };
     },
 
-    updateItemImportConfig: async (config: any): Promise<void> => {
+    updateItemImportConfig: async (config: Record<string, unknown>): Promise<void> => {
         const { error } = await supabase.from('app_config').upsert({
             key: 'item_import_config',
             value: config,
@@ -431,13 +488,13 @@ export const db = {
         if (error) throw error;
     },
 
-    getBranding: async (): Promise<any> => {
+    getBranding: async (): Promise<unknown | null> => {
         const { data, error } = await supabase.from('app_config').select('value').eq('key', 'branding').single();
         if (error && error.code !== 'PGRST116') throw error;
         return data?.value || null;
     },
 
-    updateBranding: async (branding: any): Promise<void> => {
+    updateBranding: async (branding: unknown): Promise<void> => {
         const { error } = await supabase.from('app_config').upsert({
             key: 'branding',
             value: branding,
@@ -449,7 +506,7 @@ export const db = {
     getMappings: async (): Promise<SupplierProductMap[]> => {
         const { data, error } = await supabase.from('supplier_product_map').select('*');
         if (error) throw error;
-        return data.map((m: any) => ({
+        return data.map((m: DbSupplierProductMapRow & { item?: { sku: string; name: string }; supplier?: { name: string } }) => ({
              id: m.id,
              supplierId: m.supplier_id,
              productId: m.product_id,
@@ -501,7 +558,7 @@ export const db = {
     getProductAvailability: async (): Promise<ProductAvailability[]> => {
         const { data, error } = await supabase.from('product_availability').select('*');
         if (error) throw error;
-        return data.map((a: any) => ({
+        return data.map((a: DbProductAvailabilityRow) => ({
              id: a.id,
              productId: a.product_id,
              supplierId: a.supplier_id,
@@ -516,7 +573,7 @@ export const db = {
         const { data: items, error: iErr } = await supabase.from('items').select('*');
         if (iErr) throw iErr;
         
-        const itemUpdates = items.map((i: any) => {
+        const itemUpdates = items.map((i: DbItemRow) => {
             const norm = normalizeItemCode(i.sku);
             return {
                 ...i,
@@ -531,7 +588,7 @@ export const db = {
         const { data: snaps, error: sErr } = await supabase.from('stock_snapshots').select('*');
         if (sErr) throw sErr;
 
-        const snapUpdates = snaps.map((s: any) => {
+        const snapUpdates = snaps.map((s: DbStockSnapshotRow) => {
             const code = s.customer_stock_code || '';
             const norm = code ? normalizeItemCode(code) : { normalized: '', alternate: null };
             return {
@@ -550,7 +607,7 @@ export const db = {
     getCatalog: async (): Promise<SupplierCatalogItem[]> => {
         const { data, error } = await supabase.from('catalog_items').select('*');
         if (error) throw error;
-        return data.map((c: any) => ({
+        return data.map((c: DbCatalogItemRow) => ({
             id: c.id,
             itemId: c.item_id,
             supplierId: c.supplier_id,
@@ -562,7 +619,7 @@ export const db = {
     getStockSnapshots: async (): Promise<SupplierStockSnapshot[]> => {
         const { data, error } = await supabase.from('stock_snapshots').select('*');
         if (error) throw error;
-        return data.map((s: any) => ({
+        return data.map((s: DbStockSnapshotRow) => ({
              id: s.id,
              supplierId: s.supplier_id,
              supplierSku: s.supplier_sku,
@@ -609,9 +666,9 @@ export const db = {
             return [];
         }
 
-        const { data, error } = await query;
+        const { data } = await query;
 
-        return data.map((p: any) => ({
+        return data.map((p: DbPORequestRow) => ({
             id: p.id,
             displayId: p.display_id,
             requestDate: p.request_date,
@@ -623,14 +680,14 @@ export const db = {
             supplierName: p.supplier?.name || 'Unknown',
             status: p.status,
             totalAmount: p.total_amount || 0,
-            approvalHistory: (p.approvals || []).map((a: any) => ({
+            approvalHistory: (p.approvals || []).map((a: DbPORequestRow['approvals'][0]) => ({
                 id: a.id,
                 action: a.action,
                 date: a.date,
                 approverName: a.approver_name,
                 comments: a.comments
             })),
-            lines: (p.lines || []).map((l: any) => ({
+            lines: (p.lines || []).map((l: DbPORequestRow['lines'][0]) => ({
                 id: l.id,
                 itemId: l.item_id,
                 itemName: l.item_name,
@@ -641,13 +698,13 @@ export const db = {
                 totalPrice: l.total_price || 0,
                 concurPoNumber: l.concur_po_number
             })),
-            deliveries: (p.deliveries || []).map((d: any) => ({
+            deliveries: (p.deliveries || []).map((d: DbPORequestRow['deliveries'][0]) => ({
                 id: d.id,
                 date: d.date,
                 docketNumber: d.docket_number,
                 receivedBy: d.received_by,
                 receivedById: d.received_by_id,
-                lines: (d.lines || []).map((dl: any) => ({
+                lines: (d.lines || []).map((dl: DbPORequestRow['deliveries'][0]['lines'][0]) => ({
                     id: dl.id,
                     poLineId: dl.po_line_id,
                     quantity: dl.quantity,
@@ -660,7 +717,7 @@ export const db = {
             reasonForRequest: p.reason_for_request,
             customerName: p.customer_name,
             concurRequestNumber: p.concur_request_number,
-            concurPoNumber: Array.from(new Set((p.po_lines || []).map((l: any) => l.concur_po_number).filter(Boolean))).join(', ') || undefined,
+            concurPoNumber: Array.from(new Set((p.po_lines || []).map((l: { concur_po_number: string }) => l.concur_po_number).filter(Boolean))).join(', ') || undefined,
             comments: p.comments
         }));
     },
@@ -668,7 +725,7 @@ export const db = {
     getWorkflowSteps: async (): Promise<WorkflowStep[]> => {
         const { data, error } = await supabase.from('workflow_steps').select('*').order('order');
         if (error) throw error;
-        return data.map((w: any) => ({
+        return data.map((w: DbWorkflowStepRow) => ({
             id: w.id,
             stepName: w.step_name,
             approverRole: w.approver_role,
@@ -684,7 +741,7 @@ export const db = {
     getNotificationRules: async (): Promise<NotificationRule[]> => {
         const { data, error } = await supabase.from('notification_settings').select('*');
         if (error) throw error;
-        return data.map((n: any) => ({
+        return data.map((n: DbNotificationRuleRow) => ({
             id: n.id,
             eventType: n.event_type,
             label: n.label,
@@ -757,7 +814,7 @@ export const db = {
             .limit(50);
             
         if (error) throw error;
-        return data.map((n: any) => ({
+        return data.map((n: DbAppNotificationRow) => ({
             id: n.id,
             userId: n.user_id,
             title: n.title,
@@ -925,7 +982,7 @@ export const db = {
     },
 
     updateDeliveryHeader: async (id: string, updates: { docketNumber?: string, date?: string, receivedBy?: string }): Promise<void> => {
-        const payload: any = {};
+        const payload: Record<string, unknown> = {};
         if (updates.docketNumber !== undefined) payload.docket_number = updates.docketNumber;
         if (updates.date !== undefined) payload.date = updates.date;
         if (updates.receivedBy !== undefined) payload.received_by = updates.receivedBy;
@@ -933,7 +990,7 @@ export const db = {
         const { error, count } = await (supabase
             .from('deliveries')
             .update(payload)
-            .eq('id', id) as any)
+            .eq('id', id) as unknown as DbUpdateResult)
             .select('*', { count: 'exact', head: true });
 
         if (error) throw error;
@@ -941,7 +998,7 @@ export const db = {
     },
 
     updateApprovalHistory: async (poId: string, approvalId: string, updates: { approverName?: string, date?: string, comments?: string }): Promise<void> => {
-        const payload: any = {};
+        const payload: Record<string, unknown> = {};
         if (updates.approverName !== undefined) payload.approver_name = updates.approverName;
         if (updates.date !== undefined) payload.date = updates.date;
         if (updates.comments !== undefined) payload.comments = updates.comments;
@@ -950,7 +1007,7 @@ export const db = {
             .from('po_approvals')
             .update(payload)
             .eq('id', approvalId)
-            .eq('po_request_id', poId) as any)
+            .eq('po_request_id', poId) as unknown as DbUpdateResult)
             .select('*', { count: 'exact', head: true });
 
         if (error) throw error;
@@ -958,7 +1015,7 @@ export const db = {
     },
 
     updateDeliveryLineFinanceInfo: async (lineId: string, updates: Partial<DeliveryLineItem>): Promise<void> => {
-        const payload: any = {};
+        const payload: Record<string, unknown> = {};
         if (updates.invoiceNumber !== undefined) payload.invoice_number = updates.invoiceNumber;
         if (updates.invoiceDate !== undefined) payload.invoice_date = updates.invoiceDate;
         if (updates.isCapitalised !== undefined) payload.is_capitalised = updates.isCapitalised;
@@ -967,7 +1024,7 @@ export const db = {
         const { error, count } = await (supabase
             .from('delivery_lines')
             .update(payload)
-            .eq('id', lineId) as any)
+            .eq('id', lineId) as unknown as DbUpdateResult)
             .select('*', { count: 'exact', head: true });
             
         if (error) throw error;
@@ -978,6 +1035,13 @@ export const db = {
         const { error } = await supabase.rpc('admin_update_delivery_line_qty', {
             p_line_id: lineId,
             p_new_qty: quantity
+        });
+        if (error) throw error;
+    },
+
+    deleteDelivery: async (deliveryId: string): Promise<void> => {
+        const { error } = await supabase.rpc('delete_delivery', {
+            p_delivery_id: deliveryId
         });
         if (error) throw error;
     },
@@ -1050,7 +1114,7 @@ export const db = {
          await db.upsertMasterItemsBulk(items);
     },
 
-    getItemFieldRegistry: async (): Promise<any[]> => {
+    getItemFieldRegistry: async (): Promise<Record<string, unknown>[]> => {
         const { data, error } = await supabase.from('item_field_registry').select('*').order('order_index');
         if (error) throw error;
         return data; 
@@ -1063,7 +1127,7 @@ export const db = {
         }
         const { data, error } = await query.order('value');
         if (error) throw error;
-        return data.map((o: any) => ({
+        return data.map((o: DbAttributeOptionRow) => ({
              id: o.id,
              type: o.type,
              value: o.value,
@@ -1118,18 +1182,18 @@ export const db = {
         deactivateMissing: boolean = false,
         userId?: string
     ): Promise<{ created: number, updated: number, deactivated: number, skipped: number }> => {
-        const [configRes, itemsRes] = await Promise.all([
+        const [_, itemsRes] = await Promise.all([
             db.getItemImportConfig(),
             supabase.from('items').select('*')
         ]);
         
         if (itemsRes.error) throw itemsRes.error;
         const existingItems = itemsRes.data || [];
-        const existingMap = new Map(existingItems.map((i: any) => [i.sap_item_code_norm, i]));
-        const existingSkuMap = new Map(existingItems.map((i: any) => [i.sku, i]));
+        const existingMap = new Map(existingItems.map((i: DbItemRow) => [i.sap_item_code_norm, i]));
+        const existingSkuMap = new Map(existingItems.map((i: DbItemRow) => [i.sku, i]));
         
         const timestamp = new Date().toISOString();
-        const payloadMap = new Map<string, any>(); // Keyed by id — natural deduplication
+        const payloadMap = new Map<string, Record<string, unknown>>(); // Keyed by id — natural deduplication
         let skipped = 0;
         const processedNorms = new Set<string>();
         const fieldKeys = new Set<string>();
@@ -1193,7 +1257,7 @@ export const db = {
                 active_flag: true
             };
 
-            const record: any = { id: itemId, ...commonFields };
+            const record: Record<string, unknown> = { id: itemId, ...commonFields };
             if (!existing) record.created_at = timestamp;
 
             // Map.set naturally deduplicates — last write wins for same id
@@ -1226,8 +1290,8 @@ export const db = {
         let deactivated = 0;
         if (deactivateMissing) {
              const missingIds = existingItems
-                .filter((i: any) => i.sap_item_code_norm && !processedNorms.has(i.sap_item_code_norm))
-                .map((i: any) => i.id);
+                .filter((i: DbItemRow) => i.sap_item_code_norm && !processedNorms.has(i.sap_item_code_norm))
+                .map((i: DbItemRow) => i.id);
                 
              if (missingIds.length > 0) {
                  await supabase.from('items').update({ active_flag: false }).in('id', missingIds);
@@ -1341,7 +1405,7 @@ export const db = {
             cog_flag: item.cogFlag,
             cog_customer: item.cogCustomer,
             specs: specsWithPricing
-        }).eq('id', item.id) as any)
+        }).eq('id', item.id) as unknown as DbUpdateResult)
         .select('*', { count: 'exact', head: true });
 
         if (error) throw error;
@@ -1374,12 +1438,12 @@ export const db = {
     },
 
     calculateMappingScore: (
-        snap: any, 
-        item: any, 
+        snap: DbStockSnapshotRow, 
+        item: DbItemRow, 
         globalConsensus: Record<string, string[]>
-    ): { score: number, justification: any } => {
+    ): { score: number, justification: SupplierProductMap['mappingJustification'] } => {
         let score = 0;
-        const justification: any = { components: [] };
+        const justification: SupplierProductMap['mappingJustification'] = { components: [] };
 
         const normSnap = snap.customer_stock_code_norm;
         const normItem = item.sap_item_code_norm;
@@ -1447,32 +1511,32 @@ export const db = {
         const items = itemsRes.data;
 
         const globalConsensus: Record<string, string[]> = {};
-        globalMappingsRes.data?.forEach((m: any) => {
+        globalMappingsRes.data?.forEach((m: DbSupplierProductMapRow) => {
             if (!globalConsensus[m.supplier_sku]) globalConsensus[m.supplier_sku] = [];
             globalConsensus[m.supplier_sku].push(m.product_id);
         });
 
         const manualOverrides = new Set(
             (existingMappingsRes.data || [])
-                .filter((m: any) => m.manual_override || m.mapping_status === 'REJECTED')
-                .map((m: any) => m.supplier_sku)
+                .filter((m: DbSupplierProductMapRow) => m.manual_override || m.mapping_status === 'REJECTED')
+                .map((m: DbSupplierProductMapRow) => m.supplier_sku)
         );
 
-        const uniqueSkus = new Map<string, any>();
-        snapshots.forEach((s: any) => {
+        const uniqueSkus = new Map<string, DbStockSnapshotRow>();
+        snapshots.forEach((s: DbStockSnapshotRow) => {
             if (!manualOverrides.has(s.supplier_sku) && !uniqueSkus.has(s.supplier_sku)) {
                 uniqueSkus.set(s.supplier_sku, s);
             }
         });
         
-        const updates: any[] = [];
+        const updates: Record<string, unknown>[] = [];
         let confirmed = 0;
         let proposed = 0;
 
         for (const snap of Array.from(uniqueSkus.values())) {
-            let bestMatch: any = null;
+            let bestMatch: DbItemRow | null = null;
             let bestScore = 0;
-            let bestJustification: any = null;
+            let bestJustification: unknown = null;
 
             for (const item of items) {
                 const { score, justification } = db.calculateMappingScore(snap, item, globalConsensus);
@@ -1525,7 +1589,7 @@ export const db = {
         const { data, error } = await query;
         if (error) throw error;
         
-        return data.map((m: any) => ({
+        return data.map((m: DbSupplierProductMapRow & { item?: { sku: string; name: string }; supplier?: { name: string } }) => ({
             id: m.id,
             supplierId: m.supplier_id,
             supplierName: m.supplier?.name,
@@ -1573,7 +1637,7 @@ export const db = {
         const { error, count } = await (supabase
             .from('po_requests')
             .update({ status })
-            .eq('id', poId) as any)
+            .eq('id', poId) as unknown as DbUpdateResult)
             .select('*', { count: 'exact', head: true });
         
         if (error) throw error;
@@ -1601,7 +1665,7 @@ export const db = {
     updatePOLines: async (lines: Partial<POLineItem>[]): Promise<void> => {
         const { error, count } = await (supabase
             .from('po_lines')
-            .upsert(lines) as any)
+            .upsert(lines) as unknown as DbUpdateResult)
             .select('*', { count: 'exact', head: true });
             
         if (error) throw error;
@@ -1615,7 +1679,7 @@ export const db = {
     },
 
     updatePOLine: async (id: string, updates: Partial<POLineItem>): Promise<void> => {
-        const payload: any = {};
+        const payload: Record<string, unknown> = {};
         if (updates.quantityOrdered !== undefined) payload.quantity_ordered = updates.quantityOrdered;
         if (updates.unitPrice !== undefined) payload.unit_price = updates.unitPrice;
         if (updates.totalPrice !== undefined) payload.total_price = updates.totalPrice;
@@ -1623,7 +1687,7 @@ export const db = {
         const { error, count } = await (supabase
             .from('po_lines')
             .update(payload)
-            .eq('id', id) as any)
+            .eq('id', id) as unknown as DbUpdateResult)
             .select('*', { count: 'exact', head: true });
             
         if (error) throw error;
@@ -1684,7 +1748,7 @@ export const db = {
         if (error) throw error;
     },
 
-    getMappingMemory: async (supplierId?: string): Promise<any[]> => {
+    getMappingMemory: async (supplierId?: string): Promise<SupplierProductMap[]> => {
         let query = supabase.from('supplier_product_map')
             .select(`
                 *,
@@ -1700,7 +1764,7 @@ export const db = {
         const { data, error } = await query;
         if (error) throw error;
         
-        return data.map((m: any) => ({
+        return data.map((m: DbSupplierProductMapRow & { item?: { sku: string; name: string }; supplier?: { name: string } }) => ({
             id: m.id,
             supplierId: m.supplier_id,
             supplierName: m.supplier?.name,
@@ -1709,6 +1773,7 @@ export const db = {
             internalSku: m.item?.sku,
             supplierSku: m.supplier_sku,
             supplierCustomerStockCode: m.supplier_customer_stock_code,
+            matchPriority: m.match_priority,
             mappingStatus: m.mapping_status,
             mappingMethod: m.mapping_method,
             confidenceScore: m.confidence_score,
@@ -1743,7 +1808,7 @@ export const db = {
         if (sErr) throw sErr;
         if (!snapshots || snapshots.length === 0) return { updated: 0 };
 
-        const latestSnaps = snapshots.reduce((acc: any, curr: any) => {
+        const latestSnaps = snapshots.reduce((acc: Record<string, DbStockSnapshotRow>, curr: DbStockSnapshotRow) => {
             if (!acc[curr.supplier_sku]) {
                 acc[curr.supplier_sku] = curr;
             }
@@ -1803,7 +1868,7 @@ export const db = {
         const logs = data || [];
         
         // Resolve performer names manually
-        const performerIds = [...new Set(logs.map((l: any) => l.performed_by).filter(Boolean))];
+        const performerIds = [...new Set(logs.map((l: DbSystemAuditLogRow) => l.performed_by).filter(Boolean))];
         if (performerIds.length > 0) {
             const { data: userData } = await supabase
                 .from('users')
@@ -1812,11 +1877,11 @@ export const db = {
             
             if (userData) {
                 const userMap = new Map();
-                userData.forEach((u: any) => {
+                userData.forEach((u: DbUserRow) => {
                     if (u.id) userMap.set(u.id, u.name);
                     if (u.auth_user_id) userMap.set(u.auth_user_id, u.name);
                 });
-                logs.forEach((l: any) => {
+                logs.forEach((l: DbSystemAuditLogRow) => {
                     if (l.performed_by && userMap.has(l.performed_by)) {
                         l.performedByName = userMap.get(l.performed_by);
                     }
@@ -1824,7 +1889,7 @@ export const db = {
             }
         }
 
-        return logs.map((l: any) => ({
+        return logs.map((l: DbSystemAuditLogRow) => ({
             id: l.id,
             actionType: l.action_type,
             performedBy: l.performed_by,
@@ -1863,7 +1928,7 @@ export const db = {
         const logs = data || [];
         
         // Resolve performer names manually
-        const performerIds = [...new Set(logs.map((l: any) => l.performed_by).filter(Boolean))];
+        const performerIds = [...new Set(logs.map((l: DbSystemAuditLogRow) => l.performed_by).filter(Boolean))];
         if (performerIds.length > 0) {
             const { data: userData } = await supabase
                 .from('users')
@@ -1872,11 +1937,11 @@ export const db = {
             
             if (userData) {
                 const userMap = new Map();
-                userData.forEach((u: any) => {
+                userData.forEach((u: DbUserRow) => {
                     if (u.id) userMap.set(u.id, u.name);
                     if (u.auth_user_id) userMap.set(u.auth_user_id, u.name);
                 });
-                logs.forEach((l: any) => {
+                logs.forEach((l: DbSystemAuditLogRow) => {
                     if (l.performed_by && userMap.has(l.performed_by)) {
                         l.performedByName = userMap.get(l.performed_by);
                     }
@@ -1884,7 +1949,7 @@ export const db = {
             }
         }
 
-        return logs.map((l: any) => ({
+        return logs.map((l: DbSystemAuditLogRow) => ({
             id: l.id,
             actionType: l.action_type,
             performedBy: l.performed_by,

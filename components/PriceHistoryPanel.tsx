@@ -26,7 +26,7 @@ export const PriceHistoryPanel: React.FC<PriceHistoryPanelProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const isAdmin = currentUser?.role === 'ADMIN';
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
   const canViewPurchase = propShowPurchase ?? (hasPermission('view_purchase_pricing') || isAdmin);
   const canViewSell = propShowSell ?? (hasPermission('view_sell_pricing') || isAdmin);
 

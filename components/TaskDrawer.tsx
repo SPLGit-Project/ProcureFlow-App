@@ -14,6 +14,7 @@ interface TaskDrawerProps {
 const TaskDrawer: FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
     const { pos, currentUser, hasPermission, activeSiteIds } = useApp();
     const navigate = useNavigate();
+    const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
 
     // --- Task Logic (Extracted from Dashboard) ---
     const pendingApprovals = useMemo(() => pos.filter(p => p.status === 'PENDING_APPROVAL' && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
@@ -21,19 +22,19 @@ const TaskDrawer: FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
     const activeOrders = useMemo(() => pos.filter(p => (p.status === 'ACTIVE' || p.status === 'RECEIVED') && activeSiteIds.includes(p.siteId)), [pos, activeSiteIds]);
 
     const myPendingApprovals = useMemo(() => 
-        (currentUser?.role === 'APPROVER' || currentUser?.role === 'ADMIN') ? pendingApprovals : [], 
-    [currentUser, pendingApprovals]);
+        (currentUser?.role === 'APPROVER' || currentUser?.roleIds?.includes('APPROVER') || isAdmin) ? pendingApprovals : [], 
+    [currentUser, isAdmin, pendingApprovals]);
 
     const globalPendingConcur = useMemo(() => hasPermission('link_concur') ? pendingConcur : [], [hasPermission, pendingConcur]);
     const myPendingConcurSync = useMemo(() => pendingConcur.filter(p => p.requesterId === currentUser?.id && !hasPermission('link_concur')), [pendingConcur, currentUser, hasPermission]);
     const actionConcur = useMemo(() => globalPendingConcur.length > 0 ? globalPendingConcur : myPendingConcurSync, [globalPendingConcur, myPendingConcurSync]);
 
     const myPendingDeliveries = useMemo(() => activeOrders.filter(p => {
-        if (currentUser?.role === 'ADMIN') return true;
+        if (isAdmin) return true;
         if (p.requesterId !== currentUser?.id) return false;
         const remaining = p.lines.reduce((acc, line) => acc + (line.quantityOrdered - (line.quantityReceived || 0)), 0);
         return remaining > 0;
-    }), [currentUser, activeOrders]);
+    }), [currentUser, isAdmin, activeOrders]);
 
     const tasks = useMemo(() => {
         const t = [];

@@ -89,8 +89,9 @@ export interface UserPreferences {
 export interface User {
   id: string;
   name: string;
-  role: UserRole; // Links to RoleDefinition.id
-  realRole?: UserRole; // Stays as the DB role during session-based switching
+  role: UserRole; // Effective active role for the current session
+  roleIds?: UserRole[]; // All assigned roles persisted in user_roles
+  realRole?: UserRole; // Default DB role during session-based switching
   avatar: string;
   email: string;
   jobTitle?: string;

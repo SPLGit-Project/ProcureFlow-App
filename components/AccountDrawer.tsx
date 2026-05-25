@@ -17,7 +17,15 @@ const AccountDrawer = ({ isOpen, onClose }: AccountDrawerProps) => {
     const { currentUser, roles, switchRole, logout } = useApp();
     const navigate = useNavigate();
     const [isRoleSwitcherExpanded, setIsRoleSwitcherExpanded] = React.useState(false);
-    const canSwitchRoles = (currentUser?.realRole || currentUser?.role) === 'ADMIN';
+    const assignedRoleIds = React.useMemo(
+        () => Array.from(new Set([currentUser?.realRole || currentUser?.role, ...(currentUser?.roleIds || [])].filter(Boolean) as string[])),
+        [currentUser?.realRole, currentUser?.role, currentUser?.roleIds]
+    );
+    const isAdminAssigned = assignedRoleIds.includes('ADMIN');
+    const switchableRoles = isAdminAssigned
+        ? roles
+        : roles.filter(role => assignedRoleIds.includes(role.id));
+    const canSwitchRoles = switchableRoles.length > 1 || isAdminAssigned;
 
     if (!isOpen) return null;
 
@@ -124,7 +132,7 @@ const AccountDrawer = ({ isOpen, onClose }: AccountDrawerProps) => {
                             
                             <div className={`overflow-hidden transition-all duration-300 ${isRoleSwitcherExpanded ? 'max-h-96 opacity-100 p-4 pt-0 space-y-2' : 'max-h-0 opacity-0'}`}>
                                 <div className="h-px bg-default mb-3"></div>
-                                {roles.map(r => (
+                                {switchableRoles.map(r => (
                                     <label 
                                         key={r.id}
                                         className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${currentUser.role === r.id ? 'bg-[var(--color-brand)]/10 border-[var(--color-brand)]/30 text-[var(--color-brand)]' : 'bg-white dark:bg-gray-800 border-default hover:border-gray-300 dark:hover:border-gray-700'}`}

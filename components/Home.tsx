@@ -137,6 +137,7 @@ export default function Home() {
   const navigate = useNavigate();
   const insights = useHomeInsights();
   const [activeAppId, setActiveAppId] = React.useState<string | null>(null);
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
 
   const procurementSignals = React.useMemo(() => {
     const pendingApprovals = hasPermission('approve_requests')
@@ -147,11 +148,11 @@ export default function Home() {
       : 0;
     const openDeliveries = pos.filter(po => {
       if (po.status !== 'ACTIVE' && po.status !== 'RECEIVED') return false;
-      if (currentUser?.role !== 'ADMIN' && po.requesterId !== currentUser?.id) return false;
+      if (!isAdmin && po.requesterId !== currentUser?.id) return false;
       return po.lines.some(line => (line.quantityOrdered - (line.quantityReceived || 0)) > 0 && !line.isForceClosed);
     }).length;
     return { pendingApprovals, pendingConcur, openDeliveries };
-  }, [currentUser?.id, currentUser?.role, hasPermission, pos]);
+  }, [currentUser?.id, isAdmin, hasPermission, pos]);
 
   const itemSignals = React.useMemo(() => {
     const masterDataQueue = insights.masterDataRequests.filter(request =>

@@ -38,7 +38,7 @@ const CutoverReadinessChecker = () => {
   const [isEnforceModalOpen, setIsEnforceModalOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const isAdmin = currentUser?.role === 'ADMIN';
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
 
   const runChecks = useCallback(async () => {
     setIsRefreshing(true);

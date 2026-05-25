@@ -24,6 +24,7 @@ const ItemRequestDetail = () => {
   const { currentUser } = useApp();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
 
 
   useEffect(() => {
@@ -58,7 +59,7 @@ const ItemRequestDetail = () => {
     try {
       await deleteItemRequest(id);
       // Redirect based on role: admins to the master queue, users to their own requests
-      if (currentUser?.role === 'ADMIN') {
+      if (isAdmin) {
         navigate('/items/master-data-queue');
       } else {
         navigate('/items/my-requests');
@@ -93,7 +94,7 @@ const ItemRequestDetail = () => {
     );
   }
 
-  const canDelete = currentUser?.role === 'ADMIN' || (
+  const canDelete = isAdmin || (
     currentUser?.id === request.requestor_id && 
     !['APPROVED', 'PUBLISHING', 'PARTIALLY_PUBLISHED', 'FULLY_PUBLISHED', 'ACTIVE'].includes(request.status)
   );

@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags, MarginThresholds } from '../types.ts';
 import { db } from '../services/db.ts';
@@ -12,7 +11,20 @@ import {
     SESSION_WARNING_WINDOW_MS,
     writeSessionLogoutNotice
 } from '../utils/sessionState.ts';
-import type { DevelopmentFixtures } from '../services/developmentFixtures.ts';
+
+interface DevelopmentFixtures {
+  users: User[];
+  roles: RoleDefinition[];
+  sites: Site[];
+  suppliers: Supplier[];
+  items: Item[];
+  catalog: SupplierCatalogItem[];
+  stockSnapshots: SupplierStockSnapshot[];
+  pos: PORequest[];
+  workflowSteps: WorkflowStep[];
+  notificationRules: NotificationRule[];
+  adminUser: User | null;
+}
 
 const DEFAULT_HOME_EXPERIENCE = {
     greetingMode: 'random' as const,
@@ -52,14 +64,10 @@ const DEFAULT_MARGIN_THRESHOLDS: MarginThresholds = {
 };
 
 const loadDevelopmentFixtures = async (): Promise<DevelopmentFixtures | null> => {
-    if (!import.meta.env.DEV) return null;
-    const fixtures = await import('../services/developmentFixtures.ts');
-    return fixtures.getDevelopmentFixtures();
+    return null;
 };
 
 const normalizeBranding = (value?: Partial<AppBranding> | null): AppBranding => ({
-    ...DEFAULT_BRANDING,
-    ...(value || {}),
     appName: value?.appName || DEFAULT_BRANDING.appName,
     logoUrl: value?.logoUrl || DEFAULT_BRANDING.logoUrl,
     primaryColor: value?.primaryColor || DEFAULT_BRANDING.primaryColor,
@@ -71,6 +79,60 @@ const normalizeBranding = (value?: Partial<AppBranding> | null): AppBranding => 
         ...(value?.homeExperience || {}),
     },
 });
+
+type DbUserAuthRow = {
+  id: string;
+  name: string;
+  email: string;
+  role_id: UserRole;
+  avatar: string;
+  job_title?: string;
+  status?: User['status'];
+  created_at?: string;
+  site_ids?: string[];
+  department?: string;
+  approval_reason?: string;
+  preferences?: UserPreferences;
+  user_roles?: { role_id: UserRole }[];
+};
+
+const getAssignedRoleIds = (user?: Pick<User, 'role' | 'realRole' | 'roleIds'> | null): UserRole[] => {
+    if (!user) return [];
+    return Array.from(new Set([
+        user.realRole,
+        user.role,
+        ...(user.roleIds || [])
+    ].filter(Boolean) as UserRole[]));
+};
+
+const userHasAssignedRole = (user: Pick<User, 'role' | 'realRole' | 'roleIds'> | null | undefined, roleId: UserRole): boolean => (
+    getAssignedRoleIds(user).includes(roleId)
+);
+
+const mapAuthUserRow = (row: DbUserAuthRow): User => {
+    const roleIds = getAssignedRoleIds({
+        role: row.role_id,
+        realRole: row.role_id,
+        roleIds: (row.user_roles || []).map(role => role.role_id)
+    });
+
+    return {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        role: row.role_id,
+        realRole: row.role_id,
+        roleIds,
+        avatar: row.avatar,
+        jobTitle: row.job_title,
+        status: row.status,
+        createdAt: row.created_at,
+        siteIds: row.site_ids || [],
+        department: row.department,
+        approvalReason: row.approval_reason,
+        preferences: row.preferences
+    };
+};
 
 // Helper to get raw site filter from localStorage or user defaults
 const getInitialSiteIds = (): string[] => {
@@ -132,7 +194,7 @@ interface AppContextType {
   users: User[];
   roles: RoleDefinition[];
   updateUserRole: (userId: string, role: UserRole) => void;
-  updateUserAccess: (userId: string, role: UserRole, siteIds: string[]) => Promise<void>;
+  updateUserAccess: (userId: string, role: UserRole, roleIds: UserRole[], siteIds: string[]) => Promise<void>;
   addUser: (user: User, shouldSendInvite?: boolean) => Promise<void>;
   archiveUser: (userId: string) => Promise<void>;
   permissions: Permission[];
@@ -404,6 +466,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const lastSessionActivityRef = React.useRef(Date.now());
   const lastSessionActivityWriteRef = React.useRef(0);
 
+  const isEffectiveAdminUser = (user?: User | null): boolean => {
+      if (!user) return false;
+      if (sessionRoleOverrideRef.current && user.role !== 'ADMIN') return false;
+      return userHasAssignedRole(user, 'ADMIN');
+  };
+
   useEffect(() => {
       currentUserRef.current = currentUser;
   }, [currentUser]);
@@ -425,7 +493,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const realRole = user.realRole || user.role;
       const overrideRole = sessionRoleOverrideRef.current;
 
-      if (realRole !== 'ADMIN') {
+      if (!userHasAssignedRole(user, 'ADMIN')) {
           if (overrideRole) clearRoleOverride();
           return { ...user, realRole, role: realRole };
       }
@@ -452,24 +520,23 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           setCurrentUser(prev => {
               if (!prev) return prev;
               const realRole = prev.realRole || prev.role;
-              return realRole === 'ADMIN' ? { ...prev, role: realRole, realRole } : prev;
+              return userHasAssignedRole(prev, 'ADMIN') ? { ...prev, role: realRole, realRole } : prev;
           });
       }
   }, [roles, clearRoleOverride]);
 
   useEffect(() => {
       if (!currentUser) return;
-      const realRole = currentUser.realRole || currentUser.role;
-      if (realRole !== 'ADMIN' && sessionRoleOverrideRef.current) {
+      if (!userHasAssignedRole(currentUser, 'ADMIN') && sessionRoleOverrideRef.current) {
           clearRoleOverride();
       }
-  }, [currentUser?.realRole, currentUser?.role, clearRoleOverride]);
+  }, [currentUser?.realRole, currentUser?.role, currentUser?.roleIds, clearRoleOverride]);
 
   // --- Active Site Logic (Multi) ---
     const setActiveSiteIds = (ids: string[]) => {
         // SECURITY: Validate that non-admin users can only select sites they have access to
         let validatedIds = ids;
-        if (currentUser && currentUser.role !== 'ADMIN' && currentUser.siteIds && currentUser.siteIds.length > 0) {
+        if (currentUser && !isEffectiveAdminUser(currentUser) && currentUser.siteIds && currentUser.siteIds.length > 0) {
             validatedIds = ids.filter(id => currentUser.siteIds.includes(id));
         }
 
@@ -493,7 +560,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         
         if (qaMode) {
             const availableSiteIds = sites.map(s => s.id);
-            const allowedSiteIds = currentUser?.role === 'ADMIN'
+            const allowedSiteIds = isEffectiveAdminUser(currentUser)
                 ? availableSiteIds
                 : currentUser?.siteIds?.length
                     ? currentUser.siteIds
@@ -505,7 +572,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
 
         // For non-admins, auto-select all assigned sites if none are active
-        if (currentUser && currentUser.role !== 'ADMIN' && currentUser.siteIds && currentUser.siteIds.length > 0) {
+        if (currentUser && !isEffectiveAdminUser(currentUser) && currentUser.siteIds && currentUser.siteIds.length > 0) {
              _setActiveSiteIds([...currentUser.siteIds]);
              localStorage.setItem('activeSiteIds', JSON.stringify(currentUser.siteIds));
              // Persist this default to the user profile
@@ -513,7 +580,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         }
         
         // For admins, default to the first site if none are selected to avoid "no data" view
-        if (currentUser && currentUser.role === 'ADMIN' && sites.length > 0) {
+        if (currentUser && isEffectiveAdminUser(currentUser) && sites.length > 0) {
              _setActiveSiteIds([sites[0].id]);
              localStorage.setItem('activeSiteIds', JSON.stringify([sites[0].id]));
              savePreferences({ activeSiteIds: [sites[0].id] });
@@ -521,7 +588,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }, [qaMode, activeSiteIds.length, isAuthenticated, currentUser, sites]);
 
     useEffect(() => {
-        if (!isAuthenticated || !currentUser || currentUser.role === 'ADMIN') return;
+        if (!isAuthenticated || !currentUser || isEffectiveAdminUser(currentUser)) return;
         if (!currentUser.siteIds || currentUser.siteIds.length === 0) {
             if (activeSiteIds.length > 0) {
                 _setActiveSiteIds([]);
@@ -543,7 +610,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     const userSites = React.useMemo(() => {
         if (!currentUser) return [];
         // Admins see all sites
-        if (currentUser.role === 'ADMIN') return sites;
+        if (isEffectiveAdminUser(currentUser)) return sites;
         // Non-admins only see their assigned sites
         if (currentUser.siteIds && currentUser.siteIds.length > 0) {
             return sites.filter(s => currentUser.siteIds.includes(s.id));
@@ -966,7 +1033,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             console.log("Auth: Querying database for user record...");
             let { data: rawData, error } = await supabase
                 .from('users')
-                .select('*')
+                .select('*, user_roles(role_id)')
                 .ilike('email', email) // Use case-insensitive email lookup
                 .maybeSingle(); // maybeSingle returns null if not found instead of raising PGRST116
 
@@ -974,7 +1041,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 // If not found by email, attempt lookup by ID (standard returning users)
                 const idResult = await supabase
                     .from('users')
-                    .select('*')
+                    .select('*, user_roles(role_id)')
                     .eq('id', session.user.id)
                     .maybeSingle();
                 rawData = idResult.data;
@@ -986,21 +1053,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 throw error;
             }
 
-            let userData: User | null = rawData ? {
-                id: rawData.id,
-                name: rawData.name,
-                email: rawData.email,
-                role: rawData.role_id,
-                realRole: rawData.role_id,
-                avatar: rawData.avatar,
-                jobTitle: rawData.job_title,
-                status: rawData.status,
-                createdAt: rawData.created_at,
-                siteIds: rawData.site_ids || [],
-                department: rawData.department,
-                approvalReason: rawData.approval_reason,
-                preferences: rawData.preferences
-            } : null;
+            let userData: User | null = rawData ? mapAuthUserRow(rawData as DbUserAuthRow) : null;
 
             // 4. JIT Migration: Link Auth ID if missing
             if (rawData && session.user.id && (!rawData.auth_user_id || rawData.auth_user_id !== session.user.id)) {
@@ -1043,7 +1096,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 // Check if user exists by email (Invited by Admin)
                 const { data: existingByEmail } = await supabase
                     .from('users')
-                    .select('*')
+                    .select('*, user_roles(role_id)')
                     .ilike('email', email) // Case insensitive check
                     .single();
 
@@ -1071,23 +1124,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     }
                     
                     // Reload successfully merged user
-                     const { data: mergedUser } = await supabase.from('users').select('*').eq('id', session.user.id).single();
+                     const { data: mergedUser } = await supabase.from('users').select('*, user_roles(role_id)').eq('id', session.user.id).single();
                      if (mergedUser) {
-                         userData = {
-                            id: mergedUser.id,
-                            name: mergedUser.name,
-                            email: mergedUser.email,
-                            role: mergedUser.role_id,
-                            realRole: mergedUser.role_id,
-                            avatar: mergedUser.avatar,
-                            jobTitle: mergedUser.job_title,
-                            status: mergedUser.status,
-                            createdAt: mergedUser.created_at,
-                            siteIds: mergedUser.site_ids || [],
-                            department: mergedUser.department,
-                             approvalReason: mergedUser.approval_reason,
-                             preferences: mergedUser.preferences
-                        };
+                         userData = mapAuthUserRow(mergedUser as DbUserAuthRow);
                         logAction('USER_MERGED_INVITATION', { userId: userData.id, email: userData.email, oldId: existingByEmail.id });
                      }
                 } else {
@@ -1099,7 +1138,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     const isFirstUser = finalCount === 0;
 
                     // Check for pre-provisioned user (by email) with different ID
-                    const { data: preUser } = await supabase.from('users').select('*').ilike('email', session.user.email || '').maybeSingle();
+                    const { data: preUser } = await supabase.from('users').select('*, user_roles(role_id)').ilike('email', session.user.email || '').maybeSingle();
                     
                     let roleToUse = isFirstUser ? 'ADMIN' : 'SITE_USER';
                     let statusToUse = isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL';
@@ -1154,6 +1193,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                         email: dbUser.email,
                         role: dbUser.role_id as UserRole,
                         realRole: dbUser.role_id as UserRole,
+                        roleIds: [dbUser.role_id as UserRole],
                         avatar: dbUser.avatar,
                         jobTitle: dbUser.job_title,
                         status: dbUser.status === 'APPROVED' ? 'APPROVED' : 'PENDING_APPROVAL',
@@ -1208,7 +1248,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     } catch { return [] as string[]; }
                 })();
 
-                if (userData.role !== 'ADMIN') {
+                if (!isEffectiveAdminUser(userData)) {
                      if (userData.siteIds && userData.siteIds.length > 0) {
                          // Ensure currently selected sites are valid for this user
                          const validIds = currentSiteIds.filter(id => userData.siteIds.includes(id));
@@ -1612,13 +1652,15 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const hasPermission = (permissionId: PermissionId): boolean => {
       if (!currentUser) return false;
       // Admins have all permissions implicitly (safe fallback)
-      if (currentUser.role === 'ADMIN') return true;
+      if (isEffectiveAdminUser(currentUser)) return true;
       
-      const roleDef = roles.find(r => r.id === currentUser.role);
-      return roleDef ? roleDef.permissions.includes(permissionId) : false;
+      const assignedRoleIds = sessionRoleOverrideRef.current
+          ? [currentUser.role]
+          : getAssignedRoleIds(currentUser);
+      return roles.some(role => assignedRoleIds.includes(role.id) && role.permissions.includes(permissionId));
   };
 
-  const isUserAdmin = (): boolean => currentUser?.role === 'ADMIN';
+  const isUserAdmin = (): boolean => isEffectiveAdminUser(currentUser);
 
 
   const createRole = async (role: RoleDefinition) => {
@@ -1701,7 +1743,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       if (!currentUser) return;
       const realRole = currentUser.realRole || currentUser.role;
       const targetRole = roles.find(role => role.id === roleId);
-      if (realRole !== 'ADMIN' || !targetRole) {
+      if (!userHasAssignedRole(currentUser, 'ADMIN') || !targetRole) {
           console.warn('Role switch denied: only real admins can switch to an existing role.');
           return;
       }
@@ -1712,10 +1754,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const updateUserRole = (userId: string, role: UserRole) => {
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role, roleIds: getAssignedRoleIds({ ...u, role }) } : u));
       if (currentUser?.id === userId) {
-          if (role !== 'ADMIN') clearRoleOverride();
-          setCurrentUser(prev => prev ? ({ ...prev, realRole: role, role }) : null);
+          const nextRoleIds = getAssignedRoleIds({ ...currentUser, role, realRole: role });
+          if (!nextRoleIds.includes('ADMIN')) clearRoleOverride();
+          setCurrentUser(prev => prev ? ({ ...prev, realRole: role, role, roleIds: nextRoleIds }) : null);
       }
       // Persistence handled by updateUserAccess for full updates
       const user = users.find(u => u.id === userId);
@@ -1724,21 +1767,23 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
   };
 
-  const updateUserAccess = async (userId: string, role: UserRole, siteIds: string[]) => {
+  const updateUserAccess = async (userId: string, role: UserRole, roleIds: UserRole[], siteIds: string[]) => {
       const user = users.find(u => u.id === userId);
       if(!user) return;
+
+      const nextRoleIds = getAssignedRoleIds({ role, realRole: role, roleIds });
       
-      const updatedUser = { ...user, role, siteIds };
+      const updatedUser = { ...user, role, realRole: role, roleIds: nextRoleIds, siteIds };
       setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
       
       if (currentUser?.id === userId) {
-          if (role !== 'ADMIN') clearRoleOverride();
-          setCurrentUser(prev => prev ? ({ ...prev, realRole: role, role, siteIds }) : null);
+          if (!nextRoleIds.includes('ADMIN')) clearRoleOverride();
+          setCurrentUser(prev => prev ? ({ ...prev, realRole: role, role, roleIds: nextRoleIds, siteIds }) : null);
       }
 
       try {
           await db.upsertUser(updatedUser);
-          logAction('USER_ACCESS_UPDATED', { userId, email: user.email, role, siteIds });
+          logAction('USER_ACCESS_UPDATED', { userId, email: user.email, role, roleIds: nextRoleIds, siteIds });
       } catch (e) {
           console.error("Failed to update user access", e);
           reloadData();
@@ -1750,7 +1795,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const expiry = new Date();
       expiry.setDate(expiry.getDate() + 7); // Aligned to 7 days
       const normalizedEmail = user.email?.toLowerCase();
-      let userWithExpiry = { ...user, email: normalizedEmail, invitationExpiresAt: expiry.toISOString() };
+      const normalizedRoleIds = getAssignedRoleIds(user);
+      let userWithExpiry = { ...user, email: normalizedEmail, roleIds: normalizedRoleIds, invitationExpiresAt: expiry.toISOString() };
       
       if (shouldSendInvite && normalizedEmail) {
           try {
@@ -2037,7 +2083,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const existing = pos.find(p => p.id === poId);
       if (!existing) throw new Error('Request not found.');
 
-      const isAdmin = currentUser.role === 'ADMIN';
+      const isAdmin = isEffectiveAdminUser(currentUser);
       const isRequesterAndPending = existing.status === 'PENDING_APPROVAL' && existing.requesterId === currentUser.id;
       const canEdit = isAdmin || isRequesterAndPending;
 
@@ -2066,7 +2112,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       try {
           await db.updatePendingPO(poId, {
-              requesterId: currentUser.role === 'ADMIN' ? undefined : currentUser.id,
+              requesterId: isAdmin ? undefined : currentUser.id,
               customerName: updates.customerName,
               reasonForRequest: updates.reasonForRequest,
               comments: updates.comments,
@@ -2139,7 +2185,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           const target = pos.find(p => p.id === id);
           if (!target) throw new Error('Request not found.');
 
-          const isAdmin = currentUser?.role === 'ADMIN';
+          const isAdmin = isEffectiveAdminUser(currentUser);
           const isRequesterPending = Boolean(
               currentUser &&
               target.requesterId === currentUser.id &&

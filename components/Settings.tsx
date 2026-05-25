@@ -718,14 +718,14 @@ const Settings = () => {
   const [inviteStep, setInviteStep] = useState<1 | 2>(1);
   const [inviteTab, setInviteTab] = useState<'SEARCH' | 'MANUAL' | 'MEMBERS'>('SEARCH');
   const [inviteForm, setInviteForm] = useState({
-      id: '', name: '', email: '', jobTitle: '', role: 'SITE_USER', siteIds: [] as string[]
+      id: '', name: '', email: '', jobTitle: '', role: 'SITE_USER', roleIds: ['SITE_USER'] as UserRole[], siteIds: [] as string[]
   });
   
   const handleResetInviteWizard = () => {
       setInviteStep(1);
       setInviteTab('SEARCH');
       setInviteForm({ 
-        id: '', name: '', email: '', jobTitle: '', role: 'SITE_USER', 
+        id: '', name: '', email: '', jobTitle: '', role: 'SITE_USER', roleIds: ['SITE_USER'],
         siteIds: activeSiteIds.length > 0 ? activeSiteIds : (sites.length > 0 ? [sites[0].id] : [])
       });
       setDirectorySearch('');
@@ -741,6 +741,7 @@ const Settings = () => {
           email: u.email,
           jobTitle: u.jobTitle || '',
           role: u.isExisting ? u.currentRole : (activeRole && activeRole.id !== 'ALL' ? activeRole.id : 'SITE_USER'),
+          roleIds: u.isExisting ? (u.currentRoleIds || [u.currentRole]) : [activeRole && activeRole.id !== 'ALL' ? activeRole.id : 'SITE_USER'],
           siteIds: u.isExisting ? u.currentSiteIds : []
       });
       setInviteStep(2);
@@ -768,6 +769,7 @@ const Settings = () => {
           jobTitle: u.jobTitle,
           isExisting: true,
           currentRole: u.role,
+          currentRoleIds: u.roleIds || [u.role],
           currentSiteIds: u.siteIds || []
       }));
       
@@ -936,6 +938,36 @@ const Settings = () => {
       
       activeRole ? updateRole(newRole) : createRole(newRole);
       setIsRoleEditorOpen(false);
+  };
+
+  const toggleInviteRole = (roleId: UserRole) => {
+      setInviteForm(prev => {
+          const selected = prev.roleIds.includes(roleId);
+          const nextRoleIds = selected
+              ? prev.roleIds.filter(id => id !== roleId)
+              : [...prev.roleIds, roleId];
+
+          if (nextRoleIds.length === 0) {
+              return prev;
+          }
+
+          const nextPrimaryRole = nextRoleIds.includes(prev.role)
+              ? prev.role
+              : nextRoleIds[0];
+
+          return {
+              ...prev,
+              role: nextPrimaryRole,
+              roleIds: nextRoleIds
+          };
+      });
+  };
+
+  const setInvitePrimaryRole = (roleId: UserRole) => {
+      setInviteForm(prev => {
+          const roleIds = prev.roleIds.includes(roleId) ? prev.roleIds : [...prev.roleIds, roleId];
+          return { ...prev, role: roleId, roleIds };
+      });
   };
 
   const handleItemFormSubmit = (e: React.FormEvent) => { 
@@ -1281,6 +1313,7 @@ if __name__ == "__main__":
                 jobTitle: u.jobTitle,
                 isExisting: true,
                 currentRole: u.role,
+                currentRoleIds: u.roleIds || [u.role],
                 currentSiteIds: u.siteIds || []
             }));
 
@@ -1303,6 +1336,7 @@ if __name__ == "__main__":
           name: mockUser.name,
           email: mockUser.email,
           role: 'SITE_USER', // Default
+          roleIds: ['SITE_USER'],
           avatar: '',
           jobTitle: mockUser.jobTitle,
           createdAt: new Date().toISOString()
@@ -2651,10 +2685,12 @@ if __name__ == "__main__":
                                               </span>
                                           )
                                       )}
-                                      {/* Role */}
-                                      <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
-                                          {user.role}
-                                      </span>
+                                      {/* Roles */}
+                                      {(user.roleIds || [user.role]).map(roleId => (
+                                          <span key={roleId} className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${roleId === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>
+                                              {roles.find(r => r.id === roleId)?.name || roleId}
+                                          </span>
+                                      ))}
                                       {/* Sites */}
                                       {user.siteIds?.map(sid => {
                                           const s = sites.find(x => x.id === sid);
@@ -2826,10 +2862,11 @@ if __name__ == "__main__":
                           </div>
 
                           <button type="button" onClick={() => { 
-                              setInviteForm(prev => ({ 
-                                ...prev, 
+                              setInviteForm({ 
+                                id: '', name: '', email: '', jobTitle: '', role: 'SITE_USER', roleIds: ['SITE_USER'],
                                 siteIds: activeSiteIds.length > 0 ? activeSiteIds : (sites.length > 0 ? [sites[0].id] : []) 
-                              }));
+                              });
+                              setInviteStep(1);
                               setIsDirectoryModalOpen(true); 
                               setUserRoleFilter(''); 
                           }} className="btn-primary py-2 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20">
@@ -2853,7 +2890,7 @@ if __name__ == "__main__":
                                       const matchesSearch = !userSearch || 
                                           (u.name || '').toLowerCase().includes(userSearch.toLowerCase()) || 
                                           (u.email || '').toLowerCase().includes(userSearch.toLowerCase());
-                                      const matchesRole = !userRoleFilter || u.role === userRoleFilter;
+                                      const matchesRole = !userRoleFilter || (u.roleIds || [u.role]).includes(userRoleFilter);
                                       const matchesStatus = !userStatusFilter || (userStatusFilter === 'APPROVED' ? u.status === 'APPROVED' : userStatusFilter === 'PENDING_INVITED' ? (u.status === 'PENDING_APPROVAL' && u.invitedAt) : userStatusFilter === 'PENDING_NOT_INVITED' ? (u.status === 'PENDING_APPROVAL' && !u.invitedAt) : userStatusFilter === 'ARCHIVED' ? u.status === 'ARCHIVED' : true);
                                       const notArchived = userStatusFilter === 'ARCHIVED' ? true : u.status !== 'ARCHIVED';
                                       return matchesSearch && matchesRole && matchesStatus && notArchived;
@@ -2889,7 +2926,11 @@ if __name__ == "__main__":
                                                      <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight leading-none mb-1">{user.name || (user.email ? user.email.split('@')[0] : 'Unknown User')}</div>
                                                      <div className="text-xs text-gray-500 font-medium">{user.email || 'No Email'}</div>
                                                       <div className="flex flex-wrap gap-1 mt-2">
-                                                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>{user.role}</span>
+                                                        {(user.roleIds || [user.role]).map(roleId => (
+                                                            <span key={roleId} className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${roleId === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]'}`}>
+                                                                {roles.find(r => r.id === roleId)?.name || roleId}
+                                                            </span>
+                                                        ))}
                                                         {user.siteIds && user.siteIds.map(sid => {
                                                             const s = sites.find(x => x.id === sid);
                                                             return s ? <span key={sid} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[9px] font-bold rounded text-gray-500 uppercase">{s.name}</span> : null;
@@ -2925,6 +2966,7 @@ if __name__ == "__main__":
                                                             email: user.email,
                                                             jobTitle: user.jobTitle || '',
                                                             role: user.role,
+                                                            roleIds: user.roleIds || [user.role],
                                                             siteIds: user.siteIds || []
                                                         });
                                                         setInviteStep(2);
@@ -3061,7 +3103,7 @@ if __name__ == "__main__":
                                   </div>
                                   <div className="flex-1 min-w-0">
                                   <div className="font-bold text-sm truncate tracking-tight">{role.name}</div>
-                                      <div className={`text-[10px] font-bold ${activeRole?.id === role.id ? 'text-white/80' : 'text-gray-400'}`}>{users.filter(u => u.role === role.id && u.status !== 'ARCHIVED').length} members</div>
+                                      <div className={`text-[10px] font-bold ${activeRole?.id === role.id ? 'text-white/80' : 'text-gray-400'}`}>{users.filter(u => (u.roleIds || [u.role]).includes(role.id) && u.status !== 'ARCHIVED').length} members</div>
                                   </div>
                                   {activeRole?.id !== role.id && <ChevronRight size={14} className="text-gray-300 dark:text-gray-700 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all"/>}
                               </button>
@@ -4077,8 +4119,8 @@ if __name__ == "__main__":
                                            <div className="space-y-4">
                                                <h4 className="text-xs font-bold text-gray-500 uppercase">Active Members</h4>
                                                <div className="grid grid-cols-1 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                                   {users.filter(u => u.status !== 'ARCHIVED' && (userRoleFilter ? u.role !== userRoleFilter : true)).map(u => (
-                                                       <div key={u.id} onClick={() => handleSelectUserForInvite({ id: u.id, name: u.name, email: u.email, jobTitle: u.jobTitle, isExisting: true, currentRole: u.role, currentSiteIds: u.siteIds || [] })} className="bg-white dark:bg-[#15171e] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group hover:border-[var(--color-brand)] hover:shadow-md transition-all cursor-pointer">
+                                                   {users.filter(u => u.status !== 'ARCHIVED' && (userRoleFilter ? !((u.roleIds || [u.role]).includes(userRoleFilter)) : true)).map(u => (
+                                                       <div key={u.id} onClick={() => handleSelectUserForInvite({ id: u.id, name: u.name, email: u.email, jobTitle: u.jobTitle, isExisting: true, currentRole: u.role, currentRoleIds: u.roleIds || [u.role], currentSiteIds: u.siteIds || [] })} className="bg-white dark:bg-[#15171e] p-3 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group hover:border-[var(--color-brand)] hover:shadow-md transition-all cursor-pointer">
                                                            <div className="flex items-center gap-3">
                                                                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
                                                                    {u.name.charAt(0)}
@@ -4089,7 +4131,9 @@ if __name__ == "__main__":
                                                                </div>
                                                            </div>
                                                            <div className="flex flex-col items-end gap-1">
-                                                               <span className="text-[10px] font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded uppercase">{u.role}</span>
+                                                               <span className="text-[10px] font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded uppercase">
+                                                                   {(u.roleIds?.length || 0) > 1 ? `${u.roleIds?.length} roles` : u.role}
+                                                               </span>
                                                                <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                    <button type="button" 
                                                                        onClick={(e) => {
@@ -4167,28 +4211,55 @@ if __name__ == "__main__":
                                              <div className="space-y-4">
                                                  <div className="flex items-center justify-between">
                                                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                                                         <Shield size={14} className="text-[var(--color-brand)]"/> Assigned Role
+                                                         <Shield size={14} className="text-[var(--color-brand)]"/> Assigned Roles
                                                      </label>
+                                                     <span className="text-[10px] font-bold text-gray-400">{inviteForm.roleIds.length} selected</span>
                                                  </div>
                                                  <div className="grid grid-cols-1 gap-2">
-                                                     {roles.map(r => (
-                                                         <label 
-                                                            key={r.id} 
-                                                            className={`group relative flex items-start gap-4 p-4 rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden ${inviteForm.role === r.id ? 'bg-[var(--color-brand)]/5 border-[var(--color-brand)] shadow-lg shadow-[var(--color-brand)]/5' : 'bg-white dark:bg-[#15171e] border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'}`}
+                                                     {roles.map(r => {
+                                                         const isSelected = inviteForm.roleIds.includes(r.id);
+                                                         const isPrimary = inviteForm.role === r.id;
+                                                         return (
+                                                         <div
+                                                            key={r.id}
+                                                            role="checkbox"
+                                                            aria-checked={isSelected}
+                                                            tabIndex={0}
+                                                            onClick={() => toggleInviteRole(r.id)}
+                                                            onKeyDown={e => {
+                                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                                    e.preventDefault();
+                                                                    toggleInviteRole(r.id);
+                                                                }
+                                                            }}
+                                                            className={`group relative flex items-start gap-4 p-4 rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden ${isSelected ? 'bg-[var(--color-brand)]/5 border-[var(--color-brand)] shadow-lg shadow-[var(--color-brand)]/5' : 'bg-white dark:bg-[#15171e] border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'}`}
                                                          >
-                                                             <div className={`mt-1 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${inviteForm.role === r.id ? 'border-[var(--color-brand)] bg-[var(--color-brand)]' : 'border-gray-300 dark:border-gray-700'}`}>
-                                                                 {inviteForm.role === r.id && <Check size={12} className="text-white" />}
+                                                             <div className={`mt-1 flex-shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'border-[var(--color-brand)] bg-[var(--color-brand)]' : 'border-gray-300 dark:border-gray-700'}`}>
+                                                                 {isSelected && <Check size={12} className="text-white" />}
                                                              </div>
-                                                             <input type="radio" name="role" className="hidden" checked={inviteForm.role === r.id} onChange={() => setInviteForm({...inviteForm, role: r.id})} />
-                                                             <div className="relative min-w-0">
-                                                                 <div className={`font-black text-sm mb-0.5 transition-colors ${inviteForm.role === r.id ? 'text-gray-900 dark:text-white' : 'text-gray-500 group-hover:text-gray-700 dark:group-hover:text-gray-300'}`}>{r.name}</div>
+                                                             <input type="checkbox" className="hidden" checked={isSelected} onChange={() => toggleInviteRole(r.id)} />
+                                                             <div className="relative min-w-0 flex-1">
+                                                                 <div className={`font-black text-sm mb-0.5 transition-colors ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-500 group-hover:text-gray-700 dark:group-hover:text-gray-300'}`}>{r.name}</div>
                                                                  <div className="text-[11px] text-gray-400 leading-relaxed font-medium line-clamp-2">{r.description}</div>
+                                                                 {isSelected && (
+                                                                     <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setInvitePrimaryRole(r.id);
+                                                                        }}
+                                                                        className={`mt-2 text-[9px] font-black uppercase tracking-widest rounded-lg px-2 py-1 border transition-all ${isPrimary ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)]' : 'text-gray-400 border-gray-200 dark:border-gray-700 hover:text-[var(--color-brand)] hover:border-[var(--color-brand)]'}`}
+                                                                     >
+                                                                        {isPrimary ? 'Default role' : 'Make default'}
+                                                                     </button>
+                                                                 )}
                                                              </div>
-                                                             {inviteForm.role === r.id && (
+                                                             {isPrimary && (
                                                                  <div className="absolute right-0 top-0 bottom-0 w-1 bg-[var(--color-brand)]" />
                                                              )}
-                                                         </label>
-                                                     ))}
+                                                         </div>
+                                                     );
+                                                     })}
                                                  </div>
                                              </div>
 
@@ -4251,7 +4322,9 @@ if __name__ == "__main__":
                                                   <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-900/20 flex items-start gap-3">
                                                       <Info size={14} className="text-amber-500 mt-0.5 shrink-0" />
                                                       <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium leading-relaxed">
-                                                          Users will only have access to data and notifications related to the sites selected above.
+                                                          {inviteForm.roleIds.includes('ADMIN')
+                                                              ? 'Admin users can access all sites and existing data. Site selections only affect their default site context.'
+                                                              : 'Users will only have access to data and notifications related to the sites selected above.'}
                                                       </p>
                                                   </div>
                                              </div>
@@ -4280,7 +4353,7 @@ if __name__ == "__main__":
                                              if (existingUser) {
                                                  const targetId = existingUser.id;
                                                  if (targetId) {
-                                                     await updateUserAccess(targetId, inviteForm.role as UserRole, inviteForm.siteIds);
+                                                     await updateUserAccess(targetId, inviteForm.role as UserRole, inviteForm.roleIds as UserRole[], inviteForm.siteIds);
                                                      alert(`Access updated for ${inviteForm.name}`);
                                                  }
                                              } else {
@@ -4292,6 +4365,7 @@ if __name__ == "__main__":
                                                     name: inviteForm.name,
                                                     email: inviteForm.email,
                                                     role: inviteForm.role,
+                                                    roleIds: inviteForm.roleIds,
                                                     jobTitle: inviteForm.jobTitle,
                                                     siteIds: inviteForm.siteIds,
                                                     avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inviteForm.name)}&background=random`,

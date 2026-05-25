@@ -74,7 +74,7 @@ const PODetail = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _supplier = po ? suppliers.find(s => s.id === po.supplierId) : undefined;
 
-  const isAdmin = currentUser?.role === 'ADMIN';
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
 
   const canEditRequest = Boolean(
     po &&
@@ -660,6 +660,22 @@ const PODetail = () => {
       }
   };
 
+  const handleDeleteDelivery = async (delivery: DeliveryHeader) => {
+      const lineCount = delivery.lines.length;
+      const confirmed = globalThis.confirm(
+          `Delete delivery ${delivery.docketNumber || delivery.id}? This will remove ${lineCount} received line${lineCount === 1 ? '' : 's'} and recalculate the PO received quantities.`
+      );
+      if (!confirmed) return;
+
+      try {
+          await db.deleteDelivery(delivery.id);
+          await reloadData(true);
+      } catch (e: unknown) {
+          console.error(e);
+          alert('Failed to delete delivery: ' + (e as Error).message);
+      }
+  };
+
   /* Side Effect: If forcing to RECEIVED/CLOSED and no deliveries exist, create dummy delivery so it appears in Finance Review */
   const ensureDeliveryRecord = async (targetStatus: string) => {
       // Only strictly relevant for statuses that imply goods receipt
@@ -803,7 +819,7 @@ const PODetail = () => {
                         <Trash2 size={18} />
                     </button>
                )}
-               {currentUser?.role === 'ADMIN' && (
+               {isAdmin && (
                     <button type="button" onClick={() => setIsStatusModalOpen(true)} className="p-2.5 text-amber-600 hover:text-amber-700 border border-amber-200 rounded-xl hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Admin: Force Status">
                         <Shield size={18} />
                     </button>
@@ -1290,7 +1306,7 @@ const PODetail = () => {
                     ) : (
                         po.deliveries.map(del => (
                             <div key={del.id} className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-sm">
-                                <div className="bg-gray-50 dark:bg-[#15171e] px-4 md:px-6 py-3 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
+                                <div className="bg-gray-50 dark:bg-[#15171e] px-4 md:px-6 py-3 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-3">
                                     <div className="flex items-center gap-3">
                                         <div className="bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 p-2 rounded-lg"><Truck size={18}/></div>
                                         <div>
@@ -1325,6 +1341,17 @@ const PODetail = () => {
                                             </span>
                                         </div>
                                     </div>
+                                    {isEditing && canEditDeliveries && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteDelivery(del)}
+                                            className="shrink-0 p-2 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-500/10 transition-colors"
+                                            title="Delete delivery entry"
+                                            aria-label={`Delete delivery ${del.docketNumber || del.id}`}
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    )}
                                 </div>
                                 <div className="p-4 bg-white dark:bg-nocturne">
                                     <table className="w-full text-sm">

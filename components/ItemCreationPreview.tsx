@@ -200,7 +200,7 @@ const ItemCreationPreview = () => {
   const [catalogueMode, setCatalogueMode] = useState<'COMBINED' | 'LIVE' | 'PREVIEW'>('COMBINED');
   const [reviewBundleId, setReviewBundleId] = useState<string>('');
 
-  const canUsePreview = hasPermission('manage_development') || currentUser?.role === 'ADMIN';
+  const canUsePreview = hasPermission('manage_development') || currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
 
   const loadPreview = async () => {
     setIsLoading(true);

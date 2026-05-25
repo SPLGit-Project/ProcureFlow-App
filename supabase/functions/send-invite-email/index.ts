@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 }
 
-const VERSION = "1.0.8";
+const VERSION = "1.0.9";
 
 console.log(`send-invite-email function v${VERSION} initialized.`);
 
@@ -88,7 +88,18 @@ Deno.serve(async (req) => {
       throw new Error("Your user record was not found in the directory.");
     }
 
-    if (!['ADMIN', 'SITE_ADMIN', 'OWNER'].includes(dbUser.role_id)) {
+    const { data: assignedRoles, error: rolesError } = await supabaseAdmin
+      .from('user_roles')
+      .select('role_id')
+      .eq('user_id', dbUser.id);
+
+    if (rolesError) {
+      console.error("User role lookup failed:", rolesError);
+      throw new Error("Could not verify your role assignments.");
+    }
+
+    const roleIds = new Set([dbUser.role_id, ...(assignedRoles || []).map((row) => row.role_id)]);
+    if (!['ADMIN', 'SITE_ADMIN', 'OWNER'].some((roleId) => roleIds.has(roleId))) {
       throw new Error("Insufficient permissions to send invitations.");
     }
 
@@ -166,18 +177,18 @@ Deno.serve(async (req) => {
 
     // 5. Template Construction
     const origin = req.headers.get('origin') || 'https://procureflow.splservices.com.au'
-    const inviteUrl = `${origin}/invite?token=${token}`
+    const loginUrl = `${origin}/login`
     
     let finalHtml = html || "";
     if (finalHtml && finalHtml.includes("{link}")) {
-      finalHtml = finalHtml.replace(/{link}/g, `<a href="${inviteUrl}" target="_blank" style="color: #2563eb; font-weight: bold;">Accept Invitation</a>`);
+      finalHtml = finalHtml.replace(/{link}/g, `<a href="${loginUrl}" target="_blank" style="color: #2563eb; font-weight: bold;">Sign in</a>`);
     } else if (!finalHtml) {
       finalHtml = `
         <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; margin: 20px auto;">
           <h2 style="color: #1f2937;">Welcome to ProcureFlow</h2>
           <p style="color: #4b5563;">You've been invited by <strong>${invited_by_name || 'an Admin'}</strong> to join the platform.</p>
           <div style="margin: 32px 0;">
-            <a href="${inviteUrl}" style="background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Join ProcureFlow</a>
+            <a href="${loginUrl}" style="background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Sign in to ProcureFlow</a>
           </div>
           <p style="color: #9ca3af; font-size: 13px;">This invitation link will expire in 7 days.</p>
         </div>
