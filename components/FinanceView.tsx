@@ -4,9 +4,11 @@ import { useApp } from '../context/AppContext';
 import { Search, Calendar, Filter, FileText, ChevronDown, ChevronRight, CheckCircle2, DollarSign, Copy, MapPin, X } from 'lucide-react';
 import ContextHelp from './ContextHelp';
 import PageHeader from './PageHeader';
+import { useSetPageMeta } from '../context/PageMetaContext.tsx';
 
 const FinanceView = () => {
   const { pos, updateFinanceInfo } = useApp();
+  useSetPageMeta({ disableBodyScroll: true });
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSite, setFilterSite] = useState('');
   const [expandedPOs, setExpandedPOs] = useState<Record<string, boolean>>({});
@@ -165,16 +167,18 @@ const FinanceView = () => {
   };
 
   return (
-    <div className="space-y-6 pb-20 animate-fade-in">
-      <PageHeader
-        title="Finance Review"
-        subtitle="Manage capitalization and invoices for received goods."
-        helpTitle="Finance & Capitalization"
-        helpDescription="Learn how to match invoices and capitalise assets correctly."
-        helpLinkTarget="finance-capitalization"
-      />
+    <div className="h-full flex flex-col space-y-4 md:space-y-6 overflow-hidden pb-20 md:pb-0 animate-fade-in">
+      <div className="shrink-0">
+        <PageHeader
+          title="Finance Review"
+          subtitle="Manage capitalization and invoices for received goods."
+          helpTitle="Finance & Capitalization"
+          helpDescription="Learn how to match invoices and capitalise assets correctly."
+          helpLinkTarget="finance-capitalization"
+        />
+      </div>
 
-      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col flex-1 min-h-0">
          {/* Filters */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne flex flex-col gap-4">
              {/* Row 1: Search + Site Filter */}
@@ -250,7 +254,7 @@ const FinanceView = () => {
 
         </div>
         
-        <div className="divide-y divide-gray-200 dark:divide-gray-800">
+        <div className="divide-y divide-gray-200 dark:divide-gray-800 overflow-auto flex-1 min-h-0">
             {groupedData.map(po => {
                 const isExpanded = expandedPOs[po.poId] === true; // Default collapsed
                 const fullyCapitalised = po.deliveries.every(d => d.lines.every(l => l.data.isCapitalised));

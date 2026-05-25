@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
 import PageMetaContext, { type PageMeta } from '../context/PageMetaContext.tsx';
 import {
@@ -606,6 +606,14 @@ const Layout = () => {
                         </button>
                       </>
                     )}
+                    {location.pathname === '/requests' && hasPermission('create_request') && (
+                      <Link
+                        to="/create"
+                        className="bg-tranquil text-white h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest hover:opacity-90 active:scale-95 shadow-sm shadow-tranquil/30 transition-all flex items-center gap-1.5 shrink-0 mr-1"
+                      >
+                        + New Request
+                      </Link>
+                    )}
                     <NavLink
                       to="/"
                       className={({ isActive }) =>
@@ -644,7 +652,7 @@ const Layout = () => {
               })()}
             </div>
 
-            <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 scroll-smooth pb-20 md:pb-8">
+            <main className={`flex-1 overflow-y-auto ${pageMeta.disableBodyScroll ? 'md:overflow-hidden' : ''} overflow-x-hidden p-3 sm:p-4 md:p-6 flex flex-col pb-20 md:pb-8`}>
               <div className="animate-page-entry">
                 <Outlet />
               </div>
@@ -898,6 +906,14 @@ const Layout = () => {
                 </button>
               </>
             )}
+            {location.pathname === '/requests' && hasPermission('create_request') && (
+              <Link
+                to="/create"
+                className="bg-[var(--color-brand)] text-white h-9 px-4 rounded-xl text-xs font-bold hover:opacity-90 active:scale-95 shadow-sm shadow-[var(--color-brand)]/20 transition-all flex items-center gap-1.5 shrink-0 mr-2"
+              >
+                + New Request
+              </Link>
+            )}
             <NavLink
               to="/"
               className={({ isActive }) =>
@@ -960,7 +976,7 @@ const Layout = () => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-8 scroll-smooth pb-safe">
+        <main className={`flex-1 overflow-y-auto ${pageMeta.disableBodyScroll ? 'md:overflow-hidden' : ''} overflow-x-hidden p-3 sm:p-4 md:p-8 flex flex-col pb-safe`}>
           <Outlet />
         </main>
       </div>

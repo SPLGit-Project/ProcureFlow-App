@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
+import { useSetPageMeta } from '../context/PageMetaContext.tsx';
 import AvatarPicker from './AvatarPicker.tsx';
 
 import {
@@ -131,6 +132,7 @@ const Settings = () => {
     activeSiteIds,
     featureFlags
   } = useApp();
+  useSetPageMeta({ disableBodyScroll: true });
 
   const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
 
@@ -1392,7 +1394,7 @@ if __name__ == "__main__":
   );
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 px-4 md:px-8">
+    <div className="h-full flex flex-col overflow-hidden max-w-7xl mx-auto pb-12 px-4 md:px-8">
       {/* Page header — only shown in classic mode; revamp header handles title */}
       {!uiRevamp && (
         <div className="py-6 md:py-8">
@@ -1466,7 +1468,7 @@ if __name__ == "__main__":
         adminTabSlot
       )}
 
-      <div className="mt-6">
+      <div className="mt-6 flex-1 overflow-y-auto min-h-0 pb-12">
 
       {activeTab === 'PROFILE' && (
           <div className="animate-fade-in max-w-2xl">

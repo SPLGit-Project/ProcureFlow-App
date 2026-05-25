@@ -26,6 +26,8 @@ export interface PageMeta {
   stepInfo?: StepInfo;
   /** When set, the Layout header renders wizard action buttons */
   wizardActions?: WizardActions;
+  /** When true, disables body scroll on desktop to allow child scroll containers */
+  disableBodyScroll?: boolean;
 }
 
 const PageMetaContext = React.createContext<{
@@ -47,6 +49,7 @@ export const useSetPageMeta = (meta: PageMeta) => {
     meta.helpTitle ?? '',
     meta.helpLinkTarget ?? '',
     meta.stepInfo ? `${meta.stepInfo.current}/${meta.stepInfo.total}/${meta.stepInfo.label}` : '',
+    String(meta.disableBodyScroll ?? false),
     meta.wizardActions
       ? [
           meta.wizardActions.continueLabel ?? '',

@@ -18,6 +18,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { POStatus } from '../types.ts';
 import ContextHelp from './ContextHelp';
 import PageHeader from './PageHeader';
+import { useSetPageMeta } from '../context/PageMetaContext.tsx';
 import { ToastContainer, useToast } from './ToastNotification';
 
 type BaseFilter = 'ALL' | 'PENDING' | 'COMPLETED';
@@ -139,6 +140,7 @@ const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
 
 const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
   const { pos, hasPermission, currentUser, userSites, siteName: resolveSiteName, reloadData } = useApp();
+  useSetPageMeta({ disableBodyScroll: true });
   const location = useLocation();
   const navigate = useNavigate();
   const { toasts, dismissToast, success } = useToast();
@@ -369,8 +371,8 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
   };
 
   return (
-    <div className="space-y-6 pb-20">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="h-full flex flex-col space-y-4 md:space-y-6 overflow-hidden pb-20 md:pb-0">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
         <div>
           <PageHeader
             title={filter === 'PENDING' ? 'Pending Approvals' : filter === 'COMPLETED' ? 'Completed Requests' : 'Requests'}
@@ -383,14 +385,14 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
         {filter === 'ALL' && hasPermission('create_request') && (
           <Link
             to="/create"
-            className="w-full md:w-auto bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl hover:opacity-90 font-semibold shadow-lg shadow-[var(--color-brand)]/20 transition-all text-center"
+            className="w-full md:hidden bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl hover:opacity-90 font-semibold shadow-lg shadow-[var(--color-brand)]/20 transition-all text-center"
           >
             + New Request
           </Link>
         )}
       </div>
 
-      <div className="bg-surface rounded-2xl elevation-1 border border-default overflow-hidden">
+      <div className="bg-surface rounded-2xl elevation-1 border border-default overflow-hidden flex flex-col flex-1 min-h-0">
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -483,9 +485,9 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
         </div>
 
         {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left text-sm text-secondary dark:text-gray-400">
-            <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-semibold border-b border-gray-200 dark:border-gray-800">
+        <div className="hidden md:block overflow-auto flex-1 min-h-0">
+          <table className="w-full text-left text-sm text-secondary dark:text-gray-400 relative">
+            <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-semibold border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
               <tr>
                 <th className="px-6 py-4">Site</th>
                 <th className="px-6 py-4">Customer</th>
