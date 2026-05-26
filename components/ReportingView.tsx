@@ -15,6 +15,7 @@ import {
     Calendar
 } from 'lucide-react';
 import PageHeader from './PageHeader.tsx';
+import { useSetPageMeta } from '../context/PageMetaContext.tsx';
 import {
     Bar,
     BarChart,
@@ -635,6 +636,7 @@ const buildCsv = (report: ReportType, data: ReportRow[]) => {
 
 const ReportingView = () => {
     const { pos, cachedReports, cachedRunTimes, setReportCache } = useApp();
+    useSetPageMeta({ disableBodyScroll: true });
     const [activeReport, setActiveReport] = useState<ReportType>(() => {
         const saved = sessionStorage.getItem('pf_active_report');
         return (saved as ReportType) || 'OUTSTANDING_DELIVERIES';
@@ -950,12 +952,12 @@ const ReportingView = () => {
     );
 
     return (
-        <div className="space-y-6 pb-20 animate-fade-in">
+        <div className="flex-1 min-h-0 flex flex-col space-y-4 md:space-y-6 overflow-hidden pb-20 md:pb-0 animate-fade-in">
             <PageHeader title="Reports & Analytics" subtitle="Generate reports for delivery tracking and financial auditing." />
 
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-                <div className="xl:col-span-1 space-y-2">
-                    <div className="bg-white dark:bg-nocturne rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-2">
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 flex-1 min-h-0 overflow-hidden">
+                <div className="xl:col-span-1 space-y-2 flex flex-col min-h-0 shrink-0">
+                    <div className="bg-white dark:bg-nocturne rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-2 overflow-y-auto max-h-[300px] xl:max-h-none">
                         <div className="flex flex-col sm:flex-row xl:flex-col gap-2">
                             <ReportButton active={activeReport === 'OUTSTANDING_DELIVERIES'} icon={AlertCircle} label="Outstanding Deliveries" onClick={() => switchReport('OUTSTANDING_DELIVERIES')} />
                             <ReportButton active={activeReport === 'ALL_DELIVERIES'} icon={Package} label="All Deliveries" onClick={() => switchReport('ALL_DELIVERIES')} />
@@ -974,9 +976,9 @@ const ReportingView = () => {
                     </div>
                 </div>
 
-                <div className="xl:col-span-3">
-                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-[420px] md:min-h-[500px] flex flex-col">
-                        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col lg:flex-row justify-between lg:items-center gap-4">
+                <div className="xl:col-span-3 flex flex-col min-h-0">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col flex-1 min-h-0 overflow-hidden">
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col lg:flex-row justify-between lg:items-center gap-4 shrink-0">
                             <div className="min-w-0">
                                 <h2 className="font-bold text-gray-900 dark:text-white">{REPORT_TITLES[activeReport]}</h2>
                                 {lastRun && <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 flex items-center gap-1"><CheckCircle2 size={10} /> Data updated at: {lastRun}</p>}
@@ -993,7 +995,7 @@ const ReportingView = () => {
                         </div>
 
                         {reportData.length > 0 && !isLoading && (
-                            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 space-y-3">
+                            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 space-y-3 shrink-0">
                                 <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
                                     {canUseChart ? (
                                         <div className="flex bg-white dark:bg-[#15171e] p-1 rounded-lg border border-gray-200 dark:border-gray-800 w-full sm:w-fit">
@@ -1198,11 +1200,16 @@ const ReportingView = () => {
                             </div>
                         )}
 
-                        <div className="flex-1 p-0 overflow-x-auto">
-                            {reportData.length === 0 && !isLoading ? (
+                        <div className="flex-1 p-0 overflow-auto min-h-0 relative flex flex-col">
+                            {isLoading ? (
+                                <div className="flex flex-col items-center justify-center flex-1 h-full text-tertiary dark:text-gray-400 py-20 min-h-[300px]">
+                                    <div className="w-8 h-8 border-4 border-[var(--color-brand)]/20 border-t-[var(--color-brand)] rounded-full animate-spin" />
+                                    <p className="text-xs mt-3 font-semibold text-gray-500 uppercase tracking-widest animate-pulse">Generating Report...</p>
+                                </div>
+                            ) : reportData.length === 0 ? (
                                 <EmptyState />
-                            ) : visibleReportData.length === 0 && !isLoading ? (
-                                <div className="flex flex-col items-center justify-center h-full text-tertiary dark:text-gray-400 space-y-3 py-20">
+                            ) : visibleReportData.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center flex-1 h-full text-tertiary dark:text-gray-400 space-y-3 py-20 min-h-[300px]">
                                     <AlertCircle size={32} className="opacity-50" />
                                     <div className="text-center">
                                         <h3 className="text-sm font-medium text-gray-900 dark:text-white">No Matching Rows</h3>
@@ -1573,7 +1580,7 @@ const MonthlySummaryVisual = ({ rows }: { rows: MonthlySummaryAggregatedRow[] })
 
 const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: ReportRow[] }) => (
     <table className="w-full min-w-[900px] text-sm text-left">
-        <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0">
+        <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
             <tr>
                 {activeReport === 'OUTSTANDING_DELIVERIES' && (
                     <>
