@@ -390,8 +390,9 @@ const buildItemRequestHistoryRows = (pos: PORequest[]): ItemRequestHistoryRow[] 
     })).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 };
 
-const buildMonthlySummaryRows = (pos: PORequest[]): MonthlySummaryReportRow[] => {
-    const startDate = new Date('2025-07-01T00:00:00').getTime();
+const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDateStr: string): MonthlySummaryReportRow[] => {
+    const startDate = new Date(startDateStr + 'T00:00:00').getTime();
+    const endDate = new Date(endDateStr + 'T23:59:59').getTime();
     const groups: Record<string, {
         monthKey: string;
         month: string;
@@ -406,7 +407,7 @@ const buildMonthlySummaryRows = (pos: PORequest[]): MonthlySummaryReportRow[] =>
         if (po.status === 'DRAFT' || po.status === 'REJECTED') return;
 
         const requestTime = new Date(po.requestDate).getTime();
-        if (isNaN(requestTime) || requestTime < startDate) return;
+        if (isNaN(requestTime) || requestTime < startDate || requestTime > endDate) return;
 
         const dateObj = new Date(po.requestDate);
         const year = dateObj.getFullYear();
@@ -583,8 +584,18 @@ const ReportingView = () => {
     const [dateRangeType, setDateRangeType] = useState<'RECENT' | 'HISTORICAL' | 'ALL' | 'CUSTOM'>('RECENT');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
-    const [selectedMonth, setSelectedMonth] = useState('ALL');
-    const [selectedYear, setSelectedYear] = useState('ALL');
+    const [monthlyStartDate, setMonthlyStartDate] = useState('2025-07-01');
+    const [monthlyEndDate, setMonthlyEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+    const handleStartDateChange = (val: string) => {
+        setMonthlyStartDate(val);
+        setReportCache('MONTHLY_SUMMARY', []);
+    };
+
+    const handleEndDateChange = (val: string) => {
+        setMonthlyEndDate(val);
+        setReportCache('MONTHLY_SUMMARY', []);
+    };
 
     useEffect(() => {
         sessionStorage.setItem('pf_active_report', activeReport);
@@ -599,27 +610,7 @@ const ReportingView = () => {
 
     const siteOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.site || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
     const supplierOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.supplier || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
-    const yearOptions = useMemo(() => {
-        if (activeReport !== 'MONTHLY_SUMMARY') return ['ALL'];
-        const years = Array.from(new Set(reportData.map((row) => (row as MonthlySummaryReportRow).monthKey.split('-')[0]))).sort();
-        return ['ALL', ...years];
-    }, [activeReport, reportData]);
 
-    const MONTH_OPTIONS = [
-        { value: 'ALL', label: 'All Months' },
-        { value: '01', label: 'January' },
-        { value: '02', label: 'February' },
-        { value: '03', label: 'March' },
-        { value: '04', label: 'April' },
-        { value: '05', label: 'May' },
-        { value: '06', label: 'June' },
-        { value: '07', label: 'July' },
-        { value: '08', label: 'August' },
-        { value: '09', label: 'September' },
-        { value: '10', label: 'October' },
-        { value: '11', label: 'November' },
-        { value: '12', label: 'December' }
-    ];
     const itemOptions = useMemo(() => {
         const options = new Map<string, { id: string; label: string }>();
         reportData.forEach((row) => {
@@ -681,17 +672,9 @@ const ReportingView = () => {
                 }
             }
 
-            let matchesMonth = true;
-            let matchesYear = true;
-            if (activeReport === 'MONTHLY_SUMMARY') {
-                const [y, m] = String(row.monthKey || '').split('-');
-                if (selectedMonth !== 'ALL') matchesMonth = m === selectedMonth;
-                if (selectedYear !== 'ALL') matchesYear = y === selectedYear;
-            }
-
-            return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate && matchesMonth && matchesYear;
+            return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate;
         });
-    }, [isFilterableReport, isItemHistoryReport, activeReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier, dateRangeType, customStartDate, customEndDate, selectedMonth, selectedYear]);
+    }, [isFilterableReport, isItemHistoryReport, activeReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier, dateRangeType, customStartDate, customEndDate]);
 
     const outstandingRows = visibleReportData as OutstandingDeliveryReportRow[];
     const varianceRows = visibleReportData as DeliveryVarianceReportRow[];
@@ -753,8 +736,8 @@ const ReportingView = () => {
         setSelectedSite('ALL');
         setSelectedSupplier('ALL');
         setSelectedItemId('ALL');
-        setSelectedMonth('ALL');
-        setSelectedYear('ALL');
+        setMonthlyStartDate('2025-07-01');
+        setMonthlyEndDate(() => new Date().toISOString().split('T')[0]);
     };
 
     const runReport = () => {
@@ -778,7 +761,7 @@ const ReportingView = () => {
             } else if (activeReport === 'ITEM_REQUEST_HISTORY') {
                 data = buildItemRequestHistoryRows(pos);
             } else if (activeReport === 'MONTHLY_SUMMARY') {
-                data = buildMonthlySummaryRows(pos);
+                data = buildMonthlySummaryRows(pos, monthlyStartDate, monthlyEndDate);
             }
 
             setReportCache(activeReport, data);
@@ -889,8 +872,10 @@ const ReportingView = () => {
         selectedSite !== 'ALL' ||
         selectedSupplier !== 'ALL' ||
         selectedItemId !== 'ALL' ||
-        selectedMonth !== 'ALL' ||
-        selectedYear !== 'ALL' ||
+        (activeReport === 'MONTHLY_SUMMARY' && (
+            monthlyStartDate !== '2025-07-01' ||
+            monthlyEndDate !== new Date().toISOString().split('T')[0]
+        )) ||
         (isItemHistoryReport && (
             dateRangeType !== 'RECENT' ||
             customStartDate !== '' ||
@@ -1031,7 +1016,7 @@ const ReportingView = () => {
                                             isItemHistoryReport 
                                                 ? 'md:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_150px_170px_auto]' 
                                                 : activeReport === 'MONTHLY_SUMMARY'
-                                                    ? 'md:grid-cols-[minmax(0,1fr)_140px_160px_130px_100px_auto]'
+                                                    ? 'md:grid-cols-[minmax(0,1fr)_130px_140px_180px_180px_auto]'
                                                     : 'md:grid-cols-[minmax(0,1fr)_160px_180px_auto]'
                                         }`}>
                                             <label className="relative block">
@@ -1068,20 +1053,24 @@ const ReportingView = () => {
                                             </select>
                                             {activeReport === 'MONTHLY_SUMMARY' && (
                                                 <>
-                                                    <select
-                                                        value={selectedMonth}
-                                                        onChange={(event) => setSelectedMonth(event.target.value)}
-                                                        className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                    >
-                                                        {MONTH_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                                                    </select>
-                                                    <select
-                                                        value={selectedYear}
-                                                        onChange={(event) => setSelectedYear(event.target.value)}
-                                                        className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                    >
-                                                        {yearOptions.map((year) => <option key={year} value={year}>{year === 'ALL' ? 'All Years' : year}</option>)}
-                                                    </select>
+                                                    <div className="flex items-center gap-1.5 min-w-[140px]">
+                                                        <span className="text-xs text-tertiary dark:text-gray-500 whitespace-nowrap">From:</span>
+                                                        <input
+                                                            type="date"
+                                                            value={monthlyStartDate}
+                                                            onChange={(event) => handleStartDateChange(event.target.value)}
+                                                            className="w-full text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                        />
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 min-w-[140px]">
+                                                        <span className="text-xs text-tertiary dark:text-gray-500 whitespace-nowrap">To:</span>
+                                                        <input
+                                                            type="date"
+                                                            value={monthlyEndDate}
+                                                            onChange={(event) => handleEndDateChange(event.target.value)}
+                                                            className="w-full text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                        />
+                                                    </div>
                                                 </>
                                             )}
                                             <button
@@ -1094,8 +1083,9 @@ const ReportingView = () => {
                                                     setDateRangeType('RECENT');
                                                     setCustomStartDate('');
                                                     setCustomEndDate('');
-                                                    setSelectedMonth('ALL');
-                                                    setSelectedYear('ALL');
+                                                    setMonthlyStartDate('2025-07-01');
+                                                    setMonthlyEndDate(new Date().toISOString().split('T')[0]);
+                                                    setReportCache('MONTHLY_SUMMARY', []);
                                                 }}
                                                 disabled={!hasActiveFilters}
                                                 className="btn-secondary px-3 py-2 text-sm disabled:opacity-50"
