@@ -468,6 +468,9 @@ const ReportingView = () => {
     const [selectedSite, setSelectedSite] = useState('ALL');
     const [selectedSupplier, setSelectedSupplier] = useState('ALL');
     const [selectedItemId, setSelectedItemId] = useState('ALL');
+    const [dateRangeType, setDateRangeType] = useState<'RECENT' | 'HISTORICAL' | 'ALL' | 'CUSTOM'>('RECENT');
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
 
     useEffect(() => {
         sessionStorage.setItem('pf_active_report', activeReport);
@@ -514,9 +517,37 @@ const ReportingView = () => {
             const matchesSupplier = selectedSupplier === 'ALL' || row.supplier === selectedSupplier;
             const matchesItem = selectedItemId === 'ALL' || row.itemId === selectedItemId || row.item === selectedItemId;
 
-            return matchesSearch && matchesSite && matchesSupplier && matchesItem;
+            let matchesDate = true;
+            if (isItemHistoryReport && row.requestDate) {
+                const requestTime = new Date(row.requestDate as string).getTime();
+                if (!isNaN(requestTime)) {
+                    if (dateRangeType === 'RECENT') {
+                        const threshold = new Date();
+                        threshold.setDate(threshold.getDate() - 30);
+                        matchesDate = requestTime >= threshold.getTime();
+                    } else if (dateRangeType === 'HISTORICAL') {
+                        const startDate = new Date('2025-07-01T00:00:00');
+                        matchesDate = requestTime >= startDate.getTime();
+                    } else if (dateRangeType === 'CUSTOM') {
+                        if (customStartDate) {
+                            const start = new Date(customStartDate + 'T00:00:00');
+                            if (!isNaN(start.getTime())) {
+                                matchesDate = matchesDate && requestTime >= start.getTime();
+                            }
+                        }
+                        if (customEndDate) {
+                            const end = new Date(customEndDate + 'T23:59:59');
+                            if (!isNaN(end.getTime())) {
+                                matchesDate = matchesDate && requestTime <= end.getTime();
+                            }
+                        }
+                    }
+                }
+            }
+
+            return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate;
         });
-    }, [isFilterableReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier]);
+    }, [isFilterableReport, isItemHistoryReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier, dateRangeType, customStartDate, customEndDate]);
 
     const outstandingRows = visibleReportData as OutstandingDeliveryReportRow[];
     const varianceRows = visibleReportData as DeliveryVarianceReportRow[];
@@ -690,7 +721,17 @@ const ReportingView = () => {
         return Object.values(grouped).sort((a, b) => b.orderedQty - a.orderedQty).slice(0, 12);
     }, [itemHistoryRows]);
 
-    const hasActiveFilters = Boolean(searchTerm.trim() || selectedSite !== 'ALL' || selectedSupplier !== 'ALL' || selectedItemId !== 'ALL');
+    const hasActiveFilters = Boolean(
+        searchTerm.trim() ||
+        selectedSite !== 'ALL' ||
+        selectedSupplier !== 'ALL' ||
+        selectedItemId !== 'ALL' ||
+        (isItemHistoryReport && (
+            dateRangeType !== 'RECENT' ||
+            customStartDate !== '' ||
+            customEndDate !== ''
+        ))
+    );
 
     return (
         <div className="space-y-6 pb-20 animate-fade-in">
@@ -785,52 +826,91 @@ const ReportingView = () => {
                                 </div>
 
                                 {isFilterableReport && (
-                                    <div className={`grid grid-cols-1 gap-2 ${isItemHistoryReport ? 'md:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_150px_170px_auto]' : 'md:grid-cols-[minmax(0,1fr)_160px_180px_auto]'}`}>
-                                        <label className="relative block">
-                                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary dark:text-gray-500" />
-                                            <input
-                                                value={searchTerm}
-                                                onChange={(event) => setSearchTerm(event.target.value)}
-                                                placeholder={isItemHistoryReport ? 'Search item, SKU, PO, site, supplier' : 'Search reports'}
-                                                className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                            />
-                                        </label>
-                                        {isItemHistoryReport && (
+                                    <div className="space-y-3">
+                                        <div className={`grid grid-cols-1 gap-2 ${isItemHistoryReport ? 'md:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_150px_170px_auto]' : 'md:grid-cols-[minmax(0,1fr)_160px_180px_auto]'}`}>
+                                            <label className="relative block">
+                                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary dark:text-gray-500" />
+                                                <input
+                                                    value={searchTerm}
+                                                    onChange={(event) => setSearchTerm(event.target.value)}
+                                                    placeholder={isItemHistoryReport ? 'Search item, SKU, PO, site, supplier' : 'Search reports'}
+                                                    className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                />
+                                            </label>
+                                            {isItemHistoryReport && (
+                                                <select
+                                                    value={selectedItemId}
+                                                    onChange={(event) => setSelectedItemId(event.target.value)}
+                                                    className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                >
+                                                    {itemOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                                                </select>
+                                            )}
                                             <select
-                                                value={selectedItemId}
-                                                onChange={(event) => setSelectedItemId(event.target.value)}
+                                                value={selectedSite}
+                                                onChange={(event) => setSelectedSite(event.target.value)}
                                                 className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                             >
-                                                {itemOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                                                {siteOptions.map((site) => <option key={site} value={site}>{site === 'ALL' ? 'All sites' : site}</option>)}
                                             </select>
+                                            <select
+                                                value={selectedSupplier}
+                                                onChange={(event) => setSelectedSupplier(event.target.value)}
+                                                className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                            >
+                                                {supplierOptions.map((supplier) => <option key={supplier} value={supplier}>{supplier === 'ALL' ? 'All suppliers' : supplier}</option>)}
+                                            </select>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSearchTerm('');
+                                                    setSelectedSite('ALL');
+                                                    setSelectedSupplier('ALL');
+                                                    setSelectedItemId('ALL');
+                                                    setDateRangeType('RECENT');
+                                                    setCustomStartDate('');
+                                                    setCustomEndDate('');
+                                                }}
+                                                disabled={!hasActiveFilters}
+                                                className="btn-secondary px-3 py-2 text-sm disabled:opacity-50"
+                                            >
+                                                Clear
+                                            </button>
+                                        </div>
+
+                                        {isItemHistoryReport && (
+                                            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+                                                <span className="text-xs font-semibold text-secondary dark:text-gray-400">Date Range:</span>
+                                                <select
+                                                    value={dateRangeType}
+                                                    onChange={(event) => setDateRangeType(event.target.value as any)}
+                                                    className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                >
+                                                    <option value="RECENT">Last 30 Days</option>
+                                                    <option value="HISTORICAL">Historical (Since 01/07/2025)</option>
+                                                    <option value="ALL">All Time</option>
+                                                    <option value="CUSTOM">Custom Range...</option>
+                                                </select>
+
+                                                {dateRangeType === 'CUSTOM' && (
+                                                    <div className="flex items-center gap-2 animate-fade-in">
+                                                        <input
+                                                            type="date"
+                                                            value={customStartDate}
+                                                            onChange={(event) => setCustomStartDate(event.target.value)}
+                                                            className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                        />
+                                                        <span className="text-xs text-tertiary dark:text-gray-500">to</span>
+                                                        <input
+                                                            type="date"
+                                                            value={customEndDate}
+                                                            onChange={(event) => setCustomEndDate(event.target.value)}
+                                                            className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
-                                        <select
-                                            value={selectedSite}
-                                            onChange={(event) => setSelectedSite(event.target.value)}
-                                            className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                        >
-                                            {siteOptions.map((site) => <option key={site} value={site}>{site === 'ALL' ? 'All sites' : site}</option>)}
-                                        </select>
-                                        <select
-                                            value={selectedSupplier}
-                                            onChange={(event) => setSelectedSupplier(event.target.value)}
-                                            className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                        >
-                                            {supplierOptions.map((supplier) => <option key={supplier} value={supplier}>{supplier === 'ALL' ? 'All suppliers' : supplier}</option>)}
-                                        </select>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setSearchTerm('');
-                                                setSelectedSite('ALL');
-                                                setSelectedSupplier('ALL');
-                                                setSelectedItemId('ALL');
-                                            }}
-                                            disabled={!hasActiveFilters}
-                                            className="btn-secondary px-3 py-2 text-sm disabled:opacity-50"
-                                        >
-                                            Clear
-                                        </button>
                                     </div>
                                 )}
                             </div>
