@@ -708,7 +708,18 @@ const ReportingView = () => {
     const itemHistoryChartData = useMemo(() => {
         const grouped: Record<string, { name: string; orderedQty: number; requestCount: number; orderedValue: number; latestRequest: string }> = {};
         itemHistoryRows.forEach((row) => {
-            const key = row.site || 'Unknown';
+            let key = 'Unknown';
+            if (chartMetric === 'ITEM') {
+                const skuStr = row.sku ? ` (${row.sku})` : '';
+                key = `${row.item || 'Unknown'}${skuStr}`;
+            } else if (chartMetric === 'SUPPLIER') {
+                key = row.supplier || 'Unknown';
+            } else if (chartMetric === 'SITE') {
+                key = row.site || 'Unknown';
+            } else if (chartMetric === 'DATE') {
+                key = row.requestDate || 'Unknown';
+            }
+
             grouped[key] ||= { name: key, orderedQty: 0, requestCount: 0, orderedValue: 0, latestRequest: row.requestDate };
             grouped[key].orderedQty += row.orderedQty;
             grouped[key].requestCount += 1;
@@ -719,7 +730,7 @@ const ReportingView = () => {
         });
 
         return Object.values(grouped).sort((a, b) => b.orderedQty - a.orderedQty).slice(0, 12);
-    }, [itemHistoryRows]);
+    }, [itemHistoryRows, chartMetric]);
 
     const hasActiveFilters = Boolean(
         searchTerm.trim() ||
@@ -799,14 +810,22 @@ const ReportingView = () => {
 
                                     {canUseChart && viewMode === 'CHART' && (
                                         <div className="flex flex-wrap items-center gap-3">
-                                            <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">
-                                                    Total {activeReport === 'OUTSTANDING_DELIVERIES' ? 'Outstanding' : activeReport === 'DELIVERY_VARIANCE' ? 'Variance' : 'Value'}:
-                                                </span>
-                                                {activeReport === 'OUTSTANDING_DELIVERIES' && currency(outstandingSummary.totalValue)}
-                                                {activeReport === 'DELIVERY_VARIANCE' && currency(varianceSummary.totalValue)}
-                                                {activeReport === 'ALL_DELIVERIES' && currency(getChartData().reduce((sum, item) => sum + item.value, 0))}
-                                                {activeReport === 'ITEM_REQUEST_HISTORY' && numberValue(itemHistorySummary.totalOrdered)}
+                                            <div className="text-sm font-bold text-gray-900 dark:text-white flex flex-wrap items-center gap-x-4 gap-y-1">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-xs font-medium text-tertiary dark:text-gray-500">
+                                                        {activeReport === 'OUTSTANDING_DELIVERIES' ? 'Total Outstanding:' : activeReport === 'DELIVERY_VARIANCE' ? 'Total Variance:' : activeReport === 'ITEM_REQUEST_HISTORY' ? 'Total Ordered Units:' : 'Total Value:'}
+                                                    </span>
+                                                    {activeReport === 'OUTSTANDING_DELIVERIES' && currency(outstandingSummary.totalValue)}
+                                                    {activeReport === 'DELIVERY_VARIANCE' && currency(varianceSummary.totalValue)}
+                                                    {activeReport === 'ALL_DELIVERIES' && currency(getChartData().reduce((sum, item) => sum + item.value, 0))}
+                                                    {activeReport === 'ITEM_REQUEST_HISTORY' && numberValue(itemHistorySummary.totalOrdered)}
+                                                </div>
+                                                {activeReport === 'ITEM_REQUEST_HISTORY' && (
+                                                    <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
+                                                        <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Ordered Value:</span>
+                                                        {currency(itemHistorySummary.totalValue)}
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-xs font-medium text-tertiary dark:text-gray-500">Group By:</span>
@@ -934,7 +953,7 @@ const ReportingView = () => {
                             ) : activeReport === 'DELIVERY_RECONCILIATION' && viewMode === 'CHART' ? (
                                 <DeliveryReconciliationVisual rows={reconciliationRows} summary={reconciliationSummary} />
                             ) : activeReport === 'ITEM_REQUEST_HISTORY' && viewMode === 'CHART' ? (
-                                <ItemRequestHistoryVisual summary={itemHistorySummary} chartData={itemHistoryChartData} selectedItemLabel={itemOptions.find((item) => item.id === selectedItemId)?.label || 'All items'} />
+                                <ItemRequestHistoryVisual summary={itemHistorySummary} chartData={itemHistoryChartData} selectedItemLabel={itemOptions.find((item) => item.id === selectedItemId)?.label || 'All items'} chartMetric={chartMetric} />
                             ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
                                 <AllDeliveriesVisual data={getChartData()} />
                             ) : (
@@ -1173,42 +1192,46 @@ const DeliveryReconciliationVisual = ({ rows, summary }: { rows: DeliveryReconci
     );
 };
 
-const ItemRequestHistoryVisual = ({ summary, chartData, selectedItemLabel }: { summary: { lineCount: number; siteCount: number; totalOrdered: number; totalValue: number; latestRowsBySite: ItemRequestHistoryRow[] }; chartData: Array<{ name: string; orderedQty: number; requestCount: number; orderedValue: number; latestRequest: string }>; selectedItemLabel: string }) => (
-    <div data-testid="item-request-history-report-visual" className="p-4 md:p-6 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-            <MetricCard label="Request Lines" value={numberValue(summary.lineCount)} sub={selectedItemLabel} icon={History} color="bg-slate-600" />
-            <MetricCard label="Sites Requested" value={numberValue(summary.siteCount)} sub="With matching request history" icon={Layers} color="bg-sky-500" />
-            <MetricCard label="Ordered Units" value={numberValue(summary.totalOrdered)} sub="Across visible request lines" icon={Package} color="bg-emerald-600" />
-            <MetricCard label="Ordered Value" value={currency(summary.totalValue)} sub="Based on request unit price" icon={TrendingUp} color="bg-violet-500" />
-        </div>
+const ItemRequestHistoryVisual = ({ summary, chartData, selectedItemLabel, chartMetric }: { summary: { lineCount: number; siteCount: number; totalOrdered: number; totalValue: number; latestRowsBySite: ItemRequestHistoryRow[] }; chartData: Array<{ name: string; orderedQty: number; requestCount: number; orderedValue: number; latestRequest: string }>; selectedItemLabel: string; chartMetric: ChartMetric }) => {
+    const metricLabel = chartMetric === 'ITEM' ? 'Item' : chartMetric === 'SUPPLIER' ? 'Supplier' : chartMetric === 'DATE' ? 'Date' : 'Site';
+    const groupCountLabel = chartMetric === 'ITEM' ? 'items' : chartMetric === 'SUPPLIER' ? 'suppliers' : chartMetric === 'DATE' ? 'dates' : 'sites';
 
-        <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
-            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
-                <div className="flex items-center justify-between gap-3 mb-4">
-                    <div>
-                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">Request Quantity by Site</h3>
-                        <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Use Raw Data or Export CSV for complete line history</p>
-                    </div>
-                    <span className="text-xs text-tertiary dark:text-gray-500">{chartData.length} sites</span>
-                </div>
-                <div className="h-[340px] min-w-[560px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 70 }}>
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.18} vertical={false} />
-                            <XAxis dataKey="name" angle={-35} textAnchor="end" height={88} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
-                            <YAxis tick={{ fontSize: 12, fill: '#888' }} />
-                            <RechartsTooltip
-                                formatter={(value: number, name: string) => [name === 'orderedValue' ? currency(value) : numberValue(value), name === 'orderedQty' ? 'Ordered units' : name === 'requestCount' ? 'Request lines' : 'Ordered value']}
-                                labelFormatter={(label) => `Site: ${label}`}
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                            />
-                            <Legend />
-                            <Bar dataKey="orderedQty" name="Ordered units" fill="#10b981" radius={[4, 4, 0, 0]} />
-                            <Bar dataKey="requestCount" name="Request lines" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
+    return (
+        <div data-testid="item-request-history-report-visual" className="p-4 md:p-6 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <MetricCard label="Request Lines" value={numberValue(summary.lineCount)} sub={selectedItemLabel} icon={History} color="bg-slate-600" />
+                <MetricCard label="Sites Requested" value={numberValue(summary.siteCount)} sub="With matching request history" icon={Layers} color="bg-sky-500" />
+                <MetricCard label="Ordered Units" value={numberValue(summary.totalOrdered)} sub="Across visible request lines" icon={Package} color="bg-emerald-600" />
+                <MetricCard label="Ordered Value" value={currency(summary.totalValue)} sub="Based on request unit price" icon={TrendingUp} color="bg-violet-500" />
             </div>
+
+            <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Request Quantity by {metricLabel}</h3>
+                            <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Use Raw Data or Export CSV for complete line history</p>
+                        </div>
+                        <span className="text-xs text-tertiary dark:text-gray-500">{chartData.length} {groupCountLabel}</span>
+                    </div>
+                    <div className="h-[340px] min-w-[560px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 70 }}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.18} vertical={false} />
+                                <XAxis dataKey="name" angle={-35} textAnchor="end" height={88} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
+                                <YAxis tick={{ fontSize: 12, fill: '#888' }} />
+                                <RechartsTooltip
+                                    formatter={(value: number, name: string) => [name === 'orderedValue' ? currency(value) : numberValue(value), name === 'orderedQty' ? 'Ordered units' : name === 'requestCount' ? 'Request lines' : 'Ordered value']}
+                                    labelFormatter={(label) => `${metricLabel}: ${label}`}
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                />
+                                <Legend />
+                                <Bar dataKey="orderedQty" name="Ordered units" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="requestCount" name="Request lines" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
 
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Most Recent Request by Site</h3>
@@ -1232,7 +1255,8 @@ const ItemRequestHistoryVisual = ({ summary, chartData, selectedItemLabel }: { s
             </div>
         </div>
     </div>
-);
+  );
+};
 
 const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: ReportRow[] }) => (
     <table className="w-full min-w-[900px] text-sm text-left">
