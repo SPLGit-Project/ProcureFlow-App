@@ -35,11 +35,23 @@ interface MonthlySummaryReportRow extends ReportRow {
     id: string;
     monthKey: string;
     month: string;
+    poNumber: string;
+    concurPoNumber: string;
+    requestNumber: string;
+    concurRequestNumber: string;
+    requestDate: string;
     site: string;
     supplier: string;
-    totalPoAmount: number;
-    grAmount: number;
-    openPoAmount: number;
+    item: string;
+    sku: string;
+    orderedQty: number;
+    receivedQty: number;
+    remainingQty: number;
+    unitPrice: number;
+    orderedValue: number;
+    receivedValue: number;
+    openValue: number;
+    status: POStatus;
 }
 
 interface MonthlySummaryAggregatedRow extends ReportRow {
@@ -393,15 +405,7 @@ const buildItemRequestHistoryRows = (pos: PORequest[]): ItemRequestHistoryRow[] 
 const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDateStr: string): MonthlySummaryReportRow[] => {
     const startDate = new Date(startDateStr + 'T00:00:00').getTime();
     const endDate = new Date(endDateStr + 'T23:59:59').getTime();
-    const groups: Record<string, {
-        monthKey: string;
-        month: string;
-        site: string;
-        supplier: string;
-        totalPoAmount: number;
-        grAmount: number;
-        openPoAmount: number;
-    }> = {};
+    const rows: MonthlySummaryReportRow[] = [];
 
     pos.forEach((po) => {
         if (po.status === 'DRAFT' || po.status === 'REJECTED') return;
@@ -417,19 +421,6 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
 
         const site = po.site || 'Unknown Site';
         const supplier = po.supplierName || 'Unknown Supplier';
-        const groupKey = `${monthKey}|${site}|${supplier}`;
-
-        if (!groups[groupKey]) {
-            groups[groupKey] = {
-                monthKey,
-                month: monthDisplay,
-                site,
-                supplier,
-                totalPoAmount: 0,
-                grAmount: 0,
-                openPoAmount: 0
-            };
-        }
 
         po.lines.forEach((line) => {
             const ordered = Number(line.quantityOrdered || 0);
@@ -437,23 +428,48 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
             const remaining = line.isForceClosed ? 0 : Math.max(0, ordered - received);
             const unitPrice = Number(line.unitPrice || 0);
 
-            groups[groupKey].totalPoAmount += ordered * unitPrice;
-            groups[groupKey].grAmount += received * unitPrice;
-            groups[groupKey].openPoAmount += remaining * unitPrice;
+            const orderedValue = ordered * unitPrice;
+            const receivedValue = received * unitPrice;
+            const openValue = remaining * unitPrice;
+
+            const requestNumber = po.displayId || po.id.substring(0, 8);
+            const concurRequestNumber = po.concurRequestNumber || '';
+            const concurPoNumber = line.concurPoNumber || po.concurPoNumber || '';
+            const poNumber = concurPoNumber || 'Pending';
+
+            rows.push({
+                id: line.id,
+                monthKey,
+                month: monthDisplay,
+                poNumber,
+                concurPoNumber,
+                requestNumber,
+                concurRequestNumber,
+                requestDate: po.requestDate,
+                supplier,
+                site,
+                item: line.itemName || 'Unknown Item',
+                sku: line.sku || '',
+                orderedQty: ordered,
+                receivedQty: received,
+                remainingQty: remaining,
+                unitPrice,
+                orderedValue,
+                receivedValue,
+                openValue,
+                status: po.status
+            });
         });
     });
 
-    return Object.entries(groups).map(([id, group]) => ({
-        id,
-        ...group
-    })).sort((a, b) => b.monthKey.localeCompare(a.monthKey) || a.supplier.localeCompare(b.supplier));
+    return rows.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 };
 
 const getMonthlySummaryData = (rows: MonthlySummaryReportRow[]): MonthlySummaryAggregatedRow[] => {
     const summaryMap: Record<string, MonthlySummaryAggregatedRow> = {};
 
     rows.forEach((row) => {
-        const { monthKey, month, totalPoAmount, grAmount, openPoAmount } = row;
+        const { monthKey, month, orderedValue, receivedValue, openValue } = row;
         if (!summaryMap[monthKey]) {
             summaryMap[monthKey] = {
                 monthKey,
@@ -463,9 +479,9 @@ const getMonthlySummaryData = (rows: MonthlySummaryReportRow[]): MonthlySummaryA
                 openPoAmount: 0
             };
         }
-        summaryMap[monthKey].totalPoAmount += totalPoAmount;
-        summaryMap[monthKey].grAmount += grAmount;
-        summaryMap[monthKey].openPoAmount += openPoAmount;
+        summaryMap[monthKey].totalPoAmount += orderedValue;
+        summaryMap[monthKey].grAmount += receivedValue;
+        summaryMap[monthKey].openPoAmount += openValue;
     });
 
     return Object.values(summaryMap).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
@@ -550,9 +566,23 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
     if (report === 'MONTHLY_SUMMARY') {
         return [
             { key: 'month', label: 'Month' },
-            { key: 'totalPoAmount', label: 'Total PO Amount' },
-            { key: 'grAmount', label: 'GR Amount' },
-            { key: 'openPoAmount', label: 'Open PO Amount' }
+            { key: 'requestNumber', label: 'Request Number' },
+            { key: 'concurRequestNumber', label: 'Concur Request Number' },
+            { key: 'poNumber', label: 'PO Number' },
+            { key: 'concurPoNumber', label: 'Concur PO Number' },
+            { key: 'requestDate', label: 'Request Date' },
+            { key: 'site', label: 'Site' },
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'item', label: 'Item' },
+            { key: 'sku', label: 'SKU' },
+            { key: 'orderedQty', label: 'Ordered Qty' },
+            { key: 'receivedQty', label: 'Received Qty' },
+            { key: 'remainingQty', label: 'Remaining Qty' },
+            { key: 'unitPrice', label: 'Unit Price' },
+            { key: 'orderedValue', label: 'Ordered Value' },
+            { key: 'receivedValue', label: 'Received Value' },
+            { key: 'openValue', label: 'Open Value' },
+            { key: 'status', label: 'PO Status' }
         ];
     }
 
@@ -630,6 +660,9 @@ const ReportingView = () => {
         return reportData.filter((row) => {
             const matchesSearch = !query || [
                 row.poNumber,
+                row.concurPoNumber,
+                row.requestNumber,
+                row.concurRequestNumber,
                 row.displayId,
                 row.supplier,
                 row.site,
@@ -772,11 +805,7 @@ const ReportingView = () => {
     const exportCSV = () => {
         if (visibleReportData.length === 0) return;
 
-        const dataToExport = activeReport === 'MONTHLY_SUMMARY'
-            ? getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])
-            : visibleReportData;
-
-        const csv = buildCsv(activeReport, dataToExport);
+        const csv = buildCsv(activeReport, visibleReportData);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -1156,7 +1185,7 @@ const ReportingView = () => {
                             ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
                                 <AllDeliveriesVisual data={getChartData()} />
                             ) : (
-                                <ReportTable activeReport={activeReport} rows={activeReport === 'MONTHLY_SUMMARY' ? getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[]) : visibleReportData} />
+                                <ReportTable activeReport={activeReport} rows={visibleReportData} />
                             )}
                         </div>
                     </div>
@@ -1595,10 +1624,17 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                 )}
                 {activeReport === 'MONTHLY_SUMMARY' && (
                     <>
-                        <th className="px-6 py-4">Month</th>
-                        <th className="px-6 py-4 text-right">Total PO Amount</th>
-                        <th className="px-6 py-4 text-right">GR Amount</th>
-                        <th className="px-6 py-4 text-right text-orange-500">Open PO Amount</th>
+                        <th className="px-5 py-4">Request # / PO # / Date</th>
+                        <th className="px-5 py-4">Site / Supplier</th>
+                        <th className="px-5 py-4">Item / SKU</th>
+                        <th className="px-5 py-4 text-center">Ordered</th>
+                        <th className="px-5 py-4 text-center">Received</th>
+                        <th className="px-5 py-4 text-center text-orange-500">Remaining</th>
+                        <th className="px-5 py-4 text-right">Unit Price</th>
+                        <th className="px-5 py-4 text-right">Ordered Value</th>
+                        <th className="px-5 py-4 text-right">Received Value</th>
+                        <th className="px-5 py-4 text-right text-orange-500">Open Value</th>
+                        <th className="px-5 py-4">Status</th>
                     </>
                 )}
             </tr>
@@ -1635,7 +1671,7 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         {activeReport === 'ALL_DELIVERIES' && <AllDeliveryRow row={row} />}
                         {activeReport === 'DELIVERY_VARIANCE' && <DeliveryVarianceRow row={row as DeliveryVarianceReportRow} />}
                         {activeReport === 'ITEM_REQUEST_HISTORY' && <ItemRequestHistoryRowView row={row as ItemRequestHistoryRow} />}
-                        {activeReport === 'MONTHLY_SUMMARY' && <MonthlySummaryRow row={row as MonthlySummaryAggregatedRow} />}
+                        {activeReport === 'MONTHLY_SUMMARY' && <MonthlySummaryRow row={row as MonthlySummaryReportRow} />}
                         {activeReport === 'FINANCE_SUMMARY' && <FinanceRow row={row} />}
                         {activeReport === 'PO_STATUS' && <PoStatusRow row={row} />}
                     </tr>
@@ -1668,12 +1704,32 @@ const ItemRequestHistoryRowView = ({ row }: { row: ItemRequestHistoryRow }) => (
     </>
 );
 
-const MonthlySummaryRow = ({ row }: { row: MonthlySummaryAggregatedRow }) => (
+const MonthlySummaryRow = ({ row }: { row: MonthlySummaryReportRow }) => (
     <>
-        <td className="px-6 py-3 font-bold text-gray-900 dark:text-white">{row.month}</td>
-        <td className="px-6 py-3 text-right font-medium">{currency(row.totalPoAmount)}</td>
-        <td className="px-6 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{currency(row.grAmount)}</td>
-        <td className="px-6 py-3 text-right font-bold text-orange-500 bg-orange-50 dark:bg-orange-900/10">{currency(row.openPoAmount)}</td>
+        <td className="px-5 py-3">
+            <div className="font-bold text-gray-900 dark:text-white">{row.requestNumber}</div>
+            {row.concurRequestNumber && (
+                <div className="text-[10px] text-tertiary dark:text-gray-500 font-mono">Concur Req: {row.concurRequestNumber}</div>
+            )}
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">PO: {row.poNumber || '-'}</div>
+            <div className="text-[10px] text-tertiary dark:text-gray-400">{row.requestDate}</div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white">{row.site}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500">{row.supplier}</div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white max-w-[200px] truncate" title={row.item}>{row.item}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.sku || '-'}</div>
+        </td>
+        <td className="px-5 py-3 text-center font-medium">{numberValue(row.orderedQty)}</td>
+        <td className="px-5 py-3 text-center text-green-600">{numberValue(row.receivedQty)}</td>
+        <td className="px-5 py-3 text-center font-bold text-orange-500 bg-orange-50/50 dark:bg-orange-900/5">{numberValue(row.remainingQty)}</td>
+        <td className="px-5 py-3 text-right text-secondary dark:text-gray-400">{currency(row.unitPrice)}</td>
+        <td className="px-5 py-3 text-right font-medium">{currency(row.orderedValue)}</td>
+        <td className="px-5 py-3 text-right font-medium text-green-600 dark:text-green-400">{currency(row.receivedValue)}</td>
+        <td className="px-5 py-3 text-right font-bold text-orange-500 bg-orange-50/50 dark:bg-orange-900/5">{currency(row.openValue)}</td>
+        <td className="px-5 py-3"><StatusPill label={statusLabel(row.status)} /></td>
     </>
 );
 
