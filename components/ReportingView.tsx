@@ -887,7 +887,7 @@ const ReportingView = () => {
                                                     className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                                 >
                                                     <option value="RECENT">Last 30 Days</option>
-                                                    <option value="HISTORICAL">Historical (Since 01/07/2025)</option>
+                                                    <option value="HISTORICAL">Most Recent</option>
                                                     <option value="ALL">All Time</option>
                                                     <option value="CUSTOM">Custom Range...</option>
                                                 </select>
