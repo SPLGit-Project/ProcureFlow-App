@@ -11,7 +11,8 @@ import {
     TrendingUp,
     Layers,
     ArrowRightLeft,
-    History
+    History,
+    Calendar
 } from 'lucide-react';
 import PageHeader from './PageHeader.tsx';
 import {
@@ -27,8 +28,27 @@ import {
 } from 'recharts';
 import type { PORequest, POStatus } from '../types.ts';
 
-type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY';
+type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY';
 type ReportRow = Record<string, string | number>;
+
+interface MonthlySummaryReportRow extends ReportRow {
+    id: string;
+    monthKey: string;
+    month: string;
+    site: string;
+    supplier: string;
+    totalPoAmount: number;
+    grAmount: number;
+    openPoAmount: number;
+}
+
+interface MonthlySummaryAggregatedRow extends ReportRow {
+    monthKey: string;
+    month: string;
+    totalPoAmount: number;
+    grAmount: number;
+    openPoAmount: number;
+}
 type ViewMode = 'CHART' | 'RAW_DATA';
 type ChartMetric = 'DATE' | 'SUPPLIER' | 'SITE' | 'ITEM';
 type VarianceType = 'Pending' | 'Over delivered' | 'Short closed';
@@ -118,7 +138,8 @@ const REPORT_TITLES: Record<ReportType, string> = {
     FINANCE_SUMMARY: 'Finance Capitalization Summary',
     PO_STATUS: 'All PO Status Report',
     DELIVERY_RECONCILIATION: 'Full Delivery Reconciliation',
-    ITEM_REQUEST_HISTORY: 'Item Request History by Site'
+    ITEM_REQUEST_HISTORY: 'Item Request History by Site',
+    MONTHLY_SUMMARY: 'Monthly PO & Receipting Summary'
 };
 
 const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
@@ -128,11 +149,13 @@ const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
     FINANCE_SUMMARY: 'Detailed breakdown of all received goods with their capitalization status and invoice numbers. Use this for month-end reconciliation.',
     PO_STATUS: 'High-level overview of all Purchase Orders and their current approval status in the workflow.',
     DELIVERY_RECONCILIATION: 'Complete picture of order fulfillment. Compare ordered vs. received quantities across all PO lines to identify pending amounts and value variances.',
-    ITEM_REQUEST_HISTORY: 'Search and select an item to see its most recent request activity at each site, with a detailed line-level export for deeper review.'
+    ITEM_REQUEST_HISTORY: 'Search and select an item to see its most recent request activity at each site, with a detailed line-level export for deeper review.',
+    MONTHLY_SUMMARY: 'Reconcile PO requests since July 2025. Groups POs monthly, showing total issued PO values, goods received (GR) values, and remaining open values.'
 };
 
 const DELIVERY_REPORTS: ReportType[] = ['OUTSTANDING_DELIVERIES', 'DELIVERY_VARIANCE', 'DELIVERY_RECONCILIATION'];
-const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY'];
+const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY'];
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ACTIVE_DELIVERY_STATUSES: POStatus[] = ['ACTIVE', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST', 'VARIANCE_PENDING'];
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4'];
 
@@ -367,6 +390,86 @@ const buildItemRequestHistoryRows = (pos: PORequest[]): ItemRequestHistoryRow[] 
     })).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 };
 
+const buildMonthlySummaryRows = (pos: PORequest[]): MonthlySummaryReportRow[] => {
+    const startDate = new Date('2025-07-01T00:00:00').getTime();
+    const groups: Record<string, {
+        monthKey: string;
+        month: string;
+        site: string;
+        supplier: string;
+        totalPoAmount: number;
+        grAmount: number;
+        openPoAmount: number;
+    }> = {};
+
+    pos.forEach((po) => {
+        if (po.status === 'DRAFT' || po.status === 'REJECTED') return;
+
+        const requestTime = new Date(po.requestDate).getTime();
+        if (isNaN(requestTime) || requestTime < startDate) return;
+
+        const dateObj = new Date(po.requestDate);
+        const year = dateObj.getFullYear();
+        const monthNum = dateObj.getMonth();
+        const monthKey = `${year}-${String(monthNum + 1).padStart(2, '0')}`;
+        const monthDisplay = `${MONTH_NAMES[monthNum]} ${year}`;
+
+        const site = po.site || 'Unknown Site';
+        const supplier = po.supplierName || 'Unknown Supplier';
+        const groupKey = `${monthKey}|${site}|${supplier}`;
+
+        if (!groups[groupKey]) {
+            groups[groupKey] = {
+                monthKey,
+                month: monthDisplay,
+                site,
+                supplier,
+                totalPoAmount: 0,
+                grAmount: 0,
+                openPoAmount: 0
+            };
+        }
+
+        po.lines.forEach((line) => {
+            const ordered = Number(line.quantityOrdered || 0);
+            const received = Number(line.quantityReceived || 0);
+            const remaining = line.isForceClosed ? 0 : Math.max(0, ordered - received);
+            const unitPrice = Number(line.unitPrice || 0);
+
+            groups[groupKey].totalPoAmount += ordered * unitPrice;
+            groups[groupKey].grAmount += received * unitPrice;
+            groups[groupKey].openPoAmount += remaining * unitPrice;
+        });
+    });
+
+    return Object.entries(groups).map(([id, group]) => ({
+        id,
+        ...group
+    })).sort((a, b) => b.monthKey.localeCompare(a.monthKey) || a.supplier.localeCompare(b.supplier));
+};
+
+const getMonthlySummaryData = (rows: MonthlySummaryReportRow[]): MonthlySummaryAggregatedRow[] => {
+    const summaryMap: Record<string, MonthlySummaryAggregatedRow> = {};
+
+    rows.forEach((row) => {
+        const { monthKey, month, totalPoAmount, grAmount, openPoAmount } = row;
+        if (!summaryMap[monthKey]) {
+            summaryMap[monthKey] = {
+                monthKey,
+                month,
+                totalPoAmount: 0,
+                grAmount: 0,
+                openPoAmount: 0
+            };
+        }
+        summaryMap[monthKey].totalPoAmount += totalPoAmount;
+        summaryMap[monthKey].grAmount += grAmount;
+        summaryMap[monthKey].openPoAmount += openPoAmount;
+    });
+
+    return Object.values(summaryMap).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+};
+
 const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
     if (report === 'OUTSTANDING_DELIVERIES') {
         return [
@@ -443,6 +546,15 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
         ];
     }
 
+    if (report === 'MONTHLY_SUMMARY') {
+        return [
+            { key: 'month', label: 'Month' },
+            { key: 'totalPoAmount', label: 'Total PO Amount' },
+            { key: 'grAmount', label: 'GR Amount' },
+            { key: 'openPoAmount', label: 'Open PO Amount' }
+        ];
+    }
+
     return data[0] ? Object.keys(data[0]).map((key) => ({ key, label: key })) : [];
 };
 
@@ -471,6 +583,8 @@ const ReportingView = () => {
     const [dateRangeType, setDateRangeType] = useState<'RECENT' | 'HISTORICAL' | 'ALL' | 'CUSTOM'>('RECENT');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
+    const [selectedMonth, setSelectedMonth] = useState('ALL');
+    const [selectedYear, setSelectedYear] = useState('ALL');
 
     useEffect(() => {
         sessionStorage.setItem('pf_active_report', activeReport);
@@ -481,10 +595,31 @@ const ReportingView = () => {
     const isDeliveryReport = DELIVERY_REPORTS.includes(activeReport);
     const isItemHistoryReport = activeReport === 'ITEM_REQUEST_HISTORY';
     const isFilterableReport = FILTERABLE_REPORTS.includes(activeReport);
-    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport;
+    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport || activeReport === 'MONTHLY_SUMMARY';
 
     const siteOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.site || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
     const supplierOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.supplier || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
+    const yearOptions = useMemo(() => {
+        if (activeReport !== 'MONTHLY_SUMMARY') return ['ALL'];
+        const years = Array.from(new Set(reportData.map((row) => (row as MonthlySummaryReportRow).monthKey.split('-')[0]))).sort();
+        return ['ALL', ...years];
+    }, [activeReport, reportData]);
+
+    const MONTH_OPTIONS = [
+        { value: 'ALL', label: 'All Months' },
+        { value: '01', label: 'January' },
+        { value: '02', label: 'February' },
+        { value: '03', label: 'March' },
+        { value: '04', label: 'April' },
+        { value: '05', label: 'May' },
+        { value: '06', label: 'June' },
+        { value: '07', label: 'July' },
+        { value: '08', label: 'August' },
+        { value: '09', label: 'September' },
+        { value: '10', label: 'October' },
+        { value: '11', label: 'November' },
+        { value: '12', label: 'December' }
+    ];
     const itemOptions = useMemo(() => {
         const options = new Map<string, { id: string; label: string }>();
         reportData.forEach((row) => {
@@ -511,7 +646,8 @@ const ReportingView = () => {
                 row.sku,
                 row.requester,
                 row.status,
-                row.exceptionType
+                row.exceptionType,
+                row.month
             ].some((value) => String(value || '').toLowerCase().includes(query));
             const matchesSite = selectedSite === 'ALL' || row.site === selectedSite;
             const matchesSupplier = selectedSupplier === 'ALL' || row.supplier === selectedSupplier;
@@ -545,9 +681,17 @@ const ReportingView = () => {
                 }
             }
 
-            return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate;
+            let matchesMonth = true;
+            let matchesYear = true;
+            if (activeReport === 'MONTHLY_SUMMARY') {
+                const [y, m] = String(row.monthKey || '').split('-');
+                if (selectedMonth !== 'ALL') matchesMonth = m === selectedMonth;
+                if (selectedYear !== 'ALL') matchesYear = y === selectedYear;
+            }
+
+            return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate && matchesMonth && matchesYear;
         });
-    }, [isFilterableReport, isItemHistoryReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier, dateRangeType, customStartDate, customEndDate]);
+    }, [isFilterableReport, isItemHistoryReport, activeReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier, dateRangeType, customStartDate, customEndDate, selectedMonth, selectedYear]);
 
     const outstandingRows = visibleReportData as OutstandingDeliveryReportRow[];
     const varianceRows = visibleReportData as DeliveryVarianceReportRow[];
@@ -609,6 +753,8 @@ const ReportingView = () => {
         setSelectedSite('ALL');
         setSelectedSupplier('ALL');
         setSelectedItemId('ALL');
+        setSelectedMonth('ALL');
+        setSelectedYear('ALL');
     };
 
     const runReport = () => {
@@ -631,6 +777,8 @@ const ReportingView = () => {
                 data = buildReconciliationRows(pos);
             } else if (activeReport === 'ITEM_REQUEST_HISTORY') {
                 data = buildItemRequestHistoryRows(pos);
+            } else if (activeReport === 'MONTHLY_SUMMARY') {
+                data = buildMonthlySummaryRows(pos);
             }
 
             setReportCache(activeReport, data);
@@ -641,7 +789,11 @@ const ReportingView = () => {
     const exportCSV = () => {
         if (visibleReportData.length === 0) return;
 
-        const csv = buildCsv(activeReport, visibleReportData);
+        const dataToExport = activeReport === 'MONTHLY_SUMMARY'
+            ? getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])
+            : visibleReportData;
+
+        const csv = buildCsv(activeReport, dataToExport);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -737,6 +889,8 @@ const ReportingView = () => {
         selectedSite !== 'ALL' ||
         selectedSupplier !== 'ALL' ||
         selectedItemId !== 'ALL' ||
+        selectedMonth !== 'ALL' ||
+        selectedYear !== 'ALL' ||
         (isItemHistoryReport && (
             dateRangeType !== 'RECENT' ||
             customStartDate !== '' ||
@@ -757,6 +911,7 @@ const ReportingView = () => {
                             <ReportButton active={activeReport === 'DELIVERY_VARIANCE'} icon={TrendingUp} label="Delivery Variance" onClick={() => switchReport('DELIVERY_VARIANCE')} />
                             <ReportButton active={activeReport === 'DELIVERY_RECONCILIATION'} icon={Layers} label="Full Reconciliation" onClick={() => switchReport('DELIVERY_RECONCILIATION')} />
                             <ReportButton active={activeReport === 'ITEM_REQUEST_HISTORY'} icon={History} label="Item Request History" onClick={() => switchReport('ITEM_REQUEST_HISTORY')} />
+                            <ReportButton active={activeReport === 'MONTHLY_SUMMARY'} icon={Calendar} label="Monthly PO & GR Summary" onClick={() => switchReport('MONTHLY_SUMMARY')} />
                             <ReportButton active={activeReport === 'FINANCE_SUMMARY'} icon={TrendingUp} label="Finance Summary" onClick={() => switchReport('FINANCE_SUMMARY')} />
                             <ReportButton active={activeReport === 'PO_STATUS'} icon={FileText} label="PO Status Report" onClick={() => switchReport('PO_STATUS')} />
                         </div>
@@ -811,42 +966,74 @@ const ReportingView = () => {
                                     {canUseChart && viewMode === 'CHART' && (
                                         <div className="flex flex-wrap items-center gap-3">
                                             <div className="text-sm font-bold text-gray-900 dark:text-white flex flex-wrap items-center gap-x-4 gap-y-1">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="text-xs font-medium text-tertiary dark:text-gray-500">
-                                                        {activeReport === 'OUTSTANDING_DELIVERIES' ? 'Total Outstanding:' : activeReport === 'DELIVERY_VARIANCE' ? 'Total Variance:' : activeReport === 'ITEM_REQUEST_HISTORY' ? 'Total Ordered Units:' : 'Total Value:'}
-                                                    </span>
-                                                    {activeReport === 'OUTSTANDING_DELIVERIES' && currency(outstandingSummary.totalValue)}
-                                                    {activeReport === 'DELIVERY_VARIANCE' && currency(varianceSummary.totalValue)}
-                                                    {activeReport === 'ALL_DELIVERIES' && currency(getChartData().reduce((sum, item) => sum + item.value, 0))}
-                                                    {activeReport === 'ITEM_REQUEST_HISTORY' && numberValue(itemHistorySummary.totalOrdered)}
-                                                </div>
+                                                {activeReport !== 'MONTHLY_SUMMARY' && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-xs font-medium text-tertiary dark:text-gray-500">
+                                                            {activeReport === 'OUTSTANDING_DELIVERIES' ? 'Total Outstanding:' : activeReport === 'DELIVERY_VARIANCE' ? 'Total Variance:' : activeReport === 'ITEM_REQUEST_HISTORY' ? 'Total Ordered Units:' : 'Total Value:'}
+                                                        </span>
+                                                        {activeReport === 'OUTSTANDING_DELIVERIES' && currency(outstandingSummary.totalValue)}
+                                                        {activeReport === 'DELIVERY_VARIANCE' && currency(varianceSummary.totalValue)}
+                                                        {activeReport === 'ALL_DELIVERIES' && currency(getChartData().reduce((sum, item) => sum + item.value, 0))}
+                                                        {activeReport === 'ITEM_REQUEST_HISTORY' && numberValue(itemHistorySummary.totalOrdered)}
+                                                    </div>
+                                                )}
                                                 {activeReport === 'ITEM_REQUEST_HISTORY' && (
                                                     <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
                                                         <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Ordered Value:</span>
                                                         {currency(itemHistorySummary.totalValue)}
                                                     </div>
                                                 )}
+                                                {activeReport === 'MONTHLY_SUMMARY' && (() => {
+                                                    const summaryData = getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[]);
+                                                    const totalPo = summaryData.reduce((sum, r) => sum + r.totalPoAmount, 0);
+                                                    const totalGr = summaryData.reduce((sum, r) => sum + r.grAmount, 0);
+                                                    const totalOpen = summaryData.reduce((sum, r) => sum + r.openPoAmount, 0);
+                                                    return (
+                                                        <>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total PO Issued:</span>
+                                                                {currency(totalPo)}
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
+                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Received (GR):</span>
+                                                                {currency(totalGr)}
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
+                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Open Value:</span>
+                                                                {currency(totalOpen)}
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Group By:</span>
-                                                <select
-                                                    value={isDeliveryReport && chartMetric === 'DATE' ? 'SUPPLIER' : chartMetric}
-                                                    onChange={(event) => setChartMetric(event.target.value as ChartMetric)}
-                                                    className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                >
-                                                    {activeReport === 'ALL_DELIVERIES' && <option value="DATE">Delivery Date</option>}
-                                                    {activeReport === 'ITEM_REQUEST_HISTORY' && <option value="ITEM">Item</option>}
-                                                    <option value="SUPPLIER">Supplier</option>
-                                                    <option value="SITE">Site</option>
-                                                </select>
-                                            </div>
+                                            {activeReport !== 'MONTHLY_SUMMARY' && (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-medium text-tertiary dark:text-gray-500">Group By:</span>
+                                                    <select
+                                                        value={isDeliveryReport && chartMetric === 'DATE' ? 'SUPPLIER' : chartMetric}
+                                                        onChange={(event) => setChartMetric(event.target.value as ChartMetric)}
+                                                        className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                    >
+                                                        {activeReport === 'ALL_DELIVERIES' && <option value="DATE">Delivery Date</option>}
+                                                        {activeReport === 'ITEM_REQUEST_HISTORY' && <option value="ITEM">Item</option>}
+                                                        <option value="SUPPLIER">Supplier</option>
+                                                        <option value="SITE">Site</option>
+                                                    </select>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
 
                                 {isFilterableReport && (
                                     <div className="space-y-3">
-                                        <div className={`grid grid-cols-1 gap-2 ${isItemHistoryReport ? 'md:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_150px_170px_auto]' : 'md:grid-cols-[minmax(0,1fr)_160px_180px_auto]'}`}>
+                                        <div className={`grid grid-cols-1 gap-2 ${
+                                            isItemHistoryReport 
+                                                ? 'md:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_150px_170px_auto]' 
+                                                : activeReport === 'MONTHLY_SUMMARY'
+                                                    ? 'md:grid-cols-[minmax(0,1fr)_140px_160px_130px_100px_auto]'
+                                                    : 'md:grid-cols-[minmax(0,1fr)_160px_180px_auto]'
+                                        }`}>
                                             <label className="relative block">
                                                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary dark:text-gray-500" />
                                                 <input
@@ -879,6 +1066,24 @@ const ReportingView = () => {
                                             >
                                                 {supplierOptions.map((supplier) => <option key={supplier} value={supplier}>{supplier === 'ALL' ? 'All suppliers' : supplier}</option>)}
                                             </select>
+                                            {activeReport === 'MONTHLY_SUMMARY' && (
+                                                <>
+                                                    <select
+                                                        value={selectedMonth}
+                                                        onChange={(event) => setSelectedMonth(event.target.value)}
+                                                        className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                    >
+                                                        {MONTH_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                                    </select>
+                                                    <select
+                                                        value={selectedYear}
+                                                        onChange={(event) => setSelectedYear(event.target.value)}
+                                                        className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                    >
+                                                        {yearOptions.map((year) => <option key={year} value={year}>{year === 'ALL' ? 'All Years' : year}</option>)}
+                                                    </select>
+                                                </>
+                                            )}
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -889,6 +1094,8 @@ const ReportingView = () => {
                                                     setDateRangeType('RECENT');
                                                     setCustomStartDate('');
                                                     setCustomEndDate('');
+                                                    setSelectedMonth('ALL');
+                                                    setSelectedYear('ALL');
                                                 }}
                                                 disabled={!hasActiveFilters}
                                                 className="btn-secondary px-3 py-2 text-sm disabled:opacity-50"
@@ -954,10 +1161,12 @@ const ReportingView = () => {
                                 <DeliveryReconciliationVisual rows={reconciliationRows} summary={reconciliationSummary} />
                             ) : activeReport === 'ITEM_REQUEST_HISTORY' && viewMode === 'CHART' ? (
                                 <ItemRequestHistoryVisual summary={itemHistorySummary} chartData={itemHistoryChartData} selectedItemLabel={itemOptions.find((item) => item.id === selectedItemId)?.label || 'All items'} chartMetric={chartMetric} />
+                            ) : activeReport === 'MONTHLY_SUMMARY' && viewMode === 'CHART' ? (
+                                <MonthlySummaryVisual rows={getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])} />
                             ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
                                 <AllDeliveriesVisual data={getChartData()} />
                             ) : (
-                                <ReportTable activeReport={activeReport} rows={visibleReportData} />
+                                <ReportTable activeReport={activeReport} rows={activeReport === 'MONTHLY_SUMMARY' ? getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[]) : visibleReportData} />
                             )}
                         </div>
                     </div>
@@ -1258,6 +1467,54 @@ const ItemRequestHistoryVisual = ({ summary, chartData, selectedItemLabel, chart
   );
 };
 
+const MonthlySummaryVisual = ({ rows }: { rows: MonthlySummaryAggregatedRow[] }) => {
+    const summary = useMemo(() => {
+        const totalPo = rows.reduce((sum, r) => sum + r.totalPoAmount, 0);
+        const totalGr = rows.reduce((sum, r) => sum + r.grAmount, 0);
+        const totalOpen = rows.reduce((sum, r) => sum + r.openPoAmount, 0);
+        const rate = totalPo > 0 ? (totalGr / totalPo) * 100 : 0;
+        return { totalPo, totalGr, totalOpen, rate, monthCount: rows.length };
+    }, [rows]);
+
+    const chartData = useMemo(() => {
+        return [...rows].reverse();
+    }, [rows]);
+
+    return (
+        <div data-testid="monthly-summary-report-visual" className="p-4 md:p-6 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <MetricCard label="Total PO Issued" value={currency(summary.totalPo)} sub={`Across ${summary.monthCount} month${summary.monthCount === 1 ? '' : 's'}`} icon={Package} color="bg-blue-600" />
+                <MetricCard label="Total Received (GR)" value={currency(summary.totalGr)} sub="Delivered goods value" icon={CheckCircle2} color="bg-emerald-600" />
+                <MetricCard label="Total Open Value" value={currency(summary.totalOpen)} sub="Outstanding unreceived value" icon={AlertCircle} color="bg-orange-500" />
+                <MetricCard label="Fulfillment Rate" value={percentValue(summary.rate)} sub="Goods Received vs PO Issued" icon={TrendingUp} color="bg-violet-600" />
+            </div>
+
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                <div className="flex items-center justify-between gap-3 mb-6">
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">Monthly PO, GR &amp; Open Amount Comparison</h3>
+                        <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Side-by-side monthly overview since July 2025</p>
+                    </div>
+                </div>
+                <div className="h-[360px] min-w-[600px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 60 }}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
+                            <XAxis dataKey="month" angle={-35} textAnchor="end" height={80} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
+                            <YAxis tickFormatter={(value) => `$${Number(value).toLocaleString()}`} tick={{ fontSize: 11, fill: '#888' }} />
+                            <RechartsTooltip formatter={(value: number) => currency(value)} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                            <Bar dataKey="totalPoAmount" name="PO Amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="grAmount" name="GR Amount" fill="#10b981" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="openPoAmount" name="Open PO Amount" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: ReportRow[] }) => (
     <table className="w-full min-w-[900px] text-sm text-left">
         <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0">
@@ -1346,6 +1603,14 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-6 py-4">Status</th>
                     </>
                 )}
+                {activeReport === 'MONTHLY_SUMMARY' && (
+                    <>
+                        <th className="px-6 py-4">Month</th>
+                        <th className="px-6 py-4 text-right">Total PO Amount</th>
+                        <th className="px-6 py-4 text-right">GR Amount</th>
+                        <th className="px-6 py-4 text-right text-orange-500">Open PO Amount</th>
+                    </>
+                )}
             </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1380,6 +1645,7 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         {activeReport === 'ALL_DELIVERIES' && <AllDeliveryRow row={row} />}
                         {activeReport === 'DELIVERY_VARIANCE' && <DeliveryVarianceRow row={row as DeliveryVarianceReportRow} />}
                         {activeReport === 'ITEM_REQUEST_HISTORY' && <ItemRequestHistoryRowView row={row as ItemRequestHistoryRow} />}
+                        {activeReport === 'MONTHLY_SUMMARY' && <MonthlySummaryRow row={row as MonthlySummaryAggregatedRow} />}
                         {activeReport === 'FINANCE_SUMMARY' && <FinanceRow row={row} />}
                         {activeReport === 'PO_STATUS' && <PoStatusRow row={row} />}
                     </tr>
@@ -1409,6 +1675,15 @@ const ItemRequestHistoryRowView = ({ row }: { row: ItemRequestHistoryRow }) => (
         <td className="px-5 py-3 text-center font-bold text-orange-500">{numberValue(row.remainingQty)}</td>
         <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(row.totalValue)}</td>
         <td className="px-5 py-3"><StatusPill label={statusLabel(row.status)} /></td>
+    </>
+);
+
+const MonthlySummaryRow = ({ row }: { row: MonthlySummaryAggregatedRow }) => (
+    <>
+        <td className="px-6 py-3 font-bold text-gray-900 dark:text-white">{row.month}</td>
+        <td className="px-6 py-3 text-right font-medium">{currency(row.totalPoAmount)}</td>
+        <td className="px-6 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{currency(row.grAmount)}</td>
+        <td className="px-6 py-3 text-right font-bold text-orange-500 bg-orange-50 dark:bg-orange-900/10">{currency(row.openPoAmount)}</td>
     </>
 );
 
