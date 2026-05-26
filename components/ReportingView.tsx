@@ -47,6 +47,9 @@ interface MonthlySummaryReportRow extends ReportRow {
     orderedQty: number;
     receivedQty: number;
     remainingQty: number;
+    deliveryDates: string;
+    dockets: string;
+    invoices: string;
     unitPrice: number;
     orderedValue: number;
     receivedValue: number;
@@ -197,6 +200,28 @@ const getDeliveryDatesForLine = (po: PORequest, poLineId: string) => {
         .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
     return dates.length > 0 ? dates.join('; ') : '-';
+};
+
+const getDocketsForLine = (po: PORequest, poLineId: string) => {
+    const dockets = Array.from(new Set((po.deliveries || [])
+        .filter((delivery) => delivery.lines.some((line) => line.poLineId === poLineId))
+        .map((delivery) => delivery.docketNumber)
+        .filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b));
+
+    return dockets.length > 0 ? dockets.join('; ') : '-';
+};
+
+const getInvoicesForLine = (po: PORequest, poLineId: string) => {
+    const invoices = Array.from(new Set((po.deliveries || [])
+        .flatMap((delivery) => delivery.lines
+            .filter((line) => line.poLineId === poLineId)
+            .map((line) => line.invoiceNumber)
+        )
+        .filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b));
+
+    return invoices.length > 0 ? invoices.join('; ') : '-';
 };
 
 const buildOutstandingDeliveryRows = (pos: PORequest[]): OutstandingDeliveryReportRow[] => {
@@ -437,6 +462,10 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
             const concurPoNumber = line.concurPoNumber || po.concurPoNumber || '';
             const poNumber = concurPoNumber || 'Pending';
 
+            const deliveryDates = getDeliveryDatesForLine(po, line.id);
+            const dockets = getDocketsForLine(po, line.id);
+            const invoices = getInvoicesForLine(po, line.id);
+
             rows.push({
                 id: line.id,
                 monthKey,
@@ -453,6 +482,9 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
                 orderedQty: ordered,
                 receivedQty: received,
                 remainingQty: remaining,
+                deliveryDates,
+                dockets,
+                invoices,
                 unitPrice,
                 orderedValue,
                 receivedValue,
@@ -578,6 +610,9 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'orderedQty', label: 'Ordered Qty' },
             { key: 'receivedQty', label: 'Received Qty' },
             { key: 'remainingQty', label: 'Remaining Qty' },
+            { key: 'deliveryDates', label: 'Delivery Dates' },
+            { key: 'dockets', label: 'Delivery Dockets' },
+            { key: 'invoices', label: 'Invoice Numbers' },
             { key: 'unitPrice', label: 'Unit Price' },
             { key: 'orderedValue', label: 'Ordered Value' },
             { key: 'receivedValue', label: 'Received Value' },
@@ -663,6 +698,8 @@ const ReportingView = () => {
                 row.concurPoNumber,
                 row.requestNumber,
                 row.concurRequestNumber,
+                row.dockets,
+                row.invoices,
                 row.displayId,
                 row.supplier,
                 row.site,
@@ -1713,6 +1750,9 @@ const MonthlySummaryRow = ({ row }: { row: MonthlySummaryReportRow }) => (
             )}
             <div className="text-xs text-tertiary dark:text-gray-500 font-mono">PO: {row.poNumber || '-'}</div>
             <div className="text-[10px] text-tertiary dark:text-gray-400">{row.requestDate}</div>
+            {row.dockets && row.dockets !== '-' && (
+                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[180px] mt-0.5" title={`Dockets: ${row.dockets}`}>Dockets: {row.dockets}</div>
+            )}
         </td>
         <td className="px-5 py-3">
             <div className="font-medium text-gray-900 dark:text-white">{row.site}</div>
@@ -1721,9 +1761,17 @@ const MonthlySummaryRow = ({ row }: { row: MonthlySummaryReportRow }) => (
         <td className="px-5 py-3">
             <div className="font-medium text-gray-900 dark:text-white max-w-[200px] truncate" title={row.item}>{row.item}</div>
             <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.sku || '-'}</div>
+            {row.invoices && row.invoices !== '-' && (
+                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[180px] mt-0.5" title={`Invoices: ${row.invoices}`}>Invoices: {row.invoices}</div>
+            )}
         </td>
         <td className="px-5 py-3 text-center font-medium">{numberValue(row.orderedQty)}</td>
-        <td className="px-5 py-3 text-center text-green-600">{numberValue(row.receivedQty)}</td>
+        <td className="px-5 py-3 text-center text-green-600">
+            <div className="font-medium">{numberValue(row.receivedQty)}</div>
+            {row.deliveryDates && row.deliveryDates !== '-' && (
+                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[120px] mx-auto" title={`Delivered: ${row.deliveryDates}`}>Delivered: {row.deliveryDates}</div>
+            )}
+        </td>
         <td className="px-5 py-3 text-center font-bold text-orange-500 bg-orange-50/50 dark:bg-orange-900/5">{numberValue(row.remainingQty)}</td>
         <td className="px-5 py-3 text-right text-secondary dark:text-gray-400">{currency(row.unitPrice)}</td>
         <td className="px-5 py-3 text-right font-medium">{currency(row.orderedValue)}</td>
