@@ -10,7 +10,8 @@ import {
     Search,
     TrendingUp,
     Layers,
-    ArrowRightLeft
+    ArrowRightLeft,
+    History
 } from 'lucide-react';
 import PageHeader from './PageHeader.tsx';
 import {
@@ -26,10 +27,10 @@ import {
 } from 'recharts';
 import type { PORequest, POStatus } from '../types.ts';
 
-type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION';
+type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY';
 type ReportRow = Record<string, string | number>;
 type ViewMode = 'CHART' | 'RAW_DATA';
-type ChartMetric = 'DATE' | 'SUPPLIER' | 'SITE';
+type ChartMetric = 'DATE' | 'SUPPLIER' | 'SITE' | 'ITEM';
 type VarianceType = 'Pending' | 'Over delivered' | 'Short closed';
 
 interface OutstandingDeliveryReportRow extends ReportRow {
@@ -84,6 +85,27 @@ interface DeliveryReconciliationRow extends ReportRow {
     status: POStatus;
 }
 
+interface ItemRequestHistoryRow extends ReportRow {
+    id: string;
+    itemId: string;
+    item: string;
+    sku: string;
+    site: string;
+    siteId: string;
+    poNumber: string;
+    displayId: string;
+    supplier: string;
+    requester: string;
+    requestDate: string;
+    orderedQty: number;
+    receivedQty: number;
+    remainingQty: number;
+    unitPrice: number;
+    totalValue: number;
+    status: POStatus;
+    latestDeliveryDate: string;
+}
+
 interface CsvColumn {
     key: string;
     label: string;
@@ -95,7 +117,8 @@ const REPORT_TITLES: Record<ReportType, string> = {
     DELIVERY_VARIANCE: 'Delivery Variance Analysis',
     FINANCE_SUMMARY: 'Finance Capitalization Summary',
     PO_STATUS: 'All PO Status Report',
-    DELIVERY_RECONCILIATION: 'Full Delivery Reconciliation'
+    DELIVERY_RECONCILIATION: 'Full Delivery Reconciliation',
+    ITEM_REQUEST_HISTORY: 'Item Request History by Site'
 };
 
 const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
@@ -104,10 +127,12 @@ const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
     DELIVERY_VARIANCE: 'Exception-only view of pending, over-delivered, and short-closed delivery lines that need review.',
     FINANCE_SUMMARY: 'Detailed breakdown of all received goods with their capitalization status and invoice numbers. Use this for month-end reconciliation.',
     PO_STATUS: 'High-level overview of all Purchase Orders and their current approval status in the workflow.',
-    DELIVERY_RECONCILIATION: 'Complete picture of order fulfillment. Compare ordered vs. received quantities across all PO lines to identify pending amounts and value variances.'
+    DELIVERY_RECONCILIATION: 'Complete picture of order fulfillment. Compare ordered vs. received quantities across all PO lines to identify pending amounts and value variances.',
+    ITEM_REQUEST_HISTORY: 'Search and select an item to see its most recent request activity at each site, with a detailed line-level export for deeper review.'
 };
 
 const DELIVERY_REPORTS: ReportType[] = ['OUTSTANDING_DELIVERIES', 'DELIVERY_VARIANCE', 'DELIVERY_RECONCILIATION'];
+const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY'];
 const ACTIVE_DELIVERY_STATUSES: POStatus[] = ['ACTIVE', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST', 'VARIANCE_PENDING'];
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4'];
 
@@ -313,6 +338,35 @@ const buildReconciliationRows = (pos: PORequest[]): DeliveryReconciliationRow[] 
     })).sort((a, b) => b.orderedValue - a.orderedValue);
 };
 
+const buildItemRequestHistoryRows = (pos: PORequest[]): ItemRequestHistoryRow[] => {
+    return pos.flatMap((po) => po.lines.map((line) => {
+        const orderedQty = Number(line.quantityOrdered || 0);
+        const receivedQty = Number(line.quantityReceived || 0);
+        const unitPrice = Number(line.unitPrice || 0);
+
+        return {
+            id: line.id,
+            itemId: line.itemId,
+            item: line.itemName,
+            sku: line.sku,
+            site: po.site,
+            siteId: po.siteId || '',
+            poNumber: getPoNumber(po, line.concurPoNumber),
+            displayId: po.displayId || po.id.substring(0, 8),
+            supplier: po.supplierName,
+            requester: po.requesterName,
+            requestDate: po.requestDate,
+            orderedQty,
+            receivedQty,
+            remainingQty: Math.max(0, orderedQty - receivedQty),
+            unitPrice,
+            totalValue: orderedQty * unitPrice,
+            status: po.status,
+            latestDeliveryDate: getLatestDeliveryDateForLine(po, line.id)
+        };
+    })).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+};
+
 const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
     if (report === 'OUTSTANDING_DELIVERIES') {
         return [
@@ -369,6 +423,26 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
         ];
     }
 
+    if (report === 'ITEM_REQUEST_HISTORY') {
+        return [
+            { key: 'item', label: 'Item' },
+            { key: 'sku', label: 'SKU' },
+            { key: 'site', label: 'Site' },
+            { key: 'requestDate', label: 'Request Date' },
+            { key: 'poNumber', label: 'PO Number' },
+            { key: 'displayId', label: 'Request ID' },
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'requester', label: 'Requester' },
+            { key: 'orderedQty', label: 'Ordered Qty' },
+            { key: 'receivedQty', label: 'Received Qty' },
+            { key: 'remainingQty', label: 'Remaining Qty' },
+            { key: 'unitPrice', label: 'Unit Price' },
+            { key: 'totalValue', label: 'Ordered Value' },
+            { key: 'latestDeliveryDate', label: 'Latest Delivery Date' },
+            { key: 'status', label: 'PO Status' }
+        ];
+    }
+
     return data[0] ? Object.keys(data[0]).map((key) => ({ key, label: key })) : [];
 };
 
@@ -393,6 +467,7 @@ const ReportingView = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSite, setSelectedSite] = useState('ALL');
     const [selectedSupplier, setSelectedSupplier] = useState('ALL');
+    const [selectedItemId, setSelectedItemId] = useState('ALL');
 
     useEffect(() => {
         sessionStorage.setItem('pf_active_report', activeReport);
@@ -401,30 +476,47 @@ const ReportingView = () => {
     const reportData = (cachedReports[activeReport] || []) as ReportRow[];
     const lastRun = cachedRunTimes[activeReport];
     const isDeliveryReport = DELIVERY_REPORTS.includes(activeReport);
-    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport;
+    const isItemHistoryReport = activeReport === 'ITEM_REQUEST_HISTORY';
+    const isFilterableReport = FILTERABLE_REPORTS.includes(activeReport);
+    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport;
 
     const siteOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.site || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
     const supplierOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.supplier || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
+    const itemOptions = useMemo(() => {
+        const options = new Map<string, { id: string; label: string }>();
+        reportData.forEach((row) => {
+            const id = String(row.itemId || row.item || '');
+            if (!id) return;
+            const sku = String(row.sku || '').trim();
+            const label = `${String(row.item || 'Unknown Item')}${sku ? ` (${sku})` : ''}`;
+            if (!options.has(id)) options.set(id, { id, label });
+        });
+        return [{ id: 'ALL', label: 'All items' }, ...Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label))];
+    }, [reportData]);
 
     const visibleReportData = useMemo(() => {
-        if (!isDeliveryReport) return reportData;
+        if (!isFilterableReport) return reportData;
 
         const query = searchTerm.trim().toLowerCase();
         return reportData.filter((row) => {
             const matchesSearch = !query || [
                 row.poNumber,
+                row.displayId,
                 row.supplier,
                 row.site,
                 row.item,
+                row.sku,
+                row.requester,
                 row.status,
                 row.exceptionType
             ].some((value) => String(value || '').toLowerCase().includes(query));
             const matchesSite = selectedSite === 'ALL' || row.site === selectedSite;
             const matchesSupplier = selectedSupplier === 'ALL' || row.supplier === selectedSupplier;
+            const matchesItem = selectedItemId === 'ALL' || row.itemId === selectedItemId || row.item === selectedItemId;
 
-            return matchesSearch && matchesSite && matchesSupplier;
+            return matchesSearch && matchesSite && matchesSupplier && matchesItem;
         });
-    }, [activeReport, isDeliveryReport, reportData, searchTerm, selectedSite, selectedSupplier]);
+    }, [isFilterableReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier]);
 
     const outstandingRows = visibleReportData as OutstandingDeliveryReportRow[];
     const varianceRows = visibleReportData as DeliveryVarianceReportRow[];
@@ -435,6 +527,7 @@ const ReportingView = () => {
         return { totalValue, totalUnits, avgCompletion, lineCount: outstandingRows.length };
     }, [outstandingRows]);
     const reconciliationRows = visibleReportData as DeliveryReconciliationRow[];
+    const itemHistoryRows = visibleReportData as ItemRequestHistoryRow[];
 
     const reconciliationSummary = useMemo(() => {
         const totalOrdered = reconciliationRows.reduce((sum, row) => sum + row.orderedValue, 0);
@@ -459,6 +552,24 @@ const ReportingView = () => {
         };
     }, [varianceRows]);
 
+    const itemHistorySummary = useMemo(() => {
+        const latestBySite = new Map<string, ItemRequestHistoryRow>();
+        itemHistoryRows.forEach((row) => {
+            const current = latestBySite.get(row.site);
+            if (!current || new Date(row.requestDate).getTime() > new Date(current.requestDate).getTime()) {
+                latestBySite.set(row.site, row);
+            }
+        });
+
+        return {
+            lineCount: itemHistoryRows.length,
+            siteCount: latestBySite.size,
+            totalOrdered: itemHistoryRows.reduce((sum, row) => sum + row.orderedQty, 0),
+            totalValue: itemHistoryRows.reduce((sum, row) => sum + row.totalValue, 0),
+            latestRowsBySite: Array.from(latestBySite.values()).sort((a, b) => a.site.localeCompare(b.site))
+        };
+    }, [itemHistoryRows]);
+
     const switchReport = (report: ReportType) => {
         setActiveReport(report);
         setViewMode('CHART');
@@ -466,6 +577,7 @@ const ReportingView = () => {
         setSearchTerm('');
         setSelectedSite('ALL');
         setSelectedSupplier('ALL');
+        setSelectedItemId('ALL');
     };
 
     const runReport = () => {
@@ -486,6 +598,8 @@ const ReportingView = () => {
                 data = buildPoStatusRows(pos);
             } else if (activeReport === 'DELIVERY_RECONCILIATION') {
                 data = buildReconciliationRows(pos);
+            } else if (activeReport === 'ITEM_REQUEST_HISTORY') {
+                data = buildItemRequestHistoryRows(pos);
             }
 
             setReportCache(activeReport, data);
@@ -517,8 +631,9 @@ const ReportingView = () => {
             if (chartMetric === 'DATE') key = String(row.deliveryDate || row.date || 'Unknown');
             if (chartMetric === 'SUPPLIER') key = String(row.supplier || 'Unknown');
             if (chartMetric === 'SITE') key = String(row.site || 'Unknown');
+            if (chartMetric === 'ITEM') key = String(row.item || 'Unknown');
 
-            const value = activeReport === 'ALL_DELIVERIES' ? Number(row.totalPrice || 0) : 0;
+            const value = activeReport === 'ALL_DELIVERIES' ? Number(row.totalPrice || 0) : Number(row.totalValue || 0);
             aggregated[key] = (aggregated[key] || 0) + value;
         });
 
@@ -559,7 +674,23 @@ const ReportingView = () => {
             .slice(0, 12);
     }, [chartMetric, varianceRows]);
 
-    const hasActiveFilters = Boolean(searchTerm.trim() || selectedSite !== 'ALL' || selectedSupplier !== 'ALL');
+    const itemHistoryChartData = useMemo(() => {
+        const grouped: Record<string, { name: string; orderedQty: number; requestCount: number; orderedValue: number; latestRequest: string }> = {};
+        itemHistoryRows.forEach((row) => {
+            const key = row.site || 'Unknown';
+            grouped[key] ||= { name: key, orderedQty: 0, requestCount: 0, orderedValue: 0, latestRequest: row.requestDate };
+            grouped[key].orderedQty += row.orderedQty;
+            grouped[key].requestCount += 1;
+            grouped[key].orderedValue += row.totalValue;
+            if (new Date(row.requestDate).getTime() > new Date(grouped[key].latestRequest).getTime()) {
+                grouped[key].latestRequest = row.requestDate;
+            }
+        });
+
+        return Object.values(grouped).sort((a, b) => b.orderedQty - a.orderedQty).slice(0, 12);
+    }, [itemHistoryRows]);
+
+    const hasActiveFilters = Boolean(searchTerm.trim() || selectedSite !== 'ALL' || selectedSupplier !== 'ALL' || selectedItemId !== 'ALL');
 
     return (
         <div className="space-y-6 pb-20 animate-fade-in">
@@ -573,6 +704,7 @@ const ReportingView = () => {
                             <ReportButton active={activeReport === 'ALL_DELIVERIES'} icon={Package} label="All Deliveries" onClick={() => switchReport('ALL_DELIVERIES')} />
                             <ReportButton active={activeReport === 'DELIVERY_VARIANCE'} icon={TrendingUp} label="Delivery Variance" onClick={() => switchReport('DELIVERY_VARIANCE')} />
                             <ReportButton active={activeReport === 'DELIVERY_RECONCILIATION'} icon={Layers} label="Full Reconciliation" onClick={() => switchReport('DELIVERY_RECONCILIATION')} />
+                            <ReportButton active={activeReport === 'ITEM_REQUEST_HISTORY'} icon={History} label="Item Request History" onClick={() => switchReport('ITEM_REQUEST_HISTORY')} />
                             <ReportButton active={activeReport === 'FINANCE_SUMMARY'} icon={TrendingUp} label="Finance Summary" onClick={() => switchReport('FINANCE_SUMMARY')} />
                             <ReportButton active={activeReport === 'PO_STATUS'} icon={FileText} label="PO Status Report" onClick={() => switchReport('PO_STATUS')} />
                         </div>
@@ -633,6 +765,7 @@ const ReportingView = () => {
                                                 {activeReport === 'OUTSTANDING_DELIVERIES' && currency(outstandingSummary.totalValue)}
                                                 {activeReport === 'DELIVERY_VARIANCE' && currency(varianceSummary.totalValue)}
                                                 {activeReport === 'ALL_DELIVERIES' && currency(getChartData().reduce((sum, item) => sum + item.value, 0))}
+                                                {activeReport === 'ITEM_REQUEST_HISTORY' && numberValue(itemHistorySummary.totalOrdered)}
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-xs font-medium text-tertiary dark:text-gray-500">Group By:</span>
@@ -642,6 +775,7 @@ const ReportingView = () => {
                                                     className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                                 >
                                                     {activeReport === 'ALL_DELIVERIES' && <option value="DATE">Delivery Date</option>}
+                                                    {activeReport === 'ITEM_REQUEST_HISTORY' && <option value="ITEM">Item</option>}
                                                     <option value="SUPPLIER">Supplier</option>
                                                     <option value="SITE">Site</option>
                                                 </select>
@@ -650,17 +784,26 @@ const ReportingView = () => {
                                     )}
                                 </div>
 
-                                {isDeliveryReport && (
-                                    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_160px_180px_auto] gap-2">
+                                {isFilterableReport && (
+                                    <div className={`grid grid-cols-1 gap-2 ${isItemHistoryReport ? 'md:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_150px_170px_auto]' : 'md:grid-cols-[minmax(0,1fr)_160px_180px_auto]'}`}>
                                         <label className="relative block">
                                             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary dark:text-gray-500" />
                                             <input
                                                 value={searchTerm}
                                                 onChange={(event) => setSearchTerm(event.target.value)}
-                                                placeholder="Search reports"
+                                                placeholder={isItemHistoryReport ? 'Search item, SKU, PO, site, supplier' : 'Search reports'}
                                                 className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                             />
                                         </label>
+                                        {isItemHistoryReport && (
+                                            <select
+                                                value={selectedItemId}
+                                                onChange={(event) => setSelectedItemId(event.target.value)}
+                                                className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                            >
+                                                {itemOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                                            </select>
+                                        )}
                                         <select
                                             value={selectedSite}
                                             onChange={(event) => setSelectedSite(event.target.value)}
@@ -681,6 +824,7 @@ const ReportingView = () => {
                                                 setSearchTerm('');
                                                 setSelectedSite('ALL');
                                                 setSelectedSupplier('ALL');
+                                                setSelectedItemId('ALL');
                                             }}
                                             disabled={!hasActiveFilters}
                                             className="btn-secondary px-3 py-2 text-sm disabled:opacity-50"
@@ -709,6 +853,8 @@ const ReportingView = () => {
                                 <DeliveryVarianceVisual rows={varianceRows} summary={varianceSummary} chartData={varianceChartData} />
                             ) : activeReport === 'DELIVERY_RECONCILIATION' && viewMode === 'CHART' ? (
                                 <DeliveryReconciliationVisual rows={reconciliationRows} summary={reconciliationSummary} />
+                            ) : activeReport === 'ITEM_REQUEST_HISTORY' && viewMode === 'CHART' ? (
+                                <ItemRequestHistoryVisual summary={itemHistorySummary} chartData={itemHistoryChartData} selectedItemLabel={itemOptions.find((item) => item.id === selectedItemId)?.label || 'All items'} />
                             ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
                                 <AllDeliveriesVisual data={getChartData()} />
                             ) : (
@@ -947,6 +1093,67 @@ const DeliveryReconciliationVisual = ({ rows, summary }: { rows: DeliveryReconci
     );
 };
 
+const ItemRequestHistoryVisual = ({ summary, chartData, selectedItemLabel }: { summary: { lineCount: number; siteCount: number; totalOrdered: number; totalValue: number; latestRowsBySite: ItemRequestHistoryRow[] }; chartData: Array<{ name: string; orderedQty: number; requestCount: number; orderedValue: number; latestRequest: string }>; selectedItemLabel: string }) => (
+    <div data-testid="item-request-history-report-visual" className="p-4 md:p-6 space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <MetricCard label="Request Lines" value={numberValue(summary.lineCount)} sub={selectedItemLabel} icon={History} color="bg-slate-600" />
+            <MetricCard label="Sites Requested" value={numberValue(summary.siteCount)} sub="With matching request history" icon={Layers} color="bg-sky-500" />
+            <MetricCard label="Ordered Units" value={numberValue(summary.totalOrdered)} sub="Across visible request lines" icon={Package} color="bg-emerald-600" />
+            <MetricCard label="Ordered Value" value={currency(summary.totalValue)} sub="Based on request unit price" icon={TrendingUp} color="bg-violet-500" />
+        </div>
+
+        <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">Request Quantity by Site</h3>
+                        <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Use Raw Data or Export CSV for complete line history</p>
+                    </div>
+                    <span className="text-xs text-tertiary dark:text-gray-500">{chartData.length} sites</span>
+                </div>
+                <div className="h-[340px] min-w-[560px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 70 }}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.18} vertical={false} />
+                            <XAxis dataKey="name" angle={-35} textAnchor="end" height={88} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
+                            <YAxis tick={{ fontSize: 12, fill: '#888' }} />
+                            <RechartsTooltip
+                                formatter={(value: number, name: string) => [name === 'orderedValue' ? currency(value) : numberValue(value), name === 'orderedQty' ? 'Ordered units' : name === 'requestCount' ? 'Request lines' : 'Ordered value']}
+                                labelFormatter={(label) => `Site: ${label}`}
+                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                            />
+                            <Legend />
+                            <Bar dataKey="orderedQty" name="Ordered units" fill="#10b981" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="requestCount" name="Request lines" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Most Recent Request by Site</h3>
+                <div className="space-y-3">
+                    {summary.latestRowsBySite.slice(0, 8).map((row) => (
+                        <div key={`${row.site}-${row.id}`} className="rounded-lg border border-gray-100 dark:border-gray-800 p-3">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="font-bold text-sm text-gray-900 dark:text-white truncate">{row.site}</p>
+                                    <p className="text-xs text-tertiary dark:text-gray-500 truncate">{row.item}</p>
+                                </div>
+                                <span className="text-xs font-bold text-[var(--color-brand)] shrink-0">{numberValue(row.orderedQty)}</span>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between gap-2 text-xs text-secondary dark:text-gray-400">
+                                <span>{row.requestDate}</span>
+                                <span className="font-mono">{row.poNumber}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    </div>
+);
+
 const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: ReportRow[] }) => (
     <table className="w-full min-w-[900px] text-sm text-left">
         <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0">
@@ -1003,6 +1210,19 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-5 py-4 text-right">Variance</th>
                     </>
                 )}
+                {activeReport === 'ITEM_REQUEST_HISTORY' && (
+                    <>
+                        <th className="px-5 py-4">Item / SKU</th>
+                        <th className="px-5 py-4">Site</th>
+                        <th className="px-5 py-4">Request / PO</th>
+                        <th className="px-5 py-4">Supplier</th>
+                        <th className="px-5 py-4 text-center">Ordered</th>
+                        <th className="px-5 py-4 text-center">Received</th>
+                        <th className="px-5 py-4 text-center">Remaining</th>
+                        <th className="px-5 py-4 text-right">Ordered Value</th>
+                        <th className="px-5 py-4">Status</th>
+                    </>
+                )}
                 {activeReport === 'FINANCE_SUMMARY' && (
                     <>
                         <th className="px-6 py-4">Received / Docket</th>
@@ -1055,6 +1275,7 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         {activeReport === 'OUTSTANDING_DELIVERIES' && <OutstandingDeliveryRow row={row as OutstandingDeliveryReportRow} />}
                         {activeReport === 'ALL_DELIVERIES' && <AllDeliveryRow row={row} />}
                         {activeReport === 'DELIVERY_VARIANCE' && <DeliveryVarianceRow row={row as DeliveryVarianceReportRow} />}
+                        {activeReport === 'ITEM_REQUEST_HISTORY' && <ItemRequestHistoryRowView row={row as ItemRequestHistoryRow} />}
                         {activeReport === 'FINANCE_SUMMARY' && <FinanceRow row={row} />}
                         {activeReport === 'PO_STATUS' && <PoStatusRow row={row} />}
                     </tr>
@@ -1062,6 +1283,29 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
             )}
         </tbody>
     </table>
+);
+
+const ItemRequestHistoryRowView = ({ row }: { row: ItemRequestHistoryRow }) => (
+    <>
+        <td className="px-5 py-3">
+            <div className="font-bold text-gray-900 dark:text-white max-w-[260px] truncate" title={row.item}>{row.item}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.sku || '-'}</div>
+        </td>
+        <td className="px-5 py-3 text-secondary dark:text-gray-300">{row.site}</td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white">{row.requestDate}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.poNumber} / {row.displayId}</div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white">{row.supplier}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500">{row.requester}</div>
+        </td>
+        <td className="px-5 py-3 text-center font-medium">{numberValue(row.orderedQty)}</td>
+        <td className="px-5 py-3 text-center text-green-600">{numberValue(row.receivedQty)}</td>
+        <td className="px-5 py-3 text-center font-bold text-orange-500">{numberValue(row.remainingQty)}</td>
+        <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(row.totalValue)}</td>
+        <td className="px-5 py-3"><StatusPill label={statusLabel(row.status)} /></td>
+    </>
 );
 
 const OutstandingDeliveryRow = ({ row }: { row: OutstandingDeliveryReportRow }) => (

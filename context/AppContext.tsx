@@ -352,7 +352,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     DELIVERY_VARIANCE: null,
     FINANCE_SUMMARY: null,
     PO_STATUS: null,
-    DELIVERY_RECONCILIATION: null
+    DELIVERY_RECONCILIATION: null,
+    ITEM_REQUEST_HISTORY: null
   });
   const [cachedRunTimes, setCachedRunTimes] = useState<Record<string, string | null>>({
     OUTSTANDING_DELIVERIES: null,
@@ -360,7 +361,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     DELIVERY_VARIANCE: null,
     FINANCE_SUMMARY: null,
     PO_STATUS: null,
-    DELIVERY_RECONCILIATION: null
+    DELIVERY_RECONCILIATION: null,
+    ITEM_REQUEST_HISTORY: null
   });
 
   const setReportCache = useCallback((report: string, data: unknown[]) => {
