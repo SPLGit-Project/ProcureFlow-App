@@ -617,9 +617,22 @@ export const db = {
     },
 
     getStockSnapshots: async (): Promise<SupplierStockSnapshot[]> => {
-        const { data, error } = await supabase.from('stock_snapshots').select('*');
-        if (error) throw error;
-        return data.map((s: DbStockSnapshotRow) => ({
+        // Paginate to avoid Supabase's default 1000-row limit (SPL reports can exceed 1950 rows)
+        let allData: DbStockSnapshotRow[] = [];
+        let from = 0;
+        const batchSize = 1000;
+        while (true) {
+            const { data, error } = await supabase
+                .from('stock_snapshots')
+                .select('*')
+                .range(from, from + batchSize - 1);
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            allData = allData.concat(data);
+            if (data.length < batchSize) break;
+            from += batchSize;
+        }
+        return allData.map((s: DbStockSnapshotRow) => ({
              id: s.id,
              supplierId: s.supplier_id,
              supplierSku: s.supplier_sku,
@@ -1045,7 +1058,22 @@ export const db = {
         });
         if (error) throw error;
     },
-    
+
+    getInboundEmailConfig: async (): Promise<string> => {
+        const { data, error } = await supabase.from('app_config').select('value').eq('key', 'inbound_email_config').single();
+        if (error && error.code !== 'PGRST116') throw error;
+        return data?.value?.email || 'reports@procureflow.com';
+    },
+
+    updateInboundEmailConfig: async (email: string): Promise<void> => {
+        const { error } = await supabase.from('app_config').upsert({
+            key: 'inbound_email_config',
+            value: { email },
+            updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+    },
+
     addSnapshot: async (snapshot: SupplierStockSnapshot): Promise<void> => {
          const { error } = await supabase.from('stock_snapshots').insert({
               id: snapshot.id,

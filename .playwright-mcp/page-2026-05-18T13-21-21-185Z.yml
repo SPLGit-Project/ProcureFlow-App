@@ -1,0 +1,12 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - img "MercerFlow logo" [ref=e7]
+    - paragraph [ref=e8]: Sign in to access your dashboard
+  - generic [ref=e9]:
+    - button "Sign in with Microsoft" [disabled] [ref=e10]:
+      - img [ref=e11]
+      - generic [ref=e16]: Sign in with Microsoft
+    - generic [ref=e19]:
+      - img [ref=e20]
+      - generic [ref=e22]: Secure Azure AD Authentication
+  - paragraph [ref=e24]: Restricted to authorized personnel only.

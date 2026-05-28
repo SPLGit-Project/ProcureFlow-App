@@ -1171,7 +1171,51 @@ const HelpGuide = () => {
       title: 'Item Creation',
       icon: Package,
       color: 'purple',
-      guides: []
+      guides: [
+        {
+          id: 'creating-item-request',
+          title: 'Creating an Item Request',
+          steps: [
+            'Navigate to "Item Preview" in the sidebar to open the Item Creation Workbench.',
+            'Select the request type (e.g., New Item, Replacement, Customer-Specific) — conditional fields will appear based on your selection.',
+            'Fill in the item description, business unit, division, and any required reference fields.',
+            'Attach a spec sheet via the attachment section if one is available.',
+            'Click "Submit Request" to start the approval workflow.'
+          ]
+        },
+        {
+          id: 'duplicate-check',
+          title: 'Duplicate Check',
+          steps: [
+            'After completing the item details, click "Check for Duplicates" to scan the existing catalogue.',
+            'Results are shown as a scored candidate table — higher scores indicate stronger similarity.',
+            'Review each candidate\'s match reasons (description similarity, SKU overlap, category match).',
+            'Select an outcome: Use Existing, Similar New Required, or Proceed as New.',
+            'If overriding a warning, a justification note is required before submitting.'
+          ]
+        },
+        {
+          id: 'sku-generation',
+          title: 'SKU Generation',
+          steps: [
+            'SKUs are automatically generated from the category code + product type code + a sequential suffix.',
+            'The generated SKU is shown as a live preview in the WORKBENCH form.',
+            'Manual SKU override is available only to users with manage_development permission and requires a justification.',
+            'SKU code maps (category and product type codes) are managed in Settings → Item Creation.'
+          ]
+        },
+        {
+          id: 'approval-routing',
+          title: 'Understanding Approval Routing',
+          steps: [
+            'When a request is submitted, the system evaluates configured approval rules against the request details.',
+            'Rules can fire based on conditions like margin threshold, request type (purchase-only, contract, COG), or urgency.',
+            'Each matched rule creates an approval stage with an assigned approver and SLA countdown.',
+            'SLA countdowns appear in the Item Approval Queue — amber means < 25% of SLA remaining, red means overdue.',
+            'Decision outcomes: Approve advances the request, Reject closes it, Request Revision returns it to the requestor.'
+          ]
+        }
+      ]
     },
     {
       id: 'item-approvals',
@@ -1371,7 +1415,41 @@ const HelpGuide = () => {
         <div className="flex-1">
           {activeTab === 'guides' ? (
             selectedCategory === 'item-creation' ? (
-              <ItemCreationContent />
+              <div className="space-y-12">
+                <ItemCreationContent />
+                <div className="border-t border-gray-200 dark:border-gray-800 pt-8">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Step-by-Step Reference</h3>
+                  <div className="space-y-8">
+                    {categories.find(c => c.id === selectedCategory)?.guides.map((guide) => (
+                      <div key={guide.id} className="bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden hover:border-[var(--color-brand)]/30 transition-all">
+                        <div className={`p-8 bg-gradient-to-br from-purple-50 to-white dark:from-white/5 dark:to-transparent`}>
+                          <div className="flex items-center gap-3 mb-6">
+                            <div className={`w-12 h-12 rounded-2xl bg-purple-100 dark:bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400 shadow-sm`}>
+                              <BookOpen size={24} />
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{guide.title}</h3>
+                          </div>
+                          <div className="space-y-4">
+                            {guide.steps.map((step, sIdx) => (
+                              <div key={sIdx} className="flex gap-4 group/step">
+                                <div className="flex flex-col items-center">
+                                  <div className={`w-8 h-8 rounded-full border-2 border-purple-200 dark:border-gray-800 flex items-center justify-center text-xs font-bold text-gray-400 group-hover/step:bg-[var(--color-brand)] group-hover/step:border-[var(--color-brand)] group-hover/step:text-white transition-all`}>
+                                    {sIdx + 1}
+                                  </div>
+                                  {sIdx < guide.steps.length - 1 && <div className="w-0.5 h-full bg-gray-100 dark:bg-gray-800 my-1" />}
+                                </div>
+                                <div className="pb-6">
+                                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed font-medium">{step}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="space-y-8 animate-fade-in-up">
                 {categories.find(c => c.id === selectedCategory)?.guides.map((guide) => (

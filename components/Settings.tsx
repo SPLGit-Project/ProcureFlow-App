@@ -115,6 +115,7 @@ const Settings = () => {
   const {
     currentUser, users, addUser, roles, hasPermission, createRole, updateRole, deleteRole, permissions, updateUserRole, updateUserAccess,
     teamsWebhookUrl, updateTeamsWebhook,
+    inboundEmailAddress, updateInboundEmailAddress,
     theme, setTheme, branding, updateBranding,
     suppliers, addSupplier, updateSupplier, deleteSupplier,
     sites, addSite, updateSite, deleteSite,
@@ -637,8 +638,55 @@ const Settings = () => {
 
   // --- Email Ingestion Hub State ---
   const [isAutoIngestEnabled, setIsAutoIngestEnabled] = useState(true);
-  const [ingestEmailAddress, setIngestEmailAddress] = useState('reports@procureflow.com');
+  const [ingestEmailAddress, setIngestEmailAddress] = useState(inboundEmailAddress);
   const [ingestInterval, setIngestInterval] = useState('Hourly');
+  const EMAIL_METADATA: Record<string, {
+      fileUrl: string;
+      supplierName: string;
+      contactEmail: string;
+      keyContact: string;
+      phone: string;
+      address: string;
+      categories: string[];
+  }> = {
+      'spl-email-1': {
+          fileUrl: '/SPL_Accommodation_SOH_Report.xlsx',
+          supplierName: 'SPL Accommodation',
+          contactEmail: 'inventory@accommodation-spl.com.au',
+          keyContact: 'SPL Inventory Team',
+          phone: '1300 775 222',
+          address: '12 SPL Boulevard, Melbourne VIC 3000',
+          categories: ['Accommodation', 'Linen', 'SOH']
+      },
+      'spl-email-2': {
+          fileUrl: '/SPL_Healthcare_SOH_Report.xlsx',
+          supplierName: 'SPL Healthcare',
+          contactEmail: 'inventory@healthcare-spl.com.au',
+          keyContact: 'SPL Healthcare Team',
+          phone: '1300 775 223',
+          address: '12 SPL Boulevard, Melbourne VIC 3000',
+          categories: ['Healthcare', 'Linen', 'SOH']
+      },
+      'host-email': {
+          fileUrl: '/HOST_STOCKLIST.xlsx',
+          supplierName: 'HOST Supplies',
+          contactEmail: 'anita@hostsupplies.com.au',
+          keyContact: 'Anita',
+          phone: '02 9516 4533',
+          address: '104 Marrickville Road, Marrickville',
+          categories: ['Hospitality', 'Consumables']
+      },
+      'frenkel-email': {
+          fileUrl: '/Weekly_Inventory_SOH.xlsx',
+          supplierName: 'Frenkel Textiles',
+          contactEmail: 'david@frenkeltextiles.com.au',
+          keyContact: 'David Frenkel',
+          phone: 'Bruce: 0414 552 770',
+          address: '15 Textile Way, Sydney NSW 2000',
+          categories: ['Textiles', 'Bedding', 'SOH']
+      }
+  };
+
   const [simulatedEmails, setSimulatedEmails] = useState([
       {
           id: 'spl-email-1',
@@ -646,10 +694,43 @@ const Settings = () => {
           senderName: 'SPL Accommodation Inventory',
           subject: 'SPL Accommodation Stock on Hand Report - 28/05/2026',
           receivedAt: '2026-05-28T07:15:00Z',
-          attachmentName: 'SPL Accommodation SOH and Stock on order Report 11.5.2026.xlsx',
-          attachmentSize: '102.8 KB',
+          attachmentName: 'SPL Accommodation SOH and Stock on order Report 25.5.2026.xlsx',
+          attachmentSize: '102.4 KB',
           status: 'UNREAD',
           body: 'Hi ProcureFlow Team,\n\nPlease find attached our latest Stock on Hand (SOH) and Stock on Order report for SPL Accommodation items.\n\nKind regards,\nSPL Inventory Team'
+      },
+      {
+          id: 'spl-email-2',
+          sender: 'inventory@healthcare-spl.com.au',
+          senderName: 'SPL Healthcare Inventory',
+          subject: 'SPL Healthcare Stock on Hand Report - 28/05/2026',
+          receivedAt: '2026-05-28T07:30:00Z',
+          attachmentName: 'SPL Healthcare SOH and Stock on Order Report 25.5.2026.xlsx',
+          attachmentSize: '101.3 KB',
+          status: 'UNREAD',
+          body: 'Hi ProcureFlow Team,\n\nPlease find attached our latest Stock on Hand (SOH) and Stock on Order report for SPL Healthcare items.\n\nKind regards,\nSPL Healthcare Team'
+      },
+      {
+          id: 'host-email',
+          sender: 'anita@hostsupplies.com.au',
+          senderName: 'HOST Supplies Inventory',
+          subject: 'HOST Supplies Stock on Hand List - 25/05/2026',
+          receivedAt: '2026-05-28T08:00:00Z',
+          attachmentName: 'HOST STOCKLIST - 25-05-2026.xlsx',
+          attachmentSize: '33.6 KB',
+          status: 'UNREAD',
+          body: 'Hello ProcureFlow,\n\nHere is our updated stocklist including available quantities and pricing valid as of May 25, 2026.\n\nBest,\nAnita'
+      },
+      {
+          id: 'frenkel-email',
+          sender: 'david@frenkeltextiles.com.au',
+          senderName: 'Frenkel Textiles Inventory',
+          subject: 'Weekly Inventory SOH - 25/05/2026',
+          receivedAt: '2026-05-28T08:45:00Z',
+          attachmentName: 'Weekly Inventory SOH 25.05.2026.xlsx',
+          attachmentSize: '352.3 KB',
+          status: 'UNREAD',
+          body: 'Hi team,\n\nAttached is our weekly inventory and stock on hand report. Note pricing and new inventory arrival dates inside.\n\nRegards,\nDavid Frenkel'
       }
   ]);
   const [ingestionStats, setIngestionStats] = useState<{
@@ -661,9 +742,14 @@ const Settings = () => {
   } | null>(null);
 
   // --- Verified Inbound Email Search State & Effect ---
-  const [emailSearchQuery, setEmailSearchQuery] = useState('reports@procureflow.com');
+  const [emailSearchQuery, setEmailSearchQuery] = useState(inboundEmailAddress);
   const [isSearchingEmail, setIsSearchingEmail] = useState(false);
   const [emailSearchResults, setEmailSearchResults] = useState<any[]>([]);
+
+  useEffect(() => {
+      setIngestEmailAddress(inboundEmailAddress);
+      setEmailSearchQuery(inboundEmailAddress);
+  }, [inboundEmailAddress]);
 
   useEffect(() => {
       if (emailSearchQuery.trim().length < 2) {
@@ -888,28 +974,31 @@ const Settings = () => {
 
       const timer = setTimeout(async () => {
           try {
+              const meta = EMAIL_METADATA[unreadMail.id];
+              if (!meta) throw new Error(`Metadata not found for email ${unreadMail.id}`);
+
               // Update state to show daemon is working
               setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'INGESTING' } : m));
               
-              // Find or create SPL supplier
-              let targetSupplier = suppliers.find(s => s.name.toUpperCase().includes('SPL'));
+              // Find or create supplier
+              let targetSupplier = suppliers.find(s => s.name.toLowerCase().trim() === meta.supplierName.toLowerCase().trim());
               let targetSupplierId = targetSupplier?.id;
               
               if (!targetSupplier) {
                   targetSupplierId = uuidv4();
-                  const splSupplier: Supplier = {
+                  const newSupplier: Supplier = {
                       id: targetSupplierId,
-                      name: "SPL Accommodation",
-                      contactEmail: "inventory@accommodation-spl.com.au",
-                      keyContact: "SPL Inventory Team",
-                      phone: "1300 775 222",
-                      address: "12 SPL Boulevard, Melbourne VIC 3000",
-                      categories: ["Accommodation", "Linen", "SOH"]
+                      name: meta.supplierName,
+                      contactEmail: meta.contactEmail,
+                      keyContact: meta.keyContact,
+                      phone: meta.phone,
+                      address: meta.address,
+                      categories: meta.categories
                   };
-                  await addSupplier(splSupplier);
+                  await addSupplier(newSupplier);
               }
               
-              const response = await fetch('/SPL_Accommodation_SOH_Report.xlsx');
+              const response = await fetch(meta.fileUrl);
               const arrayBuffer = await response.arrayBuffer();
               const file = new File([arrayBuffer], unreadMail.attachmentName, {
                   type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -932,25 +1021,25 @@ const Settings = () => {
                   subCategory: partial.subCategory,
                   stockType: partial.stockType,
                   cartonQty: partial.cartonQty,
-                  stockOnHand: partial.stockOnHand || 0,
+                  stockOnHand: partial.stockOnHand !== undefined ? partial.stockOnHand : (partial.availableQty || 0),
                   committedQty: partial.committedQty || 0,
                   backOrderedQty: partial.backOrderedQty || 0,
-                  availableQty: partial.availableQty || 0,
-                  totalStockQty: partial.stockOnHand || 0,
+                  availableQty: partial.availableQty !== undefined ? partial.availableQty : (partial.stockOnHand || 0),
+                  totalStockQty: partial.stockOnHand !== undefined ? partial.stockOnHand : (partial.availableQty || 0),
                   sellPrice: partial.sellPrice,
-                  sohValueAtSell: partial.sohValueAtSell,
-                  snapshotDate: '2026-05-28',
+                  sohValueAtSell: partial.sohValueAtSell !== undefined ? partial.sohValueAtSell : ((partial.stockOnHand || partial.availableQty || 0) * (partial.sellPrice || 0)),
+                  snapshotDate: new Date().toISOString().split('T')[0],
                   sourceReportName: `Auto-Ingestion Daemon`,
                   incomingStock: partial.incomingStock || []
               }));
               
-              await importStockSnapshot(targetSupplierId!, '2026-05-28', fullSnapshots);
+              await importStockSnapshot(targetSupplierId!, new Date().toISOString().split('T')[0], fullSnapshots);
               const mappingResults = await runAutoMapping(targetSupplierId!);
               await refreshAvailability();
               await reloadData();
               
               setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'INGESTED' } : m));
-              success('Daemon Auto-Ingest: SPL Accommodation SOH Report ingested & auto-mapped successfully!', 5000);
+              success(`Daemon Auto-Ingest: ${meta.supplierName} SOH Report ingested & auto-mapped successfully!`, 5000);
           } catch (e: any) {
               console.error('Daemon Auto Ingest Failed:', e);
               setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'FAILED' } : m));
@@ -959,34 +1048,44 @@ const Settings = () => {
       }, 8000); // Poll 8 seconds after daemon turns on
       
       return () => clearTimeout(timer);
-  }, [isAutoIngestEnabled, simulatedEmails, suppliers]);
+  // Intentionally excluding simulatedEmails from deps to avoid re-triggering when status updates.
+  // The effect reads the latest ref via the closure on mount only — each ingest updates status,
+  // and the next UNREAD email will be picked up on the next daemon cycle (isAutoIngestEnabled toggle).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAutoIngestEnabled, suppliers]);
 
   const handleManualIngest = async (emailId: string) => {
       try {
+          const meta = EMAIL_METADATA[emailId];
+          if (!meta) throw new Error(`Metadata not found for email ${emailId}`);
+
+          const unreadMail = simulatedEmails.find(email => email.id === emailId);
+          if (!unreadMail) return;
+
           // Update status to INGESTING
           setSimulatedEmails(prev => prev.map(m => m.id === emailId ? { ...m, status: 'INGESTING' } : m));
           
-          // Find or create SPL supplier
-          let targetSupplier = suppliers.find(s => s.name.toUpperCase().includes('SPL'));
+          // Find or create supplier
+          let targetSupplier = suppliers.find(s => s.name.toLowerCase().trim() === meta.supplierName.toLowerCase().trim());
           let targetSupplierId = targetSupplier?.id;
           
           if (!targetSupplier) {
               targetSupplierId = uuidv4();
-              const splSupplier: Supplier = {
+              const newSupplier: Supplier = {
                   id: targetSupplierId,
-                  name: "SPL Accommodation",
-                  contactEmail: "inventory@accommodation-spl.com.au",
-                  keyContact: "SPL Inventory Team",
-                  phone: "1300 775 222",
-                  address: "12 SPL Boulevard, Melbourne VIC 3000",
-                  categories: ["Accommodation", "Linen", "SOH"]
+                  name: meta.supplierName,
+                  contactEmail: meta.contactEmail,
+                  keyContact: meta.keyContact,
+                  phone: meta.phone,
+                  address: meta.address,
+                  categories: meta.categories
               };
-              await addSupplier(splSupplier);
+              await addSupplier(newSupplier);
           }
           
-          const response = await fetch('/SPL_Accommodation_SOH_Report.xlsx');
+          const response = await fetch(meta.fileUrl);
           const arrayBuffer = await response.arrayBuffer();
-          const file = new File([arrayBuffer], 'SPL_Accommodation_SOH_Report.xlsx', {
+          const file = new File([arrayBuffer], unreadMail.attachmentName, {
               type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
           });
           
@@ -1007,19 +1106,19 @@ const Settings = () => {
               subCategory: partial.subCategory,
               stockType: partial.stockType,
               cartonQty: partial.cartonQty,
-              stockOnHand: partial.stockOnHand || 0,
+              stockOnHand: partial.stockOnHand !== undefined ? partial.stockOnHand : (partial.availableQty || 0),
               committedQty: partial.committedQty || 0,
               backOrderedQty: partial.backOrderedQty || 0,
-              availableQty: partial.availableQty || 0,
-              totalStockQty: partial.stockOnHand || 0,
+              availableQty: partial.availableQty !== undefined ? partial.availableQty : (partial.stockOnHand || 0),
+              totalStockQty: partial.stockOnHand !== undefined ? partial.stockOnHand : (partial.availableQty || 0),
               sellPrice: partial.sellPrice,
-              sohValueAtSell: partial.sohValueAtSell,
-              snapshotDate: '2026-05-28',
+              sohValueAtSell: partial.sohValueAtSell !== undefined ? partial.sohValueAtSell : ((partial.stockOnHand || partial.availableQty || 0) * (partial.sellPrice || 0)),
+              snapshotDate: new Date().toISOString().split('T')[0],
               sourceReportName: `Email Ingestion Hub`,
               incomingStock: partial.incomingStock || []
           }));
           
-          await importStockSnapshot(targetSupplierId!, '2026-05-28', fullSnapshots);
+          await importStockSnapshot(targetSupplierId!, new Date().toISOString().split('T')[0], fullSnapshots);
           const mappingResults = await runAutoMapping(targetSupplierId!);
           await refreshAvailability();
           await reloadData();
@@ -1028,13 +1127,13 @@ const Settings = () => {
           
           setIngestionStats({
               open: true,
-              supplierName: "SPL Accommodation",
+              supplierName: meta.supplierName,
               recordsImported: fullSnapshots.length,
               confirmedMatches: mappingResults.confirmed,
               proposedMatches: mappingResults.proposed
           });
           
-          success('Supplier report ingested & auto-mapped successfully!');
+          success(`${meta.supplierName} report ingested & auto-mapped successfully!`);
       } catch (e: any) {
           console.error('Manual Ingest Failed:', e);
           setSimulatedEmails(prev => prev.map(m => m.id === emailId ? { ...m, status: 'FAILED' } : m));
@@ -1151,7 +1250,7 @@ const Settings = () => {
                                                   type="button"
                                                   key={user.id || user.email}
                                                   onClick={() => {
-                                                      setIngestEmailAddress(user.email);
+                                                      updateInboundEmailAddress(user.email);
                                                       setEmailSearchQuery(user.email);
                                                       setIsSearchingEmail(false);
                                                       success(`Inbound email set to verified Entra ID address: ${user.email}`);
@@ -1845,7 +1944,9 @@ if __name__ == "__main__":
                 }`}
               >
                 <TabIcon size={16} className="shrink-0" />
-                {isActive && <span className="text-xs font-semibold whitespace-nowrap">{tab.label}</span>}
+                <span className={isActive ? 'text-xs font-semibold whitespace-nowrap' : 'sr-only'}>
+                  {tab.label}
+                </span>
               </button>
             );
           })}

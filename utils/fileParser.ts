@@ -38,7 +38,7 @@ export interface EnhancedParseResult {
 // Field definitions with aliases and confidence weights
 const FIELD_DEFINITIONS = {
     supplierSku: {
-        aliases: ['sku', 'stock code', 'item code', 'product code', 'supplier sku', 'suppliersku', 'code', 'customer stock code', 'cust code'],
+        aliases: ['sku', 'stock code', 'item code', 'product code', 'supplier sku', 'suppliersku', 'code', 'customer stock code', 'cust code', 'supplier part id', 'part id'],
         required: true,
         weight: 1.0
     },
@@ -68,7 +68,7 @@ const FIELD_DEFINITIONS = {
         weight: 0.85
     },
     customerStockCode: {
-        aliases: ['customer code', 'customer stock code', 'cust code', 'customer sku', 'customer_stock_code'],
+        aliases: ['customer code', 'customer stock code', 'cust code', 'customer sku', 'customer_stock_code', 'spl part id', 'customer part id', 'customer part'],
         required: false,
         weight: 0.7
     },
@@ -200,7 +200,7 @@ function detectDateColumn(header: string): DateColumn | null {
 /**
  * Maps headers to fields with confidence scoring
  */
-function createMapping(headers: string[]): { mapping: ColumnMapping; dateColumns: DateColumn[] } {
+function createMapping(headers: string[], rawDataRows?: any[][]): { mapping: ColumnMapping; dateColumns: DateColumn[] } {
     const mapping: ColumnMapping = {};
     const dateColumns: DateColumn[] = [];
     
@@ -248,6 +248,38 @@ function createMapping(headers: string[]): { mapping: ColumnMapping; dateColumns
             }
         });
     });
+
+    // Fallback logic for unmapped product name (e.g. empty headers in HOST STOCKLIST)
+    if (!mapping.productName.sourceColumn) {
+        const mappedColumns = new Set(Object.values(mapping).map(m => m.sourceColumn).filter(Boolean));
+        for (let i = 0; i < headers.length; i++) {
+            const h = headers[i];
+            if (h && (h.startsWith('Column_') || h.toLowerCase() === 'description' || h.toLowerCase() === 'product')) {
+                if (!mappedColumns.has(h)) {
+                    let hasData = false;
+                    if (rawDataRows) {
+                        for (let r = 0; r < Math.min(rawDataRows.length, 10); r++) {
+                            const val = rawDataRows[r][i];
+                            if (val !== undefined && val !== null && String(val).trim().length > 0) {
+                                hasData = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        hasData = true;
+                    }
+                    if (hasData) {
+                        mapping.productName = {
+                            sourceColumn: h,
+                            confidence: 0.5,
+                            alternatives: []
+                        };
+                        break;
+                    }
+                }
+            }
+        }
+    }
     
     return { mapping, dateColumns };
 }
@@ -268,10 +300,10 @@ function findHeaderRow(data: any[][]): { index: number; headers: string[] } {
         if (!row || !Array.isArray(row)) continue;
 
         let matches = 0;
-        const potentialHeaders: string[] = row.map(cell => String(cell || '').trim());
+        const potentialHeaders: string[] = row.map((cell, idx) => String(cell || '').trim() || `Column_${idx}`);
         
         potentialHeaders.forEach(header => {
-            if (!header) return;
+            if (!header || header.startsWith('Column_')) return;
             
             // Re-use logic from createMapping to see if this header matches ANY alias
             Object.values(FIELD_DEFINITIONS).forEach(fieldDef => {
@@ -297,7 +329,7 @@ function findHeaderRow(data: any[][]): { index: number; headers: string[] } {
 
     // Default to first row if no matches found
     if (maxMatches === 0 && data.length > 0) {
-        bestHeaders = data[0].map(cell => String(cell || '').trim());
+        bestHeaders = data[0].map((cell, idx) => String(cell || '').trim() || `Column_${idx}`);
     }
 
     return { index: bestRowIndex, headers: bestHeaders };
@@ -479,7 +511,7 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
                 });
 
                 // Create mapping
-                const { mapping, dateColumns } = createMapping(headers);
+                const { mapping, dateColumns } = createMapping(headers, dataRows);
                 const confidence = calculateConfidence(mapping);
                 
                 const errors: string[] = [];

@@ -152,6 +152,9 @@ const getInitialSiteIds = (): string[] => {
 };
 
 const isLocalQaMode = (): boolean => {
+    if (typeof globalThis.window !== 'undefined' && localStorage.getItem('pf_test_user')) {
+        return false;
+    }
     if (!import.meta.env.DEV) return false;
     if (typeof globalThis.window === 'undefined') return false;
     const host = globalThis.location.hostname;
@@ -209,6 +212,10 @@ interface AppContextType {
   // Teams Integration
   teamsWebhookUrl: string;
   updateTeamsWebhook: (url: string) => Promise<void>;
+
+  // Inbound Email Integration
+  inboundEmailAddress: string;
+  updateInboundEmailAddress: (email: string) => Promise<void>;
 
   reloadData: (silent?: boolean, force?: boolean) => Promise<void>;
 
@@ -459,6 +466,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
   const [notificationRules, setNotificationRules] = useState<NotificationRule[]>([]);
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
+  const [inboundEmailAddress, setInboundEmailAddress] = useState('reports@procureflow.com');
   const [idleSecondsRemaining, setIdleSecondsRemaining] = useState<number | null>(null);
 
   const currentUserRef = React.useRef<User | null>(currentUser);
@@ -647,6 +655,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setMappings([]);
       setAvailability([]);
       setTeamsWebhookUrl('');
+      setInboundEmailAddress('reports@procureflow.com');
       setAttributeOptions([]);
       setFeatureFlags(DEFAULT_FEATURE_FLAGS);
       setMarginThresholds(DEFAULT_MARGIN_THRESHOLDS);
@@ -674,11 +683,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   // Data Loading
   const lastFetchTime = React.useRef<number>(0);
   const reloadData = useCallback(async (silent: boolean = false, force: boolean = false) => {
-        // DEV-only: test user is active — skip mock data so synthetic roles stay intact
-        if (import.meta.env.DEV && localStorage.getItem('pf_test_user')) {
-            if (!silent) setIsLoadingData(false);
-            return;
-        }
+
         if (qaMode) {
             const fixtures = await loadDevelopmentFixtures();
             if (fixtures) {
@@ -724,6 +729,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 fetchedMappings,
                 fetchedAvailability,
                 fetchedTeamsUrl,
+                fetchedInboundEmail,
                 fetchedBranding,
                 fetchedOptions,
                 fetchedFeatureFlags,
@@ -742,13 +748,33 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getMappings(), [], 'mappings'),
                 safeFetch(db.getProductAvailability(), [], 'availability'),
                 safeFetch(db.getTeamsConfig(), '', 'teamsConfig'),
+                safeFetch(db.getInboundEmailConfig(), 'reports@procureflow.com', 'inboundEmailConfig'),
                 safeFetch(db.getBranding(), null, 'branding'),
                 safeFetch(db.getAttributeOptions(), [], 'attributeOptions'),
                 safeFetch(db.getFeatureFlags(), DEFAULT_FEATURE_FLAGS, 'featureFlags'),
                 safeFetch(db.getMarginThresholds(), DEFAULT_MARGIN_THRESHOLDS, 'marginThresholds')
             ]);
 
-            setRoles(fetchedRoles);
+            let finalRoles = fetchedRoles;
+            if (import.meta.env.DEV) {
+                const testUserJson = localStorage.getItem('pf_test_user');
+                if (testUserJson) {
+                    try {
+                        const raw = JSON.parse(testUserJson) as User & { permissions?: PermissionId[] };
+                        if (raw.permissions && raw.role) {
+                            const syntheticRole = {
+                                id: raw.role,
+                                name: 'Test Role',
+                                description: '',
+                                permissions: raw.permissions,
+                                isSystem: false
+                            };
+                            finalRoles = [syntheticRole, ...fetchedRoles.filter(r => r.id !== raw.role)];
+                        }
+                    } catch {}
+                }
+            }
+            setRoles(finalRoles);
             setUsers(fetchedUsers);
             setSites(fetchedSites);
             setSuppliers(fetchedSuppliers);
@@ -761,6 +787,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setMappings(fetchedMappings);
             setAvailability(fetchedAvailability);
             setTeamsWebhookUrl(fetchedTeamsUrl);
+            setInboundEmailAddress(fetchedInboundEmail);
             if (fetchedBranding) setBranding(normalizeBranding(fetchedBranding));
             setAttributeOptions(fetchedOptions);
             if (fetchedFeatureFlags) setFeatureFlags(fetchedFeatureFlags);
@@ -1713,6 +1740,18 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           console.error("Failed to update teams config", e);
           reloadData();
           logAction('TEAMS_WEBHOOK_UPDATE_FAILED', { error: (e as Error).message });
+      }
+  };
+
+  const updateInboundEmailAddress = async (email: string) => {
+      setInboundEmailAddress(email);
+      try {
+          await db.updateInboundEmailConfig(email);
+          logAction('INBOUND_EMAIL_CONFIG_UPDATED', { email });
+      } catch (e) {
+          console.error("Failed to update inbound email config", e);
+          reloadData();
+          logAction('INBOUND_EMAIL_CONFIG_UPDATE_FAILED', { error: (e as Error).message });
       }
   };
 
@@ -2843,6 +2882,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     users, updateUserRole, updateUserAccess, addUser, archiveUser, reinstateUser, reloadData,
     roles, permissions: [], hasPermission, createRole, updateRole, deleteRole, isUserAdmin,
     teamsWebhookUrl, updateTeamsWebhook,
+    inboundEmailAddress, updateInboundEmailAddress,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
     suppliers, items, sites, userSites, catalog, stockSnapshots,
     mappings, availability, attributeOptions,
@@ -2907,7 +2947,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     setReportCache
   }), [
     currentUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
-    users, roles, teamsWebhookUrl, theme, branding,
+    users, roles, teamsWebhookUrl, inboundEmailAddress, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
     reloadData, siteName, featureFlags, marginThresholds, cachedReports, cachedRunTimes, setReportCache

@@ -550,7 +550,7 @@ const Layout = () => {
                     )}
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">{pageTitle}</span>
+                        <h1 className="text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">{pageTitle}</h1>
                         {pageMeta.helpTitle && pageMeta.helpDescription && pageMeta.helpLinkTarget && (
                           <ContextHelp
                             title={pageMeta.helpTitle}
@@ -564,19 +564,18 @@ const Layout = () => {
                       )}
                     </div>
                   </div>
-                  {/* Center: step indicator (wizards) or admin tab bar (Settings portal) */}
                   <div className="flex-1 flex items-center justify-center min-w-0 pr-2">
-                    {userSites.length > 0 && (
-                      <div className="hidden sm:block w-[230px] md:w-[300px] shrink-0 mr-4">
-                        <MultiSiteSelector
-                          sites={userSites}
-                          selectedSiteIds={activeSiteIds}
-                          onChange={setActiveSiteIds}
-                          variant={theme === 'dark' ? 'brand' : 'light'}
-                        />
-                      </div>
-                    )}
                     <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0">
+                      {userSites.length > 0 && (
+                        <div className="hidden sm:block w-[230px] md:w-[300px] shrink-0 mr-4">
+                          <MultiSiteSelector
+                            sites={userSites}
+                            selectedSiteIds={activeSiteIds}
+                            onChange={setActiveSiteIds}
+                            variant={theme === 'dark' ? 'brand' : 'light'}
+                          />
+                        </div>
+                      )}
                       {pageMeta.stepInfo && (
                         <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 select-none shrink-0">
                           <span className="text-[10px] font-black uppercase tracking-widest text-tranquil">
