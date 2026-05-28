@@ -2592,8 +2592,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const result = await db.runAutoMapping(supplierId);
       // Immediately sync after auto-mapping for seamless updates
       await db.syncItemsFromSnapshots(supplierId);
-      const freshItems = await db.getItems();
+      const [freshItems, freshMappings] = await Promise.all([
+          db.getItems(),
+          db.getMappings()
+      ]);
       setItems(freshItems);
+      setMappings(freshMappings);
       await refreshAvailability();
       logAction('AUTO_MAPPING_RUN', { supplierId, result });
       return result;

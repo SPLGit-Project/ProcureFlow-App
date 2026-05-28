@@ -29,7 +29,7 @@ import {
 } from 'recharts';
 import type { PORequest, POStatus } from '../types.ts';
 
-type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY';
+type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY' | 'SUPPLIER_INVENTORY' | 'SUPPLIER_ITEM_MAPPING' | 'SUPPLIER_PRICE_VARIANCE';
 type ReportRow = Record<string, string | number>;
 
 interface MonthlySummaryReportRow extends ReportRow {
@@ -155,7 +155,10 @@ const REPORT_TITLES: Record<ReportType, string> = {
     PO_STATUS: 'All PO Status Report',
     DELIVERY_RECONCILIATION: 'Full Delivery Reconciliation',
     ITEM_REQUEST_HISTORY: 'Item Request History by Site',
-    MONTHLY_SUMMARY: 'Monthly PO & Receipting Summary'
+    MONTHLY_SUMMARY: 'Monthly PO & Receipting Summary',
+    SUPPLIER_INVENTORY: 'Available Supplier Inventory Report',
+    SUPPLIER_ITEM_MAPPING: 'Supplier Item Mapping Report',
+    SUPPLIER_PRICE_VARIANCE: 'Supplier Price Sync Variance Report'
 };
 
 const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
@@ -166,11 +169,14 @@ const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
     PO_STATUS: 'High-level overview of all Purchase Orders and their current approval status in the workflow.',
     DELIVERY_RECONCILIATION: 'Complete picture of order fulfillment. Compare ordered vs. received quantities across all PO lines to identify pending amounts and value variances.',
     ITEM_REQUEST_HISTORY: 'Search and select an item to see its most recent request activity at each site, with a detailed line-level export for deeper review.',
-    MONTHLY_SUMMARY: 'Reconcile PO requests since July 2025. Groups POs monthly, showing total issued PO values, goods received (GR) values, and remaining open values.'
+    MONTHLY_SUMMARY: 'Reconcile PO requests since July 2025. Groups POs monthly, showing total issued PO values, goods received (GR) values, and remaining open values.',
+    SUPPLIER_INVENTORY: 'Provides by supplier the most recent inventory stock data available within the app, including SOH, available quantities, and stock on backorder.',
+    SUPPLIER_ITEM_MAPPING: 'Provides a complete overview of the mapping of supplier items to corresponding items in the internal catalogue.',
+    SUPPLIER_PRICE_VARIANCE: 'Compares supplier price reports against the internal catalogue prices for confirmed mappings, highlighting variations and sync status.'
 };
 
 const DELIVERY_REPORTS: ReportType[] = ['OUTSTANDING_DELIVERIES', 'DELIVERY_VARIANCE', 'DELIVERY_RECONCILIATION'];
-const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY'];
+const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY', 'SUPPLIER_INVENTORY', 'SUPPLIER_ITEM_MAPPING', 'SUPPLIER_PRICE_VARIANCE'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ACTIVE_DELIVERY_STATUSES: POStatus[] = ['ACTIVE', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST', 'VARIANCE_PENDING'];
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4'];
@@ -498,6 +504,121 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
     return rows.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 };
 
+const buildSupplierInventoryRows = (
+    snapshots: any[],
+    suppliersList: any[]
+): ReportRow[] => {
+    const latestMap = new Map<string, any>();
+    snapshots.forEach((s) => {
+        const key = `${s.supplierId}:${s.supplierSku}`;
+        const existing = latestMap.get(key);
+        if (!existing || new Date(s.snapshotDate).getTime() > new Date(existing.snapshotDate).getTime()) {
+            latestMap.set(key, s);
+        }
+    });
+
+    const data: ReportRow[] = [];
+    latestMap.forEach((snap) => {
+        const supplier = suppliersList.find((s) => s.id === snap.supplierId);
+        const soh = Number(snap.stockOnHand || 0);
+        const sellPrice = Number(snap.sellPrice || 0);
+        data.push({
+            id: snap.id,
+            supplierId: snap.supplierId,
+            supplier: supplier ? supplier.name : 'Unknown Supplier',
+            supplierSku: snap.supplierSku,
+            productName: snap.productName || 'Unknown Product',
+            customerStockCode: snap.customerStockCode || '',
+            soh,
+            available: Number(snap.availableQty || 0),
+            committed: Number(snap.committedQty || 0),
+            backOrdered: Number(snap.backOrderedQty || 0),
+            sellPrice,
+            totalValue: soh * sellPrice,
+            snapshotDate: snap.snapshotDate ? new Date(snap.snapshotDate).toLocaleDateString() : '-'
+        });
+    });
+
+    return data.sort((a, b) => String(a.supplier).localeCompare(String(b.supplier)) || String(a.supplierSku).localeCompare(String(b.supplierSku)));
+};
+
+const buildSupplierItemMappingRows = (
+    mappingsList: any[],
+    itemsList: any[],
+    suppliersList: any[]
+): ReportRow[] => {
+    return mappingsList.map((m) => {
+        const supplier = suppliersList.find((s) => s.id === m.supplierId);
+        const item = itemsList.find((i) => i.id === m.productId);
+        return {
+            id: m.id,
+            supplierId: m.supplierId,
+            supplier: supplier ? supplier.name : 'Unknown Supplier',
+            supplierSku: m.supplierSku,
+            supplierCustomerCode: m.supplierCustomerStockCode || '',
+            internalSku: item ? item.sku : '-',
+            internalName: item ? item.name : 'Unmapped',
+            status: m.mappingStatus || 'PROPOSED',
+            method: m.mappingMethod || 'AUTO',
+            confidence: Math.round((m.confidenceScore || 0) * 100),
+            conversionFactor: m.packConversionFactor || 1,
+            updatedAt: m.updatedAt ? new Date(m.updatedAt).toLocaleDateString() : '-'
+        };
+    }).sort((a, b) => String(a.supplier).localeCompare(String(b.supplier)) || String(a.supplierSku).localeCompare(String(b.supplierSku)));
+};
+
+const buildSupplierPriceVarianceRows = (
+    mappingsList: any[],
+    snapshots: any[],
+    itemsList: any[],
+    suppliersList: any[]
+): ReportRow[] => {
+    const latestMap = new Map<string, any>();
+    snapshots.forEach((s) => {
+        const existing = latestMap.get(`${s.supplierId}:${s.supplierSku}`);
+        if (!existing || new Date(s.snapshotDate).getTime() > new Date(existing.snapshotDate).getTime()) {
+            latestMap.set(`${s.supplierId}:${s.supplierSku}`, s);
+        }
+    });
+
+    const data: ReportRow[] = [];
+    mappingsList.filter(m => m.mappingStatus === 'CONFIRMED').forEach((m) => {
+        const supplier = suppliersList.find((s) => s.id === m.supplierId);
+        const item = itemsList.find((i) => i.id === m.productId);
+        const snap = latestMap.get(`${m.supplierId}:${m.supplierSku}`);
+        
+        if (item && snap && snap.sellPrice !== undefined) {
+            const supplierPrice = Number(snap.sellPrice || 0);
+            const internalPrice = Number(item.unitPrice || 0);
+            const varianceAmount = supplierPrice - internalPrice;
+            const variancePercent = internalPrice > 0 ? (varianceAmount / internalPrice) * 100 : 0;
+            
+            let status = 'Matching';
+            if (varianceAmount > 0.01) {
+                status = 'Supplier Higher';
+            } else if (varianceAmount < -0.01) {
+                status = 'Supplier Lower';
+            }
+
+            data.push({
+                id: m.id,
+                supplierId: m.supplierId,
+                supplier: supplier ? supplier.name : 'Unknown Supplier',
+                supplierSku: m.supplierSku,
+                internalSku: item.sku,
+                internalName: item.name,
+                supplierPrice,
+                internalPrice,
+                varianceAmount,
+                variancePercent,
+                status
+            });
+        }
+    });
+
+    return data.sort((a, b) => String(a.supplier).localeCompare(String(b.supplier)) || Math.abs(Number(b.varianceAmount)) - Math.abs(Number(a.varianceAmount)));
+};
+
 const getMonthlySummaryData = (rows: MonthlySummaryReportRow[]): MonthlySummaryAggregatedRow[] => {
     const summaryMap: Record<string, MonthlySummaryAggregatedRow> = {};
 
@@ -622,6 +743,49 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
         ];
     }
 
+    if (report === 'SUPPLIER_INVENTORY') {
+        return [
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'supplierSku', label: 'Supplier SKU' },
+            { key: 'productName', label: 'Product Name' },
+            { key: 'customerStockCode', label: 'Customer Stock Code' },
+            { key: 'soh', label: 'SOH' },
+            { key: 'available', label: 'Available' },
+            { key: 'committed', label: 'Committed' },
+            { key: 'backOrdered', label: 'Back Ordered' },
+            { key: 'sellPrice', label: 'Sell Price' },
+            { key: 'totalValue', label: 'Total Value' },
+            { key: 'snapshotDate', label: 'As Of' }
+        ];
+    }
+    if (report === 'SUPPLIER_ITEM_MAPPING') {
+        return [
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'supplierSku', label: 'Supplier SKU' },
+            { key: 'supplierCustomerCode', label: 'Customer Code Ref' },
+            { key: 'internalSku', label: 'Mapped Internal SKU' },
+            { key: 'internalName', label: 'Mapped Item Name' },
+            { key: 'confidence', label: 'Confidence %' },
+            { key: 'method', label: 'Method' },
+            { key: 'conversionFactor', label: 'Factor' },
+            { key: 'status', label: 'Status' },
+            { key: 'updatedAt', label: 'Updated At' }
+        ];
+    }
+    if (report === 'SUPPLIER_PRICE_VARIANCE') {
+        return [
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'supplierSku', label: 'Supplier SKU' },
+            { key: 'internalSku', label: 'Internal SKU' },
+            { key: 'internalName', label: 'Mapped Name' },
+            { key: 'supplierPrice', label: 'Supplier Price' },
+            { key: 'internalPrice', label: 'Catalog Price' },
+            { key: 'varianceAmount', label: 'Variance $' },
+            { key: 'variancePercent', label: 'Variance %' },
+            { key: 'status', label: 'Status' }
+        ];
+    }
+
     return data[0] ? Object.keys(data[0]).map((key) => ({ key, label: key })) : [];
 };
 
@@ -635,7 +799,7 @@ const buildCsv = (report: ReportType, data: ReportRow[]) => {
 };
 
 const ReportingView = () => {
-    const { pos, cachedReports, cachedRunTimes, setReportCache } = useApp();
+    const { pos, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers } = useApp();
     useSetPageMeta({ disableBodyScroll: true });
     const [activeReport, setActiveReport] = useState<ReportType>(() => {
         const saved = sessionStorage.getItem('pf_active_report');
@@ -673,7 +837,7 @@ const ReportingView = () => {
     const isDeliveryReport = DELIVERY_REPORTS.includes(activeReport);
     const isItemHistoryReport = activeReport === 'ITEM_REQUEST_HISTORY';
     const isFilterableReport = FILTERABLE_REPORTS.includes(activeReport);
-    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport || activeReport === 'MONTHLY_SUMMARY';
+    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport || activeReport === 'MONTHLY_SUMMARY' || activeReport === 'SUPPLIER_INVENTORY' || activeReport === 'SUPPLIER_ITEM_MAPPING' || activeReport === 'SUPPLIER_PRICE_VARIANCE';
 
     const siteOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.site || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
     const supplierOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.supplier || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
@@ -834,6 +998,12 @@ const ReportingView = () => {
                 data = buildItemRequestHistoryRows(pos);
             } else if (activeReport === 'MONTHLY_SUMMARY') {
                 data = buildMonthlySummaryRows(pos, monthlyStartDate, monthlyEndDate);
+            } else if (activeReport === 'SUPPLIER_INVENTORY') {
+                data = buildSupplierInventoryRows(stockSnapshots, suppliers);
+            } else if (activeReport === 'SUPPLIER_ITEM_MAPPING') {
+                data = buildSupplierItemMappingRows(mappings, items, suppliers);
+            } else if (activeReport === 'SUPPLIER_PRICE_VARIANCE') {
+                data = buildSupplierPriceVarianceRows(mappings, stockSnapshots, items, suppliers);
             }
 
             setReportCache(activeReport, data);
@@ -967,6 +1137,10 @@ const ReportingView = () => {
                             <ReportButton active={activeReport === 'MONTHLY_SUMMARY'} icon={Calendar} label="Monthly PO & GR Summary" onClick={() => switchReport('MONTHLY_SUMMARY')} />
                             <ReportButton active={activeReport === 'FINANCE_SUMMARY'} icon={TrendingUp} label="Finance Summary" onClick={() => switchReport('FINANCE_SUMMARY')} />
                             <ReportButton active={activeReport === 'PO_STATUS'} icon={FileText} label="PO Status Report" onClick={() => switchReport('PO_STATUS')} />
+                            <div className="border-t border-gray-200 dark:border-gray-800 my-2 pt-2 text-[10px] font-black text-gray-400 uppercase tracking-widest px-4">Supplier Insights</div>
+                            <ReportButton active={activeReport === 'SUPPLIER_INVENTORY'} icon={Package} label="Supplier Available Inventory" onClick={() => switchReport('SUPPLIER_INVENTORY')} />
+                            <ReportButton active={activeReport === 'SUPPLIER_ITEM_MAPPING'} icon={ArrowRightLeft} label="Supplier Item Mapping" onClick={() => switchReport('SUPPLIER_ITEM_MAPPING')} />
+                            <ReportButton active={activeReport === 'SUPPLIER_PRICE_VARIANCE'} icon={TrendingUp} label="Supplier Price Variance" onClick={() => switchReport('SUPPLIER_PRICE_VARIANCE')} />
                         </div>
                     </div>
 
@@ -1105,13 +1279,15 @@ const ReportingView = () => {
                                                     {itemOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                                                 </select>
                                             )}
-                                            <select
-                                                value={selectedSite}
-                                                onChange={(event) => setSelectedSite(event.target.value)}
-                                                className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                            >
-                                                {siteOptions.map((site) => <option key={site} value={site}>{site === 'ALL' ? 'All sites' : site}</option>)}
-                                            </select>
+                                            {activeReport !== 'SUPPLIER_INVENTORY' && activeReport !== 'SUPPLIER_ITEM_MAPPING' && activeReport !== 'SUPPLIER_PRICE_VARIANCE' && (
+                                                <select
+                                                    value={selectedSite}
+                                                    onChange={(event) => setSelectedSite(event.target.value)}
+                                                    className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                >
+                                                    {siteOptions.map((site) => <option key={site} value={site}>{site === 'ALL' ? 'All sites' : site}</option>)}
+                                                </select>
+                                            )}
                                             <select
                                                 value={selectedSupplier}
                                                 onChange={(event) => setSelectedSupplier(event.target.value)}
@@ -1228,6 +1404,12 @@ const ReportingView = () => {
                                 <MonthlySummaryVisual rows={getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])} />
                             ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
                                 <AllDeliveriesVisual data={getChartData()} />
+                            ) : activeReport === 'SUPPLIER_INVENTORY' && viewMode === 'CHART' ? (
+                                <SupplierInventoryVisual rows={visibleReportData} chartMetric={chartMetric} />
+                            ) : activeReport === 'SUPPLIER_ITEM_MAPPING' && viewMode === 'CHART' ? (
+                                <SupplierItemMappingVisual rows={visibleReportData} chartMetric={chartMetric} />
+                            ) : activeReport === 'SUPPLIER_PRICE_VARIANCE' && viewMode === 'CHART' ? (
+                                <SupplierPriceVarianceVisual rows={visibleReportData} chartMetric={chartMetric} />
                             ) : (
                                 <ReportTable activeReport={activeReport} rows={visibleReportData} />
                             )}
@@ -1582,6 +1764,44 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
     <table className="w-full min-w-[900px] text-sm text-left">
         <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
             <tr>
+                {activeReport === 'SUPPLIER_INVENTORY' && (
+                    <>
+                        <th className="px-5 py-4">Supplier / SKU</th>
+                        <th className="px-5 py-4">Product Name</th>
+                        <th className="px-5 py-4">Cust Stock Code</th>
+                        <th className="px-5 py-4 text-center">SOH</th>
+                        <th className="px-5 py-4 text-center">Available</th>
+                        <th className="px-5 py-4 text-center">Committed</th>
+                        <th className="px-5 py-4 text-center">Back Ordered</th>
+                        <th className="px-5 py-4 text-right">Sell Price</th>
+                        <th className="px-5 py-4 text-right">Total Value</th>
+                        <th className="px-5 py-4">As Of</th>
+                    </>
+                )}
+                {activeReport === 'SUPPLIER_ITEM_MAPPING' && (
+                    <>
+                        <th className="px-5 py-4">Supplier / SKU</th>
+                        <th className="px-5 py-4">Cust Stock Code</th>
+                        <th className="px-5 py-4">Mapped Internal SKU</th>
+                        <th className="px-5 py-4">Mapped Item Name</th>
+                        <th className="px-5 py-4 text-center">Confidence</th>
+                        <th className="px-5 py-4 text-center">Method</th>
+                        <th className="px-5 py-4 text-center">Factor</th>
+                        <th className="px-5 py-4">Status</th>
+                        <th className="px-5 py-4">Updated At</th>
+                    </>
+                )}
+                {activeReport === 'SUPPLIER_PRICE_VARIANCE' && (
+                    <>
+                        <th className="px-5 py-4">Supplier / SKU</th>
+                        <th className="px-5 py-4">Mapped Item</th>
+                        <th className="px-5 py-4 text-right">Supplier Price</th>
+                        <th className="px-5 py-4 text-right">Catalog Price</th>
+                        <th className="px-5 py-4 text-right">Price Variance</th>
+                        <th className="px-5 py-4 text-center">Variance %</th>
+                        <th className="px-5 py-4">Status</th>
+                    </>
+                )}
                 {activeReport === 'OUTSTANDING_DELIVERIES' && (
                     <>
                         <th className="px-5 py-4">PO # / Supplier</th>
@@ -1718,6 +1938,9 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         {activeReport === 'MONTHLY_SUMMARY' && <MonthlySummaryRow row={row as MonthlySummaryReportRow} />}
                         {activeReport === 'FINANCE_SUMMARY' && <FinanceRow row={row} />}
                         {activeReport === 'PO_STATUS' && <PoStatusRow row={row} />}
+                        {activeReport === 'SUPPLIER_INVENTORY' && <SupplierInventoryRowView row={row} />}
+                        {activeReport === 'SUPPLIER_ITEM_MAPPING' && <SupplierItemMappingRowView row={row} />}
+                        {activeReport === 'SUPPLIER_PRICE_VARIANCE' && <SupplierPriceVarianceRowView row={row} />}
                     </tr>
                 ))
             )}
@@ -1903,6 +2126,282 @@ const VariancePill = ({ type }: { type: VarianceType }) => {
             : 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800/50';
 
     return <span className={`inline-flex px-2 py-1 rounded-md text-[10px] font-bold uppercase border whitespace-nowrap ${className}`}>{type}</span>;
+};
+
+const SupplierInventoryRowView = ({ row }: { row: any }) => (
+    <>
+        <td className="px-5 py-3">
+            <div className="font-bold text-gray-900 dark:text-white">{row.supplier}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.supplierSku}</div>
+        </td>
+        <td className="px-5 py-3 text-secondary dark:text-gray-300 max-w-[240px] truncate" title={row.productName}>{row.productName}</td>
+        <td className="px-5 py-3 text-secondary dark:text-gray-300 font-mono">{row.customerStockCode || '-'}</td>
+        <td className="px-5 py-3 text-center font-medium">{numberValue(row.soh)}</td>
+        <td className="px-5 py-3 text-center font-bold text-emerald-600">{numberValue(row.available)}</td>
+        <td className="px-5 py-3 text-center text-secondary">{numberValue(row.committed)}</td>
+        <td className="px-5 py-3 text-center text-orange-500">{numberValue(row.backOrdered)}</td>
+        <td className="px-5 py-3 text-right font-medium">{currency(row.sellPrice)}</td>
+        <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(row.totalValue)}</td>
+        <td className="px-5 py-3 text-xs text-tertiary dark:text-gray-500 whitespace-nowrap">{row.snapshotDate}</td>
+    </>
+);
+
+const SupplierItemMappingRowView = ({ row }: { row: any }) => (
+    <>
+        <td className="px-5 py-3">
+            <div className="font-bold text-gray-900 dark:text-white">{row.supplier}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.supplierSku}</div>
+        </td>
+        <td className="px-5 py-3 text-secondary dark:text-gray-300 font-mono">{row.supplierCustomerCode || '-'}</td>
+        <td className="px-5 py-3 text-secondary dark:text-gray-300 font-mono">{row.internalSku || '-'}</td>
+        <td className="px-5 py-3 text-secondary dark:text-gray-300 max-w-[240px] truncate" title={row.internalName}>{row.internalName || '-'}</td>
+        <td className="px-5 py-3 text-center">
+            <div className="flex flex-col items-center">
+                <div className="w-12 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mb-1">
+                    <div 
+                        className={`h-full ${row.confidence >= 90 ? 'bg-green-500' : row.confidence >= 70 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                        style={{ width: `${row.confidence}%` }}
+                    />
+                </div>
+                <span className={`font-mono text-[10px] font-bold ${row.confidence >= 90 ? 'text-green-500' : row.confidence >= 70 ? 'text-yellow-600' : 'text-red-500'}`}>
+                    {row.confidence}%
+                </span>
+            </div>
+        </td>
+        <td className="px-5 py-3 text-center"><span className="badge-gray text-[10px]">{row.method}</span></td>
+        <td className="px-5 py-3 text-center font-mono text-xs">x{row.conversionFactor}</td>
+        <td className="px-5 py-3">
+            <span className={`badge ${row.status === 'CONFIRMED' ? 'bg-green-100 text-green-700 border-green-200' : row.status === 'PROPOSED' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                {row.status}
+            </span>
+        </td>
+        <td className="px-5 py-3 text-xs text-tertiary dark:text-gray-500 whitespace-nowrap">{row.updatedAt}</td>
+    </>
+);
+
+const SupplierPriceVarianceRowView = ({ row }: { row: any }) => (
+    <>
+        <td className="px-5 py-3">
+            <div className="font-bold text-gray-900 dark:text-white">{row.supplier}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.supplierSku}</div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white max-w-[240px] truncate" title={row.internalName}>{row.internalName}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">Catalog: {row.internalSku}</div>
+        </td>
+        <td className="px-5 py-3 text-right font-medium">{currency(row.supplierPrice)}</td>
+        <td className="px-5 py-3 text-right font-medium">{currency(row.internalPrice)}</td>
+        <td className={`px-5 py-3 text-right font-bold ${row.varianceAmount > 0 ? 'text-red-500' : row.varianceAmount < 0 ? 'text-emerald-500' : 'text-secondary dark:text-gray-400'}`}>
+            {row.varianceAmount > 0 ? '+' : ''}{currency(row.varianceAmount)}
+        </td>
+        <td className={`px-5 py-3 text-center font-mono text-xs font-bold ${row.varianceAmount > 0 ? 'text-red-500' : row.varianceAmount < 0 ? 'text-emerald-500' : 'text-secondary dark:text-gray-400'}`}>
+            {row.varianceAmount > 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%
+        </td>
+        <td className="px-5 py-3">
+            <span className={`badge ${row.status === 'Matching' ? 'bg-green-100 text-green-700 border-green-200' : row.status === 'Supplier Higher' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
+                {row.status}
+            </span>
+        </td>
+    </>
+);
+
+const SupplierInventoryVisual = ({ rows, chartMetric }: { rows: any[]; chartMetric: string }) => {
+    const totalValue = rows.reduce((sum, r) => sum + (r.totalValue || 0), 0);
+    const totalSoh = rows.reduce((sum, r) => sum + (r.soh || 0), 0);
+    const activeSkus = rows.length;
+    const uniqueSuppliers = new Set(rows.map(r => r.supplier)).size;
+
+    const chartData = useMemo(() => {
+        const grouped: Record<string, number> = {};
+        const keyField = chartMetric === 'SITE' ? 'productName' : 'supplier';
+        rows.forEach(r => {
+            const k = r[keyField] || 'Unknown';
+            grouped[k] = (grouped[k] || 0) + (r.totalValue || 0);
+        });
+        return Object.entries(grouped)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10);
+    }, [rows, chartMetric]);
+
+    return (
+        <div className="p-4 md:p-6 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <MetricCard label="Total Stock Value" value={currency(totalValue)} sub={`${activeSkus} active SKUs tracked`} icon={TrendingUp} color="bg-emerald-500" />
+                <MetricCard label="Total SOH Units" value={numberValue(totalSoh)} sub="Total physical stock units" icon={Package} color="bg-sky-500" />
+                <MetricCard label="Suppliers Reporting" value={String(uniqueSuppliers)} sub="Suppliers with active stock" icon={CheckCircle2} color="bg-violet-500" />
+                <MetricCard label="Average SOH per SKU" value={numberValue(activeSkus ? Math.round(totalSoh / activeSkus) : 0)} sub="Average stock density" icon={AlertCircle} color="bg-orange-500" />
+            </div>
+            <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Stock Value Distribution</h3>
+                    <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 50 }}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
+                                <XAxis dataKey="name" angle={-35} textAnchor="end" height={60} interval={0} tick={{ fontSize: 10, fill: '#888' }} />
+                                <YAxis tickFormatter={(val) => `$${Number(val).toLocaleString()}`} tick={{ fontSize: 10, fill: '#888' }} />
+                                <RechartsTooltip formatter={(val: number) => currency(val)} contentStyle={{ borderRadius: '8px', border: 'none' }} />
+                                <Bar dataKey="value" name="Value" fill="var(--color-brand)" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                    <h3 className="text-sm font-bold text-gray-950 dark:text-white mb-4">Top 5 Highest Value SKUs</h3>
+                    <div className="space-y-3">
+                        {rows.sort((a, b) => b.totalValue - a.totalValue).slice(0, 5).map(r => (
+                            <div key={r.id} className="flex justify-between items-center text-xs border-b border-gray-100 dark:border-gray-800 pb-2">
+                                <div className="min-w-0">
+                                    <p className="font-bold text-gray-900 dark:text-white truncate">{r.productName}</p>
+                                    <p className="text-tertiary dark:text-gray-500 font-mono text-[10px]">Sku: {r.supplierSku} • {r.supplier}</p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    <p className="font-bold text-gray-950 dark:text-white">{currency(r.totalValue)}</p>
+                                    <p className="text-[10px] text-tertiary">{numberValue(r.soh)} units</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const SupplierItemMappingVisual = ({ rows, chartMetric }: { rows: any[]; chartMetric: string }) => {
+    const totalMapped = rows.length;
+    const confirmed = rows.filter(r => r.status === 'CONFIRMED').length;
+    const proposed = rows.filter(r => r.status === 'PROPOSED').length;
+    const avgConfidence = Math.round(rows.reduce((sum, r) => sum + (r.confidence || 0), 0) / (totalMapped || 1));
+
+    const chartData = useMemo(() => {
+        const counts: Record<string, { total: number; sum: number }> = {};
+        const keyField = chartMetric === 'SITE' ? 'internalSku' : 'supplier';
+        rows.forEach(r => {
+            const k = r[keyField] || 'Unknown';
+            counts[k] ||= { total: 0, sum: 0 };
+            counts[k].total += 1;
+            counts[k].sum += (r.confidence || 0);
+        });
+        return Object.entries(counts)
+            .map(([name, stat]) => ({ name, value: Math.round(stat.sum / stat.total) }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10);
+    }, [rows, chartMetric]);
+
+    return (
+        <div className="p-4 md:p-6 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <MetricCard label="Total Mapped Items" value={String(totalMapped)} sub="Unique SKU connections" icon={ArrowRightLeft} color="bg-sky-500" />
+                <MetricCard label="Confirmed Connections" value={String(confirmed)} sub="Ready and ordering active" icon={CheckCircle2} color="bg-emerald-500" />
+                <MetricCard label="Proposed Matches" value={String(proposed)} sub="Requires admin review" icon={AlertCircle} color="bg-amber-500" />
+                <MetricCard label="Average Match Quality" value={`${avgConfidence}%`} sub="Fuzzy matching accuracy" icon={TrendingUp} color="bg-violet-500" />
+            </div>
+            <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                    <h3 className="text-sm font-bold text-gray-950 dark:text-white mb-4">Average Match Quality % by Supplier</h3>
+                    <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 50 }}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
+                                <XAxis dataKey="name" angle={-35} textAnchor="end" height={60} interval={0} tick={{ fontSize: 10, fill: '#888' }} />
+                                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#888' }} />
+                                <RechartsTooltip formatter={(val: number) => [`${val}%`, 'Confidence']} contentStyle={{ borderRadius: '8px', border: 'none' }} />
+                                <Bar dataKey="value" name="Confidence %" fill="#0284c7" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                    <h3 className="text-sm font-bold text-gray-950 dark:text-white mb-4">Review Proposals Queue</h3>
+                    <div className="space-y-3">
+                        {rows.filter(r => r.status === 'PROPOSED').slice(0, 5).map(r => (
+                            <div key={r.id} className="flex justify-between items-center text-xs border-b border-gray-100 dark:border-gray-800 pb-2">
+                                <div className="min-w-0">
+                                    <p className="font-bold text-gray-900 dark:text-white truncate">{r.internalName}</p>
+                                    <p className="text-tertiary dark:text-gray-500 font-mono text-[10px]">Sup SKU: {r.supplierSku} • {r.supplier}</p>
+                                </div>
+                                <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-bold ${r.confidence >= 90 ? 'bg-green-100 text-green-700 animate-pulse' : 'bg-amber-100 text-amber-700'}`}>
+                                    {r.confidence}% Match
+                                </span>
+                            </div>
+                        ))}
+                        {rows.filter(r => r.status === 'PROPOSED').length === 0 && (
+                            <div className="text-center py-10 text-xs text-tertiary">All matches confirmed! Zero pending reviews.</div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const SupplierPriceVarianceVisual = ({ rows, chartMetric }: { rows: any[]; chartMetric: string }) => {
+    const totalAudited = rows.length;
+    const higher = rows.filter(r => r.varianceAmount > 0.01).length;
+    const lower = rows.filter(r => r.varianceAmount < -0.01).length;
+    const matching = rows.filter(r => Math.abs(r.varianceAmount) <= 0.01).length;
+    const avgVariance = rows.reduce((sum, r) => sum + Math.abs(r.variancePercent || 0), 0) / (totalAudited || 1);
+
+    const chartData = useMemo(() => {
+        const grouped: Record<string, number> = {};
+        const keyField = chartMetric === 'SITE' ? 'internalSku' : 'supplier';
+        rows.forEach(r => {
+            const k = r[keyField] || 'Unknown';
+            grouped[k] = (grouped[k] || 0) + Math.abs(r.varianceAmount || 0);
+        });
+        return Object.entries(grouped)
+            .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10);
+    }, [rows, chartMetric]);
+
+    return (
+        <div className="p-4 md:p-6 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <MetricCard label="Items Audited" value={String(totalAudited)} sub="Confirmed supplier linkages" icon={ArrowRightLeft} color="bg-sky-500" />
+                <MetricCard label="Matching Catalog Price" value={String(matching)} sub="No price variance found" icon={CheckCircle2} color="bg-emerald-500" />
+                <MetricCard label="Supplier Price Higher" value={String(higher)} sub="Requires price sheet sync" icon={AlertCircle} color="bg-red-500" />
+                <MetricCard label="Average Price Deviation" value={`${avgVariance.toFixed(1)}%`} sub="Average cost difference" icon={TrendingUp} color="bg-violet-500" />
+            </div>
+            <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                    <h3 className="text-sm font-bold text-gray-950 dark:text-white mb-4">Total Absolute Variance Amount ($) by Category</h3>
+                    <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 50 }}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
+                                <XAxis dataKey="name" angle={-35} textAnchor="end" height={60} interval={0} tick={{ fontSize: 10, fill: '#888' }} />
+                                <YAxis tickFormatter={(val) => `$${Number(val).toLocaleString()}`} tick={{ fontSize: 10, fill: '#888' }} />
+                                <RechartsTooltip formatter={(val: number) => currency(val)} contentStyle={{ borderRadius: '8px', border: 'none' }} />
+                                <Bar dataKey="value" name="Absolute Variance" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                    <h3 className="text-sm font-bold text-gray-950 dark:text-white mb-4">Top 5 Pricing Discrepancies</h3>
+                    <div className="space-y-3">
+                        {rows.sort((a, b) => Math.abs(b.varianceAmount) - Math.abs(a.varianceAmount)).slice(0, 5).map(r => (
+                            <div key={r.id} className="flex justify-between items-center text-xs border-b border-gray-100 dark:border-gray-800 pb-2">
+                                <div className="min-w-0">
+                                    <p className="font-bold text-gray-900 dark:text-white truncate">{r.internalName}</p>
+                                    <p className="text-tertiary dark:text-gray-500 font-mono text-[10px]">Catalog SKU: {r.internalSku} • {r.supplier}</p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    <p className={`font-bold ${r.varianceAmount > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                        {r.varianceAmount > 0 ? '+' : ''}{currency(r.varianceAmount)}
+                                    </p>
+                                    <p className="text-[10px] text-tertiary">{r.variancePercent.toFixed(1)}% diff</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export default ReportingView;

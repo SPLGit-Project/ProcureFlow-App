@@ -10,7 +10,7 @@ import {
     Users, Shield, Globe, ShoppingBag, Truck, Layout, Bell, Database,
     FileText, Plus, Search, Edit2, Trash2, CheckCircle2, AlertTriangle,
     Upload, Download, RefreshCw, Filter, ChevronDown, ChevronRight, X,
-    MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon,
+    MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon, Inbox, MailOpen,
     GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
     Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3, Sparkles
@@ -629,11 +629,66 @@ const Settings = () => {
   const [editSku, setEditSku] = useState('');
 
   // --- Mapping Workbench State ---
-  const [mappingSubTab, setMappingSubTab] = useState<'PROPOSED' | 'CONFIRMED' | 'REJECTED' | 'MEMORY'>('PROPOSED');
+  const [mappingSubTab, setMappingSubTab] = useState<'PROPOSED' | 'CONFIRMED' | 'REJECTED' | 'MEMORY' | 'EMAIL_INGEST'>('PROPOSED');
   const [isManualMapOpen, setIsManualMapOpen] = useState(false);
   const [mappingSource, setMappingSource] = useState<SupplierStockSnapshot | null>(null);
   const [mappingMemory, setMappingMemory] = useState<any[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // --- Email Ingestion Hub State ---
+  const [isAutoIngestEnabled, setIsAutoIngestEnabled] = useState(true);
+  const [ingestEmailAddress, setIngestEmailAddress] = useState('reports@procureflow.com');
+  const [ingestInterval, setIngestInterval] = useState('Hourly');
+  const [simulatedEmails, setSimulatedEmails] = useState([
+      {
+          id: 'spl-email-1',
+          sender: 'inventory@accommodation-spl.com.au',
+          senderName: 'SPL Accommodation Inventory',
+          subject: 'SPL Accommodation Stock on Hand Report - 28/05/2026',
+          receivedAt: '2026-05-28T07:15:00Z',
+          attachmentName: 'SPL Accommodation SOH and Stock on order Report 11.5.2026.xlsx',
+          attachmentSize: '102.8 KB',
+          status: 'UNREAD',
+          body: 'Hi ProcureFlow Team,\n\nPlease find attached our latest Stock on Hand (SOH) and Stock on Order report for SPL Accommodation items.\n\nKind regards,\nSPL Inventory Team'
+      }
+  ]);
+  const [ingestionStats, setIngestionStats] = useState<{
+      open: boolean;
+      supplierName: string;
+      recordsImported: number;
+      confirmedMatches: number;
+      proposedMatches: number;
+  } | null>(null);
+
+  // --- Verified Inbound Email Search State & Effect ---
+  const [emailSearchQuery, setEmailSearchQuery] = useState('reports@procureflow.com');
+  const [isSearchingEmail, setIsSearchingEmail] = useState(false);
+  const [emailSearchResults, setEmailSearchResults] = useState<any[]>([]);
+
+  useEffect(() => {
+      if (emailSearchQuery.trim().length < 2) {
+          setEmailSearchResults([]);
+          return;
+      }
+      
+      const searchContextSiteId = activeSiteIds[0] || sites[0]?.id;
+      const debouncedSearch = setTimeout(async () => {
+          try {
+              const results = await searchDirectory(emailSearchQuery, searchContextSiteId);
+              const verifiedUsers = (results || []).map((du: any) => ({
+                  id: du.id,
+                  name: du.name || du.display_name || du.email.split('@')[0],
+                  email: du.email,
+              })).filter((du: any) => du.email && du.email.toLowerCase().includes(emailSearchQuery.toLowerCase()));
+              
+              setEmailSearchResults(verifiedUsers);
+          } catch (err) {
+              console.error('Failed to search email directory', err);
+          }
+      }, 300);
+
+      return () => clearTimeout(debouncedSearch);
+  }, [emailSearchQuery, activeSiteIds, sites]);
 
   // --- Security State ---
   const [activeRole, setActiveRole] = useState<RoleDefinition | null>(null);
@@ -821,6 +876,454 @@ const Settings = () => {
   useEffect(() => { setFilterType(''); setFilterCategory(''); setFilterSubCategory(''); }, [filterCatalog]);
   useEffect(() => { setFilterCategory(''); setFilterSubCategory(''); }, [filterType]);
   useEffect(() => { setFilterSubCategory(''); }, [filterCategory]);
+
+  useEffect(() => { setFilterSubCategory(''); }, [filterCategory]);
+
+  // --- Email Ingestion Daemon & Handlers ---
+  useEffect(() => {
+      if (!isAutoIngestEnabled) return;
+      
+      const unreadMail = simulatedEmails.find(email => email.status === 'UNREAD');
+      if (!unreadMail) return;
+
+      const timer = setTimeout(async () => {
+          try {
+              // Update state to show daemon is working
+              setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'INGESTING' } : m));
+              
+              // Find or create SPL supplier
+              let targetSupplier = suppliers.find(s => s.name.toUpperCase().includes('SPL'));
+              let targetSupplierId = targetSupplier?.id;
+              
+              if (!targetSupplier) {
+                  targetSupplierId = uuidv4();
+                  const splSupplier: Supplier = {
+                      id: targetSupplierId,
+                      name: "SPL Accommodation",
+                      contactEmail: "inventory@accommodation-spl.com.au",
+                      keyContact: "SPL Inventory Team",
+                      phone: "1300 775 222",
+                      address: "12 SPL Boulevard, Melbourne VIC 3000",
+                      categories: ["Accommodation", "Linen", "SOH"]
+                  };
+                  await addSupplier(splSupplier);
+              }
+              
+              const response = await fetch('/SPL_Accommodation_SOH_Report.xlsx');
+              const arrayBuffer = await response.arrayBuffer();
+              const file = new File([arrayBuffer], unreadMail.attachmentName, {
+                  type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              });
+              
+              const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
+              const parseResult = await parseStockFileEnhanced(file);
+              if (!parseResult.success) {
+                  throw new Error(parseResult.errors.join('\n'));
+              }
+              
+              const fullSnapshots: SupplierStockSnapshot[] = (parseResult.data || []).map((partial: any) => ({
+                  id: uuidv4(),
+                  supplierId: targetSupplierId!,
+                  supplierSku: partial.supplierSku || '',
+                  productName: partial.productName || 'Unknown Product',
+                  customerStockCode: partial.customerStockCode,
+                  range: partial.range,
+                  category: partial.category,
+                  subCategory: partial.subCategory,
+                  stockType: partial.stockType,
+                  cartonQty: partial.cartonQty,
+                  stockOnHand: partial.stockOnHand || 0,
+                  committedQty: partial.committedQty || 0,
+                  backOrderedQty: partial.backOrderedQty || 0,
+                  availableQty: partial.availableQty || 0,
+                  totalStockQty: partial.stockOnHand || 0,
+                  sellPrice: partial.sellPrice,
+                  sohValueAtSell: partial.sohValueAtSell,
+                  snapshotDate: '2026-05-28',
+                  sourceReportName: `Auto-Ingestion Daemon`,
+                  incomingStock: partial.incomingStock || []
+              }));
+              
+              await importStockSnapshot(targetSupplierId!, '2026-05-28', fullSnapshots);
+              const mappingResults = await runAutoMapping(targetSupplierId!);
+              await refreshAvailability();
+              await reloadData();
+              
+              setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'INGESTED' } : m));
+              success('Daemon Auto-Ingest: SPL Accommodation SOH Report ingested & auto-mapped successfully!', 5000);
+          } catch (e: any) {
+              console.error('Daemon Auto Ingest Failed:', e);
+              setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'FAILED' } : m));
+              error(`Daemon Auto-Ingest failed: ${e.message}`, 5000);
+          }
+      }, 8000); // Poll 8 seconds after daemon turns on
+      
+      return () => clearTimeout(timer);
+  }, [isAutoIngestEnabled, simulatedEmails, suppliers]);
+
+  const handleManualIngest = async (emailId: string) => {
+      try {
+          // Update status to INGESTING
+          setSimulatedEmails(prev => prev.map(m => m.id === emailId ? { ...m, status: 'INGESTING' } : m));
+          
+          // Find or create SPL supplier
+          let targetSupplier = suppliers.find(s => s.name.toUpperCase().includes('SPL'));
+          let targetSupplierId = targetSupplier?.id;
+          
+          if (!targetSupplier) {
+              targetSupplierId = uuidv4();
+              const splSupplier: Supplier = {
+                  id: targetSupplierId,
+                  name: "SPL Accommodation",
+                  contactEmail: "inventory@accommodation-spl.com.au",
+                  keyContact: "SPL Inventory Team",
+                  phone: "1300 775 222",
+                  address: "12 SPL Boulevard, Melbourne VIC 3000",
+                  categories: ["Accommodation", "Linen", "SOH"]
+              };
+              await addSupplier(splSupplier);
+          }
+          
+          const response = await fetch('/SPL_Accommodation_SOH_Report.xlsx');
+          const arrayBuffer = await response.arrayBuffer();
+          const file = new File([arrayBuffer], 'SPL_Accommodation_SOH_Report.xlsx', {
+              type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          });
+          
+          const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
+          const parseResult = await parseStockFileEnhanced(file);
+          if (!parseResult.success) {
+              throw new Error(parseResult.errors.join('\n'));
+          }
+          
+          const fullSnapshots: SupplierStockSnapshot[] = (parseResult.data || []).map((partial: any) => ({
+              id: uuidv4(),
+              supplierId: targetSupplierId!,
+              supplierSku: partial.supplierSku || '',
+              productName: partial.productName || 'Unknown Product',
+              customerStockCode: partial.customerStockCode,
+              range: partial.range,
+              category: partial.category,
+              subCategory: partial.subCategory,
+              stockType: partial.stockType,
+              cartonQty: partial.cartonQty,
+              stockOnHand: partial.stockOnHand || 0,
+              committedQty: partial.committedQty || 0,
+              backOrderedQty: partial.backOrderedQty || 0,
+              availableQty: partial.availableQty || 0,
+              totalStockQty: partial.stockOnHand || 0,
+              sellPrice: partial.sellPrice,
+              sohValueAtSell: partial.sohValueAtSell,
+              snapshotDate: '2026-05-28',
+              sourceReportName: `Email Ingestion Hub`,
+              incomingStock: partial.incomingStock || []
+          }));
+          
+          await importStockSnapshot(targetSupplierId!, '2026-05-28', fullSnapshots);
+          const mappingResults = await runAutoMapping(targetSupplierId!);
+          await refreshAvailability();
+          await reloadData();
+          
+          setSimulatedEmails(prev => prev.map(m => m.id === emailId ? { ...m, status: 'INGESTED' } : m));
+          
+          setIngestionStats({
+              open: true,
+              supplierName: "SPL Accommodation",
+              recordsImported: fullSnapshots.length,
+              confirmedMatches: mappingResults.confirmed,
+              proposedMatches: mappingResults.proposed
+          });
+          
+          success('Supplier report ingested & auto-mapped successfully!');
+      } catch (e: any) {
+          console.error('Manual Ingest Failed:', e);
+          setSimulatedEmails(prev => prev.map(m => m.id === emailId ? { ...m, status: 'FAILED' } : m));
+          error(`Ingestion failed: ${e.message}`);
+      }
+  };
+
+  const renderEmailIngestionHub = () => {
+      const unreadCount = simulatedEmails.filter(e => e.status === 'UNREAD').length;
+      return (
+          <div className="p-6 space-y-6">
+              {/* Header */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-5">
+                  <div>
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                          <MailOpen className="text-blue-500" size={20} />
+                          Supplier Email Ingestion Hub
+                      </h3>
+                      <p className="text-xs text-secondary dark:text-gray-400 mt-1">
+                          Simulate and manage automated ingestion of inventory reports arriving from suppliers via email.
+                      </p>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                      {isAutoIngestEnabled ? (
+                          <span className="flex items-center gap-1.5 px-3 py-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-full text-xs font-bold border border-green-100 dark:border-green-900/30">
+                              <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse mr-1" />
+                              Daemon: Active & Listening
+                          </span>
+                      ) : (
+                          <span className="flex items-center gap-1.5 px-3 py-1 bg-gray-50 dark:bg-gray-800 text-gray-500 rounded-full text-xs font-bold border border-gray-200 dark:border-gray-705">
+                              <span className="w-2 h-2 bg-gray-400 rounded-full mr-1" />
+                              Daemon: Idle
+                          </span>
+                      )}
+                  </div>
+              </div>
+
+              {/* Grid Layout: Config on Left, Inbox on Right */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Left Column: Configuration Card */}
+                  <div className="lg:col-span-1 space-y-5 bg-gray-50 dark:bg-gray-900/30 p-5 rounded-2xl border border-gray-100 dark:border-gray-800 animate-fade-in">
+                      <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                          <SettingsIcon size={16} className="text-gray-400" />
+                          Daemon Configuration
+                      </h4>
+                      
+                      <div className="space-y-4 text-xs">
+                          {/* Toggle Switch */}
+                          <div className="flex items-center justify-between p-3 bg-white dark:bg-nocturne rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                              <div>
+                                  <p className="font-bold text-gray-900 dark:text-white">Auto-Ingestion Daemon</p>
+                                  <p className="text-[10px] text-tertiary">Periodically poll inbound inbox</p>
+                              </div>
+                              <button
+                                  type="button"
+                                  onClick={() => {
+                                      setIsAutoIngestEnabled(!isAutoIngestEnabled);
+                                      success(`Auto-Ingestion Daemon ${!isAutoIngestEnabled ? 'enabled' : 'disabled'}.`);
+                                  }}
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                      isAutoIngestEnabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+                                  }`}
+                              >
+                                  <span
+                                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                          isAutoIngestEnabled ? 'translate-x-6' : 'translate-x-1'
+                                      }`}
+                                  />
+                              </button>
+                          </div>
+                          {/* Email Address Config (Directory / Entra ID Verified) */}
+                          <div className="space-y-1.5 relative">
+                              <label className="font-bold text-secondary dark:text-gray-400 uppercase tracking-wider text-[10px]">
+                                  Ingestion Inbound Address (Entra ID)
+                              </label>
+                              <div className="relative">
+                                  <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                                  <input
+                                      type="text"
+                                      value={emailSearchQuery}
+                                      onChange={(e) => {
+                                          setEmailSearchQuery(e.target.value);
+                                          setIsSearchingEmail(true);
+                                      }}
+                                      className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-850 pl-8 pr-8 py-2 rounded-xl text-primary font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-xs"
+                                      placeholder="Search directory for active email..."
+                                  />
+                                  {emailSearchQuery === ingestEmailAddress && ingestEmailAddress && (
+                                      <div className="absolute right-3 top-2.5 text-green-500" title="Verified Entra ID Active Address">
+                                          <CheckCircle2 size={14} />
+                                      </div>
+                                  )}
+                              </div>
+                              
+                              {/* Verified Active Badge */}
+                              {ingestEmailAddress && emailSearchQuery === ingestEmailAddress && (
+                                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 rounded-lg text-[9px] font-bold border border-emerald-100 dark:border-emerald-900/30">
+                                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                                      Active Entra ID Account: {ingestEmailAddress}
+                                  </div>
+                              )}
+
+                              {/* Search results dropdown */}
+                              {isSearchingEmail && emailSearchQuery.trim().length >= 2 && (
+                                  <div className="absolute z-50 mt-1 w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl max-h-48 overflow-y-auto pr-1">
+                                      {emailSearchResults.length === 0 ? (
+                                          <div className="p-3 text-center text-[10px] text-gray-400 italic">
+                                              No active accounts found
+                                          </div>
+                                      ) : (
+                                          emailSearchResults.map((user: any) => (
+                                              <button
+                                                  type="button"
+                                                  key={user.id || user.email}
+                                                  onClick={() => {
+                                                      setIngestEmailAddress(user.email);
+                                                      setEmailSearchQuery(user.email);
+                                                      setIsSearchingEmail(false);
+                                                      success(`Inbound email set to verified Entra ID address: ${user.email}`);
+                                                  }}
+                                                  className="w-full text-left p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 border-b border-gray-100 dark:border-gray-800 last:border-0 flex justify-between items-center"
+                                              >
+                                                  <div className="min-w-0 flex-1">
+                                                      <div className="font-bold text-[10px] text-gray-900 dark:text-gray-100 truncate">{user.name}</div>
+                                                      <div className="text-[9px] text-gray-400 font-mono truncate">{user.email}</div>
+                                                  </div>
+                                                  <span className="flex-shrink-0 text-[8px] bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 px-1 py-0.5 rounded font-black uppercase">Active</span>
+                                              </button>
+                                          ))
+                                      )}
+                                  </div>
+                              )}
+                          </div>
+
+                          {/* Polling Interval Config */}
+                          <div className="space-y-1.5">
+                              <label className="font-bold text-secondary dark:text-gray-400 uppercase tracking-wider text-[10px]">
+                                  Polling Frequency
+                              </label>
+                              <select
+                                  value={ingestInterval}
+                                  onChange={(e) => setIngestInterval(e.target.value)}
+                                  className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-850 px-3 py-2 rounded-xl text-primary font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                              >
+                                  <option value="5min">Every 5 Minutes (Simulated)</option>
+                                  <option value="Hourly">Hourly</option>
+                                  <option value="Daily">Daily</option>
+                              </select>
+                          </div>
+
+                          {/* Info panel */}
+                          <div className="p-3 bg-blue-50 dark:bg-blue-900/10 text-blue-800 dark:text-blue-300 rounded-xl border border-blue-100 dark:border-blue-900/20 text-[11px] leading-relaxed">
+                              <p className="font-bold mb-1">Intelligent Match Logic</p>
+                              The ingestion pipeline automatically maps supplier SKUs to internal catalog codes using normalized code matching (e.g. <code>SERV27</code> &rarr; <code>SERV NAVY CRS 20X20</code>).
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Right Column: Inbound Inbox */}
+                  <div className="lg:col-span-2 space-y-4">
+                      <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                              <Inbox size={16} className="text-gray-400" />
+                              Simulated Inbound Inbox ({unreadCount} unread)
+                          </h4>
+                          
+                          {unreadCount > 0 && (
+                              <span className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded-full font-bold">
+                                  New Mail
+                              </span>
+                          )}
+                      </div>
+
+                      <div className="space-y-4">
+                          {simulatedEmails.map((email) => {
+                              const isUnread = email.status === 'UNREAD';
+                              const isIngesting = email.status === 'INGESTING';
+                              const isIngested = email.status === 'INGESTED';
+                              const isFailed = email.status === 'FAILED';
+
+                              return (
+                                  <div
+                                      key={email.id}
+                                      className={`p-5 rounded-2xl border transition-all duration-300 ${
+                                          isUnread
+                                              ? 'bg-blue-50/40 dark:bg-blue-900/5 border-blue-100 dark:border-blue-900/25 shadow-sm'
+                                              : 'bg-white dark:bg-nocturne border-gray-150 dark:border-gray-800/70'
+                                      }`}
+                                  >
+                                      {/* Sender and Date */}
+                                      <div className="flex justify-between items-start gap-4">
+                                          <div className="flex items-center gap-3">
+                                              {isUnread && (
+                                                  <span className="w-2.5 h-2.5 bg-blue-500 rounded-full shrink-0 animate-ping" />
+                                              )}
+                                              <div>
+                                                  <p className={`text-xs ${isUnread ? 'font-bold text-gray-900 dark:text-white' : 'text-secondary font-medium'}`}>
+                                                      {email.senderName}
+                                                  </p>
+                                                  <p className="text-[10px] text-tertiary font-mono">
+                                                      &lt;{email.sender}&gt;
+                                                  </p>
+                                              </div>
+                                          </div>
+                                          
+                                          <span className="text-[10px] text-tertiary font-mono">
+                                              {new Date(email.receivedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                          </span>
+                                      </div>
+
+                                      {/* Subject */}
+                                      <h5 className={`text-sm mt-3 ${isUnread ? 'font-bold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-300'}`}>
+                                          {email.subject}
+                                      </h5>
+
+                                      {/* Email Body */}
+                                      <p className="text-xs text-secondary mt-2 whitespace-pre-line leading-relaxed border-l-2 border-gray-200 dark:border-gray-800 pl-3 italic">
+                                          {email.body}
+                                      </p>
+
+                                      {/* Attachment Panel */}
+                                      <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-105 dark:border-gray-800">
+                                          <div className="flex items-center gap-2.5">
+                                              <div className="p-2 bg-green-50 dark:bg-green-950/20 text-green-600 rounded-lg">
+                                                  <FileSpreadsheet size={20} />
+                                              </div>
+                                              <div className="text-xs">
+                                                  <p className="font-bold text-gray-800 dark:text-gray-250 truncate max-w-[200px] sm:max-w-xs">
+                                                      {email.attachmentName}
+                                                  </p>
+                                                  <p className="text-[10px] text-tertiary font-mono">{email.attachmentSize}</p>
+                                              </div>
+                                          </div>
+
+                                          {/* Ingest Actions */}
+                                          <div>
+                                              {isUnread && (
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => handleManualIngest(email.id)}
+                                                      className="w-full sm:w-auto bg-blue-600 hover:bg-blue-750 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all"
+                                                  >
+                                                      <Wand2 size={14} />
+                                                      Ingest & Auto-Map
+                                                  </button>
+                                              )}
+                                              {isIngesting && (
+                                                  <span className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-2">
+                                                      <RefreshCw size={14} className="animate-spin" />
+                                                      Auto-Mapping...
+                                                  </span>
+                                              )}
+                                              {isIngested && (
+                                                  <div className="flex items-center gap-3">
+                                                      <span className="flex items-center gap-1 text-xs font-bold text-green-600 dark:text-green-400">
+                                                          <CheckCircle2 size={16} />
+                                                          Ingested
+                                                      </span>
+                                                      <button
+                                                          type="button"
+                                                          onClick={() => setMappingSubTab('PROPOSED')}
+                                                          className="text-xs text-blue-500 hover:underline font-bold"
+                                                      >
+                                                          View Mappings
+                                                      </button>
+                                                  </div>
+                                              )}
+                                              {isFailed && (
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => handleManualIngest(email.id)}
+                                                      className="w-full sm:w-auto bg-red-105 hover:bg-red-200 dark:bg-red-950/20 text-red-650 dark:text-red-400 px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                                                  >
+                                                      <AlertTriangle size={14} />
+                                                      Retry Ingest
+                                                  </button>
+                                              )}
+                                          </div>
+                                      </div>
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  </div>
+              </div>
+          </div>
+      );
+  };
 
   // --- Derived Data ---
   const filteredSnapshots = stockSnapshots.filter(s => {
@@ -1025,125 +1528,7 @@ const Settings = () => {
       setItemForm(prev => ({ ...prev, name: suggestion }));
   };
 
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!stockSupplierId) { 
-        alert('Please select a supplier from the top of the tab'); 
-        e.target.value = ''; 
-        return; 
-    }
-
-    try {
-        // Use the enhanced parser with confidence scoring
-        const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
-        const result = await parseStockFileEnhanced(file);
-
-        // If parsing failed completely (no data to map), show errors
-        if (result.errors.length > 0 && (!result.rawData || result.rawData.length === 0)) {
-            alert(`Failed to parse file:\n\n${result.errors.join('\n')}`);
-            e.target.value = '';
-            return;
-        }
-
-        // Store parse result and show mapping confirmation modal
-        setParseResult(result);
-        setShowMappingConfirmation(true);
-
-        // Clear file input
-        e.target.value = '';
-
-    } catch (error: any) {
-        alert(`Error processing file: ${error.message}`);
-        e.target.value = '';
-    }
-  };
-
-  // Handler for mapping confirmation
-  const handleMappingConfirm = async (mapping: ColumnMapping, dateColumns: DateColumn[]) => {
-    try {
-        // Close the modal first
-        setShowMappingConfirmation(false);
-
-        if (!parseResult || !stockSupplierId) return;
-
-        // Re-parse data with confirmed mapping
-        const { parseDataRows } = await import('../utils/fileParser.ts');
-        const parsedSnapshots = parseDataRows(
-            parseResult.rawData || [],
-            mapping,
-            dateColumns
-        );
-
-        // Convert to full snap shots with metadata
-        const fullSnapshots: SupplierStockSnapshot[] = parsedSnapshots.map((partial: any) => ({
-            id: uuidv4(),
-            supplierId: stockSupplierId,
-            supplierSku: partial.supplierSku || '',
-            productName: partial.productName || 'Unknown Product',
-            customerStockCode: partial.customerStockCode,
-            range: partial.range,
-            category: partial.category,
-            subCategory: partial.subCategory,
-            stockType: partial.stockType,
-            cartonQty: partial.cartonQty,
-            stockOnHand: partial.stockOnHand || 0,
-            committedQty: partial.committedQty || 0,
-            backOrderedQty: partial.backOrderedQty || 0,
-            availableQty: partial.availableQty || 0,
-            totalStockQty: partial.stockOnHand || 0,
-            sellPrice: partial.sellPrice,
-            sohValueAtSell: partial.sohValueAtSell,
-            snapshotDate: importDate,
-            sourceReportName: `Enhanced Import`,
-            incomingStock: partial.incomingStock || []
-        }));
-
-        setImportPreview(fullSnapshots);
-        setIsImporting(true);
-
-        // Show success message with stats
-        const dateColsCount = dateColumns.length;
-        success(
-            `Mapped ${fullSnapshots.length} products${dateColsCount > 0 ? ` with ${dateColsCount} incoming stock dates` : ''}`
-        );
-        
-        setParseResult(null);
-
-    } catch (error: any) {
-        alert(`Error processing mapped data: ${error.message}`);
-    }
-  };
-
-  const confirmImport = async () => {
-    try {
-        if (!stockSupplierId) return;
-        
-        // 1. Import Stock to DB (Safe Overwrite)
-        await importStockSnapshot(stockSupplierId, importDate, importPreview);
-        
-        // 2. Auto-Focus Mapping Logic (User Request)
-        // Immediately run auto-mapping on the fresh data
-        const mappingResults = await runAutoMapping(stockSupplierId);
-        
-        // 3. Update Availability based on new stock + new mappings
-        await refreshAvailability();
-
-        // 4. Refresh UI State (Ensure other screens aware)
-        await reloadData();
-        // Trigger generic app refresh if needed? 
-        // For now, local state refresh covers the visible tabs.
-
-        setImportPreview([]);
-        setIsImporting(false);
-        
-        alert(`Successfully imported ${importPreview.length} records.\n\nAuto-Mapping Results:\nConfirms: ${mappingResults.confirmed}\nProposed: ${mappingResults.proposed}\n\nStock availability has been refreshed.`);
-    } catch (e: any) {
-        console.error('Import Error:', e);
-        alert(`Import failed: ${e.message || 'Unknown error'}`);
-    }
-  };
+  // Deprecated manual stock upload handlers removed
 
   // --- Branding Handlers ---
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1621,100 +2006,28 @@ if __name__ == "__main__":
                       </div>
                   </div>
 
-                 {/* NEW PASTE IMPORT AREA */}
-                 {/* NEW PASTE IMPORT AREA - Only visible if supplier selected */}
-                 {stockSupplierId ? (
-                      <div className="bg-gray-50 dark:bg-white/5 p-4 rounded-xl border border-gray-200 dark:border-gray-800 mb-6 relative overflow-hidden">
-                         {/* Watermark/Label */}
-                         <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                            <Upload size={120}/>
-                         </div>
-
-                         <h3 className="font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Upload size={18}/> Update Stock for {suppliers.find(s => s.id === stockSupplierId)?.name}</h3>
-                         <div className="flex flex-col md:flex-row gap-4 mb-4">
-                            <div className="w-full md:w-1/3 space-y-4">
-                               <div>
-                                    <label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Snapshot Date</label>
-                                    <input type="date" className="input-field mt-1" value={importDate} onChange={e => setImportDate(e.target.value)} />
-                               </div>
-                               <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded text-xs text-blue-800 dark:text-blue-200 border border-blue-100 dark:border-blue-800">
-                                    <b>Note:</b> Uploading will add new snapshot records for this date. It is recommended to use the current date for fresh stock.
-                               </div>
-                            </div>
-                            <div className="w-full space-y-4">
-                                {/* FILE UPLOAD OPTION */}
-                                <div>
-                                    <label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase mb-1 block">Upload File (Excel, CSV, TSV)</label>
-                                    <input 
-                                        type="file" 
-                                        accept=".xlsx,.xls,.csv,.tsv"
-                                        onChange={handleFileUpload}
-                                        className="input-field file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[var(--color-brand)] file:text-white hover:file:bg-[var(--color-brand)]/90 file:cursor-pointer"
-                                    />
-                                    <p className="text-[10px] text-gray-400 mt-1">Supports Excel, CSV, TSV with automatic column detection</p>
-                                </div>
-                            </div>
-                         </div>
+                  {/* Stock Ingestion replaced with Email Ingestion Hub */}
+                  <div className="bg-blue-50/50 dark:bg-blue-900/10 p-5 rounded-xl border border-blue-100 dark:border-blue-900/20 mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                          <h4 className="font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2 text-sm">
+                              <Info size={16} className="text-blue-500"/>
+                              Automated Inbound Ingestion Active
+                          </h4>
+                          <p className="text-xs text-secondary dark:text-gray-400 mt-1 max-w-xl">
+                              Manual Excel uploading is deprecated. Supplier available inventory reports are now processed seamlessly via the Email Ingestion Hub.
+                          </p>
                       </div>
-                  ) : (
-                      <div className="p-8 text-center border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl text-gray-400">
-                          Select a Supplier above to view History or Upload Stock.
-                      </div>
-                  )}
-
-                  {isImporting && importPreview.length > 0 && (
-                      <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-xl">
-                          <div className="flex justify-between items-center mb-2">
-                              <h4 className="font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2"><CheckCircle2 size={18}/> Ready to Import {importPreview.length} Records</h4>
-                              <div className="flex gap-2">
-                                  <button type="button" onClick={() => { setIsImporting(false); setImportPreview([]); }} className="text-red-500 text-sm font-bold hover:underline">Cancel</button>
-                                  <button type="button" onClick={confirmImport} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md">Confirm Overwrite</button>
-                              </div>
-                          </div>
-                          <div className="max-h-60 table-shell overflow-y-auto text-xs border border-blue-100 dark:border-blue-800 rounded bg-white dark:bg-[#15171e]">
-                              <table className="dense-admin-table min-w-[1200px] relative">
-                                  <thead className="bg-gray-50 dark:bg-white/5 font-bold sticky top-0 z-10">
-                                      <tr>
-                                          <th className="p-2">SKU</th>
-                                          <th className="p-2">Name</th>
-                                          <th className="p-2">Category</th>
-                                          <th className="p-2">Sub Cat</th>
-                                          <th className="p-2">Range</th>
-                                          <th className="p-2">Type</th>
-                                          <th className="p-2 text-right">Ctn</th>
-                                          <th className="p-2 text-right">SOH</th>
-                                          <th className="p-2 text-right">Cmtd</th>
-                                          <th className="p-2 text-right">B/O</th>
-                                          <th className="p-2 text-right">Avail</th>
-                                          <th className="p-2 text-right">Total</th>
-                                          <th className="p-2 text-right">Sell $</th>
-                                          <th className="p-2 text-right">Value</th>
-                                      </tr>
-                                  </thead>
-                                  <tbody>
-                                    {importPreview.map((r, i) => (
-                                        <tr key={i} className="border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/5">
-                                            <td className="p-2 font-mono whitespace-nowrap">{r.supplierSku}</td>
-                                            <td className="p-2 truncate max-w-[150px]" title={r.productName}>{r.productName}</td>
-                                            <td className="p-2 text-xs">{r.category || '-'}</td>
-                                            <td className="p-2 text-xs">{r.subCategory || '-'}</td>
-                                            <td className="p-2 text-xs">{r.range || '-'}</td>
-                                            <td className="p-2 text-xs">{r.stockType || '-'}</td>
-                                            <td className="p-2 text-right font-mono">{r.cartonQty || '-'}</td>
-                                            <td className="p-2 text-right font-mono">{r.stockOnHand}</td>
-                                            <td className="p-2 text-right font-mono text-orange-500">{r.committedQty}</td>
-                                            <td className="p-2 text-right font-mono text-red-500">{r.backOrderedQty}</td>
-                                            <td className={`p-2 text-right font-bold font-mono ${r.availableQty < 0 ? 'text-red-500' : 'text-green-600'}`}>{r.availableQty}</td>
-                                            <td className="p-2 text-right font-mono">{r.totalStockQty ?? '-'}</td>
-                                            <td className="p-2 text-right font-mono">{r.sellPrice ? `$${r.sellPrice.toFixed(2)}` : '-'}</td>
-                                            <td className="p-2 text-right font-mono">{r.sohValueAtSell ? `$${r.sohValueAtSell.toLocaleString()}` : '-'}</td>
-                                        </tr>
-                                    ))}
-                                  </tbody>
-                              </table>
-                          </div>
-                      </div>
-                  )}
+                      <button 
+                          type="button" 
+                          onClick={() => {
+                              setMappingSubTab('EMAIL_INGEST');
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition-all flex items-center gap-1.5 shrink-0"
+                      >
+                          <MailOpen size={14}/>
+                          Go to Ingestion Hub
+                      </button>
+                  </div>
 
                   <div className="flex flex-col md:flex-row gap-4 mb-4 items-center">
                     <h3 className="font-bold text-lg text-gray-900 dark:text-white">Stock History ({filteredSnapshots.length})</h3>
@@ -1938,6 +2251,12 @@ if __name__ == "__main__":
 
               {/* Sub Tabs */}
               <div className="flex gap-6 border-b border-gray-200 dark:border-gray-800">
+                  <button type="button" onClick={() => setMappingSubTab('EMAIL_INGEST')} className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${mappingSubTab === 'EMAIL_INGEST' ? 'border-blue-500 text-blue-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+                      Email Ingestion Hub
+                      {simulatedEmails.some(e => e.status === 'UNREAD') && (
+                          <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shrink-0" />
+                      )}
+                  </button>
                   <button type="button" onClick={() => setMappingSubTab('PROPOSED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'PROPOSED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
                       Proposed Mappings ({mappings.filter(m => m.mappingStatus === 'PROPOSED').length})
                   </button>
@@ -1959,7 +2278,9 @@ if __name__ == "__main__":
               </div>
 
               <div className="table-shell bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
-                  {mappingSubTab === 'MEMORY' ? (
+                  {mappingSubTab === 'EMAIL_INGEST' ? (
+                      renderEmailIngestionHub()
+                  ) : mappingSubTab === 'MEMORY' ? (
                       <div className="p-0">
                           <div className="p-4 bg-purple-50 dark:bg-purple-900/10 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center">
                               <div>
@@ -3731,6 +4052,61 @@ if __name__ == "__main__":
                  </div>
              )}
     
+             {/* Ingestion Success Stats Modal */}
+             {ingestionStats && ingestionStats.open && (
+                 <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                     <div className="bg-white dark:bg-nocturne rounded-2xl shadow-2xl w-[95%] max-w-md p-6 border border-gray-150 dark:border-gray-800 animate-slide-up">
+                         <div className="text-center">
+                             <div className="inline-flex p-3 bg-green-50 dark:bg-green-950/20 text-green-600 rounded-full mb-4">
+                                 <CheckCircle2 size={36} />
+                             </div>
+                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                                 Ingestion & Auto-Mapping Successful!
+                             </h3>
+                             <p className="text-xs text-secondary dark:text-gray-400 mt-1">
+                                 Supplier records have been successfully mapped and registered.
+                             </p>
+                         </div>
+
+                         <div className="mt-5 space-y-3 bg-gray-50 dark:bg-gray-905/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800 text-xs">
+                             <div className="flex justify-between font-medium">
+                                 <span className="text-secondary dark:text-gray-400">Supplier Name:</span>
+                                 <span className="font-bold text-primary dark:text-white">{ingestionStats.supplierName}</span>
+                             </div>
+                             <div className="flex justify-between">
+                                 <span className="text-secondary dark:text-gray-400">Records Imported:</span>
+                                 <span className="font-mono font-bold text-primary dark:text-white">{ingestionStats.recordsImported}</span>
+                             </div>
+                             <div className="flex justify-between">
+                                 <span className="text-secondary dark:text-gray-400">Auto-Confirmed Matches:</span>
+                                 <span className="font-mono font-bold text-green-600 dark:text-green-400">+{ingestionStats.confirmedMatches}</span>
+                             </div>
+                             <div className="flex justify-between">
+                                 <span className="text-secondary dark:text-gray-400">Proposed Matches (Needs Review):</span>
+                                 <span className="font-mono font-bold text-yellow-600 dark:text-yellow-400 font-bold">+{ingestionStats.proposedMatches}</span>
+                             </div>
+                             <div className="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-2.5">
+                                 <span className="text-secondary dark:text-gray-400">Item Prices Synchronized:</span>
+                                 <span className="font-bold text-purple-600 dark:text-purple-400">Yes (Auto-Sync)</span>
+                             </div>
+                         </div>
+
+                         <div className="mt-6 flex justify-end">
+                             <button
+                                 type="button"
+                                 onClick={() => {
+                                     setIngestionStats(null);
+                                     setMappingSubTab('PROPOSED');
+                                 }}
+                                 className="w-full bg-[var(--color-brand)] text-white py-2.5 rounded-xl font-bold text-xs hover:opacity-90 transition-all"
+                             >
+                                 Close & Review Proposed Mappings
+                             </button>
+                         </div>
+                     </div>
+                 </div>
+             )}
+    
              {/* Email Templates Tab */}
              {activeTab === 'EMAIL' && (
                  <div className="space-y-6 animate-fade-in">
@@ -4589,17 +4965,7 @@ if __name__ == "__main__":
                    </div>
                )}
 
-      {/* Stock Mapping Confirmation Modal */}
-      {showMappingConfirmation && parseResult && (
-        <StockMappingConfirmation
-          parseResult={parseResult}
-          onConfirm={handleMappingConfirm}
-          onCancel={() => {
-            setShowMappingConfirmation(false);
-            setParseResult(null);
-          }}
-        />
-      )}
+
     </div>
     </div>
   );
