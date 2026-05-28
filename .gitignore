@@ -48,3 +48,9 @@ Thumbs.db
 *.old
 *_v[0-9]*
 raw_hierarchy_data.txt
+
+# --- TESTING ARTIFACTS ---
+test-results/
+playwright-report/
+ts_errors.txt
+test_results.txt
