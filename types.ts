@@ -23,6 +23,7 @@ export type PermissionId =
   | 'link_concur'
   | 'receive_goods'
   | 'view_finance'
+  | 'view_reports'
   | 'manage_finance'
   | 'manage_settings'
   | 'manage_items'

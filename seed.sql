@@ -3,7 +3,7 @@
 INSERT INTO roles (id, name, description, is_system, permissions) VALUES
 ('SITE_USER', 'Site User', 'Standard requester.', true, ARRAY['view_dashboard', 'create_request', 'receive_goods']),
 ('APPROVER', 'Approver', 'Can authorize requests.', true, ARRAY['view_dashboard', 'view_all_requests', 'approve_requests']),
-('ADMIN', 'Administrator', 'Full system access.', true, ARRAY['view_dashboard', 'create_request', 'view_all_requests', 'approve_requests', 'link_concur', 'receive_goods', 'view_finance', 'manage_finance', 'manage_settings', 'manage_items', 'manage_suppliers'])
+('ADMIN', 'Administrator', 'Full system access.', true, ARRAY['view_dashboard', 'create_request', 'view_all_requests', 'approve_requests', 'link_concur', 'receive_goods', 'view_finance', 'manage_finance', 'manage_settings', 'manage_items', 'manage_suppliers', 'view_reports'])
 ON CONFLICT (id) DO NOTHING;
 
 -- USERS (Using specific UUIDs for mapping)

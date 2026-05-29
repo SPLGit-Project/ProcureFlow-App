@@ -54,6 +54,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'view_suppliers', label: 'Suppliers', description: 'View supplier list', icon: Truck, category: 'Sidebar Navigation' },
     { id: 'view_sites', label: 'Sites', description: 'View site list', icon: MapPin, category: 'Sidebar Navigation' },
     { id: 'view_finance', label: 'Finance Review', description: 'Access finance review and cost coding', icon: DollarSign, category: 'Sidebar Navigation' },
+    { id: 'view_reports', label: 'Reports', description: 'Access to financial and operational reports', icon: BarChart3, category: 'Sidebar Navigation' },
     { id: 'view_active_requests', label: 'Active Requests', description: 'Access active/pending concur requests', icon: Activity, category: 'Sidebar Navigation' },
     { id: 'view_completed_requests', label: 'Completed Requests', description: 'Access history of completed requests', icon: Clock, category: 'Sidebar Navigation' },
 

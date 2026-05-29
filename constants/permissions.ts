@@ -72,6 +72,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         icon: DollarSign,
         permissions: [
             { id: 'view_finance', label: 'Finance Review', description: 'Access to financial reconciliation', type: 'SCREEN' },
+            { id: 'view_reports', label: 'Reports', description: 'Access to system and financial reporting', type: 'SCREEN' },
             { id: 'manage_finance', label: 'Finance Config', description: 'Manage GL codes and cost centers', type: 'ACTION' },
         ]
     },

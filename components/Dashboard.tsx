@@ -203,16 +203,18 @@ const Dashboard = () => {
   const StatCard = ({ title, value, icon: Icon, color, onClick }: StatCardProps) => (
       <div 
         onClick={onClick}
-        className={`group bg-surface border border-default elevation-1 hover:elevation-2 transition-elevation p-5 rounded-2xl relative overflow-hidden cursor-pointer`}
+        className={`group bg-surface border border-default elevation-1 transition-elevation p-5 rounded-2xl relative overflow-hidden ${onClick ? 'cursor-pointer hover:elevation-2' : ''}`}
       >
-          <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl opacity-0 group-hover:opacity-10 transition-opacity bg-${color}-500`}></div>
+          {onClick && <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl opacity-0 group-hover:opacity-10 transition-opacity bg-${color}-500`}></div>}
           <div className="flex justify-between items-start mb-3">
               <div className={`p-2.5 rounded-xl bg-${color}-50 dark:bg-${color}-500/10 text-${color}-600 dark:text-${color}-500 group-hover:scale-110 transition-transform`}>
                   <Icon size={22} />
               </div>
-              <span className="flex items-center text-secondary dark:text-gray-400 text-xs font-medium gap-1 opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
-                  View <ChevronRight size={12}/>
-              </span>
+              {onClick && (
+                <span className="flex items-center text-secondary dark:text-gray-400 text-xs font-medium gap-1 opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
+                    View <ChevronRight size={12}/>
+                </span>
+              )}
           </div>
           <div>
               <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-1 tracking-tight">{value}</h3>
@@ -307,10 +309,10 @@ const Dashboard = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <StatCard title="Total Value (YTD)" value={`$${Math.round(totalSpend/1000)}k`} icon={TrendingUp} color="purple" onClick={() => navigate('/reports')}/>
+          <StatCard title="Total Value (YTD)" value={`$${Math.round(totalSpend/1000)}k`} icon={TrendingUp} color="purple" onClick={hasPermission('view_reports') ? () => navigate('/reports') : undefined}/>
           <StatCard title="Pending Actions" value={myPendingApprovals.length + actionConcur.length + uncapitalizedDeliveries + myPendingDeliveries.length} icon={AlertCircle} color="red" onClick={() => navigate('/requests')} />
-          <StatCard title="Active Suppliers" value={new Set(filteredPos.map(p=>p.supplierName)).size} icon={Truck} color="orange" onClick={() => navigate('/reports')} />
-          <StatCard title="Avg. Approval" value={avgApprovalTime} icon={Clock} color="cyan" onClick={() => navigate('/reports')} />
+          <StatCard title="Active Suppliers" value={new Set(filteredPos.map(p=>p.supplierName)).size} icon={Truck} color="orange" onClick={hasPermission('view_reports') ? () => navigate('/reports') : undefined} />
+          <StatCard title="Avg. Approval" value={avgApprovalTime} icon={Clock} color="cyan" onClick={hasPermission('view_reports') ? () => navigate('/reports') : undefined} />
         </div>
       )}
 
@@ -385,10 +387,12 @@ const Dashboard = () => {
 
                {/* Top Depletion Items */}
                <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 flex-1">
-                  <div className="flex items-center justify-between mb-4">
-                       <h3 className="text-lg font-bold text-gray-900 dark:text-white">Highest Depletion Items</h3>
-                       <button type="button" onClick={() => navigate('/reports')} className="text-xs text-[var(--color-brand)] font-medium hover:underline">Full Report</button>
-                  </div>
+                   <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Highest Depletion Items</h3>
+                        {hasPermission('view_reports') && (
+                            <button type="button" onClick={() => navigate('/reports')} className="text-xs text-[var(--color-brand)] font-medium hover:underline">Full Report</button>
+                        )}
+                   </div>
                   
                   <div className="space-y-3">
                       {topDepletionItems.length > 0 ? topDepletionItems.map(([item, data]) => (

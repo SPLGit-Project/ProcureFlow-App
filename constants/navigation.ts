@@ -55,7 +55,7 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     { id: 'pricing-schedules', path: '/pricing/schedules', label: 'Pricing Schedules', iconName: 'TrendingUp', permission: 'manage_pricing_schedules', category: 'Pricing' },
 
     // ── Reports & Analytics ──
-    { id: 'reports', path: '/reports', label: 'Reports', iconName: 'BarChart3', permission: 'view_finance', category: 'Reports & Analytics' },
+    { id: 'reports', path: '/reports', label: 'Reports', iconName: 'BarChart3', permission: 'view_reports', category: 'Reports & Analytics' },
 
     // ── Admin ──
     { id: 'approval-rules', path: '/admin/approval-rules', label: 'Approval Rules', iconName: 'ShieldCheck', permission: 'manage_settings', category: 'Admin' },

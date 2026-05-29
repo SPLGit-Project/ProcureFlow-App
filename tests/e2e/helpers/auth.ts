@@ -14,7 +14,7 @@ export interface TestUser {
 const DEFAULT_PERMISSIONS = [
     'view_dashboard', 'create_request', 'manage_development',
     'approve_item_requests', 'manage_settings', 'view_items',
-    'approve_requests', 'view_finance', 'manage_items',
+    'approve_requests', 'view_finance', 'view_reports', 'manage_items',
     'view_active_requests', 'view_completed_requests',
 ];
 

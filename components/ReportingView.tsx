@@ -799,7 +799,7 @@ const buildCsv = (report: ReportType, data: ReportRow[]) => {
 };
 
 const ReportingView = () => {
-    const { pos, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers } = useApp();
+    const { pos, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers, hasPermission } = useApp();
     useSetPageMeta({ disableBodyScroll: true });
     const [activeReport, setActiveReport] = useState<ReportType>(() => {
         const saved = sessionStorage.getItem('pf_active_report');
@@ -1120,6 +1120,20 @@ const ReportingView = () => {
             customEndDate !== ''
         ))
     );
+
+    if (!hasPermission('view_reports')) {
+        return (
+            <div className="flex-1 flex items-center justify-center p-8">
+                <div className="text-center p-8 bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-xl max-w-md">
+                    <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <BarChart3 size={32} />
+                    </div>
+                    <h2 className="text-xl font-black text-gray-900 dark:text-white mb-2">Access Restricted</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">You do not have the 'view_reports' permission required to access the Reporting tools.</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex-1 min-h-0 flex flex-col space-y-4 md:space-y-6 overflow-hidden pb-20 md:pb-0 animate-fade-in">
