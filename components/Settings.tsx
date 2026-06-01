@@ -1220,6 +1220,10 @@ const Settings = () => {
   const renderEmailIngestionHub = () => {
       const unreadCount = simulatedEmails.filter(e => e.status === 'UNREAD').length;
       const isManualMode = !isAutoIngestEnabled;
+      const selectedManualSupplier = suppliers.find(supplier => supplier.id === manualIngestSupplierId);
+      const selectedInventoryUpload = manualIngestSupplierId
+          ? supplierInventoryUploads.find(({ supplier }) => supplier.id === manualIngestSupplierId)
+          : null;
       return (
           <div className="p-6 space-y-6">
               {/* Header */}
@@ -1227,7 +1231,7 @@ const Settings = () => {
                   <div>
                       <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                           <MailOpen className="text-blue-500" size={20} />
-                          Supplier Email Ingestion Hub
+                          Supplier Inventory Ingestion Hub
                       </h3>
                       <p className="text-xs text-secondary dark:text-gray-400 mt-1">
                           Update supplier inventory from either a manual upload or the automated inbound email pipeline. Both modes replace the supplier inventory and then run the same mapping and availability refresh process.
@@ -1260,36 +1264,10 @@ const Settings = () => {
                   </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {supplierInventoryUploads.map(({ supplier, uploadedAt, sourceReportName, recordCount }) => (
-                      <div key={supplier.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-4">
-                          <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                  <p className="font-bold text-sm text-gray-900 dark:text-white truncate">{supplier.name}</p>
-                                  <p className="text-[10px] text-tertiary dark:text-gray-500 truncate mt-1" title={sourceReportName || undefined}>
-                                      {sourceReportName || 'No inventory document uploaded'}
-                                  </p>
-                              </div>
-                              {uploadedAt ? (
-                                  <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
-                              ) : (
-                                  <AlertCircle size={16} className="text-gray-300 shrink-0" />
-                              )}
-                          </div>
-                          <div className="mt-3 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider">
-                              <span className={uploadedAt ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}>
-                                  {uploadedAt ? `Uploaded ${new Date(uploadedAt).toLocaleDateString()}` : 'Awaiting file'}
-                              </span>
-                              <span className="text-tertiary dark:text-gray-500">{recordCount || 0} rows</span>
-                          </div>
-                      </div>
-                  ))}
-              </div>
-
-              {/* Grid Layout: Config on Left, Inbox on Right */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Grid Layout: Config on Left, Status/Inbox on Right */}
+              <div className={`grid grid-cols-1 gap-6 ${isManualMode ? 'lg:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]' : 'lg:grid-cols-3'}`}>
                   {/* Left Column: Configuration Card */}
-                  <div className="lg:col-span-1 space-y-5 bg-gray-50 dark:bg-gray-900/30 p-5 rounded-2xl border border-gray-100 dark:border-gray-800 animate-fade-in">
+                  <div className="lg:col-span-1 space-y-5 bg-white dark:bg-nocturne p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm animate-fade-in">
                       <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
                           <SettingsIcon size={16} className="text-gray-400" />
                           {isManualMode ? 'Manual Upload' : 'Daemon Configuration'}
@@ -1304,7 +1282,10 @@ const Settings = () => {
                                       </label>
                                       <select
                                           value={manualIngestSupplierId}
-                                          onChange={(e) => setManualIngestSupplierId(e.target.value)}
+                                          onChange={(e) => {
+                                              setManualIngestSupplierId(e.target.value);
+                                              setMappingSupplierId(e.target.value);
+                                          }}
                                           className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-850 px-3 py-2 rounded-xl text-primary font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                                       >
                                           <option value="">Select supplier...</option>
@@ -1312,7 +1293,7 @@ const Settings = () => {
                                       </select>
                                   </div>
 
-                                  <label className="block p-4 bg-white dark:bg-nocturne border border-dashed border-gray-300 dark:border-gray-700 rounded-xl cursor-pointer hover:border-blue-400 transition-colors">
+                                  <label className="block p-5 bg-blue-50/40 dark:bg-blue-950/10 border border-dashed border-blue-300 dark:border-blue-800 rounded-xl cursor-pointer hover:border-blue-500 transition-colors">
                                       <input
                                           type="file"
                                           accept=".xlsx,.xls,.csv"
@@ -1446,19 +1427,63 @@ const Settings = () => {
                   </div>
 
                   {/* Right Column: Inbound Inbox */}
-                  <div className="lg:col-span-2 space-y-4">
+                  <div className={`${isManualMode ? 'space-y-4' : 'lg:col-span-2 space-y-4'}`}>
                       {isManualMode ? (
-                          <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col justify-center">
-                              <div className="max-w-xl">
-                                  <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                      <Upload size={18} className="text-blue-500" />
-                                      Manual files use the same downstream pipeline
-                                  </h4>
-                                  <p className="text-sm text-secondary dark:text-gray-400 mt-2 leading-relaxed">
-                                      Select the supplier, upload the newest inventory document, and the app will replace that supplier inventory before running auto-mapping and refreshing available stock. Switch back to Automated Email when supplier files should be collected from the inbound mailbox.
-                                  </p>
+                          selectedInventoryUpload ? (
+                              <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col justify-center">
+                                  <div className="max-w-2xl">
+                                      <div className="flex items-start justify-between gap-4">
+                                          <div>
+                                              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Selected Supplier</p>
+                                              <h4 className="text-xl font-bold text-gray-900 dark:text-white mt-1">{selectedManualSupplier?.name}</h4>
+                                              <p className="text-sm text-secondary dark:text-gray-400 mt-2" title={selectedInventoryUpload.sourceReportName || undefined}>
+                                                  {selectedInventoryUpload.sourceReportName || 'No inventory document uploaded yet.'}
+                                              </p>
+                                          </div>
+                                          {selectedInventoryUpload.uploadedAt ? (
+                                              <CheckCircle2 size={22} className="text-emerald-500 shrink-0" />
+                                          ) : (
+                                              <AlertCircle size={22} className="text-gray-300 shrink-0" />
+                                          )}
+                                      </div>
+
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
+                                          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
+                                              <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Upload Status</p>
+                                              <p className={`mt-2 text-sm font-bold ${selectedInventoryUpload.uploadedAt ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                                                  {selectedInventoryUpload.uploadedAt ? 'Uploaded' : 'Awaiting File'}
+                                              </p>
+                                          </div>
+                                          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
+                                              <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Last Uploaded</p>
+                                              <p className="mt-2 text-sm font-bold text-gray-900 dark:text-white">
+                                                  {selectedInventoryUpload.uploadedAt ? new Date(selectedInventoryUpload.uploadedAt).toLocaleDateString() : '-'}
+                                              </p>
+                                          </div>
+                                          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
+                                              <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Rows Loaded</p>
+                                              <p className="mt-2 text-sm font-bold text-gray-900 dark:text-white">{selectedInventoryUpload.recordCount || 0}</p>
+                                          </div>
+                                      </div>
+
+                                      <p className="text-xs text-secondary dark:text-gray-400 mt-5 leading-relaxed">
+                                          Uploading a new file replaces only this supplier's inventory, then continues through the same mapping, memory, and availability refresh process used by automated email ingestion.
+                                      </p>
+                                  </div>
                               </div>
-                          </div>
+                          ) : (
+                              <div className="h-full rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/20 p-6 flex flex-col justify-center">
+                                  <div className="max-w-xl">
+                                      <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                          <Upload size={18} className="text-blue-500" />
+                                          Select a supplier to begin
+                                      </h4>
+                                      <p className="text-sm text-secondary dark:text-gray-400 mt-2 leading-relaxed">
+                                          Once a supplier is selected, this area shows the current uploaded document, upload date, and row count for that supplier.
+                                      </p>
+                                  </div>
+                              </div>
+                          )
                       ) : (
                           <>
                       <div className="flex items-center justify-between">
@@ -2522,142 +2547,11 @@ if __name__ == "__main__":
 
       {activeTab === 'MAPPING' && (
           <div className="space-y-6 animate-fade-in">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  <div>
-                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-                          <div>
-                              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Mapping Workbench</h2>
-                              <p className="text-sm text-secondary dark:text-gray-400 mt-1">
-                                  Review supplier inventory mappings by supplier. Confirmed mappings are saved as memory for future uploads.
-                              </p>
-                          </div>
-                          <div className="flex items-center gap-2 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-xl p-2">
-                              <span className="text-xs font-bold text-gray-500 uppercase whitespace-nowrap px-2">Supplier</span>
-                              <select
-                                  value={mappingSupplierId}
-                                  onChange={(e) => setMappingSupplierId(e.target.value)}
-                                  className="min-w-[220px] bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
-                              >
-                                  <option value="">All suppliers</option>
-                                  {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
-                              </select>
-                          </div>
-                      </div>
-                      
-                      {/* Mapping Health Dashboard */}
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                          {/* Card 1: Confirmed (Good) */}
-                          <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-green-500 shadow-sm flex items-center justify-between">
-                              <div>
-                                  <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Ready for POs</p>
-                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappingReviewStats.confirmed.length}</p>
-                                  <p className="text-[10px] text-green-600 font-medium">{mappingReviewStats.completionPct}% of selected stock</p>
-                              </div>
-                              <div className="p-3 bg-green-50 dark:bg-green-500/10 rounded-full text-green-600">
-                                  <Check size={24} />
-                              </div>
-                          </div>
-
-                          {/* Card 2: Proposed (Action) */}
-                          <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-yellow-400 shadow-sm flex items-center justify-between relative overflow-hidden group hover:shadow-md transition-shadow cursor-pointer" onClick={() => setMappingSubTab('PROPOSED')}>
-                              <div className="relative z-10">
-                                  <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Needs Review</p>
-                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappingReviewStats.proposed.length}</p>
-                                  <p className="text-[10px] text-yellow-600 font-medium font-bold underline">{mappingReviewStats.highConfidence.length} high confidence</p>
-                              </div>
-                              <div className="p-3 bg-yellow-50 dark:bg-yellow-500/10 rounded-full text-yellow-500 relative z-10">
-                                  <AlertCircle size={24} />
-                              </div>
-                              <div className="absolute inset-0 bg-yellow-50 dark:bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                          </div>
-
-                          {/* Card 3: Unmapped (Critical) */}
-                          <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-red-500 shadow-sm flex items-center justify-between">
-                              <div>
-                                  <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Unmapped Stock</p>
-                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappingReviewStats.unmapped.length}</p>
-                                  <p className="text-[10px] text-red-500 font-medium">Requires manual correction</p>
-                              </div>
-                              <div className="p-3 bg-red-50 dark:bg-red-500/10 rounded-full text-red-500">
-                                  <X size={24} />
-                              </div>
-                          </div>
-
-                          <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-blue-500 shadow-sm flex items-center justify-between">
-                              <div>
-                                  <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Supplier Scope</p>
-                                  <p className="text-lg font-bold text-gray-900 dark:text-white truncate max-w-[170px]">{selectedMappingSupplier?.name || 'All Suppliers'}</p>
-                                  <p className="text-[10px] text-blue-600 font-medium">{mappingReviewStats.totalSnapshotRows} stock rows in scope</p>
-                              </div>
-                              <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-full text-blue-600">
-                                  <Truck size={24} />
-                              </div>
-                          </div>
-                      </div>
-
-                      {/* Workflow Guide */}
-                      <div className="bg-blue-50 dark:bg-blue-900/10 p-5 rounded-xl border border-blue-100 dark:border-blue-800/50 mb-6">
-                          <h4 className="font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2 mb-3">
-                              <Info size={18} className="text-blue-500"/> 
-                              Mapping Workflow
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                              <div className="flex gap-3">
-                                  <div className="w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 flex items-center justify-center font-bold text-xs shrink-0">1</div>
-                                  <div>
-                                      <p className="font-bold text-gray-900 dark:text-white">Run Auto-Matching</p>
-                                      <p className="text-xs text-secondary dark:text-gray-400 mt-1">System attempts to match Unmapped items using fuzzy logic. Use the button on the right.</p>
-                                  </div>
-                              </div>
-                              <div className="flex gap-3">
-                                  <div className="w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 flex items-center justify-center font-bold text-xs shrink-0">2</div>
-                                  <div>
-                                      <p className="font-bold text-gray-900 dark:text-white">Review Proposals</p>
-                                      <p className="text-xs text-secondary dark:text-gray-400 mt-1">Check the "Proposed" tab. Confirm correct matches. This moves them to "Ready".</p>
-                                  </div>
-                              </div>
-                              <div className="flex gap-3">
-                                  <div className="w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 flex items-center justify-center font-bold text-xs shrink-0">3</div>
-                                  <div>
-                                      <p className="font-bold text-gray-900 dark:text-white">Manual Mapping</p>
-                                      <p className="text-xs text-secondary dark:text-gray-400 mt-1">For any remaining red items, open <b>Supplier Items</b> and click "Map Now", or correct a row directly from Review.</p>
-                                  </div>
-                              </div>
-                          </div>
-                      </div>
-                  </div>
-                   <div className="flex gap-3 items-center mt-2 md:mt-0">
-                       <button type="button" onClick={() => refreshAvailability().then(() => alert('Availability Recalculated'))} className="text-secondary hover:text-[var(--color-brand)] text-xs font-bold flex items-center gap-1 transition-colors">
-                           <RefreshCw size={14}/> Update Mapping
-                       </button>
-                       <button type="button" onClick={async () => {
-                           const targetSuppliers = mappingSupplierId ? suppliers.filter(s => s.id === mappingSupplierId) : suppliers;
-                           if (!globalThis.confirm(`Run Auto-Match for ${mappingSupplierId ? selectedMappingSupplier?.name : 'all suppliers'}? This uses supplier memory, code matching, text similarity, and ambiguity checks.`)) return;
-                           const results = [];
-                           for (const s of targetSuppliers) {
-                               const res = await runAutoMapping(s.id);
-                               results.push(`${s.name}: +${res.confirmed} Confirmed, +${res.proposed} Proposed`);
-                           }
-                           alert(results.join('\n'));
-                       }} className="bg-[var(--color-brand)] text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:opacity-90 flex items-center gap-2 transition-all">
-                           <Wand2 size={14}/> Run Auto-Match
-                       </button>
-                       {mappingSubTab === 'PROPOSED' && mappingReviewStats.highConfidence.length > 0 && (
-                            <button type="button" 
-                                onClick={async () => {
-                                    const highConf = mappingReviewStats.highConfidence;
-                                    if (!globalThis.confirm(`Confirm all ${highConf.length} high-confidence (>=90%) mappings?`)) return;
-                                    for (const m of highConf) {
-                                        await updateMapping({ ...m, mappingStatus: 'CONFIRMED' });
-                                    }
-                                    alert(`Successfully confirmed ${highConf.length} mappings.`);
-                                }}
-                                className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:bg-green-700 flex items-center gap-2 transition-all"
-                            >
-                                <CheckCircle size={14}/> Confirm High Confidence
-                            </button>
-                       )}
-                  </div>
+              <div>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Mapping Workbench</h2>
+                  <p className="text-sm text-secondary dark:text-gray-400 mt-1">
+                      Ingest supplier inventory, review supplier items, and save confirmed mappings as memory for future uploads.
+                  </p>
               </div>
 
               {/* Sub Tabs */}
@@ -2690,6 +2584,57 @@ if __name__ == "__main__":
                       Mapping Memory (All Suppliers)
                   </button>
               </div>
+
+              {mappingSubTab !== 'EMAIL_INGEST' && (
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                          <label className="text-[10px] font-bold text-secondary dark:text-gray-400 uppercase tracking-wider">Supplier Scope</label>
+                          <select
+                              value={mappingSupplierId}
+                              onChange={(e) => setMappingSupplierId(e.target.value)}
+                              className="min-w-[240px] bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+                          >
+                              <option value="">All suppliers</option>
+                              {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                          </select>
+                          <span className="text-xs font-bold text-gray-500 dark:text-gray-400 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800">
+                              {mappingReviewStats.totalSnapshotRows} stock rows
+                          </span>
+                      </div>
+                      <div className="flex flex-wrap gap-3 items-center">
+                          <button type="button" onClick={() => refreshAvailability().then(() => alert('Availability Recalculated'))} className="text-secondary hover:text-[var(--color-brand)] text-xs font-bold flex items-center gap-1 transition-colors">
+                              <RefreshCw size={14}/> Update Mapping
+                          </button>
+                          <button type="button" onClick={async () => {
+                              const targetSuppliers = mappingSupplierId ? suppliers.filter(s => s.id === mappingSupplierId) : suppliers;
+                              if (!globalThis.confirm(`Run Auto-Match for ${mappingSupplierId ? selectedMappingSupplier?.name : 'all suppliers'}? This uses supplier memory, code matching, text similarity, and ambiguity checks.`)) return;
+                              const results = [];
+                              for (const s of targetSuppliers) {
+                                  const res = await runAutoMapping(s.id);
+                                  results.push(`${s.name}: +${res.confirmed} Confirmed, +${res.proposed} Proposed`);
+                              }
+                              alert(results.join('\n'));
+                          }} className="bg-[var(--color-brand)] text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:opacity-90 flex items-center gap-2 transition-all">
+                              <Wand2 size={14}/> Run Auto-Match
+                          </button>
+                          {mappingSubTab === 'PROPOSED' && mappingReviewStats.highConfidence.length > 0 && (
+                               <button type="button"
+                                   onClick={async () => {
+                                       const highConf = mappingReviewStats.highConfidence;
+                                       if (!globalThis.confirm(`Confirm all ${highConf.length} high-confidence (>=90%) mappings?`)) return;
+                                       for (const m of highConf) {
+                                           await updateMapping({ ...m, mappingStatus: 'CONFIRMED' });
+                                       }
+                                       alert(`Successfully confirmed ${highConf.length} mappings.`);
+                                   }}
+                                   className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:bg-green-700 flex items-center gap-2 transition-all"
+                               >
+                                   <CheckCircle size={14}/> Confirm High Confidence
+                               </button>
+                          )}
+                      </div>
+                  </div>
+              )}
 
               <div className="table-shell bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
                   {mappingSubTab === 'EMAIL_INGEST' ? (
