@@ -8,10 +8,10 @@ import AvatarPicker from './AvatarPicker.tsx';
 
 import {
     Users, Shield, Globe, ShoppingBag, Truck, Layout, Bell, Database,
-    FileText, Plus, Search, Edit2, Trash2, CheckCircle2, AlertTriangle,
+    FileText, Plus, Search, Edit2, Trash2, CheckCircle2,
     Upload, Download, RefreshCw, Filter, ChevronDown, ChevronRight, X,
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon, Inbox, MailOpen,
-    GitMerge, Fingerprint, Palette, FileSpreadsheet, Package, Layers, Type,
+    GitMerge, Fingerprint, Palette, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
     Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3, Sparkles
 } from 'lucide-react';
@@ -112,6 +112,16 @@ const MASTER_ITEM_COLUMNS = [
     { key: 'activeFlag', label: 'Status' }
 ];
 
+const AUTO_DETECT_SUPPLIER_VALUE = '__AUTO_DETECT__';
+const EXCLUDED_SUPPLIER_NAMES = ['spl accommodation', 'spl accomendation', 'spl healthcare'];
+
+const normalizeSupplierName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const isExcludedSupplierName = (name?: string) => {
+  if (!name) return false;
+  const normalized = normalizeSupplierName(name);
+  return EXCLUDED_SUPPLIER_NAMES.some(excluded => normalized === excluded || normalized.includes(excluded));
+};
+
 const Settings = () => {
   const {
     currentUser, users, addUser, roles, hasPermission, createRole, updateRole, deleteRole, permissions, updateUserRole, updateUserAccess,
@@ -137,6 +147,10 @@ const Settings = () => {
   useSetPageMeta({ disableBodyScroll: true });
 
   const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
+  const visibleSuppliers = React.useMemo(
+    () => suppliers.filter(supplier => !isExcludedSupplierName(supplier.name)),
+    [suppliers]
+  );
 
 
     const handleWizardSave = async (itemData: Partial<Item>) => {
@@ -647,103 +661,10 @@ const Settings = () => {
 
   // --- Email Ingestion Hub State ---
   const [isAutoIngestEnabled, setIsAutoIngestEnabled] = useState(true);
-  const [manualIngestSupplierId, setManualIngestSupplierId] = useState('');
+  const [manualIngestSupplierId, setManualIngestSupplierId] = useState(AUTO_DETECT_SUPPLIER_VALUE);
   const [manualIngestFile, setManualIngestFile] = useState<File | null>(null);
   const [ingestEmailAddress, setIngestEmailAddress] = useState(inboundEmailAddress);
   const [ingestInterval, setIngestInterval] = useState('Hourly');
-  const EMAIL_METADATA: Record<string, {
-      fileUrl: string;
-      supplierName: string;
-      contactEmail: string;
-      keyContact: string;
-      phone: string;
-      address: string;
-      categories: string[];
-  }> = {
-      'spl-email-1': {
-          fileUrl: '/SPL_Accommodation_SOH_Report.xlsx',
-          supplierName: 'SPL Accommodation',
-          contactEmail: 'inventory@accommodation-spl.com.au',
-          keyContact: 'SPL Inventory Team',
-          phone: '1300 775 222',
-          address: '12 SPL Boulevard, Melbourne VIC 3000',
-          categories: ['Accommodation', 'Linen', 'SOH']
-      },
-      'spl-email-2': {
-          fileUrl: '/SPL_Healthcare_SOH_Report.xlsx',
-          supplierName: 'SPL Healthcare',
-          contactEmail: 'inventory@healthcare-spl.com.au',
-          keyContact: 'SPL Healthcare Team',
-          phone: '1300 775 223',
-          address: '12 SPL Boulevard, Melbourne VIC 3000',
-          categories: ['Healthcare', 'Linen', 'SOH']
-      },
-      'host-email': {
-          fileUrl: '/HOST_STOCKLIST.xlsx',
-          supplierName: 'HOST Supplies',
-          contactEmail: 'anita@hostsupplies.com.au',
-          keyContact: 'Anita',
-          phone: '02 9516 4533',
-          address: '104 Marrickville Road, Marrickville',
-          categories: ['Hospitality', 'Consumables']
-      },
-      'frenkel-email': {
-          fileUrl: '/Weekly_Inventory_SOH.xlsx',
-          supplierName: 'Frenkel Textiles',
-          contactEmail: 'david@frenkeltextiles.com.au',
-          keyContact: 'David Frenkel',
-          phone: 'Bruce: 0414 552 770',
-          address: '15 Textile Way, Sydney NSW 2000',
-          categories: ['Textiles', 'Bedding', 'SOH']
-      }
-  };
-
-  const [simulatedEmails, setSimulatedEmails] = useState([
-      {
-          id: 'spl-email-1',
-          sender: 'inventory@accommodation-spl.com.au',
-          senderName: 'SPL Accommodation Inventory',
-          subject: 'SPL Accommodation Stock on Hand Report - 28/05/2026',
-          receivedAt: '2026-05-28T07:15:00Z',
-          attachmentName: 'SPL Accommodation SOH and Stock on order Report 25.5.2026.xlsx',
-          attachmentSize: '102.4 KB',
-          status: 'UNREAD',
-          body: 'Hi ProcureFlow Team,\n\nPlease find attached our latest Stock on Hand (SOH) and Stock on Order report for SPL Accommodation items.\n\nKind regards,\nSPL Inventory Team'
-      },
-      {
-          id: 'spl-email-2',
-          sender: 'inventory@healthcare-spl.com.au',
-          senderName: 'SPL Healthcare Inventory',
-          subject: 'SPL Healthcare Stock on Hand Report - 28/05/2026',
-          receivedAt: '2026-05-28T07:30:00Z',
-          attachmentName: 'SPL Healthcare SOH and Stock on Order Report 25.5.2026.xlsx',
-          attachmentSize: '101.3 KB',
-          status: 'UNREAD',
-          body: 'Hi ProcureFlow Team,\n\nPlease find attached our latest Stock on Hand (SOH) and Stock on Order report for SPL Healthcare items.\n\nKind regards,\nSPL Healthcare Team'
-      },
-      {
-          id: 'host-email',
-          sender: 'anita@hostsupplies.com.au',
-          senderName: 'HOST Supplies Inventory',
-          subject: 'HOST Supplies Stock on Hand List - 25/05/2026',
-          receivedAt: '2026-05-28T08:00:00Z',
-          attachmentName: 'HOST STOCKLIST - 25-05-2026.xlsx',
-          attachmentSize: '33.6 KB',
-          status: 'UNREAD',
-          body: 'Hello ProcureFlow,\n\nHere is our updated stocklist including available quantities and pricing valid as of May 25, 2026.\n\nBest,\nAnita'
-      },
-      {
-          id: 'frenkel-email',
-          sender: 'david@frenkeltextiles.com.au',
-          senderName: 'Frenkel Textiles Inventory',
-          subject: 'Weekly Inventory SOH - 25/05/2026',
-          receivedAt: '2026-05-28T08:45:00Z',
-          attachmentName: 'Weekly Inventory SOH 25.05.2026.xlsx',
-          attachmentSize: '352.3 KB',
-          status: 'UNREAD',
-          body: 'Hi team,\n\nAttached is our weekly inventory and stock on hand report. Note pricing and new inventory arrival dates inside.\n\nRegards,\nDavid Frenkel'
-      }
-  ]);
   const [ingestionStats, setIngestionStats] = useState<{
       open: boolean;
       supplierName: string;
@@ -758,7 +679,7 @@ const Settings = () => {
   const [emailSearchResults, setEmailSearchResults] = useState<any[]>([]);
 
   const supplierInventoryUploads = React.useMemo(() => {
-      return suppliers.map((supplier) => {
+      return visibleSuppliers.map((supplier) => {
           const latestSnapshot = stockSnapshots
               .filter(snapshot => snapshot.supplierId === supplier.id)
               .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime())[0];
@@ -770,7 +691,7 @@ const Settings = () => {
               recordCount: stockSnapshots.filter(snapshot => snapshot.supplierId === supplier.id && snapshot.snapshotDate === latestSnapshot?.snapshotDate).length
           };
       }).sort((a, b) => a.supplier.name.localeCompare(b.supplier.name));
-  }, [stockSnapshots, suppliers]);
+  }, [stockSnapshots, visibleSuppliers]);
 
   useEffect(() => {
       setIngestEmailAddress(inboundEmailAddress);
@@ -994,13 +915,13 @@ const Settings = () => {
   type SupplierInventoryIngestSource = 'Manual Upload' | 'Email Ingestion Hub' | 'Auto-Ingestion Daemon';
 
   const processSupplierInventoryFile = async (
-      supplierId: string,
-      supplierName: string,
+      supplier: Supplier,
       file: File,
-      source: SupplierInventoryIngestSource
+      source: SupplierInventoryIngestSource,
+      parsedResult?: EnhancedParseResult
   ) => {
       const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
-      const parsed = await parseStockFileEnhanced(file);
+      const parsed = parsedResult || await parseStockFileEnhanced(file);
       if (!parsed.success) {
           throw new Error(parsed.errors.join('\n'));
       }
@@ -1008,7 +929,7 @@ const Settings = () => {
       const importDateValue = new Date().toISOString().split('T')[0];
       const fullSnapshots: SupplierStockSnapshot[] = (parsed.data || []).map((partial: any) => ({
           id: uuidv4(),
-          supplierId,
+          supplierId: supplier.id,
           supplierSku: partial.supplierSku || '',
           productName: partial.productName || 'Unknown Product',
           customerStockCode: partial.customerStockCode,
@@ -1025,18 +946,18 @@ const Settings = () => {
           sellPrice: partial.sellPrice,
           sohValueAtSell: partial.sohValueAtSell !== undefined ? partial.sohValueAtSell : ((partial.stockOnHand || partial.availableQty || 0) * (partial.sellPrice || 0)),
           snapshotDate: importDateValue,
-          sourceReportName: `${source}: ${file.name}`,
+          sourceReportName: `${source}: ${file.name}${parsed.detectedSupplier ? ` (Detected: ${parsed.detectedSupplier.name})` : ''}`,
           incomingStock: partial.incomingStock || []
       }));
 
-      await importStockSnapshot(supplierId, importDateValue, fullSnapshots);
-      const mappingResults = await runAutoMapping(supplierId);
+      await importStockSnapshot(supplier.id, importDateValue, fullSnapshots);
+      const mappingResults = await runAutoMapping(supplier.id);
       await refreshAvailability();
       await reloadData();
 
       setIngestionStats({
           open: true,
-          supplierName,
+          supplierName: supplier.name,
           recordsImported: fullSnapshots.length,
           confirmedMatches: mappingResults.confirmed,
           proposedMatches: mappingResults.proposed
@@ -1045,57 +966,101 @@ const Settings = () => {
       return { recordsImported: fullSnapshots.length, mappingResults };
   };
 
-  const getOrCreateSupplierForEmail = async (meta: typeof EMAIL_METADATA[string]) => {
-      const existingSupplier = suppliers.find(s => s.name.toLowerCase().trim() === meta.supplierName.toLowerCase().trim());
-      if (existingSupplier) return existingSupplier;
+  const findVisibleSupplierByName = (name?: string) => {
+      if (!name) return undefined;
+      const normalized = normalizeSupplierName(name);
+      return visibleSuppliers.find(supplier => normalizeSupplierName(supplier.name) === normalized);
+  };
 
+  const createSupplierFromDetection = async (name: string) => {
       const newSupplier: Supplier = {
           id: uuidv4(),
-          name: meta.supplierName,
-          contactEmail: meta.contactEmail,
-          keyContact: meta.keyContact,
-          phone: meta.phone,
-          address: meta.address,
-          categories: meta.categories
+          name,
+          contactEmail: '',
+          keyContact: 'Inventory Contact',
+          phone: '',
+          address: '',
+          categories: ['Inventory', 'SOH']
       };
       await addSupplier(newSupplier);
       return newSupplier;
   };
 
-  const buildFileFromEmailMetadata = async (emailId: string) => {
-      const meta = EMAIL_METADATA[emailId];
-      if (!meta) throw new Error(`Metadata not found for email ${emailId}`);
+  const resolveSupplierForInventoryImport = async (
+      parsed: EnhancedParseResult,
+      selectedSupplier?: Supplier
+  ): Promise<Supplier> => {
+      const detected = parsed.detectedSupplier;
 
-      const email = simulatedEmails.find(candidate => candidate.id === emailId);
-      if (!email) throw new Error(`Email ${emailId} not found`);
+      if (detected?.isExcluded || isExcludedSupplierName(detected?.name)) {
+          throw new Error(`${detected.name} is an SPL internal stock group, not a supplier. It has been excluded from supplier selection.`);
+      }
 
-      const response = await fetch(meta.fileUrl);
-      const arrayBuffer = await response.arrayBuffer();
-      return {
-          meta,
-          email,
-          file: new File([arrayBuffer], email.attachmentName, {
-              type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          })
-      };
+      const detectedSupplier = findVisibleSupplierByName(detected?.name);
+
+      if (detectedSupplier && selectedSupplier && detectedSupplier.id !== selectedSupplier.id) {
+          const useDetected = globalThis.confirm(
+              `This file appears to be from ${detectedSupplier.name}, but ${selectedSupplier.name} was selected.\n\nImport under ${detectedSupplier.name} instead?`
+          );
+          if (!useDetected) {
+              throw new Error('Upload cancelled so the supplier selection can be corrected.');
+          }
+          return detectedSupplier;
+      }
+
+      if (detectedSupplier) {
+          return detectedSupplier;
+      }
+
+      if (detected?.name && !selectedSupplier) {
+          const shouldCreate = globalThis.confirm(
+              `This file appears to be from ${detected.name}, but that supplier is not in the supplier list.\n\nCreate ${detected.name} and import this inventory?`
+          );
+          if (!shouldCreate) {
+              throw new Error('Upload cancelled so the supplier can be reviewed before import.');
+          }
+          return createSupplierFromDetection(detected.name);
+      }
+
+      if (detected?.name && selectedSupplier && normalizeSupplierName(detected.name) !== normalizeSupplierName(selectedSupplier.name)) {
+          const shouldCreate = globalThis.confirm(
+              `This file appears to be from ${detected.name}, but ${selectedSupplier.name} was selected.\n\nCreate ${detected.name} and import under the detected supplier instead?`
+          );
+          if (shouldCreate) {
+              return createSupplierFromDetection(detected.name);
+          }
+      }
+
+      if (selectedSupplier) {
+          return selectedSupplier;
+      }
+
+      throw new Error('The supplier could not be identified from the file contents. Select an existing supplier or add the supplier before uploading.');
   };
 
   const handleManualSupplierUpload = async () => {
-      if (!manualIngestSupplierId || !manualIngestFile) {
-          error('Select a supplier and upload an inventory file first.');
+      if (!manualIngestFile) {
+          error('Upload an inventory file first.');
           return;
       }
 
-      const supplier = suppliers.find(s => s.id === manualIngestSupplierId);
-      if (!supplier) {
-          error('Selected supplier could not be found.');
-          return;
-      }
+      const selectedSupplier = manualIngestSupplierId === AUTO_DETECT_SUPPLIER_VALUE
+          ? undefined
+          : visibleSuppliers.find(s => s.id === manualIngestSupplierId);
 
       setIsImporting(true);
       try {
-          const result = await processSupplierInventoryFile(supplier.id, supplier.name, manualIngestFile, 'Manual Upload');
+          const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
+          const parsed = await parseStockFileEnhanced(manualIngestFile);
+          if (!parsed.success) {
+              throw new Error(parsed.errors.join('\n'));
+          }
+
+          const supplier = await resolveSupplierForInventoryImport(parsed, selectedSupplier);
+          const result = await processSupplierInventoryFile(supplier, manualIngestFile, 'Manual Upload', parsed);
           setManualIngestFile(null);
+          setManualIngestSupplierId(supplier.id);
+          setMappingSupplierId(supplier.id);
           setStockSupplierId(supplier.id);
           success(`${supplier.name} inventory replaced from manual upload (${result.recordsImported} records).`);
       } catch (e: any) {
@@ -1134,7 +1099,7 @@ const Settings = () => {
       };
   }, [supplierScopedMappings, supplierScopedSnapshots]);
 
-  const selectedMappingSupplier = suppliers.find(supplier => supplier.id === mappingSupplierId);
+  const selectedMappingSupplier = visibleSuppliers.find(supplier => supplier.id === mappingSupplierId);
 
   const markMappingNotMapped = async () => {
       if (!notMappedTarget) return;
@@ -1163,65 +1128,12 @@ const Settings = () => {
       getMappingMemory(mappingSupplierId || undefined).then(setMappingMemory);
   }, [mappingSupplierId, mappingSubTab]);
 
-  // --- Email Ingestion Daemon & Handlers ---
-  useEffect(() => {
-      if (!isAutoIngestEnabled) return;
-      
-      const unreadMail = simulatedEmails.find(email => email.status === 'UNREAD');
-      if (!unreadMail) return;
-
-      const timer = setTimeout(async () => {
-          try {
-              const meta = EMAIL_METADATA[unreadMail.id];
-              if (!meta) throw new Error(`Metadata not found for email ${unreadMail.id}`);
-
-              // Update state to show daemon is working
-              setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'INGESTING' } : m));
-              
-              const supplier = await getOrCreateSupplierForEmail(meta);
-              const { file } = await buildFileFromEmailMetadata(unreadMail.id);
-              await processSupplierInventoryFile(supplier.id, supplier.name, file, 'Auto-Ingestion Daemon');
-              
-              setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'INGESTED' } : m));
-              success(`Daemon Auto-Ingest: ${meta.supplierName} SOH Report ingested & auto-mapped successfully!`, 5000);
-          } catch (e: any) {
-              console.error('Daemon Auto Ingest Failed:', e);
-              setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'FAILED' } : m));
-              error(`Daemon Auto-Ingest failed: ${e.message}`, 5000);
-          }
-      }, 8000); // Poll 8 seconds after daemon turns on
-      
-      return () => clearTimeout(timer);
-  // Intentionally excluding simulatedEmails from deps to avoid re-triggering when status updates.
-  // The effect reads the latest ref via the closure on mount only — each ingest updates status,
-  // and the next UNREAD email will be picked up on the next daemon cycle (isAutoIngestEnabled toggle).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAutoIngestEnabled, suppliers]);
-
-  const handleManualIngest = async (emailId: string) => {
-      try {
-          // Update status to INGESTING
-          setSimulatedEmails(prev => prev.map(m => m.id === emailId ? { ...m, status: 'INGESTING' } : m));
-
-          const { meta, file } = await buildFileFromEmailMetadata(emailId);
-          const supplier = await getOrCreateSupplierForEmail(meta);
-          await processSupplierInventoryFile(supplier.id, supplier.name, file, 'Email Ingestion Hub');
-          
-          setSimulatedEmails(prev => prev.map(m => m.id === emailId ? { ...m, status: 'INGESTED' } : m));
-          
-          success(`${meta.supplierName} report ingested & auto-mapped successfully!`);
-      } catch (e: any) {
-          console.error('Manual Ingest Failed:', e);
-          setSimulatedEmails(prev => prev.map(m => m.id === emailId ? { ...m, status: 'FAILED' } : m));
-          error(`Ingestion failed: ${e.message}`);
-      }
-  };
+  // --- Email Ingestion Configuration ---
 
   const renderEmailIngestionHub = () => {
-      const unreadCount = simulatedEmails.filter(e => e.status === 'UNREAD').length;
       const isManualMode = !isAutoIngestEnabled;
-      const selectedManualSupplier = suppliers.find(supplier => supplier.id === manualIngestSupplierId);
-      const selectedInventoryUpload = manualIngestSupplierId
+      const selectedManualSupplier = visibleSuppliers.find(supplier => supplier.id === manualIngestSupplierId);
+      const selectedInventoryUpload = manualIngestSupplierId && manualIngestSupplierId !== AUTO_DETECT_SUPPLIER_VALUE
           ? supplierInventoryUploads.find(({ supplier }) => supplier.id === manualIngestSupplierId)
           : null;
       return (
@@ -1288,8 +1200,8 @@ const Settings = () => {
                                           }}
                                           className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-850 px-3 py-2 rounded-xl text-primary font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                                       >
-                                          <option value="">Select supplier...</option>
-                                          {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                                          <option value={AUTO_DETECT_SUPPLIER_VALUE}>Auto-detect from file</option>
+                                          {visibleSuppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
                                       </select>
                                   </div>
 
@@ -1314,7 +1226,7 @@ const Settings = () => {
                                   <button
                                       type="button"
                                       onClick={handleManualSupplierUpload}
-                                      disabled={isImporting || !manualIngestSupplierId || !manualIngestFile}
+                                      disabled={isImporting || !manualIngestFile}
                                       className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-50"
                                   >
                                       {isImporting ? <RefreshCw size={14} className="animate-spin" /> : <Wand2 size={14} />}
@@ -1329,12 +1241,12 @@ const Settings = () => {
                               <>
                           <div className="flex items-center justify-between p-3 bg-white dark:bg-nocturne rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
                               <div>
-                                  <p className="font-bold text-gray-900 dark:text-white">Auto-Ingestion Daemon</p>
-                                  <p className="text-[10px] text-tertiary">Periodically poll inbound inbox</p>
+                                  <p className="font-bold text-gray-900 dark:text-white">Dedicated Mailbox Pipeline</p>
+                                  <p className="text-[10px] text-tertiary">Ready for Microsoft Graph mailbox ingestion</p>
                               </div>
-                              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-full text-[10px] font-bold border border-green-100 dark:border-green-900/30">
-                                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                                  Active
+                              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-full text-[10px] font-bold border border-blue-100 dark:border-blue-900/30">
+                                  <span className="w-2 h-2 bg-blue-500 rounded-full" />
+                                  Awaiting mailbox
                               </span>
                           </div>
                           <div className="space-y-1.5 relative">
@@ -1410,7 +1322,6 @@ const Settings = () => {
                                   onChange={(e) => setIngestInterval(e.target.value)}
                                   className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-850 px-3 py-2 rounded-xl text-primary font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                               >
-                                  <option value="5min">Every 5 Minutes (Simulated)</option>
                                   <option value="Hourly">Hourly</option>
                                   <option value="Daily">Daily</option>
                               </select>
@@ -1418,8 +1329,8 @@ const Settings = () => {
 
                           {/* Info panel */}
                           <div className="p-3 bg-blue-50 dark:bg-blue-900/10 text-blue-800 dark:text-blue-300 rounded-xl border border-blue-100 dark:border-blue-900/20 text-[11px] leading-relaxed">
-                              <p className="font-bold mb-1">Intelligent Match Logic</p>
-                              The ingestion pipeline automatically maps supplier SKUs to internal catalog codes using normalized code matching (e.g. <code>SERV27</code> &rarr; <code>SERV NAVY CRS 20X20</code>).
+                              <p className="font-bold mb-1">Shared inventory parser</p>
+                              Automated attachments will use the same supplier detection, format normalization, inventory replacement, auto-mapping, and availability refresh path as manual uploads.
                           </div>
                               </>
                           )}
@@ -1485,131 +1396,38 @@ const Settings = () => {
                               </div>
                           )
                       ) : (
-                          <>
-                      <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                              <Inbox size={16} className="text-gray-400" />
-                              Simulated Inbound Inbox ({unreadCount} unread)
-                          </h4>
-                          
-                          {unreadCount > 0 && (
-                              <span className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded-full font-bold">
-                                  New Mail
-                              </span>
-                          )}
-                      </div>
-
-                      <div className="space-y-4">
-                          {simulatedEmails.map((email) => {
-                              const isUnread = email.status === 'UNREAD';
-                              const isIngesting = email.status === 'INGESTING';
-                              const isIngested = email.status === 'INGESTED';
-                              const isFailed = email.status === 'FAILED';
-
-                              return (
-                                  <div
-                                      key={email.id}
-                                      className={`p-5 rounded-2xl border transition-all duration-300 ${
-                                          isUnread
-                                              ? 'bg-blue-50/40 dark:bg-blue-900/5 border-blue-100 dark:border-blue-900/25 shadow-sm'
-                                              : 'bg-white dark:bg-nocturne border-gray-150 dark:border-gray-800/70'
-                                      }`}
-                                  >
-                                      {/* Sender and Date */}
-                                      <div className="flex justify-between items-start gap-4">
-                                          <div className="flex items-center gap-3">
-                                              {isUnread && (
-                                                  <span className="w-2.5 h-2.5 bg-blue-500 rounded-full shrink-0 animate-ping" />
-                                              )}
-                                              <div>
-                                                  <p className={`text-xs ${isUnread ? 'font-bold text-gray-900 dark:text-white' : 'text-secondary font-medium'}`}>
-                                                      {email.senderName}
-                                                  </p>
-                                                  <p className="text-[10px] text-tertiary font-mono">
-                                                      &lt;{email.sender}&gt;
-                                                  </p>
-                                              </div>
-                                          </div>
-                                          
-                                          <span className="text-[10px] text-tertiary font-mono">
-                                              {new Date(email.receivedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                          </span>
-                                      </div>
-
-                                      {/* Subject */}
-                                      <h5 className={`text-sm mt-3 ${isUnread ? 'font-bold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-300'}`}>
-                                          {email.subject}
-                                      </h5>
-
-                                      {/* Email Body */}
-                                      <p className="text-xs text-secondary mt-2 whitespace-pre-line leading-relaxed border-l-2 border-gray-200 dark:border-gray-800 pl-3 italic">
-                                          {email.body}
-                                      </p>
-
-                                      {/* Attachment Panel */}
-                                      <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-105 dark:border-gray-800">
-                                          <div className="flex items-center gap-2.5">
-                                              <div className="p-2 bg-green-50 dark:bg-green-950/20 text-green-600 rounded-lg">
-                                                  <FileSpreadsheet size={20} />
-                                              </div>
-                                              <div className="text-xs">
-                                                  <p className="font-bold text-gray-800 dark:text-gray-250 truncate max-w-[200px] sm:max-w-xs">
-                                                      {email.attachmentName}
-                                                  </p>
-                                                  <p className="text-[10px] text-tertiary font-mono">{email.attachmentSize}</p>
-                                              </div>
-                                          </div>
-
-                                          {/* Ingest Actions */}
-                                          <div>
-                                              {isUnread && (
-                                                  <button
-                                                      type="button"
-                                                      onClick={() => handleManualIngest(email.id)}
-                                                      className="w-full sm:w-auto bg-blue-600 hover:bg-blue-750 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all"
-                                                  >
-                                                      <Wand2 size={14} />
-                                                      Ingest & Auto-Map
-                                                  </button>
-                                              )}
-                                              {isIngesting && (
-                                                  <span className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-2">
-                                                      <RefreshCw size={14} className="animate-spin" />
-                                                      Auto-Mapping...
-                                                  </span>
-                                              )}
-                                              {isIngested && (
-                                                  <div className="flex items-center gap-3">
-                                                      <span className="flex items-center gap-1 text-xs font-bold text-green-600 dark:text-green-400">
-                                                          <CheckCircle2 size={16} />
-                                                          Ingested
-                                                      </span>
-                                                      <button
-                                                          type="button"
-                                                          onClick={() => setMappingSubTab('PROPOSED')}
-                                                          className="text-xs text-blue-500 hover:underline font-bold"
-                                                      >
-                                                          View Mappings
-                                                      </button>
-                                                  </div>
-                                              )}
-                                              {isFailed && (
-                                                  <button
-                                                      type="button"
-                                                      onClick={() => handleManualIngest(email.id)}
-                                                      className="w-full sm:w-auto bg-red-105 hover:bg-red-200 dark:bg-red-950/20 text-red-650 dark:text-red-400 px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
-                                                  >
-                                                      <AlertTriangle size={14} />
-                                                      Retry Ingest
-                                                  </button>
-                                              )}
-                                          </div>
-                                      </div>
+                          <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6">
+                              <div className="flex items-start gap-3">
+                                  <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600">
+                                      <Inbox size={20} />
                                   </div>
-                              );
-                          })}
-                      </div>
-                          </>
+                                  <div>
+                                      <h4 className="text-base font-bold text-gray-900 dark:text-white">Automated email ingestion is ready for mailbox setup</h4>
+                                      <p className="text-sm text-secondary dark:text-gray-400 mt-2 leading-relaxed">
+                                          Configure a dedicated inbound address now. When Microsoft Graph polling is connected, attachments received at this mailbox will flow through the same supplier detection, file normalization, replacement, auto-mapping, and availability refresh process as manual uploads.
+                                      </p>
+                                  </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
+                                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Mailbox</p>
+                                      <p className="mt-2 text-sm font-bold text-gray-900 dark:text-white truncate">{ingestEmailAddress || 'Not configured'}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Polling</p>
+                                      <p className="mt-2 text-sm font-bold text-gray-900 dark:text-white">{ingestInterval}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Parser</p>
+                                      <p className="mt-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">Shared with manual</p>
+                                  </div>
+                              </div>
+
+                              <div className="mt-6 rounded-xl border border-blue-100 dark:border-blue-900/30 bg-blue-50 dark:bg-blue-950/10 p-4 text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
+                                  Supplier identity will be cross-checked from email sender metadata and workbook contents. If the attachment identifies a supplier that is missing from the supplier master, the ingest workflow will pause for supplier creation rather than importing against the wrong record.
+                              </div>
+                          </div>
                       )}
                   </div>
               </div>
@@ -2407,7 +2225,7 @@ if __name__ == "__main__":
                                   onChange={(e) => setStockSupplierId(e.target.value)}
                               >
                                   <option value="">-- Select Supplier --</option>
-                                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                  {visibleSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                               </select>
                               <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
                           </div>
@@ -2525,7 +2343,7 @@ if __name__ == "__main__":
                     <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Add Stock Snapshot</h2>
                         <form onSubmit={handleAddSnapshot} className="space-y-4">
-                            <div><label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Supplier</label><select className="input-field mt-1" value={snapSupplierId} onChange={e => setSnapSupplierId(e.target.value)}>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                            <div><label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Supplier</label><select className="input-field mt-1" value={snapSupplierId} onChange={e => setSnapSupplierId(e.target.value)}>{visibleSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Supplier SKU</label><input required className="input-field mt-1" value={snapSku} onChange={e => setSnapSku(e.target.value)}/></div>
                                 <div><label className="text-xs font-bold text-secondary dark:text-gray-500 uppercase">Product Name</label><input required className="input-field mt-1" value={snapProductName} onChange={e => setSnapProductName(e.target.value)}/></div>
@@ -2558,9 +2376,6 @@ if __name__ == "__main__":
               <div className="flex gap-6 border-b border-gray-200 dark:border-gray-800">
                   <button type="button" onClick={() => setMappingSubTab('EMAIL_INGEST')} className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${mappingSubTab === 'EMAIL_INGEST' ? 'border-blue-500 text-blue-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
                       1. Ingest
-                      {simulatedEmails.some(e => e.status === 'UNREAD') && (
-                          <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shrink-0" />
-                      )}
                   </button>
                   <button type="button" onClick={() => setMappingSubTab('SUPPLIER_ITEMS')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'SUPPLIER_ITEMS' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
                       2. Supplier Items ({mappingReviewStats.totalSnapshotRows})
@@ -2595,7 +2410,7 @@ if __name__ == "__main__":
                               className="min-w-[240px] bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
                           >
                               <option value="">All suppliers</option>
-                              {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                              {visibleSuppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
                           </select>
                           <span className="text-xs font-bold text-gray-500 dark:text-gray-400 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800">
                               {mappingReviewStats.totalSnapshotRows} stock rows
@@ -2606,7 +2421,7 @@ if __name__ == "__main__":
                               <RefreshCw size={14}/> Update Mapping
                           </button>
                           <button type="button" onClick={async () => {
-                              const targetSuppliers = mappingSupplierId ? suppliers.filter(s => s.id === mappingSupplierId) : suppliers;
+                              const targetSuppliers = mappingSupplierId ? visibleSuppliers.filter(s => s.id === mappingSupplierId) : visibleSuppliers;
                               if (!globalThis.confirm(`Run Auto-Match for ${mappingSupplierId ? selectedMappingSupplier?.name : 'all suppliers'}? This uses supplier memory, code matching, text similarity, and ambiguity checks.`)) return;
                               const results = [];
                               for (const s of targetSuppliers) {
@@ -2923,7 +2738,7 @@ if __name__ == "__main__":
                     <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[700px]">
                         <thead className="table-header"><tr><th className="px-6 py-4 table-sticky-left">Supplier</th><th className="px-6 py-4">Key Contact</th><th className="px-6 py-4">Categories</th><th className="px-6 py-4 text-center table-sticky-right">Action</th></tr></thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                            {suppliers.map(s => (
+                            {visibleSuppliers.map(s => (
                                 <tr key={s.id} className="table-row">
                                     <td className="px-6 py-4 table-sticky-left"><div className="font-bold text-gray-900 dark:text-white">{s.name}</div><div className="text-xs">{s.address}</div></td>
                                     <td className="px-6 py-4"><div className="font-medium text-gray-900 dark:text-white">{s.keyContact}</div><div className="text-xs text-[var(--color-brand)]">{s.contactEmail}</div><div className="text-xs">{s.phone}</div></td>

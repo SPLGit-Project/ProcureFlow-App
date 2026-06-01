@@ -33,6 +33,14 @@ export interface EnhancedParseResult {
     allColumns: string[];  // All detected columns from file
     dateColumns: DateColumn[];  // Detected date columns for incoming stock
     rawData?: any[];  // Raw data for preview
+    detectedSupplier?: SupplierDetection;
+}
+
+export interface SupplierDetection {
+    name: string;
+    confidence: number;
+    evidence: string[];
+    isExcluded?: boolean;
 }
 
 // Field definitions with aliases and confidence weights
@@ -68,7 +76,7 @@ const FIELD_DEFINITIONS = {
         weight: 0.85
     },
     customerStockCode: {
-        aliases: ['customer code', 'customer stock code', 'cust code', 'customer sku', 'customer_stock_code', 'spl part id', 'customer part id', 'customer part'],
+        aliases: ['customer code', 'customer stock code', 'cust code', 'customer sku', 'customer_stock_code', 'spl part id', 'spl code', 'customer part id', 'customer part'],
         required: false,
         weight: 0.7
     },
@@ -111,6 +119,11 @@ const FIELD_DEFINITIONS = {
         aliases: ['total stock', 'total qty', 'total soh'],
         required: false,
         weight: 0.8
+    },
+    incomingStockText: {
+        aliases: ['new inventory arriving', 'incoming stock', 'incoming inventory', 'stock arriving', 'stock on order', 'on order', 'eta'],
+        required: false,
+        weight: 0.7
     }
 };
 
@@ -195,6 +208,50 @@ function detectDateColumn(header: string): DateColumn | null {
     }
     
     return null;
+}
+
+function flattenWorkbookText(rawRows: any[][]): string {
+    return rawRows
+        .flat()
+        .filter(value => value !== undefined && value !== null && String(value).trim() !== '')
+        .map(value => String(value).toLowerCase().trim())
+        .join(' ');
+}
+
+function includesAll(text: string, terms: string[]): boolean {
+    return terms.every(term => text.includes(term));
+}
+
+function detectSupplierFromContent(rawRows: any[][], headers: string[]): SupplierDetection | undefined {
+    const text = flattenWorkbookText(rawRows);
+    const headerText = headers.map(h => h.toLowerCase()).join(' ');
+    const candidates: SupplierDetection[] = [];
+
+    if (includesAll(headerText, ['spl part id', 'supplier part id', 'unit price ex gst'])) {
+        candidates.push({
+            name: 'HOST Supplies',
+            confidence: 0.96,
+            evidence: ['Detected HOST stocklist schema: SPL Part ID, Supplier Part ID, Unit Price ex GST']
+        });
+    }
+
+    if (includesAll(text, ['inventory report', 'a.c.n 106 563 204']) || includesAll(headerText, ['item code', 'product description', 'new inventory arriving'])) {
+        candidates.push({
+            name: 'Frenkel Textiles',
+            confidence: 0.95,
+            evidence: ['Detected Frenkel inventory report structure and ACN/ABN metadata']
+        });
+    }
+
+    if (includesAll(text, ['stock report in quantity', 'stock group customer']) && includesAll(headerText, ['sku', 'product', 'customer stock code', 'stocktype'])) {
+        candidates.push({
+            name: 'Simba',
+            confidence: 0.94,
+            evidence: ['Detected Simba stock report structure; Accommodation/Healthcare values are SPL customer stock groups']
+        });
+    }
+
+    return candidates.sort((a, b) => b.confidence - a.confidence)[0];
 }
 
 /**
@@ -355,6 +412,42 @@ function cleanNumericValue(value: any, isFloat: boolean = false): number | null 
     return isNaN(parsed) ? null : parsed;
 }
 
+function parseIncomingStockText(value: any): Array<{ month: string; qty: number }> {
+    if (value === undefined || value === null) return [];
+
+    const text = String(value).trim().toLowerCase();
+    if (!text) return [];
+
+    const monthMatch = text.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/);
+    if (!monthMatch) return [];
+
+    const quantityMatch = text.match(/\b\d[\d\s,]*(?:\.\d+)?\b/);
+    if (!quantityMatch) return [];
+
+    const qty = cleanNumericValue(quantityMatch[0], false);
+    if (!qty || qty <= 0) return [];
+
+    const monthMap: Record<string, string> = {
+        jan: '01', january: '01',
+        feb: '02', february: '02',
+        mar: '03', march: '03',
+        apr: '04', april: '04',
+        may: '05',
+        jun: '06', june: '06',
+        jul: '07', july: '07',
+        aug: '08', august: '08',
+        sep: '09', sept: '09', september: '09',
+        oct: '10', october: '10',
+        nov: '11', november: '11',
+        dec: '12', december: '12'
+    };
+
+    const yearMatch = text.match(/\b(20\d{2})\b/);
+    const year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+    const month = monthMap[monthMatch[1]];
+    return month ? [{ month: `${year}-${month}`, qty }] : [];
+}
+
 /**
  * Calculate overall mapping confidence
  */
@@ -421,6 +514,9 @@ export function parseDataRows(
                         snapshot[fieldName] = numValue;
                     }
                     break;
+                case 'incomingStockText':
+                    snapshot.incomingStock = parseIncomingStockText(value);
+                    break;
 
                 case 'sellPrice':
                 case 'sohValueAtSell':
@@ -454,8 +550,15 @@ export function parseDataRows(
         // Validate required fields - Skip rows with no SKU
         // User request: "when there is no SKU or Product found, these rows must be ignored"
         const hasSku = snapshot.supplierSku && snapshot.supplierSku.trim().length > 0 && snapshot.supplierSku !== '-';
+        const normalizedSku = normalizeHeader(snapshot.supplierSku || '');
+        const normalizedProduct = normalizeHeader(snapshot.productName || '');
+        const isHeaderOrSummaryRow =
+            ['sku', 'item code', 'spl item code', 'supplier part id'].includes(normalizedSku) ||
+            normalizedProduct.includes('description') ||
+            normalizedProduct.includes('category') ||
+            (!/[a-z]/i.test(snapshot.productName || '') && !/[a-z]/i.test(snapshot.supplierSku || ''));
         
-        if (hasSku) {
+        if (hasSku && !isHeaderOrSummaryRow) {
             parsedData.push(snapshot as Partial<SupplierStockSnapshot>);
         }
     });
@@ -512,6 +615,7 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
 
                 // Create mapping
                 const { mapping, dateColumns } = createMapping(headers, dataRows);
+                const detectedSupplier = detectSupplierFromContent(rawRows, headers);
                 const confidence = calculateConfidence(mapping);
                 
                 const errors: string[] = [];
@@ -556,7 +660,8 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
                     warnings,
                     allColumns: headers,
                     dateColumns,
-                    rawData: jsonData  // Full data for processing
+                    rawData: jsonData,  // Full data for processing
+                    detectedSupplier
                 });
                 
             } catch (error: any) {
