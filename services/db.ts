@@ -1474,15 +1474,20 @@ export const db = {
         const justification: SupplierProductMap['mappingJustification'] = { components: [] };
 
         const normSnap = snap.customer_stock_code_norm;
-        const normItem = item.sap_item_code_norm;
+        const normSupplierSku = normalizeItemCode(snap.supplier_sku || '').normalized;
+        const normItem = item.sap_item_code_norm || normalizeItemCode(item.sku || '').normalized;
+        const normItemSku = normalizeItemCode(item.sku || '').normalized;
         
-        if (normSnap && normSnap === normItem && normSnap !== '') {
+        if (normSnap && [normItem, normItemSku].includes(normSnap) && normSnap !== '') {
             score += 1.0;
             justification.components.push({ type: 'ID_MATCH_NORM', score: 1.0, detail: 'Exact normalized code match' });
+        } else if (normSupplierSku && [normItem, normItemSku].includes(normSupplierSku) && normSupplierSku !== '') {
+            score += 0.95;
+            justification.components.push({ type: 'SUPPLIER_SKU_MATCH', score: 0.95, detail: 'Supplier SKU matches item code after normalization' });
         } else if (snap.customer_stock_code && item.sku && snap.customer_stock_code.toLowerCase().trim() === item.sku.toLowerCase().trim()) {
             score += 1.0;
             justification.components.push({ type: 'ID_MATCH_SKU', score: 1.0, detail: 'Exact SKU match' });
-        } else if (snap.customer_stock_code_alt_norm && snap.customer_stock_code_alt_norm === item.sap_item_code_norm) {
+        } else if (snap.customer_stock_code_alt_norm && [normItem, normItemSku].includes(snap.customer_stock_code_alt_norm)) {
              score += 0.9;
              justification.components.push({ type: 'ID_MATCH_ALT', score: 0.9, detail: 'Alternate normalized match' });
         }
@@ -1507,6 +1512,21 @@ export const db = {
             score += 0.2;
             justification.components.push({ type: 'ATTR_CATEGORY', score: 0.2, detail: 'Matching Category' });
         }
+
+        if (snap.sub_category && item.sub_category && snap.sub_category.toLowerCase() === item.sub_category.toLowerCase()) {
+            score += 0.15;
+            justification.components.push({ type: 'ATTR_SUB_CATEGORY', score: 0.15, detail: 'Matching Sub Category' });
+        }
+
+        if (snap.stock_type && item.stock_type && snap.stock_type.toLowerCase() === item.stock_type.toLowerCase()) {
+            score += 0.1;
+            justification.components.push({ type: 'ATTR_STOCK_TYPE', score: 0.1, detail: 'Matching Stock Type' });
+        }
+
+        if (snap.range_name && item.range_name && snap.range_name.toLowerCase() === item.range_name.toLowerCase()) {
+            score += 0.1;
+            justification.components.push({ type: 'ATTR_RANGE', score: 0.1, detail: 'Matching Range' });
+        }
         
         if (snap.sell_price && item.unit_price && item.unit_price > 0) {
             const diff = Math.abs(snap.sell_price - item.unit_price) / item.unit_price;
@@ -1516,7 +1536,11 @@ export const db = {
             }
         }
 
-        const consensusMatches = globalConsensus[snap.supplier_sku] || [];
+        const consensusMatches = [
+            ...(globalConsensus[snap.supplier_sku] || []),
+            ...(globalConsensus[normSupplierSku] || []),
+            ...(globalConsensus[normSnap] || [])
+        ];
         if (consensusMatches.includes(item.id)) {
             score += 0.5;
             justification.components.push({ type: 'GLOBAL_CONSENSUS', score: 0.5, detail: 'Confirmed by other suppliers' });
@@ -1529,8 +1553,8 @@ export const db = {
         const [snapshotsRes, itemsRes, existingMappingsRes, globalMappingsRes] = await Promise.all([
             supabase.from('stock_snapshots').select('*').eq('supplier_id', supplierId).order('snapshot_date', { ascending: false }),
             supabase.from('items').select('*').eq('active_flag', true),
-            supabase.from('supplier_product_map').select('supplier_sku, mapping_status, manual_override').eq('supplier_id', supplierId),
-            supabase.from('supplier_product_map').select('supplier_sku, product_id').eq('mapping_status', 'CONFIRMED').neq('supplier_id', supplierId)
+            supabase.from('supplier_product_map').select('supplier_sku, supplier_customer_stock_code, product_id, mapping_status, manual_override').eq('supplier_id', supplierId),
+            supabase.from('supplier_product_map').select('supplier_sku, supplier_customer_stock_code, product_id').eq('mapping_status', 'CONFIRMED').neq('supplier_id', supplierId)
         ]);
 
         if (!snapshotsRes.data || !itemsRes.data) return { confirmed: 0, proposed: 0 };
@@ -1540,9 +1564,27 @@ export const db = {
 
         const globalConsensus: Record<string, string[]> = {};
         globalMappingsRes.data?.forEach((m: DbSupplierProductMapRow) => {
-            if (!globalConsensus[m.supplier_sku]) globalConsensus[m.supplier_sku] = [];
-            globalConsensus[m.supplier_sku].push(m.product_id);
+            const keys = [
+                m.supplier_sku,
+                normalizeItemCode(m.supplier_sku || '').normalized,
+                m.supplier_customer_stock_code,
+                normalizeItemCode(m.supplier_customer_stock_code || '').normalized
+            ].filter(Boolean);
+            keys.forEach((key) => {
+                if (!globalConsensus[key]) globalConsensus[key] = [];
+                globalConsensus[key].push(m.product_id);
+            });
         });
+
+        const confirmedMemory = new Map<string, DbSupplierProductMapRow>();
+        const confirmedCustomerCodeMemory = new Map<string, DbSupplierProductMapRow>();
+        (existingMappingsRes.data || [])
+            .filter((m: DbSupplierProductMapRow) => m.mapping_status === 'CONFIRMED')
+            .forEach((m: DbSupplierProductMapRow) => {
+                if (m.supplier_sku) confirmedMemory.set(m.supplier_sku, m);
+                const normalizedCustomerCode = normalizeItemCode(m.supplier_customer_stock_code || '').normalized;
+                if (normalizedCustomerCode) confirmedCustomerCodeMemory.set(normalizedCustomerCode, m);
+            });
 
         const manualOverrides = new Set(
             (existingMappingsRes.data || [])
@@ -1562,21 +1604,57 @@ export const db = {
         let proposed = 0;
 
         for (const snap of Array.from(uniqueSkus.values())) {
+            const exactMemory = confirmedMemory.get(snap.supplier_sku);
+            if (exactMemory) continue;
+
+            const customerCodeMemory = confirmedCustomerCodeMemory.get(normalizeItemCode(snap.customer_stock_code || '').normalized);
+            if (customerCodeMemory) {
+                updates.push({
+                    supplier_id: supplierId,
+                    product_id: customerCodeMemory.product_id,
+                    supplier_sku: snap.supplier_sku,
+                    supplier_customer_stock_code: snap.customer_stock_code,
+                    mapping_status: 'CONFIRMED',
+                    mapping_method: 'MEMORY',
+                    confidence_score: 1,
+                    mapping_justification: {
+                        components: [{ type: 'SUPPLIER_MEMORY', score: 1, detail: 'Matched from confirmed supplier mapping memory' }]
+                    },
+                    updated_at: new Date().toISOString()
+                });
+                confirmed++;
+                continue;
+            }
+
             let bestMatch: DbItemRow | null = null;
             let bestScore = 0;
+            let secondBestScore = 0;
             let bestJustification: unknown = null;
 
             for (const item of items) {
                 const { score, justification } = db.calculateMappingScore(snap, item, globalConsensus);
                 if (score > bestScore) {
+                    secondBestScore = bestScore;
                     bestScore = score;
                     bestMatch = item;
                     bestJustification = justification;
+                } else if (score > secondBestScore) {
+                    secondBestScore = score;
                 }
             }
 
-            if (bestMatch && bestScore > 0.4) {
-                 const status = bestScore >= 1.2 ? 'CONFIRMED' : 'PROPOSED';
+            if (bestMatch && bestScore > 0.45) {
+                 const margin = bestScore - secondBestScore;
+                 const isHighConfidence = bestScore >= 1.2 && margin >= 0.25;
+                 const status = isHighConfidence ? 'CONFIRMED' : 'PROPOSED';
+                 const confidenceScore = Math.min(1, Number((bestScore / 1.5).toFixed(2)));
+                 if (!isHighConfidence && bestJustification && typeof bestJustification === 'object' && 'components' in bestJustification) {
+                    (bestJustification as SupplierProductMap['mappingJustification'])?.components.push({
+                        type: 'REVIEW_REQUIRED',
+                        score: 0,
+                        detail: margin < 0.25 ? 'Close alternate match found; admin review required' : 'Below auto-confirm threshold'
+                    });
+                 }
                  updates.push({
                      supplier_id: supplierId,
                      product_id: bestMatch.id,
@@ -1584,7 +1662,7 @@ export const db = {
                      supplier_customer_stock_code: snap.customer_stock_code,
                      mapping_status: status,
                      mapping_method: 'AUTO_V2',
-                     confidence_score: Math.min(bestScore, 1.0),
+                     confidence_score: confidenceScore,
                      mapping_justification: bestJustification,
                      updated_at: new Date().toISOString()
                  });

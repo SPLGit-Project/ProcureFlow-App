@@ -18,7 +18,7 @@ import {
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
 import { supabase } from '../lib/supabaseClient.ts';
-import { SupplierStockSnapshot, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType } from '../types.ts';
+import { SupplierStockSnapshot, SupplierProductMap, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType } from '../types.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { useLocation } from 'react-router-dom';
 import { BrandLogo } from './BrandLogo.tsx';
@@ -218,6 +218,11 @@ const Settings = () => {
   // --- Security: Permission-based Guard ---
   useEffect(() => {
       if (activeTab === 'PROFILE') return;
+      if (activeTab === 'STOCK') {
+          setActiveTab('MAPPING');
+          setMappingSubTab('SUPPLIER_ITEMS');
+          return;
+      }
       
       const tabConfig = allTabs.find(t => t.id === activeTab);
       if (tabConfig?.permission && !hasPermission(tabConfig.permission)) {
@@ -631,7 +636,10 @@ const Settings = () => {
   const [editSku, setEditSku] = useState('');
 
   // --- Mapping Workbench State ---
-  const [mappingSubTab, setMappingSubTab] = useState<'PROPOSED' | 'CONFIRMED' | 'REJECTED' | 'MEMORY' | 'EMAIL_INGEST'>('PROPOSED');
+  const [mappingSubTab, setMappingSubTab] = useState<'EMAIL_INGEST' | 'SUPPLIER_ITEMS' | 'PROPOSED' | 'CONFIRMED' | 'REJECTED' | 'MEMORY'>('EMAIL_INGEST');
+  const [mappingSupplierId, setMappingSupplierId] = useState('');
+  const [notMappedTarget, setNotMappedTarget] = useState<SupplierProductMap | null>(null);
+  const [notMappedReason, setNotMappedReason] = useState('No longer required');
   const [isManualMapOpen, setIsManualMapOpen] = useState(false);
   const [mappingSource, setMappingSource] = useState<SupplierStockSnapshot | null>(null);
   const [mappingMemory, setMappingMemory] = useState<any[]>([]);
@@ -639,6 +647,8 @@ const Settings = () => {
 
   // --- Email Ingestion Hub State ---
   const [isAutoIngestEnabled, setIsAutoIngestEnabled] = useState(true);
+  const [manualIngestSupplierId, setManualIngestSupplierId] = useState('');
+  const [manualIngestFile, setManualIngestFile] = useState<File | null>(null);
   const [ingestEmailAddress, setIngestEmailAddress] = useState(inboundEmailAddress);
   const [ingestInterval, setIngestInterval] = useState('Hourly');
   const EMAIL_METADATA: Record<string, {
@@ -746,6 +756,21 @@ const Settings = () => {
   const [emailSearchQuery, setEmailSearchQuery] = useState(inboundEmailAddress);
   const [isSearchingEmail, setIsSearchingEmail] = useState(false);
   const [emailSearchResults, setEmailSearchResults] = useState<any[]>([]);
+
+  const supplierInventoryUploads = React.useMemo(() => {
+      return suppliers.map((supplier) => {
+          const latestSnapshot = stockSnapshots
+              .filter(snapshot => snapshot.supplierId === supplier.id)
+              .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime())[0];
+
+          return {
+              supplier,
+              uploadedAt: latestSnapshot?.snapshotDate,
+              sourceReportName: latestSnapshot?.sourceReportName,
+              recordCount: stockSnapshots.filter(snapshot => snapshot.supplierId === supplier.id && snapshot.snapshotDate === latestSnapshot?.snapshotDate).length
+          };
+      }).sort((a, b) => a.supplier.name.localeCompare(b.supplier.name));
+  }, [stockSnapshots, suppliers]);
 
   useEffect(() => {
       setIngestEmailAddress(inboundEmailAddress);
@@ -966,6 +991,178 @@ const Settings = () => {
 
   useEffect(() => { setFilterSubCategory(''); }, [filterCategory]);
 
+  type SupplierInventoryIngestSource = 'Manual Upload' | 'Email Ingestion Hub' | 'Auto-Ingestion Daemon';
+
+  const processSupplierInventoryFile = async (
+      supplierId: string,
+      supplierName: string,
+      file: File,
+      source: SupplierInventoryIngestSource
+  ) => {
+      const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
+      const parsed = await parseStockFileEnhanced(file);
+      if (!parsed.success) {
+          throw new Error(parsed.errors.join('\n'));
+      }
+
+      const importDateValue = new Date().toISOString().split('T')[0];
+      const fullSnapshots: SupplierStockSnapshot[] = (parsed.data || []).map((partial: any) => ({
+          id: uuidv4(),
+          supplierId,
+          supplierSku: partial.supplierSku || '',
+          productName: partial.productName || 'Unknown Product',
+          customerStockCode: partial.customerStockCode,
+          range: partial.range,
+          category: partial.category,
+          subCategory: partial.subCategory,
+          stockType: partial.stockType,
+          cartonQty: partial.cartonQty,
+          stockOnHand: partial.stockOnHand !== undefined ? partial.stockOnHand : (partial.availableQty || 0),
+          committedQty: partial.committedQty || 0,
+          backOrderedQty: partial.backOrderedQty || 0,
+          availableQty: partial.availableQty !== undefined ? partial.availableQty : (partial.stockOnHand || 0),
+          totalStockQty: partial.stockOnHand !== undefined ? partial.stockOnHand : (partial.availableQty || 0),
+          sellPrice: partial.sellPrice,
+          sohValueAtSell: partial.sohValueAtSell !== undefined ? partial.sohValueAtSell : ((partial.stockOnHand || partial.availableQty || 0) * (partial.sellPrice || 0)),
+          snapshotDate: importDateValue,
+          sourceReportName: `${source}: ${file.name}`,
+          incomingStock: partial.incomingStock || []
+      }));
+
+      await importStockSnapshot(supplierId, importDateValue, fullSnapshots);
+      const mappingResults = await runAutoMapping(supplierId);
+      await refreshAvailability();
+      await reloadData();
+
+      setIngestionStats({
+          open: true,
+          supplierName,
+          recordsImported: fullSnapshots.length,
+          confirmedMatches: mappingResults.confirmed,
+          proposedMatches: mappingResults.proposed
+      });
+
+      return { recordsImported: fullSnapshots.length, mappingResults };
+  };
+
+  const getOrCreateSupplierForEmail = async (meta: typeof EMAIL_METADATA[string]) => {
+      const existingSupplier = suppliers.find(s => s.name.toLowerCase().trim() === meta.supplierName.toLowerCase().trim());
+      if (existingSupplier) return existingSupplier;
+
+      const newSupplier: Supplier = {
+          id: uuidv4(),
+          name: meta.supplierName,
+          contactEmail: meta.contactEmail,
+          keyContact: meta.keyContact,
+          phone: meta.phone,
+          address: meta.address,
+          categories: meta.categories
+      };
+      await addSupplier(newSupplier);
+      return newSupplier;
+  };
+
+  const buildFileFromEmailMetadata = async (emailId: string) => {
+      const meta = EMAIL_METADATA[emailId];
+      if (!meta) throw new Error(`Metadata not found for email ${emailId}`);
+
+      const email = simulatedEmails.find(candidate => candidate.id === emailId);
+      if (!email) throw new Error(`Email ${emailId} not found`);
+
+      const response = await fetch(meta.fileUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      return {
+          meta,
+          email,
+          file: new File([arrayBuffer], email.attachmentName, {
+              type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          })
+      };
+  };
+
+  const handleManualSupplierUpload = async () => {
+      if (!manualIngestSupplierId || !manualIngestFile) {
+          error('Select a supplier and upload an inventory file first.');
+          return;
+      }
+
+      const supplier = suppliers.find(s => s.id === manualIngestSupplierId);
+      if (!supplier) {
+          error('Selected supplier could not be found.');
+          return;
+      }
+
+      setIsImporting(true);
+      try {
+          const result = await processSupplierInventoryFile(supplier.id, supplier.name, manualIngestFile, 'Manual Upload');
+          setManualIngestFile(null);
+          setStockSupplierId(supplier.id);
+          success(`${supplier.name} inventory replaced from manual upload (${result.recordsImported} records).`);
+      } catch (e: any) {
+          console.error('Manual supplier upload failed:', e);
+          error(`Manual upload failed: ${e.message}`);
+      } finally {
+          setIsImporting(false);
+      }
+  };
+
+  const supplierScopedMappings = React.useMemo(() => {
+      return mappings.filter(mapping => !mappingSupplierId || mapping.supplierId === mappingSupplierId);
+  }, [mappingSupplierId, mappings]);
+
+  const supplierScopedSnapshots = React.useMemo(() => {
+      return stockSnapshots.filter(snapshot => !mappingSupplierId || snapshot.supplierId === mappingSupplierId);
+  }, [mappingSupplierId, stockSnapshots]);
+
+  const mappingReviewStats = React.useMemo(() => {
+      const proposed = supplierScopedMappings.filter(mapping => mapping.mappingStatus === 'PROPOSED');
+      const confirmed = supplierScopedMappings.filter(mapping => mapping.mappingStatus === 'CONFIRMED');
+      const notMapped = supplierScopedMappings.filter(mapping => mapping.mappingStatus === 'REJECTED');
+      const unmapped = supplierScopedSnapshots.filter(snapshot => !supplierScopedMappings.some(mapping => mapping.supplierId === snapshot.supplierId && mapping.supplierSku === snapshot.supplierSku));
+      const highConfidence = proposed.filter(mapping => mapping.confidenceScore >= 0.9);
+      const needsReview = proposed.filter(mapping => mapping.confidenceScore < 0.9);
+
+      return {
+          proposed,
+          confirmed,
+          notMapped,
+          unmapped,
+          highConfidence,
+          needsReview,
+          totalSnapshotRows: supplierScopedSnapshots.length,
+          completionPct: supplierScopedSnapshots.length > 0 ? Math.round((confirmed.length / supplierScopedSnapshots.length) * 100) : 0
+      };
+  }, [supplierScopedMappings, supplierScopedSnapshots]);
+
+  const selectedMappingSupplier = suppliers.find(supplier => supplier.id === mappingSupplierId);
+
+  const markMappingNotMapped = async () => {
+      if (!notMappedTarget) return;
+
+      await updateMapping({
+          ...notMappedTarget,
+          mappingStatus: 'REJECTED',
+          manualOverride: true,
+          mappingMethod: 'MANUAL',
+          mappingJustification: {
+              components: [{
+                  type: 'NOT_MAPPED',
+                  score: 0,
+                  detail: notMappedReason || 'Admin marked this supplier row as not mapped'
+              }]
+          }
+      } as SupplierProductMap);
+
+      setNotMappedTarget(null);
+      setNotMappedReason('No longer required');
+      success('Supplier item marked as not mapped.');
+  };
+
+  useEffect(() => {
+      if (mappingSubTab !== 'MEMORY') return;
+      getMappingMemory(mappingSupplierId || undefined).then(setMappingMemory);
+  }, [mappingSupplierId, mappingSubTab]);
+
   // --- Email Ingestion Daemon & Handlers ---
   useEffect(() => {
       if (!isAutoIngestEnabled) return;
@@ -981,63 +1178,9 @@ const Settings = () => {
               // Update state to show daemon is working
               setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'INGESTING' } : m));
               
-              // Find or create supplier
-              let targetSupplier = suppliers.find(s => s.name.toLowerCase().trim() === meta.supplierName.toLowerCase().trim());
-              let targetSupplierId = targetSupplier?.id;
-              
-              if (!targetSupplier) {
-                  targetSupplierId = uuidv4();
-                  const newSupplier: Supplier = {
-                      id: targetSupplierId,
-                      name: meta.supplierName,
-                      contactEmail: meta.contactEmail,
-                      keyContact: meta.keyContact,
-                      phone: meta.phone,
-                      address: meta.address,
-                      categories: meta.categories
-                  };
-                  await addSupplier(newSupplier);
-              }
-              
-              const response = await fetch(meta.fileUrl);
-              const arrayBuffer = await response.arrayBuffer();
-              const file = new File([arrayBuffer], unreadMail.attachmentName, {
-                  type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-              });
-              
-              const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
-              const parseResult = await parseStockFileEnhanced(file);
-              if (!parseResult.success) {
-                  throw new Error(parseResult.errors.join('\n'));
-              }
-              
-              const fullSnapshots: SupplierStockSnapshot[] = (parseResult.data || []).map((partial: any) => ({
-                  id: uuidv4(),
-                  supplierId: targetSupplierId!,
-                  supplierSku: partial.supplierSku || '',
-                  productName: partial.productName || 'Unknown Product',
-                  customerStockCode: partial.customerStockCode,
-                  range: partial.range,
-                  category: partial.category,
-                  subCategory: partial.subCategory,
-                  stockType: partial.stockType,
-                  cartonQty: partial.cartonQty,
-                  stockOnHand: partial.stockOnHand !== undefined ? partial.stockOnHand : (partial.availableQty || 0),
-                  committedQty: partial.committedQty || 0,
-                  backOrderedQty: partial.backOrderedQty || 0,
-                  availableQty: partial.availableQty !== undefined ? partial.availableQty : (partial.stockOnHand || 0),
-                  totalStockQty: partial.stockOnHand !== undefined ? partial.stockOnHand : (partial.availableQty || 0),
-                  sellPrice: partial.sellPrice,
-                  sohValueAtSell: partial.sohValueAtSell !== undefined ? partial.sohValueAtSell : ((partial.stockOnHand || partial.availableQty || 0) * (partial.sellPrice || 0)),
-                  snapshotDate: new Date().toISOString().split('T')[0],
-                  sourceReportName: `Auto-Ingestion Daemon`,
-                  incomingStock: partial.incomingStock || []
-              }));
-              
-              await importStockSnapshot(targetSupplierId!, new Date().toISOString().split('T')[0], fullSnapshots);
-              const mappingResults = await runAutoMapping(targetSupplierId!);
-              await refreshAvailability();
-              await reloadData();
+              const supplier = await getOrCreateSupplierForEmail(meta);
+              const { file } = await buildFileFromEmailMetadata(unreadMail.id);
+              await processSupplierInventoryFile(supplier.id, supplier.name, file, 'Auto-Ingestion Daemon');
               
               setSimulatedEmails(prev => prev.map(m => m.id === unreadMail.id ? { ...m, status: 'INGESTED' } : m));
               success(`Daemon Auto-Ingest: ${meta.supplierName} SOH Report ingested & auto-mapped successfully!`, 5000);
@@ -1057,82 +1200,14 @@ const Settings = () => {
 
   const handleManualIngest = async (emailId: string) => {
       try {
-          const meta = EMAIL_METADATA[emailId];
-          if (!meta) throw new Error(`Metadata not found for email ${emailId}`);
-
-          const unreadMail = simulatedEmails.find(email => email.id === emailId);
-          if (!unreadMail) return;
-
           // Update status to INGESTING
           setSimulatedEmails(prev => prev.map(m => m.id === emailId ? { ...m, status: 'INGESTING' } : m));
-          
-          // Find or create supplier
-          let targetSupplier = suppliers.find(s => s.name.toLowerCase().trim() === meta.supplierName.toLowerCase().trim());
-          let targetSupplierId = targetSupplier?.id;
-          
-          if (!targetSupplier) {
-              targetSupplierId = uuidv4();
-              const newSupplier: Supplier = {
-                  id: targetSupplierId,
-                  name: meta.supplierName,
-                  contactEmail: meta.contactEmail,
-                  keyContact: meta.keyContact,
-                  phone: meta.phone,
-                  address: meta.address,
-                  categories: meta.categories
-              };
-              await addSupplier(newSupplier);
-          }
-          
-          const response = await fetch(meta.fileUrl);
-          const arrayBuffer = await response.arrayBuffer();
-          const file = new File([arrayBuffer], unreadMail.attachmentName, {
-              type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          });
-          
-          const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
-          const parseResult = await parseStockFileEnhanced(file);
-          if (!parseResult.success) {
-              throw new Error(parseResult.errors.join('\n'));
-          }
-          
-          const fullSnapshots: SupplierStockSnapshot[] = (parseResult.data || []).map((partial: any) => ({
-              id: uuidv4(),
-              supplierId: targetSupplierId!,
-              supplierSku: partial.supplierSku || '',
-              productName: partial.productName || 'Unknown Product',
-              customerStockCode: partial.customerStockCode,
-              range: partial.range,
-              category: partial.category,
-              subCategory: partial.subCategory,
-              stockType: partial.stockType,
-              cartonQty: partial.cartonQty,
-              stockOnHand: partial.stockOnHand !== undefined ? partial.stockOnHand : (partial.availableQty || 0),
-              committedQty: partial.committedQty || 0,
-              backOrderedQty: partial.backOrderedQty || 0,
-              availableQty: partial.availableQty !== undefined ? partial.availableQty : (partial.stockOnHand || 0),
-              totalStockQty: partial.stockOnHand !== undefined ? partial.stockOnHand : (partial.availableQty || 0),
-              sellPrice: partial.sellPrice,
-              sohValueAtSell: partial.sohValueAtSell !== undefined ? partial.sohValueAtSell : ((partial.stockOnHand || partial.availableQty || 0) * (partial.sellPrice || 0)),
-              snapshotDate: new Date().toISOString().split('T')[0],
-              sourceReportName: `Email Ingestion Hub`,
-              incomingStock: partial.incomingStock || []
-          }));
-          
-          await importStockSnapshot(targetSupplierId!, new Date().toISOString().split('T')[0], fullSnapshots);
-          const mappingResults = await runAutoMapping(targetSupplierId!);
-          await refreshAvailability();
-          await reloadData();
+
+          const { meta, file } = await buildFileFromEmailMetadata(emailId);
+          const supplier = await getOrCreateSupplierForEmail(meta);
+          await processSupplierInventoryFile(supplier.id, supplier.name, file, 'Email Ingestion Hub');
           
           setSimulatedEmails(prev => prev.map(m => m.id === emailId ? { ...m, status: 'INGESTED' } : m));
-          
-          setIngestionStats({
-              open: true,
-              supplierName: meta.supplierName,
-              recordsImported: fullSnapshots.length,
-              confirmedMatches: mappingResults.confirmed,
-              proposedMatches: mappingResults.proposed
-          });
           
           success(`${meta.supplierName} report ingested & auto-mapped successfully!`);
       } catch (e: any) {
@@ -1144,6 +1219,7 @@ const Settings = () => {
 
   const renderEmailIngestionHub = () => {
       const unreadCount = simulatedEmails.filter(e => e.status === 'UNREAD').length;
+      const isManualMode = !isAutoIngestEnabled;
       return (
           <div className="p-6 space-y-6">
               {/* Header */}
@@ -1154,23 +1230,60 @@ const Settings = () => {
                           Supplier Email Ingestion Hub
                       </h3>
                       <p className="text-xs text-secondary dark:text-gray-400 mt-1">
-                          Simulate and manage automated ingestion of inventory reports arriving from suppliers via email.
+                          Update supplier inventory from either a manual upload or the automated inbound email pipeline. Both modes replace the supplier inventory and then run the same mapping and availability refresh process.
                       </p>
                   </div>
                   
                   <div className="flex items-center gap-3">
-                      {isAutoIngestEnabled ? (
-                          <span className="flex items-center gap-1.5 px-3 py-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-full text-xs font-bold border border-green-100 dark:border-green-900/30">
-                              <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse mr-1" />
-                              Daemon: Active & Listening
-                          </span>
-                      ) : (
-                          <span className="flex items-center gap-1.5 px-3 py-1 bg-gray-50 dark:bg-gray-800 text-gray-500 rounded-full text-xs font-bold border border-gray-200 dark:border-gray-705">
-                              <span className="w-2 h-2 bg-gray-400 rounded-full mr-1" />
-                              Daemon: Idle
-                          </span>
-                      )}
+                      <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-800">
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  setIsAutoIngestEnabled(false);
+                                  success('Manual supplier upload mode enabled.');
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isManualMode ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
+                          >
+                              Manual Upload
+                          </button>
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  setIsAutoIngestEnabled(true);
+                                  success('Automated email ingestion mode enabled.');
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isAutoIngestEnabled ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
+                          >
+                              Automated Email
+                          </button>
+                      </div>
                   </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {supplierInventoryUploads.map(({ supplier, uploadedAt, sourceReportName, recordCount }) => (
+                      <div key={supplier.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-4">
+                          <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                  <p className="font-bold text-sm text-gray-900 dark:text-white truncate">{supplier.name}</p>
+                                  <p className="text-[10px] text-tertiary dark:text-gray-500 truncate mt-1" title={sourceReportName || undefined}>
+                                      {sourceReportName || 'No inventory document uploaded'}
+                                  </p>
+                              </div>
+                              {uploadedAt ? (
+                                  <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                              ) : (
+                                  <AlertCircle size={16} className="text-gray-300 shrink-0" />
+                              )}
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider">
+                              <span className={uploadedAt ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}>
+                                  {uploadedAt ? `Uploaded ${new Date(uploadedAt).toLocaleDateString()}` : 'Awaiting file'}
+                              </span>
+                              <span className="text-tertiary dark:text-gray-500">{recordCount || 0} rows</span>
+                          </div>
+                      </div>
+                  ))}
               </div>
 
               {/* Grid Layout: Config on Left, Inbox on Right */}
@@ -1179,34 +1292,70 @@ const Settings = () => {
                   <div className="lg:col-span-1 space-y-5 bg-gray-50 dark:bg-gray-900/30 p-5 rounded-2xl border border-gray-100 dark:border-gray-800 animate-fade-in">
                       <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
                           <SettingsIcon size={16} className="text-gray-400" />
-                          Daemon Configuration
+                          {isManualMode ? 'Manual Upload' : 'Daemon Configuration'}
                       </h4>
                       
                       <div className="space-y-4 text-xs">
-                          {/* Toggle Switch */}
+                          {isManualMode ? (
+                              <div className="space-y-4">
+                                  <div className="space-y-1.5">
+                                      <label className="font-bold text-secondary dark:text-gray-400 uppercase tracking-wider text-[10px]">
+                                          Supplier
+                                      </label>
+                                      <select
+                                          value={manualIngestSupplierId}
+                                          onChange={(e) => setManualIngestSupplierId(e.target.value)}
+                                          className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-850 px-3 py-2 rounded-xl text-primary font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                      >
+                                          <option value="">Select supplier...</option>
+                                          {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                                      </select>
+                                  </div>
+
+                                  <label className="block p-4 bg-white dark:bg-nocturne border border-dashed border-gray-300 dark:border-gray-700 rounded-xl cursor-pointer hover:border-blue-400 transition-colors">
+                                      <input
+                                          type="file"
+                                          accept=".xlsx,.xls,.csv"
+                                          className="hidden"
+                                          onChange={(e) => setManualIngestFile(e.target.files?.[0] || null)}
+                                      />
+                                      <div className="flex items-center gap-3">
+                                          <div className="p-2 bg-blue-50 dark:bg-blue-950/20 text-blue-600 rounded-lg">
+                                              <Upload size={18} />
+                                          </div>
+                                          <div className="min-w-0">
+                                              <p className="font-bold text-gray-900 dark:text-white truncate">{manualIngestFile ? manualIngestFile.name : 'Upload latest supplier file'}</p>
+                                              <p className="text-[10px] text-tertiary dark:text-gray-500">Excel or CSV inventory report</p>
+                                          </div>
+                                      </div>
+                                  </label>
+
+                                  <button
+                                      type="button"
+                                      onClick={handleManualSupplierUpload}
+                                      disabled={isImporting || !manualIngestSupplierId || !manualIngestFile}
+                                      className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-50"
+                                  >
+                                      {isImporting ? <RefreshCw size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                                      Replace Supplier Inventory
+                                  </button>
+
+                                  <div className="p-3 bg-blue-50 dark:bg-blue-900/10 text-blue-800 dark:text-blue-300 rounded-xl border border-blue-100 dark:border-blue-900/20 text-[11px] leading-relaxed">
+                                      The uploaded file replaces the selected supplier inventory, then automatically runs item mapping and availability refresh.
+                                  </div>
+                              </div>
+                          ) : (
+                              <>
                           <div className="flex items-center justify-between p-3 bg-white dark:bg-nocturne rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
                               <div>
                                   <p className="font-bold text-gray-900 dark:text-white">Auto-Ingestion Daemon</p>
                                   <p className="text-[10px] text-tertiary">Periodically poll inbound inbox</p>
                               </div>
-                              <button
-                                  type="button"
-                                  onClick={() => {
-                                      setIsAutoIngestEnabled(!isAutoIngestEnabled);
-                                      success(`Auto-Ingestion Daemon ${!isAutoIngestEnabled ? 'enabled' : 'disabled'}.`);
-                                  }}
-                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                      isAutoIngestEnabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
-                                  }`}
-                              >
-                                  <span
-                                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                          isAutoIngestEnabled ? 'translate-x-6' : 'translate-x-1'
-                                      }`}
-                                  />
-                              </button>
+                              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-full text-[10px] font-bold border border-green-100 dark:border-green-900/30">
+                                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                  Active
+                              </span>
                           </div>
-                          {/* Email Address Config (Directory / Entra ID Verified) */}
                           <div className="space-y-1.5 relative">
                               <label className="font-bold text-secondary dark:text-gray-400 uppercase tracking-wider text-[10px]">
                                   Ingestion Inbound Address (Entra ID)
@@ -1291,11 +1440,27 @@ const Settings = () => {
                               <p className="font-bold mb-1">Intelligent Match Logic</p>
                               The ingestion pipeline automatically maps supplier SKUs to internal catalog codes using normalized code matching (e.g. <code>SERV27</code> &rarr; <code>SERV NAVY CRS 20X20</code>).
                           </div>
+                              </>
+                          )}
                       </div>
                   </div>
 
                   {/* Right Column: Inbound Inbox */}
                   <div className="lg:col-span-2 space-y-4">
+                      {isManualMode ? (
+                          <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col justify-center">
+                              <div className="max-w-xl">
+                                  <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                      <Upload size={18} className="text-blue-500" />
+                                      Manual files use the same downstream pipeline
+                                  </h4>
+                                  <p className="text-sm text-secondary dark:text-gray-400 mt-2 leading-relaxed">
+                                      Select the supplier, upload the newest inventory document, and the app will replace that supplier inventory before running auto-mapping and refreshing available stock. Switch back to Automated Email when supplier files should be collected from the inbound mailbox.
+                                  </p>
+                              </div>
+                          </div>
+                      ) : (
+                          <>
                       <div className="flex items-center justify-between">
                           <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
                               <Inbox size={16} className="text-gray-400" />
@@ -1419,7 +1584,124 @@ const Settings = () => {
                               );
                           })}
                       </div>
+                          </>
+                      )}
                   </div>
+              </div>
+          </div>
+      );
+  };
+
+  const renderSupplierInventoryItems = () => {
+      const rows = stockSnapshots
+          .filter(snapshot => {
+              if (mappingSupplierId && snapshot.supplierId !== mappingSupplierId) return false;
+              if (stockFilterStatus === 'ALL') return true;
+
+              const mapping = mappings.find(m => m.supplierId === snapshot.supplierId && m.supplierSku === snapshot.supplierSku);
+              const isMapped = !!mapping && !!items.find(i => i.id === mapping.productId);
+              return stockFilterStatus === 'MAPPED' ? isMapped : !isMapped;
+          })
+          .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime());
+
+      return (
+          <div className="p-4 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                          <Package size={20} className="text-[var(--color-brand)]" />
+                          Supplier Items & Availability
+                      </h3>
+                      <p className="text-sm text-secondary dark:text-gray-400 mt-1">
+                          Review the supplier inventory rows currently feeding the mapping workflow. Use the supplier selector above to keep this scoped.
+                      </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                      <select className="input-field w-40" value={stockFilterStatus} onChange={e => setStockFilterStatus(e.target.value as any)}>
+                          <option value="ALL">All Status</option>
+                          <option value="MAPPED">Mapped</option>
+                          <option value="UNMAPPED">Unmapped</option>
+                      </select>
+                      <span className="text-xs font-bold text-gray-500 dark:text-gray-400 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800">
+                          {rows.length} rows
+                      </span>
+                  </div>
+              </div>
+
+              <div className="table-shell">
+                  <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[1200px]">
+                      <thead className="table-header">
+                          <tr>
+                              <th className="px-4 py-4 table-sticky-left">Status</th>
+                              <th className="px-4 py-4">Supplier</th>
+                              <th className="px-4 py-4">Cust Code</th>
+                              <th className="px-4 py-4">Product</th>
+                              <th className="px-4 py-4">Details</th>
+                              <th className="px-4 py-4 text-right">Sell $</th>
+                              <th className="px-4 py-4 text-right">SOH</th>
+                              <th className="px-4 py-4 text-right">Committed</th>
+                              <th className="px-4 py-4 text-right">B/O</th>
+                              <th className="px-4 py-4 text-right">Available</th>
+                              <th className="px-4 py-4">Incoming</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                          {rows.map(snapshot => {
+                              const mapping = mappings.find(m => m.supplierId === snapshot.supplierId && m.supplierSku === snapshot.supplierSku);
+                              const mappedItem = mapping ? items.find(i => i.id === mapping.productId) : null;
+                              const supplier = suppliers.find(s => s.id === snapshot.supplierId);
+
+                              return (
+                                  <tr key={snapshot.id} className="table-row group">
+                                      <td className="px-4 py-4 table-sticky-left">
+                                          {mappedItem ? (
+                                              <div className="flex flex-col">
+                                                  <span className="badge bg-green-100 text-green-800 border-green-200 w-fit">Mapped</span>
+                                                  <span className="text-[10px] text-tertiary dark:text-gray-500 font-mono mt-0.5 max-w-[120px] truncate" title={mappedItem.name}>{mappedItem.sku}</span>
+                                              </div>
+                                          ) : (
+                                              <button
+                                                  type="button"
+                                                  onClick={() => { setMappingSource(snapshot); setItemSearch(''); setIsManualMapOpen(true); }}
+                                                  className="badge bg-red-100 text-red-800 border-red-200 hover:bg-red-200 w-fit"
+                                              >
+                                                  Map Now
+                                              </button>
+                                          )}
+                                      </td>
+                                      <td className="px-4 py-4 font-bold text-gray-900 dark:text-white">{supplier?.name || '-'}</td>
+                                      <td className="px-4 py-4">
+                                          <div className="font-mono text-xs font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-white/10 px-2 py-1 rounded w-fit">
+                                              {snapshot.customerStockCode || '-'}
+                                          </div>
+                                      </td>
+                                      <td className="px-4 py-4">
+                                          <div className="font-bold text-gray-900 dark:text-white truncate max-w-[220px]" title={snapshot.productName}>{snapshot.productName}</div>
+                                          <div className="text-xs font-mono opacity-50">{snapshot.supplierSku}</div>
+                                      </td>
+                                      <td className="px-4 py-4">
+                                          <div className="text-[10px] space-y-0.5 text-gray-400">
+                                              <div><span className="font-bold">Cat:</span> {snapshot.category || '-'}</div>
+                                              <div><span className="font-bold">Sub:</span> {snapshot.subCategory || '-'}</div>
+                                              <div><span className="font-bold">Rng:</span> {snapshot.range || '-'}</div>
+                                              <div><span className="font-bold">Type:</span> {snapshot.stockType || '-'}</div>
+                                              <div><span className="font-bold">Uploaded:</span> {snapshot.snapshotDate ? new Date(snapshot.snapshotDate).toLocaleDateString() : '-'}</div>
+                                          </div>
+                                      </td>
+                                      <td className="px-4 py-4 text-right font-mono text-gray-600 dark:text-gray-400">{snapshot.sellPrice ? `$${snapshot.sellPrice.toFixed(2)}` : '-'}</td>
+                                      <td className="px-4 py-4 text-right font-mono">{snapshot.stockOnHand}</td>
+                                      <td className="px-4 py-4 text-right font-mono text-orange-500">{snapshot.committedQty}</td>
+                                      <td className="px-4 py-4 text-right font-mono text-red-500">{snapshot.backOrderedQty}</td>
+                                      <td className="px-4 py-4 text-right font-bold text-green-600 dark:text-green-500 font-mono text-base">{snapshot.availableQty}</td>
+                                      <td className="px-4 py-4 text-xs">{snapshot.incomingStock && snapshot.incomingStock.length > 0 ? snapshot.incomingStock.map((inc, i) => <span key={i} className="inline-block bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded mr-1 mb-1">{inc.month}: {inc.qty}</span>) : <span className="text-gray-300">-</span>}</td>
+                                  </tr>
+                              );
+                          })}
+                          {rows.length === 0 && (
+                              <tr><td colSpan={11} className="text-center p-8 text-gray-400">No supplier inventory rows found for the selected scope.</td></tr>
+                          )}
+                      </tbody>
+                  </table>
               </div>
           </div>
       );
@@ -1454,7 +1736,6 @@ const Settings = () => {
 
   const allTabs: { id: AdminTab, icon: React.ElementType, label: string, permission?: PermissionId }[] = [
       { id: 'CATALOG', icon: BookOpen, label: 'Item Setup', permission: 'view_items' },
-      { id: 'STOCK', icon: Database, label: 'Stock', permission: 'view_stock' },
       { id: 'MAPPING', label: 'Mapping', icon: GitMerge, permission: 'view_mapping' },
       { id: 'SUPPLIERS', label: 'Suppliers', icon: Truck, permission: 'view_suppliers' },
       { id: 'SITES', label: 'Sites', icon: MapPin, permission: 'view_sites' },
@@ -2108,15 +2389,15 @@ if __name__ == "__main__":
                       </div>
                   </div>
 
-                  {/* Stock Ingestion replaced with Email Ingestion Hub */}
+                  {/* Supplier Inventory Ingestion Hub */}
                   <div className="bg-blue-50/50 dark:bg-blue-900/10 p-5 rounded-xl border border-blue-100 dark:border-blue-900/20 mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                       <div>
                           <h4 className="font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2 text-sm">
                               <Info size={16} className="text-blue-500"/>
-                              Automated Inbound Ingestion Active
+                              Supplier Inventory Ingestion Hub
                           </h4>
                           <p className="text-xs text-secondary dark:text-gray-400 mt-1 max-w-xl">
-                              Manual Excel uploading is deprecated. Supplier available inventory reports are now processed seamlessly via the Email Ingestion Hub.
+                              Upload a supplier file manually or switch to automated inbound email ingestion. Both paths replace the supplier inventory, auto-map products, and refresh available stock.
                           </p>
                       </div>
                       <button 
@@ -2127,7 +2408,7 @@ if __name__ == "__main__":
                           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition-all flex items-center gap-1.5 shrink-0"
                       >
                           <MailOpen size={14}/>
-                          Go to Ingestion Hub
+                          Open Ingestion Hub
                       </button>
                   </div>
 
@@ -2243,16 +2524,34 @@ if __name__ == "__main__":
           <div className="space-y-6 animate-fade-in">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
-                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Mapping Workbench</h2>
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+                          <div>
+                              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Mapping Workbench</h2>
+                              <p className="text-sm text-secondary dark:text-gray-400 mt-1">
+                                  Review supplier inventory mappings by supplier. Confirmed mappings are saved as memory for future uploads.
+                              </p>
+                          </div>
+                          <div className="flex items-center gap-2 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-xl p-2">
+                              <span className="text-xs font-bold text-gray-500 uppercase whitespace-nowrap px-2">Supplier</span>
+                              <select
+                                  value={mappingSupplierId}
+                                  onChange={(e) => setMappingSupplierId(e.target.value)}
+                                  className="min-w-[220px] bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+                              >
+                                  <option value="">All suppliers</option>
+                                  {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                              </select>
+                          </div>
+                      </div>
                       
                       {/* Mapping Health Dashboard */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
                           {/* Card 1: Confirmed (Good) */}
                           <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-green-500 shadow-sm flex items-center justify-between">
                               <div>
                                   <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Ready for POs</p>
-                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappings.filter(m => m.mappingStatus === 'CONFIRMED').length}</p>
-                                  <p className="text-[10px] text-green-600 font-medium">Stock Visible in App</p>
+                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappingReviewStats.confirmed.length}</p>
+                                  <p className="text-[10px] text-green-600 font-medium">{mappingReviewStats.completionPct}% of selected stock</p>
                               </div>
                               <div className="p-3 bg-green-50 dark:bg-green-500/10 rounded-full text-green-600">
                                   <Check size={24} />
@@ -2263,8 +2562,8 @@ if __name__ == "__main__":
                           <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-yellow-400 shadow-sm flex items-center justify-between relative overflow-hidden group hover:shadow-md transition-shadow cursor-pointer" onClick={() => setMappingSubTab('PROPOSED')}>
                               <div className="relative z-10">
                                   <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Needs Review</p>
-                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappings.filter(m => m.mappingStatus === 'PROPOSED').length}</p>
-                                  <p className="text-[10px] text-yellow-600 font-medium font-bold underline">Review Proposals &rarr;</p>
+                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappingReviewStats.proposed.length}</p>
+                                  <p className="text-[10px] text-yellow-600 font-medium font-bold underline">{mappingReviewStats.highConfidence.length} high confidence</p>
                               </div>
                               <div className="p-3 bg-yellow-50 dark:bg-yellow-500/10 rounded-full text-yellow-500 relative z-10">
                                   <AlertCircle size={24} />
@@ -2276,13 +2575,22 @@ if __name__ == "__main__":
                           <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-red-500 shadow-sm flex items-center justify-between">
                               <div>
                                   <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Unmapped Stock</p>
-                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                                      {stockSnapshots.filter(s => !mappings.some(m => m.supplierId === s.supplierId && m.supplierSku === s.supplierSku)).length}
-                                  </p>
-                                  <p className="text-[10px] text-red-500 font-medium">Stock Invisible in App</p>
+                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{mappingReviewStats.unmapped.length}</p>
+                                  <p className="text-[10px] text-red-500 font-medium">Requires manual correction</p>
                               </div>
                               <div className="p-3 bg-red-50 dark:bg-red-500/10 rounded-full text-red-500">
                                   <X size={24} />
+                              </div>
+                          </div>
+
+                          <div className="bg-white dark:bg-nocturne p-4 rounded-xl border-l-4 border-blue-500 shadow-sm flex items-center justify-between">
+                              <div>
+                                  <p className="text-xs font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-1">Supplier Scope</p>
+                                  <p className="text-lg font-bold text-gray-900 dark:text-white truncate max-w-[170px]">{selectedMappingSupplier?.name || 'All Suppliers'}</p>
+                                  <p className="text-[10px] text-blue-600 font-medium">{mappingReviewStats.totalSnapshotRows} stock rows in scope</p>
+                              </div>
+                              <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-full text-blue-600">
+                                  <Truck size={24} />
                               </div>
                           </div>
                       </div>
@@ -2312,7 +2620,7 @@ if __name__ == "__main__":
                                   <div className="w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 flex items-center justify-center font-bold text-xs shrink-0">3</div>
                                   <div>
                                       <p className="font-bold text-gray-900 dark:text-white">Manual Mapping</p>
-                                      <p className="text-xs text-secondary dark:text-gray-400 mt-1">For any remaining Red items, go to the <b>Stock History</b> tab and click the red "Unmapped" badge to map manually.</p>
+                                      <p className="text-xs text-secondary dark:text-gray-400 mt-1">For any remaining red items, open <b>Supplier Items</b> and click "Map Now", or correct a row directly from Review.</p>
                                   </div>
                               </div>
                           </div>
@@ -2323,9 +2631,10 @@ if __name__ == "__main__":
                            <RefreshCw size={14}/> Update Mapping
                        </button>
                        <button type="button" onClick={async () => {
-                           if (!globalThis.confirm('Run Auto-Match Algorithm? This uses Master SKU matching and fuzzy logic.')) return;
+                           const targetSuppliers = mappingSupplierId ? suppliers.filter(s => s.id === mappingSupplierId) : suppliers;
+                           if (!globalThis.confirm(`Run Auto-Match for ${mappingSupplierId ? selectedMappingSupplier?.name : 'all suppliers'}? This uses supplier memory, code matching, text similarity, and ambiguity checks.`)) return;
                            const results = [];
-                           for (const s of suppliers) {
+                           for (const s of targetSuppliers) {
                                const res = await runAutoMapping(s.id);
                                results.push(`${s.name}: +${res.confirmed} Confirmed, +${res.proposed} Proposed`);
                            }
@@ -2333,10 +2642,10 @@ if __name__ == "__main__":
                        }} className="bg-[var(--color-brand)] text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:opacity-90 flex items-center gap-2 transition-all">
                            <Wand2 size={14}/> Run Auto-Match
                        </button>
-                       {mappingSubTab === 'PROPOSED' && mappings.filter(m => m.mappingStatus === 'PROPOSED' && m.confidenceScore >= 0.9).length > 0 && (
+                       {mappingSubTab === 'PROPOSED' && mappingReviewStats.highConfidence.length > 0 && (
                             <button type="button" 
                                 onClick={async () => {
-                                    const highConf = mappings.filter(m => m.mappingStatus === 'PROPOSED' && m.confidenceScore >= 0.9);
+                                    const highConf = mappingReviewStats.highConfidence;
                                     if (!globalThis.confirm(`Confirm all ${highConf.length} high-confidence (>=90%) mappings?`)) return;
                                     for (const m of highConf) {
                                         await updateMapping({ ...m, mappingStatus: 'CONFIRMED' });
@@ -2354,24 +2663,27 @@ if __name__ == "__main__":
               {/* Sub Tabs */}
               <div className="flex gap-6 border-b border-gray-200 dark:border-gray-800">
                   <button type="button" onClick={() => setMappingSubTab('EMAIL_INGEST')} className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${mappingSubTab === 'EMAIL_INGEST' ? 'border-blue-500 text-blue-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
-                      Email Ingestion Hub
+                      1. Ingest
                       {simulatedEmails.some(e => e.status === 'UNREAD') && (
                           <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shrink-0" />
                       )}
                   </button>
+                  <button type="button" onClick={() => setMappingSubTab('SUPPLIER_ITEMS')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'SUPPLIER_ITEMS' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+                      2. Supplier Items ({mappingReviewStats.totalSnapshotRows})
+                  </button>
                   <button type="button" onClick={() => setMappingSubTab('PROPOSED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'PROPOSED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
-                      Proposed Mappings ({mappings.filter(m => m.mappingStatus === 'PROPOSED').length})
+                      3. Review ({mappingReviewStats.proposed.length})
                   </button>
                   <button type="button" onClick={() => setMappingSubTab('CONFIRMED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'CONFIRMED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
-                      Confirmed ({mappings.filter(m => m.mappingStatus === 'CONFIRMED').length})
+                      4. Confirmed ({mappingReviewStats.confirmed.length})
                   </button>
-                  <button type="button" onClick={() => setMappingSubTab('REJECTED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'REJECTED' ? 'border-red-500 text-red-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
-                      Rejected ({mappings.filter(m => m.mappingStatus === 'REJECTED').length})
+                  <button type="button" onClick={() => setMappingSubTab('REJECTED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'REJECTED' ? 'border-gray-500 text-gray-700 dark:text-gray-200' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+                      Not Mapped ({mappingReviewStats.notMapped.length})
                   </button>
                   <button type="button" 
                     onClick={() => {
                         setMappingSubTab('MEMORY');
-                        getMappingMemory().then(setMappingMemory);
+                        getMappingMemory(mappingSupplierId || undefined).then(setMappingMemory);
                     }} 
                     className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'MEMORY' ? 'border-purple-500 text-purple-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}
                   >
@@ -2382,6 +2694,8 @@ if __name__ == "__main__":
               <div className="table-shell bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
                   {mappingSubTab === 'EMAIL_INGEST' ? (
                       renderEmailIngestionHub()
+                  ) : mappingSubTab === 'SUPPLIER_ITEMS' ? (
+                      renderSupplierInventoryItems()
                   ) : mappingSubTab === 'MEMORY' ? (
                       <div className="p-0">
                           <div className="p-4 bg-purple-50 dark:bg-purple-900/10 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center">
@@ -2423,22 +2737,22 @@ if __name__ == "__main__":
                                       <tr key={mem.id} className="table-row">
                                           <td className="px-6 py-4 table-sticky-left">
                                               <div className="flex items-center gap-3">
-                                                <div className="font-bold text-gray-900 dark:text-white uppercase tracking-tight">{mem.supplier_name}</div>
+                                                <div className="font-bold text-gray-900 dark:text-white uppercase tracking-tight">{mem.supplierName}</div>
                                               </div>
                                           </td>
                                           <td className="px-6 py-4">
-                                              <div className="font-mono text-xs">{mem.supplier_sku}</div>
-                                              <div className="text-[10px] text-gray-400">Cust Ref: {mem.supplier_customer_stock_code || '-'}</div>
+                                              <div className="font-mono text-xs">{mem.supplierSku}</div>
+                                              <div className="text-[10px] text-gray-400">Cust Ref: {mem.supplierCustomerStockCode || '-'}</div>
                                           </td>
                                           <td className="px-6 py-4">
-                                              <div className="font-bold text-gray-900 dark:text-white">{mem.item_name}</div>
-                                              <div className="text-xs font-mono">{mem.item_sku}</div>
+                                              <div className="font-bold text-gray-900 dark:text-white">{mem.productName}</div>
+                                              <div className="text-xs font-mono">{mem.internalSku}</div>
                                           </td>
                                           <td className="px-6 py-4">
-                                              <span className="badge-gray">{mem.mapping_method}</span>
+                                              <span className="badge-gray">{mem.mappingMethod}</span>
                                           </td>
                                           <td className="px-6 py-4 text-xs font-mono">
-                                              {new Date(mem.created_at).toLocaleDateString()}
+                                              {mem.updatedAt ? new Date(mem.updatedAt).toLocaleDateString() : '-'}
                                           </td>
                                           <td className="px-6 py-4 text-center table-sticky-right">
                                               <button type="button" 
@@ -2473,15 +2787,16 @@ if __name__ == "__main__":
                               <th className="px-6 py-4 text-center table-sticky-right">Action</th>
                           </tr></thead>
                           <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                              {mappings.filter(m => m.mappingStatus === mappingSubTab).map(map => {
+                              {supplierScopedMappings.filter(m => m.mappingStatus === mappingSubTab).map(map => {
                                   const internalItem = items.find(i => i.id === map.productId);
                                   const supplier = suppliers.find(s => s.id === map.supplierId);
                                   const supNorm = map.supplierCustomerStockCode ? normalizeItemCode(map.supplierCustomerStockCode) : null;
+                                  const mappingStatusLabel = map.mappingStatus === 'REJECTED' ? 'NOT MAPPED' : map.mappingStatus;
 
                                   return (
                                       <tr key={map.id} className="table-row">
                                           <td className="px-6 py-4 table-sticky-left">
-                                              <span className={`badge ${map.mappingStatus === 'PROPOSED' ? 'bg-yellow-100 text-yellow-800' : map.mappingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{map.mappingStatus}</span>
+                                              <span className={`badge ${map.mappingStatus === 'PROPOSED' ? 'bg-yellow-100 text-yellow-800' : map.mappingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>{mappingStatusLabel}</span>
                                               <div className="flex items-center gap-1.5 mt-1">
                                                   <div className="text-[10px] uppercase font-bold text-gray-400">{map.mappingMethod}</div>
                                                   {map.manualOverride && (
@@ -2490,7 +2805,12 @@ if __name__ == "__main__":
                                               </div>
                                           </td>
                                           <td className="px-6 py-4">
-                                              {internalItem ? (
+                                              {map.mappingStatus === 'REJECTED' ? (
+                                                  <div>
+                                                      <div className="font-bold text-gray-900 dark:text-white">No internal item mapped</div>
+                                                      <div className="text-xs text-gray-400">Supplier row intentionally excluded</div>
+                                                  </div>
+                                              ) : internalItem ? (
                                                   <div title={`Raw: ${internalItem.sku}\nNorm: ${internalItem.sapItemCodeNorm || normalizeItemCode(internalItem.sku).normalized}`}>
                                                       <div className="font-bold text-gray-900 dark:text-white">{internalItem.name}</div>
                                                       <div className="text-xs font-mono">{internalItem.sku}</div>
@@ -2604,18 +2924,43 @@ if __name__ == "__main__":
                                                   {map.mappingStatus === 'PROPOSED' && (
                                                       <>
                                                           <button type="button" onClick={() => updateMapping({ ...map, mappingStatus: 'CONFIRMED' }).then(() => alert('Confirmed'))} className="icon-btn-green" title="Confirm"><CheckCircle2 size={18}/></button>
-                                                          <button type="button" onClick={() => updateMapping({ ...map, mappingStatus: 'REJECTED' })} className="icon-btn-red" title="Reject"><XCircle size={18}/></button>
+                                                          <button type="button" onClick={() => { setNotMappedTarget(map); setNotMappedReason('No longer required'); }} className="icon-btn-red" title="Mark as not mapped"><MinusCircle size={18}/></button>
+                                                          <button type="button" onClick={() => {
+                                                              const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                                              if (!snapshot) return alert('Source stock row is not available for correction.');
+                                                              setMappingSource(snapshot);
+                                                              setItemSearch('');
+                                                              setIsManualMapOpen(true);
+                                                          }} className="text-xs text-blue-500 hover:underline font-bold px-2" title="Choose a different item">Correct</button>
                                                       </>
                                                   )}
                                                   {map.mappingStatus === 'CONFIRMED' && (
+                                                      <>
                                                        <button type="button" onClick={() => updateMapping({ ...map, mappingStatus: 'PROPOSED' })} className="text-xs text-gray-400 hover:text-[var(--color-brand)] underline">Un-confirm</button>
+                                                       <button type="button" onClick={() => {
+                                                              const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                                              if (!snapshot) return alert('Source stock row is not available for correction.');
+                                                              setMappingSource(snapshot);
+                                                              setItemSearch('');
+                                                              setIsManualMapOpen(true);
+                                                          }} className="text-xs text-blue-500 hover:underline font-bold px-2">Revise</button>
+                                                      </>
+                                                  )}
+                                                  {map.mappingStatus === 'REJECTED' && (
+                                                      <button type="button" onClick={() => {
+                                                          const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                                          if (!snapshot) return alert('Source stock row is not available for correction.');
+                                                          setMappingSource(snapshot);
+                                                          setItemSearch('');
+                                                          setIsManualMapOpen(true);
+                                                      }} className="text-xs text-blue-500 hover:underline font-bold px-2">Map Manually</button>
                                                   )}
                                               </div>
                                           </td>
                                       </tr>
                                   );
                               })}
-                              {mappings.filter(m => m.mappingStatus === mappingSubTab).length === 0 && (
+                              {supplierScopedMappings.filter(m => m.mappingStatus === mappingSubTab).length === 0 && (
                                   <tr><td colSpan={8} className="text-center p-8 text-gray-400">No mappings found in this tab.</td></tr>
                               )}
                           </tbody>
@@ -4087,6 +4432,41 @@ if __name__ == "__main__":
         thead .table-sticky-right, thead .table-sticky-left { background: #f9fafb; }
         .dark thead .table-sticky-right, .dark thead .table-sticky-left { background: #15171e; }
       `}</style>
+             {notMappedTarget && (
+                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-md p-6 animate-slide-up">
+                        <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-white">Mark Supplier Item as Not Mapped</h2>
+                        <p className="text-sm text-secondary dark:text-gray-400">
+                            Use this when the supplier row should not be connected to an internal item, such as discontinued stock or items not required for ordering.
+                        </p>
+                        <div className="mt-5 space-y-4">
+                            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-100 dark:border-gray-800">
+                                <div className="text-xs text-gray-500 uppercase font-bold">Supplier SKU</div>
+                                <div className="font-mono font-bold text-gray-900 dark:text-white">{notMappedTarget.supplierSku}</div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase">Reason</label>
+                                <select
+                                    className="input-field mt-1"
+                                    value={notMappedReason}
+                                    onChange={(event) => setNotMappedReason(event.target.value)}
+                                >
+                                    <option value="No longer required">No longer required</option>
+                                    <option value="Out of stock / unavailable">Out of stock / unavailable</option>
+                                    <option value="Discontinued by supplier">Discontinued by supplier</option>
+                                    <option value="Supplier-only reference row">Supplier-only reference row</option>
+                                    <option value="Duplicate supplier row">Duplicate supplier row</option>
+                                    <option value="Not used by this business">Not used by this business</option>
+                                </select>
+                            </div>
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button type="button" onClick={() => setNotMappedTarget(null)} className="btn-secondary">Cancel</button>
+                                <button type="button" onClick={markMappingNotMapped} className="btn-primary">Save as Not Mapped</button>
+                            </div>
+                        </div>
+                    </div>
+                 </div>
+             )}
                  {/* Manual Mapping Modal */}
              {isManualMapOpen && mappingSource && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
@@ -4105,7 +4485,7 @@ if __name__ == "__main__":
                                     <Search className="absolute left-3 top-2.5 text-gray-400" size={16}/>
                                     <input 
                                         className="input-field pl-9" 
-                                        placeholder="Search by name on SKU..." 
+                                        placeholder="Search by name or SKU..." 
                                         value={itemSearch}
                                         onChange={e => setItemSearch(e.target.value)}
                                         autoFocus
@@ -4126,7 +4506,11 @@ if __name__ == "__main__":
                                                     mappingStatus: 'CONFIRMED',
                                                     mappingMethod: 'MANUAL',
                                                     confidenceScore: 1.0,
+                                                    manualOverride: true,
                                                     supplierCustomerStockCode: mappingSource.customerStockCode,
+                                                    mappingJustification: {
+                                                        components: [{ type: 'ADMIN_CONFIRMED', score: 1, detail: 'Manually selected and saved to supplier mapping memory' }]
+                                                    },
                                                 } as any).then(() => {
                                                     setIsManualMapOpen(false);
                                                     setMappingSource(null);
