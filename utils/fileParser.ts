@@ -344,7 +344,7 @@ function createMapping(headers: string[], rawDataRows?: any[][]): { mapping: Col
 /**
  * Intelligent scan to find the header row in a 2D array of data
  */
-function findHeaderRow(data: any[][]): { index: number; headers: string[] } {
+function findHeaderRow(data: any[][]): { index: number; dataStartIndex: number; headers: string[] } {
     let bestRowIndex = 0;
     let maxMatches = 0;
     let bestHeaders: string[] = [];
@@ -389,7 +389,39 @@ function findHeaderRow(data: any[][]): { index: number; headers: string[] } {
         bestHeaders = data[0].map((cell, idx) => String(cell || '').trim() || `Column_${idx}`);
     }
 
-    return { index: bestRowIndex, headers: bestHeaders };
+    let dataStartIndex = bestRowIndex + 1;
+
+    // Some supplier reports, notably Simba, use staggered multi-row headers:
+    // row A has SKU/Product while a lower row has SPL Item Code/Product Description.
+    // Merge strong lower header labels into blank columns and start data below them.
+    for (let i = bestRowIndex + 1; i < Math.min(data.length, bestRowIndex + 4); i++) {
+        const row = data[i];
+        if (!row || !Array.isArray(row)) continue;
+
+        let mergedAny = false;
+        const mergedHeaders = [...bestHeaders];
+        row.forEach((cell, idx) => {
+            const label = String(cell || '').trim();
+            if (!label) return;
+            const existing = mergedHeaders[idx] || '';
+            if (existing && !existing.startsWith('Column_')) return;
+
+            const matchesKnownField = Object.values(FIELD_DEFINITIONS).some(fieldDef =>
+                fieldDef.aliases.some(alias => calculateSimilarity(label, alias) > 0.85)
+            );
+            if (matchesKnownField) {
+                mergedHeaders[idx] = label;
+                mergedAny = true;
+            }
+        });
+
+        if (mergedAny) {
+            bestHeaders = mergedHeaders;
+            dataStartIndex = i + 1;
+        }
+    }
+
+    return { index: bestRowIndex, dataStartIndex, headers: bestHeaders };
 }
 
 /**
@@ -599,10 +631,10 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
                 }
                 
                 // Find the intelligent header row
-                const { index: headerIndex, headers } = findHeaderRow(rawRows);
+                const { index: headerIndex, dataStartIndex, headers } = findHeaderRow(rawRows);
                 
                 // Slice data starting from below headers
-                const dataRows = rawRows.slice(headerIndex + 1);
+                const dataRows = rawRows.slice(dataStartIndex);
                 
                 // Convert to objects based on detected headers for current mapping logic compatibility
                 const jsonData = dataRows.map(row => {
