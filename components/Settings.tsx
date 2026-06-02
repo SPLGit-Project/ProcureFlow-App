@@ -142,6 +142,13 @@ type SupplierFormState = {
   contacts: SupplierContactFormRow[];
 };
 
+type MappingCandidate = {
+  item: Item;
+  score: number;
+  reasons: string[];
+  isCurrent: boolean;
+};
+
 const createEmptySupplierContactRow = (isPrimary = false): SupplierContactFormRow => ({
   id: uuidv4(),
   name: '',
@@ -175,6 +182,28 @@ const createSupplierFormState = (supplier?: Supplier): SupplierFormState => ({
   categories: supplier?.categories?.join(', ') || '',
   contacts: getSupplierContactRows(supplier)
 });
+
+const tokenizeForMatching = (value?: string): string[] => (
+  (value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter(token => token.length > 2)
+);
+
+const overlapScore = (left?: string, right?: string): number => {
+  const leftTokens = new Set(tokenizeForMatching(left));
+  const rightTokens = tokenizeForMatching(right);
+  if (!leftTokens.size || !rightTokens.length) return 0;
+  const matches = rightTokens.filter(token => leftTokens.has(token)).length;
+  return matches / Math.max(leftTokens.size, rightTokens.length);
+};
+
+const getConfidenceTone = (score: number) => {
+  if (score >= 0.9) return { label: 'High confidence', bar: 'bg-green-500', text: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/20', border: 'border-green-200 dark:border-green-900/40' };
+  if (score >= 0.7) return { label: 'Review recommended', bar: 'bg-yellow-500', text: 'text-yellow-700 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-950/20', border: 'border-yellow-200 dark:border-yellow-900/40' };
+  return { label: 'Manual decision needed', bar: 'bg-red-500', text: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20', border: 'border-red-200 dark:border-red-900/40' };
+};
 
 const Settings = () => {
   const {
@@ -712,6 +741,9 @@ const Settings = () => {
   const [mappingSource, setMappingSource] = useState<SupplierStockSnapshot | null>(null);
   const [mappingMemory, setMappingMemory] = useState<any[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [guidedMappingIndex, setGuidedMappingIndex] = useState(0);
+  const [selectedCandidateItemId, setSelectedCandidateItemId] = useState<string | null>(null);
+  const [candidateSearch, setCandidateSearch] = useState('');
 
   // --- Email Ingestion Hub State ---
   const [isAutoIngestEnabled, setIsAutoIngestEnabled] = useState(true);
@@ -1155,6 +1187,127 @@ const Settings = () => {
 
   const selectedMappingSupplier = visibleSuppliers.find(supplier => supplier.id === mappingSupplierId);
 
+  const guidedReviewQueue = React.useMemo(() => {
+      return [...mappingReviewStats.proposed].sort((a, b) => {
+          const aPriority = a.confidenceScore >= 0.9 ? 1 : 0;
+          const bPriority = b.confidenceScore >= 0.9 ? 1 : 0;
+          if (aPriority !== bPriority) return aPriority - bPriority;
+          return a.confidenceScore - b.confidenceScore;
+      });
+  }, [mappingReviewStats.proposed]);
+
+  useEffect(() => {
+      setGuidedMappingIndex(0);
+      setSelectedCandidateItemId(null);
+      setCandidateSearch('');
+  }, [mappingSupplierId, mappingReviewStats.proposed.length]);
+
+  const currentGuidedMapping = guidedReviewQueue[Math.min(guidedMappingIndex, Math.max(guidedReviewQueue.length - 1, 0))];
+  const currentGuidedSnapshot = currentGuidedMapping
+      ? stockSnapshots.find(snapshot => snapshot.supplierId === currentGuidedMapping.supplierId && snapshot.supplierSku === currentGuidedMapping.supplierSku)
+      : undefined;
+  const currentGuidedSupplier = currentGuidedMapping ? suppliers.find(supplier => supplier.id === currentGuidedMapping.supplierId) : undefined;
+  const currentGuidedItem = currentGuidedMapping ? items.find(item => item.id === currentGuidedMapping.productId) : undefined;
+
+  const guidedCandidates = React.useMemo<MappingCandidate[]>(() => {
+      if (!currentGuidedMapping) return [];
+      const snapshot = currentGuidedSnapshot;
+      const supplierText = [
+          snapshot?.productName,
+          snapshot?.supplierSku,
+          snapshot?.customerStockCode,
+          snapshot?.category,
+          snapshot?.subCategory,
+          snapshot?.stockType,
+          currentGuidedMapping.supplierSku,
+          currentGuidedMapping.supplierCustomerStockCode
+      ].filter(Boolean).join(' ');
+      const supplierNorms = [
+          snapshot?.customerStockCodeNorm,
+          snapshot?.customerStockCodeAltNorm,
+          snapshot?.customerStockCode ? normalizeItemCode(snapshot.customerStockCode).normalized : '',
+          currentGuidedMapping.supplierCustomerStockCode ? normalizeItemCode(currentGuidedMapping.supplierCustomerStockCode).normalized : '',
+          currentGuidedMapping.supplierSku ? normalizeItemCode(currentGuidedMapping.supplierSku).normalized : ''
+      ].filter(Boolean);
+      const search = candidateSearch.trim().toLowerCase();
+
+      return items
+          .filter(item => !search || `${item.name} ${item.sku} ${item.description || ''} ${item.category || ''}`.toLowerCase().includes(search))
+          .map(item => {
+              const itemNorm = item.sapItemCodeNorm || normalizeItemCode(item.sku || '').normalized;
+              const itemAltText = [item.name, item.description, item.sku, item.category, item.subCategory, item.itemType, item.measurements].filter(Boolean).join(' ');
+              const reasons: string[] = [];
+              let score = item.id === currentGuidedMapping.productId ? currentGuidedMapping.confidenceScore : 0;
+
+              if (supplierNorms.some(norm => norm && norm === itemNorm)) {
+                  score += 0.45;
+                  reasons.push('Exact normalized code match');
+              } else if (supplierNorms.some(norm => norm && (norm.includes(itemNorm) || itemNorm.includes(norm)))) {
+                  score += 0.25;
+                  reasons.push('Close code relationship');
+              }
+
+              const textScore = overlapScore(supplierText, itemAltText);
+              if (textScore >= 0.45) {
+                  score += 0.3;
+                  reasons.push('Strong product wording overlap');
+              } else if (textScore >= 0.2) {
+                  score += 0.16;
+                  reasons.push('Some product wording overlap');
+              }
+
+              if (snapshot?.category && item.category && normalizeSupplierName(snapshot.category) === normalizeSupplierName(item.category)) {
+                  score += 0.12;
+                  reasons.push('Category aligns');
+              }
+
+              if (item.id === currentGuidedMapping.productId) {
+                  reasons.unshift('Current proposed match');
+              }
+
+              return {
+                  item,
+                  score: Math.min(1, score),
+                  reasons: reasons.length ? reasons : ['Low signal alternative'],
+                  isCurrent: item.id === currentGuidedMapping.productId
+              };
+          })
+          .sort((a, b) => b.score - a.score)
+          .slice(0, search ? 12 : 6);
+  }, [candidateSearch, currentGuidedItem?.id, currentGuidedMapping, currentGuidedSnapshot, items]);
+
+  useEffect(() => {
+      setSelectedCandidateItemId(currentGuidedMapping?.productId || null);
+      setCandidateSearch('');
+  }, [currentGuidedMapping?.id]);
+
+  const selectedGuidedCandidate = guidedCandidates.find(candidate => candidate.item.id === selectedCandidateItemId) || guidedCandidates[0];
+
+  const moveToNextGuidedMapping = () => {
+      setGuidedMappingIndex(prev => guidedReviewQueue.length === 0 ? 0 : Math.min(prev + 1, guidedReviewQueue.length - 1));
+  };
+
+  const confirmGuidedCandidate = async (candidate?: MappingCandidate) => {
+      if (!currentGuidedMapping || !candidate) return;
+      const changedItem = candidate.item.id !== currentGuidedMapping.productId;
+      await updateMapping({
+          ...currentGuidedMapping,
+          productId: candidate.item.id,
+          mappingStatus: 'CONFIRMED',
+          mappingMethod: changedItem ? 'MANUAL' : currentGuidedMapping.mappingMethod,
+          confidenceScore: changedItem ? Math.max(candidate.score, 0.95) : currentGuidedMapping.confidenceScore,
+          manualOverride: changedItem || currentGuidedMapping.manualOverride,
+          mappingJustification: changedItem ? {
+              components: [
+                  { type: 'ADMIN_CONFIRMED', score: 1, detail: 'Admin selected this candidate in guided mapping review' },
+                  ...candidate.reasons.slice(0, 3).map(reason => ({ type: 'MATCH_SIGNAL', score: candidate.score, detail: reason }))
+              ]
+          } : currentGuidedMapping.mappingJustification
+      } as SupplierProductMap);
+      success(`Mapped ${currentGuidedMapping.supplierSku} to ${candidate.item.name}.`);
+      moveToNextGuidedMapping();
+  };
+
   const markMappingNotMapped = async () => {
       if (!notMappedTarget) return;
 
@@ -1181,6 +1334,223 @@ const Settings = () => {
       if (mappingSubTab !== 'MEMORY') return;
       getMappingMemory(mappingSupplierId || undefined).then(setMappingMemory);
   }, [mappingSupplierId, mappingSubTab]);
+
+  const renderGuidedMappingReview = () => {
+      if (guidedReviewQueue.length === 0) {
+          return (
+              <div className="p-10 text-center">
+                  <div className="inline-flex p-3 rounded-full bg-green-50 dark:bg-green-950/20 text-green-600 mb-3">
+                      <CheckCircle2 size={28}/>
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">No proposed mappings need review</h3>
+                  <p className="text-sm text-secondary dark:text-gray-400 mt-1">Run auto-match after the next supplier upload, or review confirmed mapping memory.</p>
+              </div>
+          );
+      }
+
+      const mapping = currentGuidedMapping;
+      if (!mapping) return null;
+      const confidenceTone = getConfidenceTone(mapping.confidenceScore);
+      const selectedTone = getConfidenceTone(selectedGuidedCandidate?.score || 0);
+      const progressPct = Math.round(((Math.min(guidedMappingIndex + 1, guidedReviewQueue.length)) / guidedReviewQueue.length) * 100);
+
+      return (
+          <div className="p-5 space-y-5">
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
+                  <div>
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                          <Sparkles size={20} className="text-[var(--color-brand)]"/>
+                          Guided Mapping Review
+                      </h3>
+                      <p className="text-xs text-secondary dark:text-gray-400 mt-1">
+                          Review the supplier row, compare the proposed match, and choose the strongest system item using the match signals.
+                      </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                      <div className="min-w-[220px]">
+                          <div className="flex justify-between text-[10px] uppercase font-bold text-secondary dark:text-gray-500 mb-1">
+                              <span>Review progress</span>
+                              <span>{Math.min(guidedMappingIndex + 1, guidedReviewQueue.length)} / {guidedReviewQueue.length}</span>
+                          </div>
+                          <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                              <div className="h-full bg-[var(--color-brand)] transition-all" style={{ width: `${progressPct}%` }}/>
+                          </div>
+                      </div>
+                      <button type="button" onClick={moveToNextGuidedMapping} className="btn-secondary text-xs">Skip</button>
+                  </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5">
+                  <aside className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-gray-50/60 dark:bg-white/5">
+                      <div className="p-3 border-b border-gray-200 dark:border-gray-800">
+                          <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Smart queue</div>
+                          <div className="text-xs text-gray-500 mt-0.5">Lower confidence items are surfaced first.</div>
+                      </div>
+                      <div className="max-h-[520px] overflow-y-auto">
+                          {guidedReviewQueue.map((queueMap, index) => {
+                              const queueSnapshot = stockSnapshots.find(snapshot => snapshot.supplierId === queueMap.supplierId && snapshot.supplierSku === queueMap.supplierSku);
+                              const tone = getConfidenceTone(queueMap.confidenceScore);
+                              return (
+                                  <button
+                                      type="button"
+                                      key={queueMap.id}
+                                      onClick={() => setGuidedMappingIndex(index)}
+                                      className={`w-full text-left p-3 border-b border-gray-200 dark:border-gray-800 transition-colors ${index === guidedMappingIndex ? 'bg-white dark:bg-nocturne' : 'hover:bg-white/80 dark:hover:bg-white/10'}`}
+                                  >
+                                      <div className="flex items-center justify-between gap-2">
+                                          <div className="font-bold text-sm text-gray-900 dark:text-white truncate">{queueMap.supplierSku}</div>
+                                          <span className={`text-[10px] font-bold ${tone.text}`}>{Math.round(queueMap.confidenceScore * 100)}%</span>
+                                      </div>
+                                      <div className="text-xs text-secondary dark:text-gray-400 truncate mt-0.5">{queueSnapshot?.productName || queueMap.supplierCustomerStockCode || 'Supplier row'}</div>
+                                  </button>
+                              );
+                          })}
+                      </div>
+                  </aside>
+
+                  <div className="space-y-5">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          <section className="rounded-xl border border-gray-200 dark:border-gray-800 p-4 bg-white dark:bg-nocturne">
+                              <div className="flex items-center justify-between gap-3 mb-4">
+                                  <div>
+                                      <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Supplier item</div>
+                                      <h4 className="text-lg font-bold text-gray-900 dark:text-white">{mapping.supplierSku}</h4>
+                                  </div>
+                                  <span className="badge-gray">{currentGuidedSupplier?.name || 'Supplier'}</span>
+                              </div>
+                              <div className="space-y-3 text-sm">
+                                  <div>
+                                      <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Description from report</div>
+                                      <div className="font-semibold text-gray-900 dark:text-white">{currentGuidedSnapshot?.productName || 'No supplier description captured'}</div>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                      <div className="p-3 rounded-lg bg-gray-50 dark:bg-white/5">
+                                          <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Customer ref</div>
+                                          <div className="font-mono text-xs">{currentGuidedSnapshot?.customerStockCode || mapping.supplierCustomerStockCode || '-'}</div>
+                                      </div>
+                                      <div className="p-3 rounded-lg bg-gray-50 dark:bg-white/5">
+                                          <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Category</div>
+                                          <div className="font-semibold">{currentGuidedSnapshot?.category || '-'}</div>
+                                      </div>
+                                      <div className="p-3 rounded-lg bg-gray-50 dark:bg-white/5">
+                                          <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">SOH / available</div>
+                                          <div className="font-semibold">{currentGuidedSnapshot ? `${currentGuidedSnapshot.stockOnHand} / ${currentGuidedSnapshot.availableQty}` : '-'}</div>
+                                      </div>
+                                      <div className="p-3 rounded-lg bg-gray-50 dark:bg-white/5">
+                                          <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">UPQ / type</div>
+                                          <div className="font-semibold">{currentGuidedSnapshot?.cartonQty || '-'} / {currentGuidedSnapshot?.stockType || '-'}</div>
+                                      </div>
+                                  </div>
+                              </div>
+                          </section>
+
+                          <section className={`rounded-xl border p-4 ${selectedTone.bg} ${selectedTone.border}`}>
+                              <div className="flex items-center justify-between gap-3 mb-4">
+                                  <div>
+                                      <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Selected system item</div>
+                                      <h4 className="text-lg font-bold text-gray-900 dark:text-white">{selectedGuidedCandidate?.item.name || currentGuidedItem?.name || 'Select a candidate'}</h4>
+                                  </div>
+                                  <div className="text-right">
+                                      <div className={`text-lg font-black ${selectedTone.text}`}>{Math.round((selectedGuidedCandidate?.score || mapping.confidenceScore) * 100)}%</div>
+                                      <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">{selectedTone.label}</div>
+                                  </div>
+                              </div>
+                              {selectedGuidedCandidate ? (
+                                  <div className="space-y-3 text-sm">
+                                      <div className="grid grid-cols-2 gap-3">
+                                          <div className="p-3 rounded-lg bg-white/70 dark:bg-black/10">
+                                              <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Internal SKU</div>
+                                              <div className="font-mono text-xs">{selectedGuidedCandidate.item.sku}</div>
+                                          </div>
+                                          <div className="p-3 rounded-lg bg-white/70 dark:bg-black/10">
+                                              <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Category</div>
+                                              <div className="font-semibold">{selectedGuidedCandidate.item.category || '-'}</div>
+                                          </div>
+                                      </div>
+                                      <div>
+                                          <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500 mb-1">Why this is suggested</div>
+                                          <div className="flex flex-wrap gap-2">
+                                              {selectedGuidedCandidate.reasons.map(reason => <span key={reason} className="badge-gray">{reason}</span>)}
+                                          </div>
+                                      </div>
+                                  </div>
+                              ) : (
+                                  <div className="text-sm text-secondary">Choose an option below to see item details.</div>
+                              )}
+                          </section>
+                      </div>
+
+                      <section className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne">
+                          <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                              <div>
+                                  <h4 className="font-bold text-gray-900 dark:text-white">Likely options</h4>
+                                  <p className="text-xs text-secondary dark:text-gray-500">The current proposal is included, followed by other close matches from the item master.</p>
+                              </div>
+                              <div className="relative min-w-[260px]">
+                                  <Search className="absolute left-3 top-2.5 text-gray-400" size={16}/>
+                                  <input
+                                      className="input-field pl-9"
+                                      placeholder="Search item master..."
+                                      value={candidateSearch}
+                                      onChange={e => setCandidateSearch(e.target.value)}
+                                  />
+                              </div>
+                          </div>
+                          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                              {guidedCandidates.map(candidate => {
+                                  const tone = getConfidenceTone(candidate.score);
+                                  const isSelected = candidate.item.id === selectedGuidedCandidate?.item.id;
+                                  return (
+                                      <button
+                                          type="button"
+                                          key={candidate.item.id}
+                                          onClick={() => setSelectedCandidateItemId(candidate.item.id)}
+                                          className={`w-full text-left p-4 transition-colors ${isSelected ? 'bg-blue-50/70 dark:bg-blue-950/20' : 'hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                                      >
+                                          <div className="grid grid-cols-1 lg:grid-cols-[1fr_150px_120px] gap-3 lg:items-center">
+                                              <div>
+                                                  <div className="flex items-center gap-2">
+                                                      <span className="font-bold text-gray-900 dark:text-white">{candidate.item.name}</span>
+                                                      {candidate.isCurrent && <span className="text-[10px] font-bold text-blue-700 bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 px-2 py-0.5 rounded-full">Current proposal</span>}
+                                                  </div>
+                                                  <div className="text-xs font-mono text-secondary dark:text-gray-500 mt-0.5">{candidate.item.sku}</div>
+                                                  <div className="text-[11px] text-secondary dark:text-gray-500 mt-1">{candidate.reasons.slice(0, 3).join(' | ')}</div>
+                                              </div>
+                                              <div className="text-xs">
+                                                  <div className="font-bold text-gray-700 dark:text-gray-300">{candidate.item.category || '-'}</div>
+                                                  <div className="text-secondary dark:text-gray-500">{candidate.item.subCategory || candidate.item.itemType || ''}</div>
+                                              </div>
+                                              <div>
+                                                  <div className="flex items-center gap-2">
+                                                      <div className="h-2 flex-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                                          <div className={`h-full ${tone.bar}`} style={{ width: `${Math.round(candidate.score * 100)}%` }}/>
+                                                      </div>
+                                                      <span className={`text-xs font-black ${tone.text}`}>{Math.round(candidate.score * 100)}%</span>
+                                                  </div>
+                                              </div>
+                                          </div>
+                                      </button>
+                                  );
+                              })}
+                          </div>
+                      </section>
+
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
+                          <div>
+                              <div className={`text-xs font-bold ${confidenceTone.text}`}>{confidenceTone.label}</div>
+                              <div className="text-xs text-secondary dark:text-gray-500">Confirming a changed selection saves it as manual mapping memory for future supplier uploads.</div>
+                          </div>
+                          <div className="flex flex-wrap justify-end gap-3">
+                              <button type="button" onClick={() => { setNotMappedTarget(mapping); setNotMappedReason('No longer required'); }} className="btn-secondary flex items-center gap-2 text-xs"><MinusCircle size={14}/> Not Mapped</button>
+                              <button type="button" onClick={() => confirmGuidedCandidate(guidedCandidates.find(candidate => candidate.isCurrent) || selectedGuidedCandidate)} className="btn-secondary flex items-center gap-2 text-xs"><CheckCircle2 size={14}/> Confirm Proposed</button>
+                              <button type="button" onClick={() => confirmGuidedCandidate(selectedGuidedCandidate)} className="btn-primary flex items-center gap-2 text-xs" disabled={!selectedGuidedCandidate}><Save size={14}/> Save Selected Match</button>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      );
+  };
 
   // --- Email Ingestion Configuration ---
 
@@ -2594,6 +2964,8 @@ if __name__ == "__main__":
                       renderEmailIngestionHub()
                   ) : mappingSubTab === 'SUPPLIER_ITEMS' ? (
                       renderSupplierInventoryItems()
+                  ) : mappingSubTab === 'PROPOSED' ? (
+                      renderGuidedMappingReview()
                   ) : mappingSubTab === 'MEMORY' ? (
                       <div className="p-0">
                           <div className="p-4 bg-purple-50 dark:bg-purple-900/10 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center">
