@@ -18,8 +18,9 @@ import {
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
 import { supabase } from '../lib/supabaseClient.ts';
-import { SupplierStockSnapshot, SupplierProductMap, Item, Supplier, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType } from '../types.ts';
+import { SupplierStockSnapshot, SupplierProductMap, Item, Supplier, SupplierContact, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType } from '../types.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
+import { canonicalSupplierName, dedupeSuppliersForDisplay, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import { useLocation } from 'react-router-dom';
 import { BrandLogo } from './BrandLogo.tsx';
 // AdminAccessHub removed — access approvals no longer used
@@ -122,6 +123,59 @@ const isExcludedSupplierName = (name?: string) => {
   return EXCLUDED_SUPPLIER_NAMES.some(excluded => normalized === excluded || normalized.includes(excluded));
 };
 
+type SupplierContactFormRow = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  isPrimary: boolean;
+};
+
+type SupplierFormState = {
+  name: string;
+  keyContact: string;
+  contactEmail: string;
+  phone: string;
+  address: string;
+  categories: string;
+  contacts: SupplierContactFormRow[];
+};
+
+const createEmptySupplierContactRow = (isPrimary = false): SupplierContactFormRow => ({
+  id: uuidv4(),
+  name: '',
+  email: '',
+  phone: '',
+  role: isPrimary ? 'Primary contact' : 'Inventory reports',
+  isPrimary
+});
+
+const supplierContactToFormRow = (contact: SupplierContact): SupplierContactFormRow => ({
+  id: contact.id || uuidv4(),
+  name: contact.name || '',
+  email: contact.email || '',
+  phone: contact.phone || '',
+  role: contact.role || (contact.isPrimary ? 'Primary contact' : 'Inventory reports'),
+  isPrimary: Boolean(contact.isPrimary)
+});
+
+const getSupplierContactRows = (supplier?: Supplier): SupplierContactFormRow[] => {
+  if (!supplier) return [createEmptySupplierContactRow(true)];
+  const rows = normalizeSupplierContacts(supplier).map(supplierContactToFormRow);
+  return rows.length ? rows : [createEmptySupplierContactRow(true)];
+};
+
+const createSupplierFormState = (supplier?: Supplier): SupplierFormState => ({
+  name: supplier?.name || '',
+  keyContact: supplier?.keyContact || '',
+  contactEmail: supplier?.contactEmail || '',
+  phone: supplier?.phone || '',
+  address: supplier?.address || '',
+  categories: supplier?.categories?.join(', ') || '',
+  contacts: getSupplierContactRows(supplier)
+});
+
 const Settings = () => {
   const {
     currentUser, users, addUser, roles, hasPermission, createRole, updateRole, deleteRole, permissions, updateUserRole, updateUserAccess,
@@ -148,7 +202,7 @@ const Settings = () => {
 
   const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
   const visibleSuppliers = React.useMemo(
-    () => suppliers.filter(supplier => !isExcludedSupplierName(supplier.name)),
+    () => dedupeSuppliersForDisplay(suppliers.filter(supplier => !isExcludedSupplierName(supplier.name))),
     [suppliers]
   );
 
@@ -763,7 +817,7 @@ const Settings = () => {
   // --- Supplier Form State ---
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
-  const [supplierForm, setSupplierForm] = useState({ name: '', keyContact: '', contactEmail: '', phone: '', address: '', categories: '' });
+  const [supplierForm, setSupplierForm] = useState<SupplierFormState>(createSupplierFormState());
 
   // --- Site Form State ---
   const [isSiteFormOpen, setIsSiteFormOpen] = useState(false);
@@ -1863,8 +1917,92 @@ if __name__ == "__main__":
       document.body.removeChild(link);
   };
 
-  const handleSupplierFormSubmit = (e: React.FormEvent) => { e.preventDefault(); const newSupplier: Supplier = { id: editingSupplier ? editingSupplier.id : uuidv4(), name: supplierForm.name, keyContact: supplierForm.keyContact, contactEmail: supplierForm.contactEmail, phone: supplierForm.phone, address: supplierForm.address, categories: supplierForm.categories.split(',').map(s => s.trim()) }; editingSupplier ? updateSupplier(newSupplier) : addSupplier(newSupplier); setIsSupplierFormOpen(false); };
-  const openSupplierForm = (s?: Supplier) => { if(s) { setEditingSupplier(s); setSupplierForm({ name: s.name, keyContact: s.keyContact, contactEmail: s.contactEmail, phone: s.phone, address: s.address, categories: s.categories.join(', ') }); } else { setEditingSupplier(null); setSupplierForm({ name: '', keyContact: '', contactEmail: '', phone: '', address: '', categories: '' }); } setIsSupplierFormOpen(true); };
+  const updateSupplierContactRow = (id: string, updates: Partial<SupplierContactFormRow>) => {
+      setSupplierForm(prev => ({
+          ...prev,
+          contacts: prev.contacts.map(contact => {
+              if (updates.isPrimary) {
+                  return contact.id === id ? { ...contact, ...updates, isPrimary: true } : { ...contact, isPrimary: false };
+              }
+              return contact.id === id ? { ...contact, ...updates } : contact;
+          })
+      }));
+  };
+
+  const addSupplierContactRow = () => {
+      setSupplierForm(prev => ({
+          ...prev,
+          contacts: [...prev.contacts, createEmptySupplierContactRow(false)]
+      }));
+  };
+
+  const removeSupplierContactRow = (id: string) => {
+      setSupplierForm(prev => {
+          const nextContacts = prev.contacts.filter(contact => contact.id !== id);
+          return { ...prev, contacts: nextContacts.length ? nextContacts : [createEmptySupplierContactRow(true)] };
+      });
+  };
+
+  const handleSupplierFormSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+
+      const contactRows = supplierForm.contacts
+          .map(contact => ({
+              id: contact.id,
+              name: contact.name.trim(),
+              email: contact.email.trim().toLowerCase(),
+              phone: contact.phone.trim(),
+              role: contact.role.trim(),
+              isPrimary: contact.isPrimary
+          }))
+          .filter(contact => contact.name || contact.email || contact.phone);
+
+      const selectedPrimaryRow = contactRows.find(contact => contact.isPrimary);
+      const primaryContact: SupplierContact = selectedPrimaryRow || {
+          id: 'primary-contact',
+          name: supplierForm.keyContact.trim(),
+          email: supplierForm.contactEmail.trim().toLowerCase(),
+          phone: supplierForm.phone.trim(),
+          role: 'Primary contact',
+          isPrimary: true
+      };
+      const normalizedContactRows = contactRows.map(contact => ({
+          ...contact,
+          isPrimary: contact.id === primaryContact.id
+      }));
+
+      const supplierToSave: Supplier = {
+          id: editingSupplier ? editingSupplier.id : uuidv4(),
+          name: supplierForm.name.trim(),
+          keyContact: primaryContact.name,
+          contactEmail: primaryContact.email,
+          phone: primaryContact.phone || '',
+          address: supplierForm.address.trim(),
+          categories: supplierForm.categories.split(',').map(s => s.trim()).filter(Boolean),
+          contacts: normalizeSupplierContacts({
+              keyContact: primaryContact.name,
+              contactEmail: primaryContact.email,
+              phone: primaryContact.phone || '',
+              contacts: [primaryContact, ...normalizedContactRows]
+          })
+      };
+
+      const duplicateSupplier = !editingSupplier
+          ? visibleSuppliers.find(supplier => canonicalSupplierName(supplier.name) === canonicalSupplierName(supplierToSave.name))
+          : undefined;
+
+      if (duplicateSupplier) {
+          await updateSupplier(mergeSupplierRecords(duplicateSupplier, supplierToSave));
+          warning(`Merged contact details into existing supplier: ${duplicateSupplier.name}`);
+      } else if (editingSupplier) {
+          await updateSupplier(supplierToSave);
+      } else {
+          await addSupplier(supplierToSave);
+      }
+
+      setIsSupplierFormOpen(false);
+  };
+  const openSupplierForm = (s?: Supplier) => { if(s) { setEditingSupplier(s); setSupplierForm(createSupplierFormState(s)); } else { setEditingSupplier(null); setSupplierForm(createSupplierFormState()); } setIsSupplierFormOpen(true); };
   const handleSiteFormSubmit = (e: React.FormEvent) => { e.preventDefault(); const newSite: Site = { id: editingSite ? editingSite.id : uuidv4(), name: siteForm.name, suburb: siteForm.suburb, address: siteForm.address, state: siteForm.state, zip: siteForm.zip, contactPerson: siteForm.contactPerson }; editingSite ? updateSite(newSite) : addSite(newSite); setIsSiteFormOpen(false); };
   const openSiteForm = (s?: Site) => { if(s) { setEditingSite(s); setSiteForm({ name: s.name, suburb: s.suburb, address: s.address, state: s.state, zip: s.zip, contactPerson: s.contactPerson }); } else { setEditingSite(null); setSiteForm({ name: '', suburb: '', address: '', state: '', zip: '', contactPerson: '' }); } setIsSiteFormOpen(true); };
   const handleWorkflowUpdate = (id: string, updates: Partial<WorkflowStep>) => { const step = workflowSteps.find(s => s.id === id); if (step) updateWorkflowStep({ ...step, ...updates }); };
@@ -2738,21 +2876,30 @@ if __name__ == "__main__":
                     <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[700px]">
                         <thead className="table-header"><tr><th className="px-6 py-4 table-sticky-left">Supplier</th><th className="px-6 py-4">Key Contact</th><th className="px-6 py-4">Categories</th><th className="px-6 py-4 text-center table-sticky-right">Action</th></tr></thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                            {visibleSuppliers.map(s => (
+                            {visibleSuppliers.map(s => {
+                                const contacts = normalizeSupplierContacts(s);
+                                const primaryContact = contacts.find(contact => contact.isPrimary) || contacts[0];
+                                return (
                                 <tr key={s.id} className="table-row">
                                     <td className="px-6 py-4 table-sticky-left"><div className="font-bold text-gray-900 dark:text-white">{s.name}</div><div className="text-xs">{s.address}</div></td>
-                                    <td className="px-6 py-4"><div className="font-medium text-gray-900 dark:text-white">{s.keyContact}</div><div className="text-xs text-[var(--color-brand)]">{s.contactEmail}</div><div className="text-xs">{s.phone}</div></td>
+                                    <td className="px-6 py-4">
+                                        <div className="font-medium text-gray-900 dark:text-white">{primaryContact?.name || s.keyContact || 'Inventory contact'}</div>
+                                        <div className="text-xs text-[var(--color-brand)]">{primaryContact?.email || s.contactEmail || 'No email recorded'}</div>
+                                        <div className="text-xs">{primaryContact?.phone || s.phone}</div>
+                                        {contacts.length > 1 && <div className="text-[11px] font-bold text-secondary mt-1">{contacts.length - 1} additional contact{contacts.length > 2 ? 's' : ''}</div>}
+                                    </td>
                                     <td className="px-6 py-4">{s.categories.map(c => <span key={c} className="badge mr-1">{c}</span>)}</td>
                                     <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button type="button" onClick={() => openSupplierForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button type="button" onClick={() => deleteSupplier(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                  </div>
              </div>
              {isSupplierFormOpen && (
                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
+                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-3xl max-h-[90vh] overflow-y-auto p-6 animate-slide-up">
                         <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{editingSupplier ? 'Edit Supplier' : 'New Supplier'}</h2>
                         <form onSubmit={handleSupplierFormSubmit} className="space-y-5">
                             <div>
@@ -2772,6 +2919,41 @@ if __name__ == "__main__":
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email</label>
                                 <input required type="email" className="input-field" value={supplierForm.contactEmail} onChange={e => setSupplierForm({...supplierForm, contactEmail: e.target.value})}/>
+                            </div>
+                            <div className="border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">Supplier contacts</h3>
+                                        <p className="text-xs text-secondary dark:text-gray-500">Add every sender who may provide stock reports for this supplier.</p>
+                                    </div>
+                                    <button type="button" onClick={addSupplierContactRow} className="btn-secondary text-xs flex items-center gap-2"><UserPlus size={14}/> Add Contact</button>
+                                </div>
+                                <div className="space-y-3">
+                                    {supplierForm.contacts.map((contact, index) => (
+                                        <div key={contact.id} className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_0.8fr_0.8fr_auto] gap-3 items-end bg-gray-50 dark:bg-white/5 rounded-xl p-3 border border-gray-100 dark:border-gray-800">
+                                            <div>
+                                                <label className="block text-[10px] font-bold uppercase text-secondary dark:text-gray-500 mb-1">Name</label>
+                                                <input className="input-field" value={contact.name} onChange={e => updateSupplierContactRow(contact.id, { name: e.target.value })}/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold uppercase text-secondary dark:text-gray-500 mb-1">Email</label>
+                                                <input type="email" className="input-field" value={contact.email} onChange={e => updateSupplierContactRow(contact.id, { email: e.target.value })}/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold uppercase text-secondary dark:text-gray-500 mb-1">Phone</label>
+                                                <input className="input-field" value={contact.phone} onChange={e => updateSupplierContactRow(contact.id, { phone: e.target.value })}/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold uppercase text-secondary dark:text-gray-500 mb-1">Role</label>
+                                                <input className="input-field" value={contact.role} onChange={e => updateSupplierContactRow(contact.id, { role: e.target.value })}/>
+                                            </div>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button type="button" onClick={() => updateSupplierContactRow(contact.id, { isPrimary: true })} className={`px-3 py-2 rounded-lg text-xs font-bold border ${contact.isPrimary ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white dark:bg-nocturne text-secondary border-gray-200 dark:border-gray-700'}`}>Primary</button>
+                                                {index > 0 && <button type="button" onClick={() => removeSupplierContactRow(contact.id)} className="icon-btn-red"><Trash2 size={14}/></button>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Address</label>

@@ -165,6 +165,15 @@ export interface Site {
     contactPerson: string;
 }
 
+export interface SupplierContact {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role?: string;
+  isPrimary?: boolean;
+}
+
 export interface Supplier {
   id: string;
   name: string;
@@ -173,6 +182,7 @@ export interface Supplier {
   phone: string;
   address: string;
   categories: string[];
+  contacts?: SupplierContact[];
 }
 
 export interface ItemPriceOption {

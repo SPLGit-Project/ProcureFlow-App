@@ -4,6 +4,7 @@ import { db } from '../services/db.ts';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
 import { DirectoryService } from '../services/graphService.ts';
+import { canonicalSupplierName, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import {
     getSessionActivityStorageKey,
     SESSION_ACTIVITY_WRITE_THROTTLE_MS,
@@ -2778,8 +2779,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const addSupplier = async (s: Supplier) => {
         try {
-            await db.addSupplier(s);
-            setSuppliers(prev => [...prev, s]);
+            const normalizedSupplier = { ...s, contacts: normalizeSupplierContacts(s) };
+            const existing = suppliers.find(supplier => canonicalSupplierName(supplier.name) === canonicalSupplierName(normalizedSupplier.name));
+            if (existing) {
+                const mergedSupplier = mergeSupplierRecords(existing, normalizedSupplier);
+                await db.updateSupplier(mergedSupplier);
+                setSuppliers(prev => prev.map(current => current.id === mergedSupplier.id ? mergedSupplier : current));
+                return;
+            }
+            await db.addSupplier(normalizedSupplier);
+            setSuppliers(prev => [...prev, normalizedSupplier]);
         } catch (e) {
              console.error(e);
              alert("Failed to add supplier");
@@ -2787,8 +2796,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
   const updateSupplier = async (s: Supplier) => {
         try {
-            await db.updateSupplier(s);
-            setSuppliers(prev => prev.map(existing => existing.id === s.id ? s : existing));
+            const normalizedSupplier = { ...s, contacts: normalizeSupplierContacts(s) };
+            await db.updateSupplier(normalizedSupplier);
+            setSuppliers(prev => prev.map(existing => existing.id === normalizedSupplier.id ? normalizedSupplier : existing));
         } catch (e) {
              console.error(e);
              alert("Failed to update supplier");

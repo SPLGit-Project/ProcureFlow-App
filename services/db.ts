@@ -1,13 +1,14 @@
 import { supabase } from '../lib/supabaseClient.ts';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds } from '../types.ts';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds, SupplierContact } from '../types.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
+import { normalizeSupplierContacts } from '../utils/suppliers.ts';
 
 
 
 // --- Fallback types for untyped Supabase results ---
 type DbItemRow = { id: string; sku: string; name: string; description: string; unit_price: number; uom: string; upq: number; category: string; sub_category: string; stock_level: number; supplier_id: string; is_rfid: boolean; is_cog: boolean; sap_item_code_raw: string; sap_item_code_norm: string; range_name: string; stock_type: string; active_flag: boolean; created_at: string; updated_at: string; item_weight: number; item_pool: string; item_catalog: string; item_type: string; rfid_flag: boolean; item_colour: string; item_pattern: string; item_material: string; item_size: string; measurements: string; cog_flag: boolean; cog_customer: string; specs: Record<string, unknown> };
-type DbSupplierRow = { id: string; name: string; contact_email: string; key_contact: string; phone: string; address: string; categories: string[] };
+type DbSupplierRow = { id: string; name: string; contact_email: string; key_contact: string; phone: string; address: string; categories: string[]; contacts?: SupplierContact[] | null };
 type DbSupplierProductMapRow = { id: string; supplier_id: string; product_id: string; supplier_sku: string; supplier_customer_stock_code: string; match_priority: number; pack_conversion_factor: number; mapping_status: SupplierProductMap['mappingStatus']; mapping_method: SupplierProductMap['mappingMethod']; confidence_score: number; mapping_justification: SupplierProductMap['mappingJustification']; manual_override: boolean; updated_at: string };
 type DbProductAvailabilityRow = { id: string; product_id: string; supplier_id: string; available_units: number; available_order_qty: number; updated_at: string };
 type DbCatalogItemRow = { id: string; item_id: string; supplier_id: string; supplier_sku: string; price: number };
@@ -267,15 +268,27 @@ export const db = {
     getSuppliers: async (): Promise<Supplier[]> => {
         const { data, error } = await supabase.from('suppliers').select('*');
         if (error) throw error;
-        return data.map((s: DbSupplierRow) => ({
-            id: s.id,
-            name: s.name,
-            contactEmail: s.contact_email,
-            keyContact: s.key_contact,
-            phone: s.phone,
-            address: s.address,
-            categories: s.categories || []
-        }));
+        return data.map((s: DbSupplierRow) => {
+            const supplier = {
+                id: s.id,
+                name: s.name,
+                contactEmail: s.contact_email || '',
+                keyContact: s.key_contact || '',
+                phone: s.phone || '',
+                address: s.address || '',
+                categories: s.categories || [],
+                contacts: s.contacts || []
+            };
+            const contacts = normalizeSupplierContacts(supplier);
+            const primaryContact = contacts.find(contact => contact.isPrimary) || contacts[0];
+            return {
+                ...supplier,
+                keyContact: supplier.keyContact || primaryContact?.name || '',
+                contactEmail: supplier.contactEmail || primaryContact?.email || '',
+                phone: supplier.phone || primaryContact?.phone || '',
+                contacts
+            };
+        });
     },
 
     addSupplier: async (s: Supplier): Promise<void> => {
@@ -286,7 +299,8 @@ export const db = {
             key_contact: s.keyContact,
             phone: s.phone,
             address: s.address,
-            categories: s.categories
+            categories: s.categories,
+            contacts: normalizeSupplierContacts(s)
         });
         if (error) throw error;
     },
@@ -298,7 +312,8 @@ export const db = {
             key_contact: s.keyContact,
             phone: s.phone,
             address: s.address,
-            categories: s.categories
+            categories: s.categories,
+            contacts: normalizeSupplierContacts(s)
         }).eq('id', s.id);
         if (error) throw error;
     },
