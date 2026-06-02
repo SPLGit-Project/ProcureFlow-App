@@ -205,6 +205,55 @@ const getConfidenceTone = (score: number) => {
   return { label: 'Manual decision needed', bar: 'bg-red-500', text: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20', border: 'border-red-200 dark:border-red-900/40' };
 };
 
+const toTitleCase = (value: string) => value.split(' ').map(part => part ? `${part[0].toUpperCase()}${part.slice(1)}` : '').join(' ');
+
+const extractDescriptorTags = (value?: string): Array<{ label: string; type: string }> => {
+  const text = (value || '').toLowerCase();
+  const tags: Array<{ label: string; type: string }> = [];
+  const add = (label: string, type: string) => {
+    if (!tags.some(tag => tag.label.toLowerCase() === label.toLowerCase() && tag.type === type)) {
+      tags.push({ label, type });
+    }
+  };
+
+  const measurementMatches: string[] = value?.match(/\b\d+(?:\.\d+)?\s*(?:x|X|by)\s*\d+(?:\.\d+)?(?:\s*(?:x|X|by)\s*\d+(?:\.\d+)?)?\s*(?:cm|mm|m|inch|in)?\b|\b\d+(?:\.\d+)?\s*(?:cm|mm|m|gsm)\b/g) || [];
+  measurementMatches.forEach(match => add(match.replace(/\s+/g, ' ').trim(), 'Measurement'));
+
+  const colours = ['white', 'blue', 'navy', 'green', 'orange', 'red', 'beige', 'charcoal', 'black', 'grey', 'gray', 'pink', 'yellow', 'brown', 'purple', 'crystalbrook'];
+  colours.forEach(colour => {
+    if (new RegExp(`\\b${colour}\\b`, 'i').test(value || '')) add(toTitleCase(colour), 'Colour');
+  });
+
+  const materials = ['cotton', 'polyester', 'rayon', 'linen', 'terry', 'p/c', 'microfibre', 'microfiber'];
+  materials.forEach(material => {
+    if (text.includes(material)) add(material.toUpperCase(), 'Material');
+  });
+
+  const productTypes = ['face washer', 'face towel', 'pool towel', 'bath robe', 'queen sheet', 'pillowcase', 'napkin', 'laundry bag', 'quilt cover', 'serviette', 'towel', 'sheet'];
+  productTypes.forEach(type => {
+    if (text.includes(type)) add(toTitleCase(type), 'Type');
+  });
+
+  if (/\brfid\b/i.test(value || '')) add('RFID', 'Flag');
+  if (/\bspl\b/i.test(value || '')) add('SPL', 'Flag');
+  return tags.slice(0, 12);
+};
+
+const getItemDescriptorText = (item?: Item): string => {
+  if (!item) return '';
+  return [
+    item.name,
+    item.description,
+    item.category,
+    item.subCategory,
+    item.itemColour,
+    item.itemMaterial,
+    item.itemSize,
+    item.measurements,
+    item.itemType
+  ].filter(Boolean).join(' ');
+};
+
 const Settings = () => {
   const {
     currentUser, users, addUser, roles, hasPermission, createRole, updateRole, deleteRole, permissions, updateUserRole, updateUserAccess,
@@ -1240,19 +1289,19 @@ const Settings = () => {
               let score = item.id === currentGuidedMapping.productId ? currentGuidedMapping.confidenceScore : 0;
 
               if (supplierNorms.some(norm => norm && norm === itemNorm)) {
-                  score += 0.45;
-                  reasons.push('Exact normalized code match');
+                  score += 1;
+                  reasons.push('SPL item code matches internal SKU');
               } else if (supplierNorms.some(norm => norm && (norm.includes(itemNorm) || itemNorm.includes(norm)))) {
-                  score += 0.25;
+                  score += 0.45;
                   reasons.push('Close code relationship');
               }
 
               const textScore = overlapScore(supplierText, itemAltText);
               if (textScore >= 0.45) {
-                  score += 0.3;
+                  score += 0.24;
                   reasons.push('Strong product wording overlap');
               } else if (textScore >= 0.2) {
-                  score += 0.16;
+                  score += 0.12;
                   reasons.push('Some product wording overlap');
               }
 
@@ -1353,6 +1402,8 @@ const Settings = () => {
       const confidenceTone = getConfidenceTone(mapping.confidenceScore);
       const selectedTone = getConfidenceTone(selectedGuidedCandidate?.score || 0);
       const progressPct = Math.round(((Math.min(guidedMappingIndex + 1, guidedReviewQueue.length)) / guidedReviewQueue.length) * 100);
+      const supplierDescriptorTags = extractDescriptorTags(currentGuidedSnapshot?.productName);
+      const selectedDescriptorTags = extractDescriptorTags(getItemDescriptorText(selectedGuidedCandidate?.item || currentGuidedItem));
 
       return (
           <div className="p-5 space-y-5">
@@ -1422,10 +1473,19 @@ const Settings = () => {
                                   <div>
                                       <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Description from report</div>
                                       <div className="font-semibold text-gray-900 dark:text-white">{currentGuidedSnapshot?.productName || 'No supplier description captured'}</div>
+                                      {supplierDescriptorTags.length > 0 && (
+                                          <div className="flex flex-wrap gap-2 mt-2">
+                                              {supplierDescriptorTags.map(tag => (
+                                                  <span key={`${tag.type}-${tag.label}`} className="text-[10px] font-bold px-2 py-1 rounded-full bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300">
+                                                      {tag.type}: {tag.label}
+                                                  </span>
+                                              ))}
+                                          </div>
+                                      )}
                                   </div>
                                   <div className="grid grid-cols-2 gap-3">
                                       <div className="p-3 rounded-lg bg-gray-50 dark:bg-white/5">
-                                          <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Customer ref</div>
+                                          <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">SPL item code</div>
                                           <div className="font-mono text-xs">{currentGuidedSnapshot?.customerStockCode || mapping.supplierCustomerStockCode || '-'}</div>
                                       </div>
                                       <div className="p-3 rounded-lg bg-gray-50 dark:bg-white/5">
@@ -1473,6 +1533,18 @@ const Settings = () => {
                                               {selectedGuidedCandidate.reasons.map(reason => <span key={reason} className="badge-gray">{reason}</span>)}
                                           </div>
                                       </div>
+                                      {selectedDescriptorTags.length > 0 && (
+                                          <div>
+                                              <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500 mb-1">System item descriptors</div>
+                                              <div className="flex flex-wrap gap-2">
+                                                  {selectedDescriptorTags.map(tag => (
+                                                      <span key={`${tag.type}-${tag.label}`} className="text-[10px] font-bold px-2 py-1 rounded-full bg-white/80 dark:bg-black/10 text-gray-700 dark:text-gray-300 border border-white/70 dark:border-white/10">
+                                                          {tag.type}: {tag.label}
+                                                      </span>
+                                                  ))}
+                                              </div>
+                                          </div>
+                                      )}
                                   </div>
                               ) : (
                                   <div className="text-sm text-secondary">Choose an option below to see item details.</div>

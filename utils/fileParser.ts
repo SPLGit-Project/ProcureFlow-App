@@ -51,7 +51,7 @@ const FIELD_DEFINITIONS = {
         weight: 1.0
     },
     productName: {
-        aliases: ['product', 'product name', 'item name', 'description', 'item', 'name'],
+        aliases: ['product', 'product name', 'item name', 'description', 'item', 'name', 'spl product description'],
         required: false,
         weight: 1.0 // Increased weight to prioritize 'Product' over 'Range'
     },
@@ -76,9 +76,9 @@ const FIELD_DEFINITIONS = {
         weight: 0.85
     },
     customerStockCode: {
-        aliases: ['customer code', 'customer stock code', 'cust code', 'customer sku', 'customer_stock_code', 'spl part id', 'spl code', 'customer part id', 'customer part'],
+        aliases: ['customer code', 'customer stock code', 'cust code', 'customer sku', 'customer_stock_code', 'spl item code', 'spl part id', 'spl code', 'customer part id', 'customer part'],
         required: false,
-        weight: 0.7
+        weight: 1.05
     },
     range: {
         aliases: ['range', 'product range'],

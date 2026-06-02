@@ -1494,17 +1494,17 @@ export const db = {
         const normItemSku = normalizeItemCode(item.sku || '').normalized;
         
         if (normSnap && [normItem, normItemSku].includes(normSnap) && normSnap !== '') {
-            score += 1.0;
-            justification.components.push({ type: 'ID_MATCH_NORM', score: 1.0, detail: 'Exact normalized code match' });
+            score += 2.0;
+            justification.components.push({ type: 'SPL_ITEM_CODE_MATCH', score: 2.0, detail: `Supplier-provided SPL item code ${snap.customer_stock_code} matches internal item code` });
         } else if (normSupplierSku && [normItem, normItemSku].includes(normSupplierSku) && normSupplierSku !== '') {
             score += 0.95;
             justification.components.push({ type: 'SUPPLIER_SKU_MATCH', score: 0.95, detail: 'Supplier SKU matches item code after normalization' });
         } else if (snap.customer_stock_code && item.sku && snap.customer_stock_code.toLowerCase().trim() === item.sku.toLowerCase().trim()) {
-            score += 1.0;
-            justification.components.push({ type: 'ID_MATCH_SKU', score: 1.0, detail: 'Exact SKU match' });
+            score += 2.0;
+            justification.components.push({ type: 'SPL_ITEM_CODE_MATCH', score: 2.0, detail: `Supplier-provided SPL item code ${snap.customer_stock_code} exactly matches internal SKU` });
         } else if (snap.customer_stock_code_alt_norm && [normItem, normItemSku].includes(snap.customer_stock_code_alt_norm)) {
-             score += 0.9;
-             justification.components.push({ type: 'ID_MATCH_ALT', score: 0.9, detail: 'Alternate normalized match' });
+             score += 1.8;
+             justification.components.push({ type: 'SPL_ITEM_CODE_ALT_MATCH', score: 1.8, detail: 'Supplier-provided SPL item code matches an alternate internal item code form' });
         }
 
         const tokenize = (str: string) => (str || '').toLowerCase().split(/[\s\-_,./]+/).map(t => t.replace(/s$/, '').trim()).filter(t => t.length > 2);
@@ -1662,7 +1662,7 @@ export const db = {
                  const margin = bestScore - secondBestScore;
                  const isHighConfidence = bestScore >= 1.2 && margin >= 0.25;
                  const status = isHighConfidence ? 'CONFIRMED' : 'PROPOSED';
-                 const confidenceScore = Math.min(1, Number((bestScore / 1.5).toFixed(2)));
+                 const confidenceScore = Math.min(1, Number((bestScore / 2.4).toFixed(2)));
                  if (!isHighConfidence && bestJustification && typeof bestJustification === 'object' && 'components' in bestJustification) {
                     (bestJustification as SupplierProductMap['mappingJustification'])?.components.push({
                         type: 'REVIEW_REQUIRED',
