@@ -766,7 +766,7 @@ const Settings = () => {
   const [stockSupplierId, setStockSupplierId] = useState('');
   const [stockDateFrom, setStockDateFrom] = useState(new Date().toISOString().split('T')[0]); // Renamed from stockFilterDateFrom to generic
   const [stockFilterDateTo, setStockFilterDateTo] = useState('');
-  const [stockFilterStatus, setStockFilterStatus] = useState<'ALL' | 'MAPPED' | 'UNMAPPED'>('ALL');
+  const [stockFilterStatus, setStockFilterStatus] = useState<'ALL' | 'MAPPED' | 'UNMAPPED'>('UNMAPPED');
   
   // Import State (Derived)
   // importSupplierId removed -> use stockSupplierId
@@ -1391,8 +1391,8 @@ const Settings = () => {
                   <div className="inline-flex p-3 rounded-full bg-green-50 dark:bg-green-950/20 text-green-600 mb-3">
                       <CheckCircle2 size={28}/>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">No proposed mappings need review</h3>
-                  <p className="text-sm text-secondary dark:text-gray-400 mt-1">Run auto-match after the next supplier upload, or review confirmed mapping memory.</p>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">All auto-matches confirmed</h3>
+                  <p className="text-sm text-secondary dark:text-gray-400 mt-1">Nothing left to confirm here. Run Auto-Match after the next supplier upload, or head to System Memory to review your locked decisions.</p>
               </div>
           );
       }
@@ -1411,10 +1411,10 @@ const Settings = () => {
                   <div>
                       <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                           <Sparkles size={20} className="text-[var(--color-brand)]"/>
-                          Guided Mapping Review
+                          Confirm Auto-Matches
                       </h3>
                       <p className="text-xs text-secondary dark:text-gray-400 mt-1">
-                          Review the supplier row, compare the proposed match, and choose the strongest system item using the match signals.
+                          The system found these potential matches automatically — but needs your confirmation before locking them in. Review each one, adjust if needed, and confirm or reject. Confirmed mappings are saved to System Memory and applied automatically on future uploads.
                       </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -1952,14 +1952,14 @@ const Settings = () => {
                           Supplier Items & Availability
                       </h3>
                       <p className="text-sm text-secondary dark:text-gray-400 mt-1">
-                          Review the supplier inventory rows currently feeding the mapping workflow. Use the supplier selector above to keep this scoped.
+                          Your to-do list — unmapped supplier items that need to be linked to an internal master item. Work through these one by one; as each is mapped the list shrinks.
                       </p>
                   </div>
                   <div className="flex items-center gap-2">
                       <select className="input-field w-40" value={stockFilterStatus} onChange={e => setStockFilterStatus(e.target.value as any)}>
-                          <option value="ALL">All Status</option>
-                          <option value="MAPPED">Mapped</option>
                           <option value="UNMAPPED">Unmapped</option>
+                          <option value="MAPPED">Mapped</option>
+                          <option value="ALL">All Items</option>
                       </select>
                       <span className="text-xs font-bold text-gray-500 dark:text-gray-400 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800">
                           {rows.length} rows
@@ -1968,20 +1968,20 @@ const Settings = () => {
               </div>
 
               <div className="table-shell">
-                  <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[1200px]">
+                  <table className="dense-admin-table text-secondary dark:text-gray-400 w-full">
                       <thead className="table-header">
                           <tr>
-                              <th className="px-4 py-4 table-sticky-left">Supplier Product</th>
-                              <th className="px-4 py-4">Internal Master Item</th>
-                              <th className="px-4 py-4">Status</th>
-                              <th className="px-4 py-4">Supplier</th>
-                              <th className="px-4 py-4">Details</th>
-                              <th className="px-4 py-4 text-right">Sell $</th>
-                              <th className="px-4 py-4 text-right">SOH</th>
-                              <th className="px-4 py-4 text-right">Committed</th>
-                              <th className="px-4 py-4 text-right">B/O</th>
-                              <th className="px-4 py-4 text-right">Available</th>
-                              <th className="px-4 py-4">Incoming</th>
+                              <th className="px-3 py-3 table-sticky-left whitespace-nowrap">Supplier Product</th>
+                              <th className="px-3 py-3 whitespace-nowrap">Internal Item</th>
+                              <th className="px-3 py-3 whitespace-nowrap">Status</th>
+                              <th className="px-3 py-3 whitespace-nowrap">Supplier</th>
+                              <th className="px-3 py-3 whitespace-nowrap">Details</th>
+                              <th className="px-3 py-3 text-right whitespace-nowrap">Sell $</th>
+                              <th className="px-3 py-3 text-right whitespace-nowrap">SOH</th>
+                              <th className="px-3 py-3 text-right whitespace-nowrap">Commit</th>
+                              <th className="px-3 py-3 text-right whitespace-nowrap">B/O</th>
+                              <th className="px-3 py-3 text-right whitespace-nowrap">Avail</th>
+                              <th className="px-3 py-3 whitespace-nowrap">Incoming</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
@@ -1992,54 +1992,53 @@ const Settings = () => {
 
                               return (
                                   <tr key={snapshot.id} className="table-row group">
-                                      <td className="px-4 py-4 table-sticky-left">
-                                          <div className="font-bold text-gray-900 dark:text-white truncate max-w-[260px]" title={snapshot.productName}>{snapshot.productName}</div>
+                                      <td className="px-3 py-3 table-sticky-left">
+                                          <div className="font-bold text-gray-900 dark:text-white truncate max-w-[200px]" title={snapshot.productName}>{snapshot.productName}</div>
                                           <div className="text-xs font-mono opacity-60">{snapshot.supplierSku}</div>
-                                          <div className="mt-1 font-mono text-[10px] font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-white/10 px-2 py-1 rounded w-fit">
-                                              Ref: {snapshot.customerStockCode || '-'}
-                                          </div>
+                                          {snapshot.customerStockCode && (
+                                              <div className="mt-1 font-mono text-[10px] font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/10 px-1.5 py-0.5 rounded w-fit">
+                                                  Ref: {snapshot.customerStockCode}
+                                              </div>
+                                          )}
                                       </td>
-                                      <td className="px-4 py-4">
+                                      <td className="px-3 py-3">
                                           {mappedItem ? (
                                               <div>
-                                                  <div className="font-bold text-gray-900 dark:text-white truncate max-w-[240px]" title={mappedItem.name}>{mappedItem.name}</div>
+                                                  <div className="font-bold text-gray-900 dark:text-white truncate max-w-[180px]" title={mappedItem.name}>{mappedItem.name}</div>
                                                   <div className="text-xs font-mono text-secondary dark:text-gray-500">{mappedItem.sku}</div>
                                               </div>
                                           ) : (
-                                              <div className="text-sm text-gray-400">No internal item selected</div>
+                                              <div className="text-xs text-gray-400 italic">Not yet mapped</div>
                                           )}
                                       </td>
-                                      <td className="px-4 py-4">
+                                      <td className="px-3 py-3">
                                           {mappedItem ? (
-                                              <div className="flex flex-col">
-                                                  <span className="badge bg-green-100 text-green-800 border-green-200 w-fit">Mapped</span>
-                                              </div>
+                                              <span className="badge bg-green-100 text-green-800 border-green-200 w-fit">Mapped</span>
                                           ) : (
                                               <button
                                                   type="button"
                                                   onClick={() => { setMappingSource(snapshot); setItemSearch(''); setIsManualMapOpen(true); }}
-                                                  className="badge bg-red-100 text-red-800 border-red-200 hover:bg-red-200 w-fit"
+                                                  className="badge bg-red-100 text-red-800 border-red-200 hover:bg-red-200 w-fit whitespace-nowrap"
                                               >
                                                   Map Now
                                               </button>
                                           )}
                                       </td>
-                                      <td className="px-4 py-4 font-bold text-gray-900 dark:text-white">{supplier?.name || '-'}</td>
-                                      <td className="px-4 py-4">
+                                      <td className="px-3 py-3 font-bold text-gray-900 dark:text-white text-xs truncate max-w-[100px]">{supplier?.name || '-'}</td>
+                                      <td className="px-3 py-3">
                                           <div className="text-[10px] space-y-0.5 text-gray-400">
-                                              <div><span className="font-bold">Cat:</span> {snapshot.category || '-'}</div>
-                                              <div><span className="font-bold">Sub:</span> {snapshot.subCategory || '-'}</div>
-                                              <div><span className="font-bold">Rng:</span> {snapshot.range || '-'}</div>
-                                              <div><span className="font-bold">Type:</span> {snapshot.stockType || '-'}</div>
-                                              <div><span className="font-bold">Uploaded:</span> {snapshot.snapshotDate ? new Date(snapshot.snapshotDate).toLocaleDateString() : '-'}</div>
+                                              {snapshot.category && <div><span className="font-bold">Cat:</span> {snapshot.category}</div>}
+                                              {snapshot.subCategory && <div><span className="font-bold">Sub:</span> {snapshot.subCategory}</div>}
+                                              {snapshot.stockType && <div><span className="font-bold">Type:</span> {snapshot.stockType}</div>}
+                                              <div className="opacity-60">{snapshot.snapshotDate ? new Date(snapshot.snapshotDate).toLocaleDateString() : '-'}</div>
                                           </div>
                                       </td>
-                                      <td className="px-4 py-4 text-right font-mono text-gray-600 dark:text-gray-400">{snapshot.sellPrice ? `$${snapshot.sellPrice.toFixed(2)}` : '-'}</td>
-                                      <td className="px-4 py-4 text-right font-mono">{snapshot.stockOnHand}</td>
-                                      <td className="px-4 py-4 text-right font-mono text-orange-500">{snapshot.committedQty}</td>
-                                      <td className="px-4 py-4 text-right font-mono text-red-500">{snapshot.backOrderedQty}</td>
-                                      <td className="px-4 py-4 text-right font-bold text-green-600 dark:text-green-500 font-mono text-base">{snapshot.availableQty}</td>
-                                      <td className="px-4 py-4 text-xs">{snapshot.incomingStock && snapshot.incomingStock.length > 0 ? snapshot.incomingStock.map((inc, i) => <span key={i} className="inline-block bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded mr-1 mb-1">{inc.month}: {inc.qty}</span>) : <span className="text-gray-300">-</span>}</td>
+                                      <td className="px-3 py-3 text-right font-mono text-gray-600 dark:text-gray-400">{snapshot.sellPrice ? `$${snapshot.sellPrice.toFixed(2)}` : '-'}</td>
+                                      <td className="px-3 py-3 text-right font-mono">{snapshot.stockOnHand}</td>
+                                      <td className="px-3 py-3 text-right font-mono text-orange-500">{snapshot.committedQty}</td>
+                                      <td className="px-3 py-3 text-right font-mono text-red-500">{snapshot.backOrderedQty}</td>
+                                      <td className="px-3 py-3 text-right font-bold text-green-600 dark:text-green-500 font-mono">{snapshot.availableQty}</td>
+                                      <td className="px-3 py-3 text-xs">{snapshot.incomingStock && snapshot.incomingStock.length > 0 ? snapshot.incomingStock.map((inc, i) => <span key={i} className="inline-block bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded mr-1 mb-0.5">{inc.month}: {inc.qty}</span>) : <span className="text-gray-300">-</span>}</td>
                                   </tr>
                               );
                           })}
@@ -2960,30 +2959,47 @@ if __name__ == "__main__":
               </div>
 
               {/* Sub Tabs */}
-              <div className="flex gap-6 border-b border-gray-200 dark:border-gray-800">
-                  <button type="button" onClick={() => setMappingSubTab('EMAIL_INGEST')} className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${mappingSubTab === 'EMAIL_INGEST' ? 'border-blue-500 text-blue-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+              <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto scrollbar-hide">
+                  <button type="button" onClick={() => setMappingSubTab('EMAIL_INGEST')} className={`pb-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 shrink-0 ${mappingSubTab === 'EMAIL_INGEST' ? 'border-blue-500 text-blue-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
                       1. Ingest
                   </button>
-                  <button type="button" onClick={() => setMappingSubTab('SUPPLIER_ITEMS')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'SUPPLIER_ITEMS' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
-                      2. Supplier Items ({mappingReviewStats.totalSnapshotRows})
+                  <button type="button" onClick={() => setMappingSubTab('SUPPLIER_ITEMS')} className={`pb-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap shrink-0 flex items-center gap-2 ${mappingSubTab === 'SUPPLIER_ITEMS' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+                      2. Supplier Items
+                      {mappingReviewStats.unmapped.length > 0 && (
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${mappingSubTab === 'SUPPLIER_ITEMS' ? 'bg-[var(--color-brand)]/15 text-[var(--color-brand)]' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                              {mappingReviewStats.unmapped.length} left
+                          </span>
+                      )}
                   </button>
-                  <button type="button" onClick={() => setMappingSubTab('PROPOSED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'PROPOSED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
-                      3. Review ({mappingReviewStats.proposed.length})
+                  <button type="button" onClick={() => setMappingSubTab('PROPOSED')} className={`pb-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap shrink-0 flex items-center gap-2 ${mappingSubTab === 'PROPOSED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+                      3. Confirm Matches
+                      {mappingReviewStats.proposed.length > 0 && (
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${mappingSubTab === 'PROPOSED' ? 'bg-[var(--color-brand)]/15 text-[var(--color-brand)]' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                              {mappingReviewStats.proposed.length}
+                          </span>
+                      )}
                   </button>
-                  <button type="button" onClick={() => setMappingSubTab('CONFIRMED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'CONFIRMED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
-                      4. Confirmed ({mappingReviewStats.confirmed.length})
+                  <button type="button" onClick={() => setMappingSubTab('CONFIRMED')} className={`pb-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap shrink-0 flex items-center gap-2 ${mappingSubTab === 'CONFIRMED' ? 'border-[var(--color-brand)] text-[var(--color-brand)]' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+                      4. Confirmed
+                      {mappingReviewStats.confirmed.length > 0 && (
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${mappingSubTab === 'CONFIRMED' ? 'bg-[var(--color-brand)]/15 text-[var(--color-brand)]' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                              {mappingReviewStats.confirmed.length}
+                          </span>
+                      )}
                   </button>
-                  <button type="button" onClick={() => setMappingSubTab('REJECTED')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'REJECTED' ? 'border-gray-500 text-gray-700 dark:text-gray-200' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
-                      Not Mapped ({mappingReviewStats.notMapped.length})
-                  </button>
-                  <button type="button" 
+                  <button type="button"
                     onClick={() => {
                         setMappingSubTab('MEMORY');
                         getMappingMemory(mappingSupplierId || undefined).then(setMappingMemory);
-                    }} 
-                    className={`pb-3 text-sm font-bold border-b-2 transition-colors ${mappingSubTab === 'MEMORY' ? 'border-purple-500 text-purple-500' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}
+                    }}
+                    className={`pb-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap shrink-0 flex items-center gap-2 ${mappingSubTab === 'MEMORY' ? 'border-purple-500 text-purple-600 dark:text-purple-400' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}
                   >
-                      Mapping Memory (All Suppliers)
+                      5. System Memory
+                      {mappingMemory.length > 0 && (
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${mappingSubTab === 'MEMORY' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400'}`}>
+                              {mappingMemory.length}
+                          </span>
+                      )}
                   </button>
               </div>
 
@@ -3047,67 +3063,87 @@ if __name__ == "__main__":
                       renderGuidedMappingReview()
                   ) : mappingSubTab === 'MEMORY' ? (
                       <div className="p-0">
-                          <div className="p-4 bg-purple-50 dark:bg-purple-900/10 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center">
-                              <div>
-                                  <h4 className="font-bold text-purple-900 dark:text-purple-100 flex items-center gap-2 text-sm"><Database size={16}/> Persistent Mapping Memory</h4>
-                                  <p className="text-[11px] text-purple-700 dark:text-purple-300">This memory allows the system to automatically map future uploads based on these historical confirmed decisions.</p>
+                          {/* Commitment stage header */}
+                          <div className="p-5 bg-purple-50 dark:bg-purple-900/10 border-b border-purple-100 dark:border-purple-900/30">
+                              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                                  <div className="flex items-start gap-3">
+                                      <div className="p-2.5 rounded-xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 shrink-0">
+                                          <Database size={18}/>
+                                      </div>
+                                      <div>
+                                          <h4 className="font-bold text-purple-900 dark:text-purple-100 text-base flex items-center gap-2">
+                                              System Memory — Locked Mapping Decisions
+                                          </h4>
+                                          <p className="text-xs text-purple-700 dark:text-purple-300 mt-1 max-w-2xl leading-relaxed">
+                                              Every entry below is a confirmed decision the system has locked into long-term memory.
+                                              When new supplier files arrive, these mappings are applied <strong>automatically</strong> — no manual work needed.
+                                              The more decisions you confirm, the faster and more accurate each future upload becomes.
+                                          </p>
+                                          <div className="mt-3 flex items-center gap-3">
+                                              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/40 px-3 py-1.5 rounded-full">
+                                                  <CheckCircle2 size={13}/> {mappingMemory.length} decision{mappingMemory.length !== 1 ? 's' : ''} locked
+                                              </span>
+                                              <span className="text-xs text-purple-500 dark:text-purple-400">
+                                                  Removing a decision means it will need to be re-mapped on the next upload
+                                              </span>
+                                          </div>
+                                      </div>
+                                  </div>
+                                  <button type="button"
+                                    onClick={async () => {
+                                        if (!globalThis.confirm('This will update Master Item prices to match the latest confirmed supplier sell prices. Continue?')) return;
+                                        setIsSyncing(true);
+                                        try {
+                                            await syncItemsFromSnapshots();
+                                            alert('Item Prices Synchronized Successfully');
+                                        } catch (e: any) {
+                                            alert('Sync failed: ' + e.message);
+                                        } finally {
+                                            setIsSyncing(false);
+                                        }
+                                    }}
+                                    disabled={isSyncing}
+                                    className="shrink-0 bg-purple-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2 shadow-sm shadow-purple-600/20"
+                                  >
+                                      {isSyncing ? <RefreshCw size={14} className="animate-spin"/> : <Zap size={14}/>}
+                                      Apply to Item Prices
+                                  </button>
                               </div>
-                              <button type="button" 
-                                onClick={async () => {
-                                    if (!globalThis.confirm('This will update Master Item prices to match the latest confirmed supplier sell prices. Continue?')) return;
-                                    setIsSyncing(true);
-                                    try {
-                                        await syncItemsFromSnapshots();
-                                        alert('Item Prices Synchronized Successfully');
-                                    } catch (e: any) {
-                                        alert('Sync failed: ' + e.message);
-                                    } finally {
-                                        setIsSyncing(false);
-                                    }
-                                }}
-                                disabled={isSyncing}
-                                className="bg-purple-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
-                              >
-                                  {isSyncing ? <RefreshCw size={14} className="animate-spin"/> : <Zap size={14}/>}
-                                  Sync Item Prices
-                              </button>
                           </div>
-                          <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[900px]">
+                          <table className="dense-admin-table text-secondary dark:text-gray-400 w-full">
                               <thead className="table-header"><tr>
-                                  <th className="px-6 py-4 table-sticky-left">Supplier Product</th>
-                                  <th className="px-6 py-4">Internal Master Item</th>
-                                  <th className="px-6 py-4">Status</th>
-                                  <th className="px-6 py-4">Supplier</th>
-                                  <th className="px-6 py-4">Created</th>
-                                  <th className="px-6 py-4 text-center table-sticky-right">Action</th>
+                                  <th className="px-4 py-3 table-sticky-left whitespace-nowrap">Supplier Product</th>
+                                  <th className="px-4 py-3 whitespace-nowrap">Internal Master Item</th>
+                                  <th className="px-4 py-3 whitespace-nowrap">Method</th>
+                                  <th className="px-4 py-3 whitespace-nowrap">Supplier</th>
+                                  <th className="px-4 py-3 whitespace-nowrap">Locked</th>
+                                  <th className="px-4 py-3 text-center table-sticky-right whitespace-nowrap">Action</th>
                               </tr></thead>
                               <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                                   {mappingMemory.map(mem => (
                                       <tr key={mem.id} className="table-row">
-                                          <td className="px-6 py-4 table-sticky-left">
+                                          <td className="px-4 py-3 table-sticky-left">
                                               <div className="font-mono text-xs">{mem.supplierSku}</div>
                                               <div className="text-[10px] text-gray-400">Ref: {mem.supplierCustomerStockCode || '-'}</div>
                                           </td>
-                                          <td className="px-6 py-4">
-                                              <div className="font-bold text-gray-900 dark:text-white">{mem.productName}</div>
-                                              <div className="text-xs font-mono">{mem.internalSku}</div>
+                                          <td className="px-4 py-3">
+                                              <div className="font-bold text-gray-900 dark:text-white truncate max-w-[200px]">{mem.productName}</div>
+                                              <div className="text-xs font-mono text-secondary dark:text-gray-500">{mem.internalSku}</div>
                                           </td>
-                                          <td className="px-6 py-4">
-                                              <span className="badge bg-green-100 text-green-800 border-green-200">CONFIRMED</span>
-                                              <div className="mt-1">
-                                                  <span className="badge-gray">{mem.mappingMethod}</span>
-                                              </div>
+                                          <td className="px-4 py-3">
+                                              <span className="badge-gray text-[10px]">{mem.mappingMethod}</span>
                                           </td>
-                                          <td className="px-6 py-4">
-                                              <div className="font-bold text-gray-900 dark:text-white uppercase tracking-tight">{mem.supplierName}</div>
+                                          <td className="px-4 py-3">
+                                              <div className="font-semibold text-gray-800 dark:text-gray-200 text-xs">{mem.supplierName}</div>
                                           </td>
-                                          <td className="px-6 py-4 text-xs font-mono">
+                                          <td className="px-4 py-3 text-xs font-mono text-gray-500">
                                               {mem.updatedAt ? new Date(mem.updatedAt).toLocaleDateString() : '-'}
                                           </td>
-                                          <td className="px-6 py-4 text-center table-sticky-right">
-                                              <button type="button" 
+                                          <td className="px-4 py-3 text-center table-sticky-right">
+                                              <button type="button"
+                                                title="Remove from system memory — future uploads will need this re-mapped"
                                                 onClick={async () => {
-                                                    if (!globalThis.confirm('Forget this mapping decision? Future uploads will need re-mapping.')) return;
+                                                    if (!globalThis.confirm('Remove this from system memory?\n\nFuture supplier uploads will need this item to be re-mapped manually.')) return;
                                                     await deleteMapping(mem.id);
                                                     setMappingMemory(prev => prev.filter(p => p.id !== mem.id));
                                                 }}
@@ -3125,16 +3161,16 @@ if __name__ == "__main__":
                           </table>
                       </div>
                   ) : (
-                      <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[900px]">
+                      <table className="dense-admin-table text-secondary dark:text-gray-400 w-full">
                           <thead className="table-header"><tr>
-                              <th className="px-6 py-4 table-sticky-left">Supplier Product</th>
-                              <th className="px-6 py-4">Internal Master Item</th>
-                              <th className="px-6 py-4">Status</th>
-                              <th className="px-6 py-4">Details</th>
-                              <th className="px-6 py-4 text-right">Price (Sell)</th>
-                              <th className="px-6 py-4 text-right">Stock (SOH)</th>
-                              <th className="px-6 py-4 text-center">Confidence</th>
-                              <th className="px-6 py-4 text-center table-sticky-right">Action</th>
+                              <th className="px-4 py-3 table-sticky-left whitespace-nowrap">Supplier Product</th>
+                              <th className="px-4 py-3 whitespace-nowrap">Internal Item</th>
+                              <th className="px-4 py-3 whitespace-nowrap">Status</th>
+                              <th className="px-4 py-3 whitespace-nowrap">Details</th>
+                              <th className="px-4 py-3 text-right whitespace-nowrap">Sell $</th>
+                              <th className="px-4 py-3 text-right whitespace-nowrap">SOH</th>
+                              <th className="px-4 py-3 text-center whitespace-nowrap">Confidence</th>
+                              <th className="px-4 py-3 text-center table-sticky-right whitespace-nowrap">Action</th>
                           </tr></thead>
                           <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                               {supplierScopedMappings.filter(m => m.mappingStatus === mappingSubTab).map(map => {
