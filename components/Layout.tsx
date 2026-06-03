@@ -564,18 +564,19 @@ const Layout = () => {
                       )}
                     </div>
                   </div>
-                  <div className="flex-1 flex items-center justify-center min-w-0 pr-2">
+                  <div className="flex-1 flex items-center min-w-0 pr-2 gap-3">
+                    {/* Site selector lives outside the overflow container so its dropdown isn't clipped */}
+                    {userSites.length > 0 && (
+                      <div className="hidden sm:block w-[230px] md:w-[300px] shrink-0">
+                        <MultiSiteSelector
+                          sites={userSites}
+                          selectedSiteIds={activeSiteIds}
+                          onChange={setActiveSiteIds}
+                          variant={theme === 'dark' ? 'brand' : 'light'}
+                        />
+                      </div>
+                    )}
                     <div id="admin-tab-slot" className="flex-1 flex items-center justify-center overflow-x-auto scrollbar-hide min-w-0">
-                      {userSites.length > 0 && (
-                        <div className="hidden sm:block w-[230px] md:w-[300px] shrink-0 mr-4">
-                          <MultiSiteSelector
-                            sites={userSites}
-                            selectedSiteIds={activeSiteIds}
-                            onChange={setActiveSiteIds}
-                            variant={theme === 'dark' ? 'brand' : 'light'}
-                          />
-                        </div>
-                      )}
                       {pageMeta.stepInfo && (
                         <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 select-none shrink-0">
                           <span className="text-[10px] font-black uppercase tracking-widest text-tranquil">

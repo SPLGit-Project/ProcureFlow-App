@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
 import { Item, ItemPriceOption, POLineItem, PORequest } from '../types.ts';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
+import { dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
 import {
   ShoppingCart,
   Search,
@@ -87,6 +88,9 @@ const isSameCartPriceLine = (
 const POCreate = () => {
   const { items, suppliers, userSites, mappings, stockSnapshots, currentUser, createPO, saveDraftPO, getEffectiveStock, reloadData, featureFlags } = useApp();
   const sites = userSites;
+  // Deduplicate suppliers by canonical name — raw DB list can contain multiple
+  // records for the same supplier (e.g. one per mapping entry).
+  const displaySuppliers = useMemo(() => dedupeSuppliersForDisplay(suppliers), [suppliers]);
   const navigate = useNavigate();
   const draftKey = currentUser ? `pf_draft:${currentUser.id}:po-create` : '';
   const initialDraft = useMemo(
@@ -139,12 +143,12 @@ const POCreate = () => {
 
   useEffect(() => {
     if (!selectedSupplierId) return;
-    if (suppliers.some(supplier => supplier.id === selectedSupplierId)) return;
+    if (displaySuppliers.some(supplier => supplier.id === selectedSupplierId)) return;
     setSelectedSupplierId('');
     setCart([]);
     setQuantityDrafts({});
     setSelectedDetailItem(null);
-  }, [selectedSupplierId, suppliers]);
+  }, [selectedSupplierId, displaySuppliers]);
 
   const handleSupplierChange = (nextSupplierId: string) => {
     setSelectedSupplierId(nextSupplierId);
@@ -154,7 +158,7 @@ const POCreate = () => {
   };
 
   const selectedSite = sites.find(s => s.id === selectedSiteId);
-  const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
+  const selectedSupplier = displaySuppliers.find(s => s.id === selectedSupplierId);
 
   const createDraftSnapshot = useMemo<POCreateDraft>(() => ({
     selectedSiteId,
@@ -719,7 +723,7 @@ const POCreate = () => {
                                 }}
                             >
                                 <option value="">Select a supplier...</option>
-                                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                {displaySuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         </div>
                     </div>
