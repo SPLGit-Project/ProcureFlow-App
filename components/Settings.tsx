@@ -1971,10 +1971,10 @@ const Settings = () => {
                   <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[1200px]">
                       <thead className="table-header">
                           <tr>
-                              <th className="px-4 py-4 table-sticky-left">Status</th>
+                              <th className="px-4 py-4 table-sticky-left">Supplier Product</th>
+                              <th className="px-4 py-4">Internal Master Item</th>
+                              <th className="px-4 py-4">Status</th>
                               <th className="px-4 py-4">Supplier</th>
-                              <th className="px-4 py-4">Cust Code</th>
-                              <th className="px-4 py-4">Product</th>
                               <th className="px-4 py-4">Details</th>
                               <th className="px-4 py-4 text-right">Sell $</th>
                               <th className="px-4 py-4 text-right">SOH</th>
@@ -1993,10 +1993,26 @@ const Settings = () => {
                               return (
                                   <tr key={snapshot.id} className="table-row group">
                                       <td className="px-4 py-4 table-sticky-left">
+                                          <div className="font-bold text-gray-900 dark:text-white truncate max-w-[260px]" title={snapshot.productName}>{snapshot.productName}</div>
+                                          <div className="text-xs font-mono opacity-60">{snapshot.supplierSku}</div>
+                                          <div className="mt-1 font-mono text-[10px] font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-white/10 px-2 py-1 rounded w-fit">
+                                              Ref: {snapshot.customerStockCode || '-'}
+                                          </div>
+                                      </td>
+                                      <td className="px-4 py-4">
+                                          {mappedItem ? (
+                                              <div>
+                                                  <div className="font-bold text-gray-900 dark:text-white truncate max-w-[240px]" title={mappedItem.name}>{mappedItem.name}</div>
+                                                  <div className="text-xs font-mono text-secondary dark:text-gray-500">{mappedItem.sku}</div>
+                                              </div>
+                                          ) : (
+                                              <div className="text-sm text-gray-400">No internal item selected</div>
+                                          )}
+                                      </td>
+                                      <td className="px-4 py-4">
                                           {mappedItem ? (
                                               <div className="flex flex-col">
                                                   <span className="badge bg-green-100 text-green-800 border-green-200 w-fit">Mapped</span>
-                                                  <span className="text-[10px] text-tertiary dark:text-gray-500 font-mono mt-0.5 max-w-[120px] truncate" title={mappedItem.name}>{mappedItem.sku}</span>
                                               </div>
                                           ) : (
                                               <button
@@ -2009,15 +2025,6 @@ const Settings = () => {
                                           )}
                                       </td>
                                       <td className="px-4 py-4 font-bold text-gray-900 dark:text-white">{supplier?.name || '-'}</td>
-                                      <td className="px-4 py-4">
-                                          <div className="font-mono text-xs font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-white/10 px-2 py-1 rounded w-fit">
-                                              {snapshot.customerStockCode || '-'}
-                                          </div>
-                                      </td>
-                                      <td className="px-4 py-4">
-                                          <div className="font-bold text-gray-900 dark:text-white truncate max-w-[220px]" title={snapshot.productName}>{snapshot.productName}</div>
-                                          <div className="text-xs font-mono opacity-50">{snapshot.supplierSku}</div>
-                                      </td>
                                       <td className="px-4 py-4">
                                           <div className="text-[10px] space-y-0.5 text-gray-400">
                                               <div><span className="font-bold">Cat:</span> {snapshot.category || '-'}</div>
@@ -3067,10 +3074,10 @@ if __name__ == "__main__":
                           </div>
                           <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[900px]">
                               <thead className="table-header"><tr>
-                                  <th className="px-6 py-4 table-sticky-left">Supplier</th>
-                                  <th className="px-6 py-4">Supplier SKU</th>
-                                  <th className="px-6 py-4">Conf. Item</th>
-                                  <th className="px-6 py-4">Method</th>
+                                  <th className="px-6 py-4 table-sticky-left">Supplier Product</th>
+                                  <th className="px-6 py-4">Internal Master Item</th>
+                                  <th className="px-6 py-4">Status</th>
+                                  <th className="px-6 py-4">Supplier</th>
                                   <th className="px-6 py-4">Created</th>
                                   <th className="px-6 py-4 text-center table-sticky-right">Action</th>
                               </tr></thead>
@@ -3078,20 +3085,21 @@ if __name__ == "__main__":
                                   {mappingMemory.map(mem => (
                                       <tr key={mem.id} className="table-row">
                                           <td className="px-6 py-4 table-sticky-left">
-                                              <div className="flex items-center gap-3">
-                                                <div className="font-bold text-gray-900 dark:text-white uppercase tracking-tight">{mem.supplierName}</div>
-                                              </div>
-                                          </td>
-                                          <td className="px-6 py-4">
                                               <div className="font-mono text-xs">{mem.supplierSku}</div>
-                                              <div className="text-[10px] text-gray-400">Cust Ref: {mem.supplierCustomerStockCode || '-'}</div>
+                                              <div className="text-[10px] text-gray-400">Ref: {mem.supplierCustomerStockCode || '-'}</div>
                                           </td>
                                           <td className="px-6 py-4">
                                               <div className="font-bold text-gray-900 dark:text-white">{mem.productName}</div>
                                               <div className="text-xs font-mono">{mem.internalSku}</div>
                                           </td>
                                           <td className="px-6 py-4">
-                                              <span className="badge-gray">{mem.mappingMethod}</span>
+                                              <span className="badge bg-green-100 text-green-800 border-green-200">CONFIRMED</span>
+                                              <div className="mt-1">
+                                                  <span className="badge-gray">{mem.mappingMethod}</span>
+                                              </div>
+                                          </td>
+                                          <td className="px-6 py-4">
+                                              <div className="font-bold text-gray-900 dark:text-white uppercase tracking-tight">{mem.supplierName}</div>
                                           </td>
                                           <td className="px-6 py-4 text-xs font-mono">
                                               {mem.updatedAt ? new Date(mem.updatedAt).toLocaleDateString() : '-'}
@@ -3119,9 +3127,9 @@ if __name__ == "__main__":
                   ) : (
                       <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[900px]">
                           <thead className="table-header"><tr>
-                              <th className="px-6 py-4 table-sticky-left">Status</th>
+                              <th className="px-6 py-4 table-sticky-left">Supplier Product</th>
                               <th className="px-6 py-4">Internal Master Item</th>
-                              <th className="px-6 py-4">Supplier Product</th>
+                              <th className="px-6 py-4">Status</th>
                               <th className="px-6 py-4">Details</th>
                               <th className="px-6 py-4 text-right">Price (Sell)</th>
                               <th className="px-6 py-4 text-right">Stock (SOH)</th>
@@ -3138,13 +3146,20 @@ if __name__ == "__main__":
                                   return (
                                       <tr key={map.id} className="table-row">
                                           <td className="px-6 py-4 table-sticky-left">
-                                              <span className={`badge ${map.mappingStatus === 'PROPOSED' ? 'bg-yellow-100 text-yellow-800' : map.mappingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>{mappingStatusLabel}</span>
-                                              <div className="flex items-center gap-1.5 mt-1">
-                                                  <div className="text-[10px] uppercase font-bold text-gray-400">{map.mappingMethod}</div>
-                                                  {map.manualOverride && (
-                                                      <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded font-bold uppercase" title="Manually decided by user">Manual</span>
-                                                  )}
-                                              </div>
+                                              <div className="font-medium text-gray-900 dark:text-white">{map.supplierSku}</div>
+                                              <div className="text-xs text-[var(--color-brand)]">{supplier?.name}</div>
+                                              {map.supplierCustomerStockCode && (
+                                                  <div className="mt-1">
+                                                      <div className="text-[10px] bg-gray-100 dark:bg-white/10 px-1 rounded inline-block">Ref: {map.supplierCustomerStockCode}</div>
+                                                  </div>
+                                              )}
+                                              {(function() {
+                                                  const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                                  if (snapshot?.productName) {
+                                                      return <div className="text-xs text-secondary mt-1 italic line-clamp-2" title={snapshot.productName}>{snapshot.productName}</div>
+                                                  }
+                                                  return null;
+                                              })()}
                                           </td>
                                           <td className="px-6 py-4">
                                               {map.mappingStatus === 'REJECTED' ? (
@@ -3161,21 +3176,13 @@ if __name__ == "__main__":
                                               ) : <span className="text-red-500">Item Missing ({map.productId})</span>}
                                           </td>
                                           <td className="px-6 py-4">
-                                              <div className="font-medium text-gray-900 dark:text-white">{map.supplierSku}</div>
-                                              <div className="text-xs text-[var(--color-brand)]">{supplier?.name}</div>
-                                              {map.supplierCustomerStockCode && (
-                                                  <div className="mt-1">
-                                                      <div className="text-[10px] bg-gray-100 dark:bg-white/10 px-1 rounded inline-block">Ref: {map.supplierCustomerStockCode}</div>
-                                                  </div>
-                                              )}
-                                              {(function() {
-                                                  // Find matching snapshot for extra details
-                                                  const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
-                                                  if (snapshot?.productName) {
-                                                      return <div className="text-xs text-secondary mt-1 italic line-clamp-2" title={snapshot.productName}>{snapshot.productName}</div>
-                                                  }
-                                                  return null;
-                                              })()}
+                                              <span className={`badge ${map.mappingStatus === 'PROPOSED' ? 'bg-yellow-100 text-yellow-800' : map.mappingStatus === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>{mappingStatusLabel}</span>
+                                              <div className="flex items-center gap-1.5 mt-1">
+                                                  <div className="text-[10px] uppercase font-bold text-gray-400">{map.mappingMethod}</div>
+                                                  {map.manualOverride && (
+                                                      <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded font-bold uppercase" title="Manually decided by user">Manual</span>
+                                                  )}
+                                              </div>
                                           </td>
                                           <td className="px-6 py-4">
                                               {(function() {
