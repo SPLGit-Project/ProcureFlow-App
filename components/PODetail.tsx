@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X } from 'lucide-react';
 import { DeliveryHeader, Item, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
@@ -59,6 +59,7 @@ const PODetail = () => {
   const [addItemPriceOptionId, setAddItemPriceOptionId] = useState('');
   const [addItemSearch, setAddItemSearch] = useState('');
   const [isAddItemPickerOpen, setIsAddItemPickerOpen] = useState(false);
+  const [isAddItemPanelOpen, setIsAddItemPanelOpen] = useState(false);
   const [activeAddItemIndex, setActiveAddItemIndex] = useState(0);
   const addItemPickerRef = useRef<HTMLDivElement>(null);
   const editDraftKey = currentUser?.id && id ? `pf_draft:${currentUser.id}:po-edit:${id}` : '';
@@ -535,6 +536,7 @@ const PODetail = () => {
       setAddItemPrice('0');
       setAddItemSearch('');
       setIsAddItemPickerOpen(false);
+      setIsAddItemPanelOpen(false);
       setActiveAddItemIndex(0);
   };
 
@@ -599,6 +601,7 @@ const PODetail = () => {
       setAddItemPrice('0');
       setAddItemSearch('');
       setIsAddItemPickerOpen(false);
+      setIsAddItemPanelOpen(false);
       setActiveAddItemIndex(0);
   };
 
@@ -621,6 +624,7 @@ const PODetail = () => {
             clearDraft(editDraftKey);
             setIsEditing(false);
             setEditableLines([]);
+            setIsAddItemPanelOpen(false);
             await reloadData(true);
         } catch (err: unknown) {
             console.error(err);
@@ -1061,175 +1065,176 @@ const PODetail = () => {
           {activeTab === 'LINES' && (
               <div className="overflow-x-auto">
                   {isEditing && (
-                      <div className="p-4 md:p-5 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-[#15171e]">
-                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-                              <div className="flex items-start gap-3">
-                                  <div className="w-10 h-10 rounded-xl bg-white dark:bg-nocturne text-[var(--color-brand)] dark:text-blue-300 flex items-center justify-center border border-gray-200 dark:border-gray-700 shadow-sm">
-                                      <Plus size={18} />
+                      <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+                          {!isAddItemPanelOpen ? (
+                              /* ── Collapsed trigger ── */
+                              <button
+                                  type="button"
+                                  onClick={() => setIsAddItemPanelOpen(true)}
+                                  className="w-full flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl text-gray-400 hover:border-[var(--color-brand)]/50 hover:text-[var(--color-brand)] hover:bg-[var(--color-brand)]/5 dark:hover:bg-[var(--color-brand)]/10 transition-all group"
+                              >
+                                  <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/10 group-hover:bg-[var(--color-brand)]/10 flex items-center justify-center transition-colors shrink-0">
+                                      <Plus size={15} />
                                   </div>
-                                  <div>
-                                      <h3 className="text-sm md:text-base font-extrabold text-gray-900 dark:text-white tracking-tight">Add Item To Request</h3>
-                                      <p className="text-xs md:text-sm text-gray-600 dark:text-gray-300 mt-0.5">
-                                          Search by SKU, item name, or category, then set quantity and unit price before adding.
-                                      </p>
+                                  <span className="text-sm font-semibold">Add item to request</span>
+                                  <span className="ml-auto text-xs opacity-60 shrink-0">{addableItems.length} items available</span>
+                              </button>
+                          ) : (
+                              /* ── Expanded panel ── */
+                              <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-visible bg-white dark:bg-nocturne">
+                                  {/* Panel header */}
+                                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-white/5 rounded-t-xl">
+                                      <span className="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                          <Plus size={14} className="text-[var(--color-brand)]" />
+                                          Add Item to Request
+                                      </span>
+                                      <button
+                                          type="button"
+                                          onClick={() => { setIsAddItemPanelOpen(false); setAddItemId(''); setAddItemSearch(''); setIsAddItemPickerOpen(false); }}
+                                          className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                                      >
+                                          <X size={15} />
+                                      </button>
                                   </div>
-                              </div>
-                              <div className="inline-flex items-center gap-2 self-start md:self-center px-3 py-1.5 rounded-full text-[11px] font-bold border border-gray-200 text-gray-600 bg-white dark:border-gray-700 dark:text-gray-300 dark:bg-nocturne">
-                                  {addableItems.length} active items
-                              </div>
-                          </div>
 
-                          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
-                              <div className="lg:col-span-5">
-                                  <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Item Search</label>
-                                  <div ref={addItemPickerRef} className="relative">
-                                      <Search size={15} className="absolute left-3 top-3 text-gray-400 pointer-events-none" />
-                                      <input
-                                          type="text"
-                                          value={addItemSearch}
-                                          onFocus={() => {
-                                              if (addableItems.length > 0) {
-                                                  setIsAddItemPickerOpen(true);
-                                              }
-                                          }}
-                                          onChange={(e) => {
-                                              setAddItemSearch(e.target.value);
-                                              setIsAddItemPickerOpen(true);
-                                              setActiveAddItemIndex(0);
-                                          }}
-                                          onKeyDown={handleAddItemSearchKeyDown}
-                                          placeholder={addableItems.length === 0 ? 'No active items available to add' : 'Search SKU, item name, category...'}
-                                          className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] disabled:opacity-60 disabled:cursor-not-allowed"
-                                          disabled={addableItems.length === 0}
-                                      />
-                                      {isAddItemPickerOpen && addableItems.length > 0 && (
-                                          <div className="absolute z-40 mt-2 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#12151f] shadow-2xl overflow-hidden">
-                                              <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-[#171a24] flex items-center justify-between gap-2 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-                                                  <span>{filteredAddableItems.length} match{filteredAddableItems.length === 1 ? '' : 'es'}</span>
-                                                  {filteredAddableItems.length > visibleAddableItems.length && (
-                                                      <span>Showing first {visibleAddableItems.length}</span>
-                                                  )}
-                                              </div>
-                                              <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
-                                                  {visibleAddableItems.length === 0 ? (
-                                                      <div className="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                                                          No active items found. Try SKU or a shorter keyword.
-                                                      </div>
-                                                  ) : (
-                                                      visibleAddableItems.map((item, index) => {
-                                                          const isHighlighted = index === activeAddItemIndex;
-                                                          const isSelected = item.id === addItemId;
-                                                          return (
-                                                              <button
-                                                                  type="button"
-                                                                  key={item.id}
-                                                                  onMouseEnter={() => setActiveAddItemIndex(index)}
-                                                                  onClick={() => applyAddItemSelection(item)}
-                                                                  className={`w-full text-left rounded-lg px-3 py-2.5 border transition-colors ${
-                                                                      isHighlighted
-                                                                          ? 'border-[var(--color-brand)]/50 bg-[var(--color-brand)]/10 dark:bg-[var(--color-brand)]/15'
-                                                                          : isSelected
-                                                                              ? 'border-blue-200 dark:border-blue-500/30 bg-blue-50/60 dark:bg-blue-500/10'
-                                                                              : 'border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#1d2130]'
-                                                                  }`}
-                                                              >
-                                                                  <div className="flex items-center justify-between gap-3">
-                                                                      <div className="min-w-0">
-                                                                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{item.name}</p>
-                                                                          <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
-                                                                              {item.sku}
-                                                                              {item.category ? ` - ${item.category}` : ''}
-                                                                              {item.subCategory ? ` / ${item.subCategory}` : ''}
-                                                                          </p>
+                                  <div className="p-4 space-y-3">
+                                      {/* Search */}
+                                      <div ref={addItemPickerRef} className="relative">
+                                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                          <input
+                                              type="text"
+                                              value={addItemSearch}
+                                              onFocus={() => { if (addableItems.length > 0) setIsAddItemPickerOpen(true); }}
+                                              onChange={(e) => { setAddItemSearch(e.target.value); setIsAddItemPickerOpen(true); setActiveAddItemIndex(0); }}
+                                              onKeyDown={handleAddItemSearchKeyDown}
+                                              placeholder={addableItems.length === 0 ? 'No active items available' : 'Search by SKU, name, or category…'}
+                                              className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-3 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] disabled:opacity-60 disabled:cursor-not-allowed"
+                                              disabled={addableItems.length === 0}
+                                              autoFocus
+                                          />
+                                          {/* Dropdown */}
+                                          {isAddItemPickerOpen && addableItems.length > 0 && (
+                                              <div className="absolute z-40 mt-1.5 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#12151f] shadow-2xl overflow-hidden">
+                                                  <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                                                      <span>{filteredAddableItems.length} match{filteredAddableItems.length !== 1 ? 'es' : ''}</span>
+                                                      {filteredAddableItems.length > visibleAddableItems.length && <span>Showing first {visibleAddableItems.length}</span>}
+                                                  </div>
+                                                  <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5">
+                                                      {visibleAddableItems.length === 0 ? (
+                                                          <div className="px-3 py-5 text-center text-sm text-gray-400 dark:text-gray-500">No items found. Try SKU or a shorter keyword.</div>
+                                                      ) : (
+                                                          visibleAddableItems.map((item, index) => {
+                                                              const isHighlighted = index === activeAddItemIndex;
+                                                              const isSelected = item.id === addItemId;
+                                                              return (
+                                                                  <button
+                                                                      type="button"
+                                                                      key={item.id}
+                                                                      onMouseEnter={() => setActiveAddItemIndex(index)}
+                                                                      onClick={() => applyAddItemSelection(item)}
+                                                                      className={`w-full text-left rounded-lg px-3 py-2.5 transition-colors ${
+                                                                          isHighlighted ? 'bg-[var(--color-brand)]/10 dark:bg-[var(--color-brand)]/15' :
+                                                                          isSelected ? 'bg-blue-50 dark:bg-blue-500/10' :
+                                                                          'hover:bg-gray-50 dark:hover:bg-[#1d2130]'
+                                                                      }`}
+                                                                  >
+                                                                      <div className="flex items-center justify-between gap-3">
+                                                                          <div className="min-w-0">
+                                                                              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{item.name}</p>
+                                                                              <p className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate">{item.sku}{item.category ? ` · ${item.category}` : ''}{item.subCategory ? ` / ${item.subCategory}` : ''}</p>
+                                                                          </div>
+                                                                          {isSelected && <span className="text-[10px] font-bold uppercase text-[var(--color-brand)] shrink-0">Selected</span>}
                                                                       </div>
-                                                                      {isSelected && (
-                                                                          <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-brand)]">Selected</span>
-                                                                      )}
-                                                                  </div>
-                                                              </button>
-                                                          );
-                                                      })
+                                                                  </button>
+                                                              );
+                                                          })
+                                                      )}
+                                                  </div>
+                                                  <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-800 text-[10px] text-gray-400 dark:text-gray-500">↑ ↓ to navigate · Enter to select · Esc to close</div>
+                                              </div>
+                                          )}
+                                      </div>
+
+                                      {/* Config row — revealed only once an item is selected */}
+                                      {selectedAddItem ? (
+                                          <div className="flex flex-col sm:flex-row sm:items-end gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                                              {/* Selected item chip */}
+                                              <div className="flex items-center gap-2.5 flex-1 min-w-0 bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2.5 border border-gray-200 dark:border-gray-700">
+                                                  <CheckCircle size={14} className="text-[var(--color-brand)] shrink-0" />
+                                                  <div className="min-w-0 flex-1">
+                                                      <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{selectedAddItem.name}</p>
+                                                      <p className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{selectedAddItem.sku}</p>
+                                                  </div>
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => { setAddItemId(''); setAddItemSearch(''); }}
+                                                      className="shrink-0 text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                                                  >
+                                                      Change
+                                                  </button>
+                                              </div>
+
+                                              {/* Price Option */}
+                                              <div className="shrink-0 w-full sm:w-32">
+                                                  <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Price</label>
+                                                  {selectedAddItemPriceOptions.length > 1 ? (
+                                                      <select
+                                                          className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
+                                                          value={addItemPriceOptionId}
+                                                          onChange={(e) => {
+                                                              const nextId = e.target.value;
+                                                              setAddItemPriceOptionId(nextId);
+                                                              const opt = selectedAddItemPriceOptions.find(o => o.id === nextId);
+                                                              if (opt) setAddItemPrice(String(opt.price));
+                                                          }}
+                                                      >
+                                                          {selectedAddItemPriceOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                                                      </select>
+                                                  ) : (
+                                                      <div className="h-[42px] rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#15171e] px-3 flex items-center text-sm font-semibold text-gray-500 dark:text-gray-400">
+                                                          {selectedAddItemPriceOptions[0]?.label || 'Standard'}
+                                                      </div>
                                                   )}
                                               </div>
-                                              <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-800 text-[10px] text-gray-400 dark:text-gray-500">
-                                                  Tip: use arrows and Enter to select quickly.
+
+                                              {/* QTY */}
+                                              <div className="shrink-0 w-full sm:w-20">
+                                                  <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">QTY</label>
+                                                  <input
+                                                      type="number" min="1" step="1" value={addItemQty}
+                                                      onChange={(e) => setAddItemQty(e.target.value)}
+                                                      className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white text-center focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
+                                                  />
                                               </div>
+
+                                              {/* Unit Price */}
+                                              <div className="shrink-0 w-full sm:w-28">
+                                                  <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Unit Price</label>
+                                                  <div className="relative">
+                                                      <DollarSign size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                                      <input
+                                                          type="number" min="0" step="0.01" value={addItemPrice}
+                                                          onChange={(e) => setAddItemPrice(e.target.value)}
+                                                          className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl pl-7 pr-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
+                                                      />
+                                                  </div>
+                                              </div>
+
+                                              {/* Add button */}
+                                              <button
+                                                  type="button"
+                                                  onClick={handleAddDraftLine}
+                                                  className="shrink-0 w-full sm:w-auto px-5 py-2.5 bg-[var(--color-brand)] text-white rounded-xl font-semibold hover:opacity-90 flex items-center justify-center gap-2 shadow-sm shadow-[var(--color-brand)]/25 whitespace-nowrap"
+                                              >
+                                                  <Plus size={15} /> Add to Request
+                                              </button>
                                           </div>
+                                      ) : (
+                                          <p className="text-xs text-gray-400 dark:text-gray-500">Select an item from the results above, then set quantity and price.</p>
                                       )}
                                   </div>
-                                  {selectedAddItem ? (
-                                      <div className="mt-2 inline-flex items-center gap-2 bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs">
-                                          <span className="font-mono font-bold text-[var(--color-brand)]">{selectedAddItem.sku}</span>
-                                          <span className="text-gray-700 dark:text-gray-300">{selectedAddItem.name}</span>
-                                      </div>
-                                  ) : (
-                                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Select an item from results, then set quantity and price.</p>
-                                  )}
                               </div>
-                              <div className="lg:col-span-2">
-                                  <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Price Option</label>
-                                  {!selectedAddItem ? (
-                                      <div className="h-[42px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne px-3 flex items-center text-xs font-semibold text-gray-500 dark:text-gray-400">
-                                          Select item first
-                                      </div>
-                                  ) : selectedAddItemPriceOptions.length > 1 ? (
-                                      <select
-                                          className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
-                                          value={addItemPriceOptionId}
-                                          onChange={(e) => {
-                                              const nextOptionId = e.target.value;
-                                              setAddItemPriceOptionId(nextOptionId);
-                                              const selectedOption = selectedAddItemPriceOptions.find(opt => opt.id === nextOptionId);
-                                              if (selectedOption) {
-                                                  setAddItemPrice(String(selectedOption.price));
-                                              }
-                                          }}
-                                      >
-                                          {selectedAddItemPriceOptions.map(option => (
-                                              <option key={option.id} value={option.id}>
-                                                  {option.label}
-                                              </option>
-                                          ))}
-                                      </select>
-                                  ) : (
-                                      <div className="h-[42px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-nocturne px-3 flex items-center text-xs font-semibold text-gray-500 dark:text-gray-300">
-                                          {selectedAddItemPriceOptions[0]?.label || 'Standard'}
-                                      </div>
-                                  )}
-                              </div>
-                              <div className="lg:col-span-2">
-                                  <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Qty</label>
-                                  <input
-                                      type="number"
-                                      min="1"
-                                      step="1"
-                                      value={addItemQty}
-                                      onChange={(e) => setAddItemQty(e.target.value)}
-                                      className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
-                                  />
-                              </div>
-                              <div className="lg:col-span-2">
-                                  <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase mb-1.5">Unit Price</label>
-                                  <input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      value={addItemPrice}
-                                      onChange={(e) => setAddItemPrice(e.target.value)}
-                                      className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
-                                  />
-                              </div>
-                              <div className="lg:col-span-2 flex lg:justify-end">
-                                  <button
-                                      type="button"
-                                      onClick={handleAddDraftLine}
-                                      disabled={!addItemId || addableItems.length === 0}
-                                      className="w-full lg:w-auto px-4 py-2.5 bg-[var(--color-brand)] text-white rounded-xl font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm shadow-[var(--color-brand)]/25"
-                                  >
-                                      <Plus size={16} /> Add Item
-                                  </button>
-                              </div>
-                          </div>
+                          )}
                       </div>
                   )}
                   <table className="w-full text-left text-sm text-secondary dark:text-gray-400">
