@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient.ts';
 import {
   BookOpen, Search, RefreshCw, Package,
   Cpu, CheckCircle2, XCircle, SlidersHorizontal, X,
-  Download, Edit2, History, Archive, CheckCircle,
+  Download, Edit2, History, Archive, CheckCircle, Plus,
 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { generateItemCode } from '../utils/itemNameGenerator';
@@ -122,6 +122,7 @@ function StatCard({
 
 export default function ItemCatalogue() {
   const {
+    addItem,
     updateItem,
     archiveItem,
     reactivateItem,
@@ -129,7 +130,8 @@ export default function ItemCatalogue() {
     suppliers,
     attributeOptions,
     upsertAttributeOption,
-    items: contextItems,   // used only to build Item objects for the wizard
+    items: contextItems,
+    currentUser,
   } = useApp();
   const { success, error: showError } = useToast();
 
@@ -148,7 +150,11 @@ export default function ItemCatalogue() {
   const [filterRfid, setFilterRfid] = useState<boolean | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
+  // ── Admin gate ────────────────────────────────────────────────────────────
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
+
   // ── Action modals ─────────────────────────────────────────────────────────
+  const [isCreatingItem, setIsCreatingItem] = useState(false);
   const [editingItem, setEditingItem] = useState<ItemRow | null>(null);
   const [auditItem, setAuditItem] = useState<ItemRow | null>(null);
   const [confirmArchive, setConfirmArchive] = useState<ItemRow | null>(null);
@@ -307,6 +313,17 @@ export default function ItemCatalogue() {
     maxLevel: row.max_level ?? undefined,
   });
 
+  const handleCreateSave = async (itemData: Partial<Item>) => {
+    try {
+      await addItem({ ...itemData, id: itemData.id || crypto.randomUUID() } as Item);
+      success('Item added to catalogue');
+      setIsCreatingItem(false);
+      await Promise.all([loadData(true), reloadData(true)]);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to add item');
+    }
+  };
+
   const handleWizardSave = async (itemData: Partial<Item>) => {
     if (!editingItem) return;
     try {
@@ -372,6 +389,15 @@ export default function ItemCatalogue() {
           </button>
 
           <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
+
+          {isAdmin && (
+            <button
+              onClick={() => setIsCreatingItem(true)}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest text-white bg-[var(--color-brand)] rounded-xl hover:bg-[var(--color-brand)]/90 transition-all shadow-sm shadow-[var(--color-brand)]/25"
+            >
+              <Plus size={14} /> Add Item
+            </button>
+          )}
 
           <button
             onClick={handleExport}
@@ -721,6 +747,19 @@ export default function ItemCatalogue() {
           </div>
         )}
       </div>
+
+      {/* Create modal (admin only) */}
+      {isCreatingItem && (
+        <ItemWizard
+          isOpen
+          onClose={() => setIsCreatingItem(false)}
+          onSave={handleCreateSave}
+          items={contextItems}
+          suppliers={suppliers}
+          attributeOptions={attributeOptions}
+          upsertAttributeOption={upsertAttributeOption}
+        />
+      )}
 
       {/* Edit modal */}
       {editingItem && (

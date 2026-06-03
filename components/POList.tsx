@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity,
+  Bookmark,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -46,6 +47,7 @@ const statusLabel = (status: POStatus) => {
   if (status === 'APPROVED_PENDING_CONCUR_REQUEST') return 'Pending Concur Req';
   if (status === 'PENDING_APPROVAL') return 'Pending Approval';
   if (status === 'VARIANCE_PENDING') return 'Variance Pending';
+  if (status === 'DRAFT') return 'Draft';
   return status.replace(/_/g, ' ');
 };
 
@@ -85,6 +87,12 @@ const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
   }
 
   return [
+    {
+      id: 'drafts',
+      label: 'Drafts',
+      statuses: ['DRAFT'],
+      icon: Bookmark
+    },
     {
       id: 'all',
       label: 'All Requests',
@@ -140,6 +148,7 @@ const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
 
 const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
   const { pos, hasPermission, currentUser, userSites, siteName: resolveSiteName, reloadData } = useApp();
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
   useSetPageMeta({ disableBodyScroll: true });
   const location = useLocation();
   const navigate = useNavigate();
@@ -318,7 +327,12 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     const searchValue = searchTerm.trim().toLowerCase();
 
     const byStatus = selectedQuickFilter
-      ? siteScopedPos.filter((po) => selectedQuickFilter.statuses.includes(po.status))
+      ? siteScopedPos.filter((po) => {
+          if (!selectedQuickFilter.statuses.includes(po.status)) return false;
+          // Non-admins only see their own drafts
+          if (po.status === 'DRAFT' && !isAdmin && po.requesterId !== currentUser?.id) return false;
+          return true;
+        })
       : siteScopedPos;
 
     const bySearch = searchValue
@@ -343,7 +357,10 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     let colorClass =
       'bg-gray-100 dark:bg-gray-700/30 text-secondary dark:text-gray-400 border-gray-200 dark:border-gray-700';
 
-    if (status === 'PENDING_APPROVAL') {
+    if (status === 'DRAFT') {
+      colorClass =
+        'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20';
+    } else if (status === 'PENDING_APPROVAL') {
       colorClass =
         'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-500 border-yellow-200 dark:border-yellow-500/20';
     } else if (status === 'APPROVED_PENDING_CONCUR' || status === 'APPROVED_PENDING_CONCUR_REQUEST') {

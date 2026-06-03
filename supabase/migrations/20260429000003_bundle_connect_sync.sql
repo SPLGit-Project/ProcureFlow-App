@@ -28,7 +28,7 @@ VALUES
     ('PER', 'Perth',      3307, false, false, NULL,                                            500, 200),
     ('CNS', 'Cairns',     3307, false, false, NULL,                                            500, 200),
     ('ADL', 'Adelaide',   3307, false, false, NULL,                                            500, 250),
-    ('ALB', 'Albany',     3307, false, false, NULL,                                            500, 200),
+    ('ALB', 'Albury',     3307, false, false, NULL,                                            500, 200),
     ('BNE', 'Brisbane',   3307, false, false, NULL,                                            500, 250),
     ('SYD', 'Sydney',     3307, false, true,  'Source replication (3306→3307) not yet restored', 500, 200)
 ON CONFLICT (site_code) DO NOTHING;

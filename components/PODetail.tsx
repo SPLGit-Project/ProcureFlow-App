@@ -36,7 +36,7 @@ interface PODetailEditDraft {
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, suppliers, items, updatePOStatus, updatePendingPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO } = useApp();
+  const { pos, suppliers, items, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -79,7 +79,7 @@ const PODetail = () => {
   const canEditRequest = Boolean(
     po &&
     currentUser &&
-    (isAdmin || (po.status === 'PENDING_APPROVAL' && currentUser.id === po.requesterId))
+    (isAdmin || (['PENDING_APPROVAL', 'DRAFT'].includes(po.status) && currentUser.id === po.requesterId))
   );
 
   const canDelete = Boolean(
@@ -628,6 +628,17 @@ const PODetail = () => {
         }
   };
 
+  const handleSubmitDraft = async () => {
+      if (!po) return;
+      if (!window.confirm('Submit this draft for approval? Approvers will be notified immediately.')) return;
+      try {
+          await submitDraftPO(po.id);
+      } catch (err: unknown) {
+          console.error(err);
+          alert('Failed to submit draft: ' + (err as Error).message);
+      }
+  };
+
   const handleUpdateDeliveryHeader = async (delId: string, field: string, val: string) => {
       try {
           const updates: Partial<DeliveryHeader> = {};
@@ -776,6 +787,19 @@ const PODetail = () => {
         <ArrowLeft size={16} className="mr-1" /> Back to List
       </button>
 
+      {/* Draft banner */}
+      {po.status === 'DRAFT' && (
+        <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4 mb-4 flex items-start gap-3">
+          <AlertTriangle size={17} className="text-amber-500 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Draft — not yet submitted</p>
+            <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
+              This request is saved as a draft. Edit it freely, then click <strong>Submit for Approval</strong> when ready to send it to approvers.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header Info */}
       <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4 md:p-6 mb-6">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-6">
@@ -783,13 +807,14 @@ const PODetail = () => {
               <div className="flex flex-wrap items-center gap-3 mb-2">
                   <h1 className="text-2xl md:text-3xl font-bold text-primary dark:text-white">{po.displayId || po.id}</h1>
                   <span className={`px-3 py-1 rounded-full text-xs font-bold border
-                    ${po.status === 'ACTIVE' || po.status === 'RECEIVED' ? 'bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-500 border-green-200 dark:border-green-500/20' : 
+                    ${po.status === 'ACTIVE' || po.status === 'RECEIVED' ? 'bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-500 border-green-200 dark:border-green-500/20' :
+                      po.status === 'DRAFT' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20' :
                       po.status === 'PENDING_APPROVAL' ? 'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-500 border-yellow-200 dark:border-yellow-500/20' :
-                      po.status === 'APPROVED_PENDING_CONCUR' || po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-500 border-blue-200 dark:border-blue-500/20' : 
-                      po.status === 'VARIANCE_PENDING' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-500 border-amber-200 dark:border-amber-500/20' : 
+                      po.status === 'APPROVED_PENDING_CONCUR' || po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-500 border-blue-200 dark:border-blue-500/20' :
+                      po.status === 'VARIANCE_PENDING' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-500 border-amber-200 dark:border-amber-500/20' :
                       po.status === 'REJECTED' ? 'bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-500 border-red-200 dark:border-red-500/20' : 'bg-gray-100 dark:bg-gray-700/30 text-secondary dark:text-gray-400 border-gray-200 dark:border-gray-700'
                     }`}>
-                    {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur PO' : po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'Pending Concur Request' : po.status.replace(/_/g, ' ')}
+                    {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur PO' : po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'Pending Concur Request' : po.status === 'DRAFT' ? 'Draft' : po.status.replace(/_/g, ' ')}
                   </span>
               </div>
                <p className="text-secondary dark:text-gray-400 text-sm flex items-center gap-1">
@@ -817,6 +842,11 @@ const PODetail = () => {
                {canDelete && !isEditing && (
                     <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(handleDeletePO)} className="p-2.5 text-red-600 hover:text-red-700 border border-red-200 rounded-xl hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:text-red-300 transition-colors disabled:opacity-50" title="Delete pending request">
                         <Trash2 size={18} />
+                    </button>
+               )}
+               {po.status === 'DRAFT' && !isEditing && (
+                    <button disabled={isSubmitting} type="button" onClick={() => guardedSubmit(handleSubmitDraft)} className="w-full lg:w-auto justify-center px-5 py-2.5 bg-[var(--color-brand)] text-white rounded-xl hover:opacity-90 flex items-center gap-2 shadow-lg shadow-[var(--color-brand)]/20 font-medium disabled:opacity-50">
+                        <CheckCircle size={18} /> Submit for Approval
                     </button>
                )}
                {isAdmin && (

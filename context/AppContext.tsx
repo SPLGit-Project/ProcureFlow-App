@@ -256,6 +256,8 @@ interface AppContextType {
   
   // Core Actions
   createPO: (po: PORequest) => Promise<boolean>;
+  saveDraftPO: (po: PORequest) => Promise<boolean>;
+  submitDraftPO: (poId: string) => Promise<void>;
   updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; concurRequestNumber?: string; concurPoNumber?: string; lines: POLineItem[]; }) => Promise<void>;
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
   linkConcurRequest: (poId: string, concurRequestNumber: string) => void;
@@ -2130,6 +2132,47 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   };
 
+  const saveDraftPO = async (po: PORequest): Promise<boolean> => {
+    if (!currentUser) { alert('You must be logged in to save a draft.'); return false; }
+    try {
+        const displayId = await db.createPO({ ...po, requesterId: currentUser.id });
+        logAction('PO_DRAFT_SAVED', { id: displayId, amount: po.totalAmount }, { requester: po.requesterName });
+        setPos(prev => [{ ...po, displayId }, ...prev]);
+        return true;
+    } catch (error) {
+        console.error('Failed to save draft:', error);
+        alert(`Failed to save draft: ${(error as Error).message}`);
+        return false;
+    }
+  };
+
+  const submitDraftPO = async (poId: string): Promise<void> => {
+    if (!currentUser) throw new Error('You must be signed in.');
+    const po = pos.find(p => p.id === poId);
+    if (!po) throw new Error('Draft not found.');
+    const event: ApprovalEvent = {
+        id: crypto.randomUUID(),
+        action: 'SUBMITTED',
+        approverName: currentUser.name,
+        date: new Date().toISOString().split('T')[0],
+    };
+    setPos(prev => prev.map(p => p.id === poId
+        ? { ...p, status: 'PENDING_APPROVAL', approvalHistory: [...p.approvalHistory, event] }
+        : p
+    ));
+    try {
+        await db.submitDraftPO(poId);
+        await db.addPOApproval(poId, event);
+        sendNotification('PO_CREATED', { poId: po.displayId || po.id, requesterId: po.requesterId, amount: po.totalAmount });
+        logAction('PO_DRAFT_SUBMITTED', { id: poId, amount: po.totalAmount });
+        await reloadData(true, true);
+    } catch (e) {
+        reloadData();
+        logAction('PO_DRAFT_SUBMIT_FAILED', { poId, error: (e as Error).message });
+        throw e;
+    }
+  };
+
   const updatePendingPO = async (
       poId: string,
       updates: {
@@ -2147,8 +2190,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       if (!existing) throw new Error('Request not found.');
 
       const isAdmin = isEffectiveAdminUser(currentUser);
-      const isRequesterAndPending = existing.status === 'PENDING_APPROVAL' && existing.requesterId === currentUser.id;
-      const canEdit = isAdmin || isRequesterAndPending;
+      const isRequesterEditable = ['PENDING_APPROVAL', 'DRAFT'].includes(existing.status) && existing.requesterId === currentUser.id;
+      const canEdit = isAdmin || isRequesterEditable;
 
       if (!canEdit) {
           throw new Error('You do not have permission to edit this request.');
@@ -2165,7 +2208,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           };
       });
 
-      if (normalizedLines.length === 0) {
+      if (normalizedLines.length === 0 && existing.status !== 'DRAFT') {
           throw new Error('At least one line item is required.');
       }
 
@@ -2252,11 +2295,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           const isRequesterPending = Boolean(
               currentUser &&
               target.requesterId === currentUser.id &&
-              target.status === 'PENDING_APPROVAL'
+              ['PENDING_APPROVAL', 'DRAFT'].includes(target.status)
           );
 
           if (!isAdmin && !isRequesterPending) {
-              throw new Error('Only pending requests can be deleted by the requester.');
+              throw new Error('Only pending or draft requests can be deleted by the requester.');
           }
 
           // Optimistic remove
@@ -2902,7 +2945,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep,
     notificationRules, upsertNotificationRule, deleteNotificationRule,
     theme, setTheme, branding, updateBranding,
-    createPO, updatePendingPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
+    createPO, saveDraftPO, submitDraftPO, updatePendingPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
     updateProfile, switchRole,
     addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: importMasterProducts,
     getAttributeOptions, upsertAttributeOption, deleteAttributeOption,

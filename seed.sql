@@ -34,7 +34,8 @@ INSERT INTO sites (id, name, suburb, address, state, zip, contact_person) VALUES
 ('55555555-5555-4555-8555-555555555555', 'SPL Perth', 'Belmont', '200 Great Eastern Hwy', 'WA', '6104', 'Site Manager WA1'),
 ('66666666-6666-4666-8666-666666666666', 'SPL Perth', 'Maddington', '55 Kelvin Rd', 'WA', '6109', 'Site Manager WA2'),
 ('77777777-7777-4777-8777-777777777777', 'SPL Sydney', 'Bankstown', '350 Hume Hwy', 'NSW', '2200', 'Site Manager NSW'),
-('88888888-8888-4888-8888-888888888888', 'SPL Sydney', 'Classic Linen', '350 Hume Hwy', 'NSW', '2200', 'Linen Manager')
+('88888888-8888-4888-8888-888888888888', 'SPL Sydney', 'Classic Linen', '350 Hume Hwy', 'NSW', '2200', 'Linen Manager'),
+('99999999-9999-4999-8999-999999999999', 'SPL Albury', 'Albury', '1 Olive Street', 'NSW', '2640', 'Site Manager Albury')
 ON CONFLICT (id) DO NOTHING;
 
 -- SUPPLIERS

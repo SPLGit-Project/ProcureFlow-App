@@ -1760,9 +1760,14 @@ export const db = {
             .update({ status })
             .eq('id', poId) as unknown as DbUpdateResult)
             .select('*', { count: 'exact', head: true });
-        
+
         if (error) throw error;
         if (count === 0) throw new Error('Permission denied or PO not found. You may not have the rights to update this order in its current status.');
+    },
+
+    submitDraftPO: async (poId: string): Promise<void> => {
+        const { error } = await supabase.rpc('submit_draft_po', { p_request_id: poId });
+        if (error) throw error;
     },
 
     linkConcurRequest: async (poId: string, concurRequestNumber: string): Promise<void> => {

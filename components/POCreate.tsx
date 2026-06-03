@@ -4,23 +4,24 @@ import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
 import { Item, ItemPriceOption, POLineItem, PORequest } from '../types.ts';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
-import { 
-  ShoppingCart, 
-  Search, 
-  MapPin, 
-  Package, 
-  ChevronDown, 
-  ChevronUp, 
-  Plus, 
-  Minus, 
-  Trash2, 
-  User, 
+import {
+  ShoppingCart,
+  Search,
+  MapPin,
+  Package,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Minus,
+  Trash2,
+  User,
   ArrowRight,
   X,
   DollarSign,
   ChevronLeft,
   Calendar,
-  ChevronRight
+  ChevronRight,
+  Save,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp.tsx';
@@ -84,7 +85,7 @@ const isSameCartPriceLine = (
 };
 
 const POCreate = () => {
-  const { items, suppliers, userSites, mappings, stockSnapshots, currentUser, createPO, getEffectiveStock, reloadData, featureFlags } = useApp();
+  const { items, suppliers, userSites, mappings, stockSnapshots, currentUser, createPO, saveDraftPO, getEffectiveStock, reloadData, featureFlags } = useApp();
   const sites = userSites;
   const navigate = useNavigate();
   const draftKey = currentUser ? `pf_draft:${currentUser.id}:po-create` : '';
@@ -103,6 +104,7 @@ const POCreate = () => {
   }, [reloadData]);
 
   const { isSubmitting, guardedSubmit } = useSubmitGuard();
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
 
   const [selectedSiteId, setSelectedSiteId] = useState(initialDraft?.selectedSiteId || '');
   const [selectedSupplierId, setSelectedSupplierId] = useState(initialDraft?.selectedSupplierId || '');
@@ -466,6 +468,51 @@ const POCreate = () => {
     navigate('/requests');
   };
 
+  const handleSaveDraft = async () => {
+    if (!currentUser || !selectedSupplier) {
+        alert('Select a supplier before saving a draft.');
+        return;
+    }
+    const finalCart = cart.map(line => {
+        const draft = quantityDrafts[line.id];
+        if (draft !== undefined && draft !== String(line.quantityOrdered)) {
+            const committedQty = sanitizeQuantity(draft, line.quantityOrdered);
+            return { ...line, quantityOrdered: committedQty, totalPrice: committedQty * line.unitPrice };
+        }
+        return line;
+    });
+    const draftPO: PORequest = {
+        id: uuidv4(),
+        requestDate,
+        requesterId: currentUser.id,
+        requesterName: currentUser.name,
+        siteId: selectedSite?.id || '',
+        site: selectedSite?.name || '',
+        supplierId: selectedSupplier.id,
+        supplierName: selectedSupplier.name,
+        status: 'DRAFT',
+        totalAmount: finalCart.reduce((sum, line) => sum + line.totalPrice, 0),
+        lines: finalCart,
+        approvalHistory: [
+            { id: uuidv4(), action: 'DRAFT_SAVED', approverName: currentUser.name, date: getLocalDateInputValue() }
+        ],
+        deliveries: [],
+        customerName,
+        reasonForRequest,
+        comments,
+    };
+    setIsSavingDraft(true);
+    try {
+        const saved = await saveDraftPO(draftPO);
+        if (saved) {
+            clearDraft(draftKey);
+            navigate('/requests');
+        }
+    } finally {
+        setIsSavingDraft(false);
+    }
+  };
+
   const cartTotal = cart.reduce((s, l) => s + l.totalPrice, 0);
 
   // Cart Component (Used in Desktop Sidebar and Mobile Drawer)
@@ -544,6 +591,14 @@ const POCreate = () => {
                      ${cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                  </span>
              </div>
+             <button
+               type="button"
+               onClick={handleSaveDraft}
+               disabled={!selectedSupplier || isSavingDraft || isSubmitting}
+               className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 py-2.5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex justify-center items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+             >
+               {isSavingDraft ? 'Saving...' : <><Save size={15} /> Save as Draft</>}
+             </button>
              <button
                type="button"
                onClick={() => guardedSubmit(handleSubmit)}
@@ -1048,14 +1103,24 @@ const POCreate = () => {
                           ${cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </div>
                   </button>
-                  <button
-                      type="button"
-                      onClick={() => guardedSubmit(handleSubmit)}
-                      disabled={cart.length === 0 || isSubmitting}
-                      className="w-full bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none"
-                  >
-                      {isSubmitting ? 'Submitting...' : 'Submit'}
-                  </button>
+                  <div className="flex gap-2">
+                      <button
+                          type="button"
+                          onClick={handleSaveDraft}
+                          disabled={!selectedSupplier || isSavingDraft || isSubmitting}
+                          className="flex-1 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-3 py-3 rounded-xl font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5"
+                      >
+                          <Save size={15} /> {isSavingDraft ? 'Saving…' : 'Draft'}
+                      </button>
+                      <button
+                          type="button"
+                          onClick={() => guardedSubmit(handleSubmit)}
+                          disabled={cart.length === 0 || isSubmitting}
+                          className="flex-[2] bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none"
+                      >
+                          {isSubmitting ? 'Submitting...' : 'Submit'}
+                      </button>
+                  </div>
               </div>
           </div>
       </div>
