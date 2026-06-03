@@ -88,12 +88,6 @@ const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
 
   return [
     {
-      id: 'drafts',
-      label: 'Drafts',
-      statuses: ['DRAFT'],
-      icon: Bookmark
-    },
-    {
       id: 'all',
       label: 'All Requests',
       statuses: [
@@ -106,6 +100,12 @@ const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
         'DRAFT'
       ],
       icon: ListFilter
+    },
+    {
+      id: 'drafts',
+      label: 'Drafts',
+      statuses: ['DRAFT'],
+      icon: Bookmark
     },
     {
       id: 'pending-approval',
@@ -313,10 +313,14 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
   const quickFilterCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const option of quickFilters) {
-      counts[option.id] = siteScopedPos.filter((po) => option.statuses.includes(po.status)).length;
+      counts[option.id] = siteScopedPos.filter((po) => {
+        if (!option.statuses.includes(po.status)) return false;
+        if (po.status === 'DRAFT' && !isAdmin && po.requesterId !== currentUser?.id) return false;
+        return true;
+      }).length;
     }
     return counts;
-  }, [quickFilters, siteScopedPos]);
+  }, [quickFilters, siteScopedPos, isAdmin, currentUser?.id]);
 
   const selectedQuickFilter = useMemo(
     () => quickFilters.find((option) => option.id === selectedQuickFilterId) ?? quickFilters[0],

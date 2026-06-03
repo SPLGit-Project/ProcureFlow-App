@@ -2150,6 +2150,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     if (!currentUser) throw new Error('You must be signed in.');
     const po = pos.find(p => p.id === poId);
     if (!po) throw new Error('Draft not found.');
+    if ((po.lines || []).length === 0) throw new Error('Add at least one item before submitting for approval.');
     const event: ApprovalEvent = {
         id: crypto.randomUUID(),
         action: 'SUBMITTED',
@@ -2161,8 +2162,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         : p
     ));
     try {
-        await db.submitDraftPO(poId);
-        await db.addPOApproval(poId, event);
+        // Status update + approval record inserted atomically inside the RPC
+        await db.submitDraftPO(poId, currentUser.name);
         sendNotification('PO_CREATED', { poId: po.displayId || po.id, requesterId: po.requesterId, amount: po.totalAmount });
         logAction('PO_DRAFT_SUBMITTED', { id: poId, amount: po.totalAmount });
         await reloadData(true, true);
