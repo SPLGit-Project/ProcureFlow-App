@@ -267,7 +267,7 @@ const Settings = () => {
     catalog, updateCatalogItem, stockSnapshots, pos,
     // Actions
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
-    mappings, generateMappings, updateMapping, deleteMapping, getMappingMemory, syncItemsFromSnapshots,
+    mappings, generateMappings, updateMapping, deleteMapping, syncItemsFromSnapshots,
     // New Admin Caps
     getItemFieldRegistry, runAutoMapping, getMappingQueue,  upsertProductMaster, reloadData, updateProfile, sendWelcomeEmail, resendWelcomeEmail, archiveUser, reinstateUser, searchDirectory,
     archiveItem, getAuditLogs,
@@ -766,7 +766,7 @@ const Settings = () => {
   const [stockSupplierId, setStockSupplierId] = useState('');
   const [stockDateFrom, setStockDateFrom] = useState(new Date().toISOString().split('T')[0]); // Renamed from stockFilterDateFrom to generic
   const [stockFilterDateTo, setStockFilterDateTo] = useState('');
-  const [stockFilterStatus, setStockFilterStatus] = useState<'ALL' | 'MAPPED' | 'UNMAPPED'>('UNMAPPED');
+  const [stockFilterStatus, setStockFilterStatus] = useState<'ALL' | 'MAPPED' | 'UNMAPPED' | 'PROPOSED' | 'ADDRESSED'>('UNMAPPED');
   
   // Import State (Derived)
   // importSupplierId removed -> use stockSupplierId
@@ -788,7 +788,6 @@ const Settings = () => {
   const [notMappedReason, setNotMappedReason] = useState('No longer required');
   const [isManualMapOpen, setIsManualMapOpen] = useState(false);
   const [mappingSource, setMappingSource] = useState<SupplierStockSnapshot | null>(null);
-  const [mappingMemory, setMappingMemory] = useState<any[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [guidedMappingIndex, setGuidedMappingIndex] = useState(0);
   const [selectedCandidateItemId, setSelectedCandidateItemId] = useState<string | null>(null);
@@ -1236,6 +1235,20 @@ const Settings = () => {
 
   const selectedMappingSupplier = visibleSuppliers.find(supplier => supplier.id === mappingSupplierId);
 
+  const systemMemoryRows = React.useMemo(() => {
+      return mappingReviewStats.confirmed.map(mapping => {
+          const item = items.find(i => i.id === mapping.productId);
+          const supplier = suppliers.find(s => s.id === mapping.supplierId);
+
+          return {
+              ...mapping,
+              productName: mapping.productName || item?.name || 'Item missing',
+              internalSku: mapping.internalSku || item?.sku || '',
+              supplierName: mapping.supplierName || supplier?.name || '-'
+          };
+      });
+  }, [items, mappingReviewStats.confirmed, suppliers]);
+
   const guidedReviewQueue = React.useMemo(() => {
       return [...mappingReviewStats.proposed].sort((a, b) => {
           const aPriority = a.confidenceScore >= 0.9 ? 1 : 0;
@@ -1378,11 +1391,6 @@ const Settings = () => {
       setNotMappedReason('No longer required');
       success('Supplier item marked as not mapped.');
   };
-
-  useEffect(() => {
-      if (mappingSubTab !== 'MEMORY') return;
-      getMappingMemory(mappingSupplierId || undefined).then(setMappingMemory);
-  }, [mappingSupplierId, mappingSubTab]);
 
   const renderGuidedMappingReview = () => {
       if (guidedReviewQueue.length === 0) {
@@ -1938,8 +1946,16 @@ const Settings = () => {
               if (stockFilterStatus === 'ALL') return true;
 
               const mapping = mappings.find(m => m.supplierId === snapshot.supplierId && m.supplierSku === snapshot.supplierSku);
-              const isMapped = !!mapping && !!items.find(i => i.id === mapping.productId);
-              return stockFilterStatus === 'MAPPED' ? isMapped : !isMapped;
+              const hasInternalItem = !!mapping && !!items.find(i => i.id === mapping.productId);
+              const isConfirmed = mapping?.mappingStatus === 'CONFIRMED' && hasInternalItem;
+              const isProposed = mapping?.mappingStatus === 'PROPOSED' && hasInternalItem;
+              const isAddressed = mapping?.mappingStatus === 'REJECTED';
+              const isUnmapped = !mapping || (!hasInternalItem && !isAddressed);
+
+              if (stockFilterStatus === 'MAPPED') return isConfirmed;
+              if (stockFilterStatus === 'PROPOSED') return isProposed;
+              if (stockFilterStatus === 'ADDRESSED') return isAddressed;
+              return isUnmapped;
           })
           .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime());
 
@@ -1952,13 +1968,15 @@ const Settings = () => {
                           Supplier Items & Availability
                       </h3>
                       <p className="text-sm text-secondary dark:text-gray-400 mt-1">
-                          Your to-do list — unmapped supplier items that need to be linked to an internal master item. Work through these one by one; as each is mapped the list shrinks.
+                          Current supplier inventory rows. Unmapped rows need a manual link; proposed rows move to Confirm Matches; confirmed and addressed rows stay out of the to-do list.
                       </p>
                   </div>
                   <div className="flex items-center gap-2">
                       <select className="input-field w-40" value={stockFilterStatus} onChange={e => setStockFilterStatus(e.target.value as any)}>
                           <option value="UNMAPPED">Unmapped</option>
-                          <option value="MAPPED">Mapped</option>
+                          <option value="PROPOSED">Proposed</option>
+                          <option value="MAPPED">Confirmed</option>
+                          <option value="ADDRESSED">Addressed</option>
                           <option value="ALL">All Items</option>
                       </select>
                       <span className="text-xs font-bold text-gray-500 dark:text-gray-400 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800">
@@ -1987,7 +2005,7 @@ const Settings = () => {
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                           {rows.map(snapshot => {
                               const mapping = mappings.find(m => m.supplierId === snapshot.supplierId && m.supplierSku === snapshot.supplierSku);
-                              const mappedItem = mapping ? items.find(i => i.id === mapping.productId) : null;
+                              const mappedItem = mapping?.mappingStatus !== 'REJECTED' ? items.find(i => i.id === mapping.productId) : null;
                               const supplier = suppliers.find(s => s.id === snapshot.supplierId);
 
                               return (
@@ -2002,7 +2020,12 @@ const Settings = () => {
                                           )}
                                       </td>
                                       <td className="px-3 py-3">
-                                          {mappedItem ? (
+                                          {mapping?.mappingStatus === 'REJECTED' ? (
+                                              <div>
+                                                  <div className="font-bold text-gray-900 dark:text-white">Not mapped</div>
+                                                  <div className="text-xs text-gray-400">Addressed as excluded</div>
+                                              </div>
+                                          ) : mappedItem ? (
                                               <div>
                                                   <div className="font-bold text-gray-900 dark:text-white truncate max-w-[180px]" title={mappedItem.name}>{mappedItem.name}</div>
                                                   <div className="text-xs font-mono text-secondary dark:text-gray-500">{mappedItem.sku}</div>
@@ -2012,8 +2035,18 @@ const Settings = () => {
                                           )}
                                       </td>
                                       <td className="px-3 py-3">
-                                          {mappedItem ? (
-                                              <span className="badge bg-green-100 text-green-800 border-green-200 w-fit">Mapped</span>
+                                          {mapping?.mappingStatus === 'CONFIRMED' && mappedItem ? (
+                                              <span className="badge bg-green-100 text-green-800 border-green-200 w-fit">Confirmed</span>
+                                          ) : mapping?.mappingStatus === 'PROPOSED' && mappedItem ? (
+                                              <button
+                                                  type="button"
+                                                  onClick={() => setMappingSubTab('PROPOSED')}
+                                                  className="badge bg-yellow-100 text-yellow-800 border-yellow-200 hover:bg-yellow-200 w-fit whitespace-nowrap"
+                                              >
+                                                  Review
+                                              </button>
+                                          ) : mapping?.mappingStatus === 'REJECTED' ? (
+                                              <span className="badge bg-gray-100 text-gray-700 border-gray-200 w-fit">Addressed</span>
                                           ) : (
                                               <button
                                                   type="button"
@@ -2071,9 +2104,15 @@ const Settings = () => {
       let matchesStatus = true;
       if (stockFilterStatus !== 'ALL') {
           const mapping = mappings.find(m => m.supplierId === s.supplierId && m.supplierSku === s.supplierSku);
-          const isMapped = !!mapping && !!items.find(i => i.id === mapping.productId);
-          if (stockFilterStatus === 'MAPPED') matchesStatus = isMapped;
-          if (stockFilterStatus === 'UNMAPPED') matchesStatus = !isMapped;
+          const hasInternalItem = !!mapping && !!items.find(i => i.id === mapping.productId);
+          const isConfirmed = mapping?.mappingStatus === 'CONFIRMED' && hasInternalItem;
+          const isProposed = mapping?.mappingStatus === 'PROPOSED' && hasInternalItem;
+          const isAddressed = mapping?.mappingStatus === 'REJECTED';
+          const isUnmapped = !mapping || (!hasInternalItem && !isAddressed);
+          if (stockFilterStatus === 'MAPPED') matchesStatus = isConfirmed;
+          if (stockFilterStatus === 'PROPOSED') matchesStatus = isProposed;
+          if (stockFilterStatus === 'ADDRESSED') matchesStatus = isAddressed;
+          if (stockFilterStatus === 'UNMAPPED') matchesStatus = isUnmapped;
       }
 
       return matchesSupplier && matchesFrom && matchesTo && matchesStatus;
@@ -2846,7 +2885,9 @@ if __name__ == "__main__":
                      <div className="ml-auto flex gap-2">
                           <select className="input-field w-32" value={stockFilterStatus} onChange={e => setStockFilterStatus(e.target.value as any)}>
                               <option value="ALL">All Status</option>
-                              <option value="MAPPED">Mapped</option>
+                              <option value="MAPPED">Confirmed</option>
+                              <option value="PROPOSED">Proposed</option>
+                              <option value="ADDRESSED">Addressed</option>
                               <option value="UNMAPPED">Unmapped</option>
                           </select>
                      </div>
@@ -2873,18 +2914,24 @@ if __name__ == "__main__":
                          <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                              {filteredSnapshots.map(snap => {
                                  const mapping = mappings.find(m => m.supplierId === snap.supplierId && m.supplierSku === snap.supplierSku);
-                                 const mappedItem = mapping ? items.find(i => i.id === mapping.productId) : null;
-                                 const isMapped = !!mappedItem;
+                                  const mappedItem = mapping?.mappingStatus !== 'REJECTED' ? items.find(i => i.id === mapping.productId) : null;
+                                  const isConfirmed = mapping?.mappingStatus === 'CONFIRMED' && !!mappedItem;
+                                  const isProposed = mapping?.mappingStatus === 'PROPOSED' && !!mappedItem;
+                                  const isAddressed = mapping?.mappingStatus === 'REJECTED';
 
                                  return (
                                  <tr key={snap.id} className="table-row group">
                                      <td className="px-4 py-4 table-sticky-left">
-                                         {isMapped ? (
-                                             <div className="flex flex-col">
-                                                 <span className="badge bg-green-100 text-green-800 border-green-200 w-fit">Mapped</span>
-                                                 <span className="text-[10px] text-tertiary dark:text-gray-500 font-mono mt-0.5 max-w-[100px] truncate" title={mappedItem?.name}>{mappedItem?.sku}</span>
-                                             </div>
-                                         ) : (
+                                          {isConfirmed ? (
+                                              <div className="flex flex-col">
+                                                  <span className="badge bg-green-100 text-green-800 border-green-200 w-fit">Confirmed</span>
+                                                  <span className="text-[10px] text-tertiary dark:text-gray-500 font-mono mt-0.5 max-w-[100px] truncate" title={mappedItem?.name}>{mappedItem?.sku}</span>
+                                              </div>
+                                          ) : isProposed ? (
+                                              <button type="button" onClick={() => setMappingSubTab('PROPOSED')} className="badge bg-yellow-100 text-yellow-800 border-yellow-200 hover:bg-yellow-200 w-fit">Review</button>
+                                          ) : isAddressed ? (
+                                              <span className="badge bg-gray-100 text-gray-700 border-gray-200 w-fit">Addressed</span>
+                                          ) : (
                                              <button type="button" onClick={() => { setMappingSource(snap); setIsManualMapOpen(true); }} className="badge bg-red-100 text-red-800 border-red-200 hover:bg-red-200 w-fit">Unmapped</button>
                                          )}
                                      </td>
@@ -2987,17 +3034,24 @@ if __name__ == "__main__":
                           </span>
                       )}
                   </button>
+                  <button type="button" onClick={() => setMappingSubTab('REJECTED')} className={`pb-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap shrink-0 flex items-center gap-2 ${mappingSubTab === 'REJECTED' ? 'border-gray-500 text-gray-700 dark:text-gray-300' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}>
+                      5. Addressed
+                      {mappingReviewStats.notMapped.length > 0 && (
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${mappingSubTab === 'REJECTED' ? 'bg-gray-200 text-gray-700 dark:bg-white/10 dark:text-gray-300' : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400'}`}>
+                              {mappingReviewStats.notMapped.length}
+                          </span>
+                      )}
+                  </button>
                   <button type="button"
                     onClick={() => {
                         setMappingSubTab('MEMORY');
-                        getMappingMemory(mappingSupplierId || undefined).then(setMappingMemory);
                     }}
                     className={`pb-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap shrink-0 flex items-center gap-2 ${mappingSubTab === 'MEMORY' ? 'border-purple-500 text-purple-600 dark:text-purple-400' : 'border-transparent text-secondary hover:text-primary dark:hover:text-gray-300'}`}
                   >
-                      5. System Memory
-                      {mappingMemory.length > 0 && (
+                      6. System Memory
+                      {mappingReviewStats.confirmed.length > 0 && (
                           <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${mappingSubTab === 'MEMORY' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400'}`}>
-                              {mappingMemory.length}
+                              {mappingReviewStats.confirmed.length}
                           </span>
                       )}
                   </button>
@@ -3020,21 +3074,30 @@ if __name__ == "__main__":
                           </span>
                       </div>
                       <div className="flex flex-wrap gap-3 items-center">
-                          <button type="button" onClick={() => refreshAvailability().then(() => alert('Availability Recalculated'))} className="text-secondary hover:text-[var(--color-brand)] text-xs font-bold flex items-center gap-1 transition-colors">
-                              <RefreshCw size={14}/> Update Mapping
-                          </button>
-                          <button type="button" onClick={async () => {
-                              const targetSuppliers = mappingSupplierId ? visibleSuppliers.filter(s => s.id === mappingSupplierId) : visibleSuppliers;
-                              if (!globalThis.confirm(`Run Auto-Match for ${mappingSupplierId ? selectedMappingSupplier?.name : 'all suppliers'}? This uses supplier memory, code matching, text similarity, and ambiguity checks.`)) return;
-                              const results = [];
-                              for (const s of targetSuppliers) {
-                                  const res = await runAutoMapping(s.id);
-                                  results.push(`${s.name}: +${res.confirmed} Confirmed, +${res.proposed} Proposed`);
-                              }
-                              alert(results.join('\n'));
-                          }} className="bg-[var(--color-brand)] text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:opacity-90 flex items-center gap-2 transition-all">
-                              <Wand2 size={14}/> Run Auto-Match
-                          </button>
+                          {['SUPPLIER_ITEMS', 'CONFIRMED', 'MEMORY'].includes(mappingSubTab) && (
+                              <button
+                                  type="button"
+                                  title="Recalculate product availability from confirmed mappings and the latest supplier stock rows"
+                                  onClick={() => refreshAvailability().then(() => alert('Availability recalculated from confirmed mappings.'))}
+                                  className="text-secondary hover:text-[var(--color-brand)] text-xs font-bold flex items-center gap-1 transition-colors"
+                              >
+                                  <RefreshCw size={14}/> Refresh Availability
+                              </button>
+                          )}
+                          {['SUPPLIER_ITEMS', 'PROPOSED'].includes(mappingSubTab) && (
+                              <button type="button" onClick={async () => {
+                                  const targetSuppliers = mappingSupplierId ? visibleSuppliers.filter(s => s.id === mappingSupplierId) : visibleSuppliers;
+                                  if (!globalThis.confirm(`Run Auto-Match for ${mappingSupplierId ? selectedMappingSupplier?.name : 'all suppliers'}? This uses confirmed memory first, then code matching, text similarity, and ambiguity checks.`)) return;
+                                  const results = [];
+                                  for (const s of targetSuppliers) {
+                                      const res = await runAutoMapping(s.id);
+                                      results.push(`${s.name}: +${res.confirmed} Confirmed, +${res.proposed} Proposed`);
+                                  }
+                                  alert(results.join('\n'));
+                              }} className="bg-[var(--color-brand)] text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:opacity-90 flex items-center gap-2 transition-all">
+                                  <Wand2 size={14}/> Run Auto-Match
+                              </button>
+                          )}
                           {mappingSubTab === 'PROPOSED' && mappingReviewStats.highConfidence.length > 0 && (
                                <button type="button"
                                    onClick={async () => {
@@ -3072,42 +3135,49 @@ if __name__ == "__main__":
                                       </div>
                                       <div>
                                           <h4 className="font-bold text-purple-900 dark:text-purple-100 text-base flex items-center gap-2">
-                                              System Memory — Locked Mapping Decisions
+                                              System Memory - Confirmed Mapping Decisions
                                           </h4>
                                           <p className="text-xs text-purple-700 dark:text-purple-300 mt-1 max-w-2xl leading-relaxed">
-                                              Every entry below is a confirmed decision the system has locked into long-term memory.
+                                              Confirmed matches appear here automatically. There is no extra step to move them into memory.
                                               When new supplier files arrive, these mappings are applied <strong>automatically</strong> — no manual work needed.
-                                              The more decisions you confirm, the faster and more accurate each future upload becomes.
+                                              The price sync button only updates Item Master prices from the latest confirmed supplier sell prices.
                                           </p>
                                           <div className="mt-3 flex items-center gap-3">
                                               <span className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/40 px-3 py-1.5 rounded-full">
-                                                  <CheckCircle2 size={13}/> {mappingMemory.length} decision{mappingMemory.length !== 1 ? 's' : ''} locked
+                                                  <CheckCircle2 size={13}/> {systemMemoryRows.length} decision{systemMemoryRows.length !== 1 ? 's' : ''} in memory
                                               </span>
                                               <span className="text-xs text-purple-500 dark:text-purple-400">
-                                                  Removing a decision means it will need to be re-mapped on the next upload
+                                                  Removing a decision means that supplier SKU will need review on the next upload
                                               </span>
                                           </div>
                                       </div>
                                   </div>
-                                  <button type="button"
-                                    onClick={async () => {
-                                        if (!globalThis.confirm('This will update Master Item prices to match the latest confirmed supplier sell prices. Continue?')) return;
-                                        setIsSyncing(true);
-                                        try {
-                                            await syncItemsFromSnapshots();
-                                            alert('Item Prices Synchronized Successfully');
-                                        } catch (e: any) {
-                                            alert('Sync failed: ' + e.message);
-                                        } finally {
-                                            setIsSyncing(false);
-                                        }
-                                    }}
-                                    disabled={isSyncing}
-                                    className="shrink-0 bg-purple-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2 shadow-sm shadow-purple-600/20"
-                                  >
-                                      {isSyncing ? <RefreshCw size={14} className="animate-spin"/> : <Zap size={14}/>}
-                                      Apply to Item Prices
-                                  </button>
+                                  <div className="shrink-0 flex flex-col items-start lg:items-end gap-1">
+                                      <button type="button"
+                                        title="Copy latest confirmed supplier sell prices onto the linked internal item prices. This does not create or save memory."
+                                        onClick={async () => {
+                                            const scopeLabel = mappingSupplierId ? (selectedMappingSupplier?.name || 'the selected supplier') : 'all suppliers';
+                                            if (!globalThis.confirm(`Sync confirmed supplier sell prices to Item Master prices for ${scopeLabel}?\n\nThis does not create System Memory. Confirmed mappings are already saved as memory; this only updates item prices from the latest supplier stock rows.`)) return;
+                                            setIsSyncing(true);
+                                            try {
+                                                await syncItemsFromSnapshots(mappingSupplierId || undefined);
+                                                alert(`Confirmed supplier prices synchronized to Item Master for ${scopeLabel}.`);
+                                            } catch (e: any) {
+                                                alert('Sync failed: ' + e.message);
+                                            } finally {
+                                                setIsSyncing(false);
+                                            }
+                                        }}
+                                        disabled={isSyncing || systemMemoryRows.length === 0}
+                                        className="bg-purple-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2 shadow-sm shadow-purple-600/20"
+                                      >
+                                          {isSyncing ? <RefreshCw size={14} className="animate-spin"/> : <Zap size={14}/>}
+                                          Sync Confirmed Prices
+                                      </button>
+                                      <span className="text-[10px] text-purple-500 dark:text-purple-400 max-w-[220px] text-left lg:text-right">
+                                          {systemMemoryRows.length === 0 ? 'Confirm matches first; there are no prices to sync yet.' : 'Optional: updates Item Master prices only.'}
+                                      </span>
+                                  </div>
                               </div>
                           </div>
                           <table className="dense-admin-table text-secondary dark:text-gray-400 w-full">
@@ -3120,7 +3190,7 @@ if __name__ == "__main__":
                                   <th className="px-4 py-3 text-center table-sticky-right whitespace-nowrap">Action</th>
                               </tr></thead>
                               <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                                  {mappingMemory.map(mem => (
+                                  {systemMemoryRows.map(mem => (
                                       <tr key={mem.id} className="table-row">
                                           <td className="px-4 py-3 table-sticky-left">
                                               <div className="font-mono text-xs">{mem.supplierSku}</div>
@@ -3145,7 +3215,6 @@ if __name__ == "__main__":
                                                 onClick={async () => {
                                                     if (!globalThis.confirm('Remove this from system memory?\n\nFuture supplier uploads will need this item to be re-mapped manually.')) return;
                                                     await deleteMapping(mem.id);
-                                                    setMappingMemory(prev => prev.filter(p => p.id !== mem.id));
                                                 }}
                                                 className="icon-btn-red"
                                               >
@@ -3154,7 +3223,7 @@ if __name__ == "__main__":
                                           </td>
                                       </tr>
                                   ))}
-                                  {mappingMemory.length === 0 && (
+                                  {systemMemoryRows.length === 0 && (
                                       <tr><td colSpan={6} className="text-center p-8 text-gray-400">No confirmed mappings in persistent memory yet.</td></tr>
                                   )}
                               </tbody>
@@ -4921,17 +4990,18 @@ if __name__ == "__main__":
                                     />
                                 </div>
                                 <div className="mt-2 max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-                                    {items.filter(i => (i.name || '').toLowerCase().includes(itemSearch.toLowerCase()) || (i.sku || '').toLowerCase().includes(itemSearch.toLowerCase())).slice(0, 10).map(i => (
-                                        <button type="button" 
-                                            key={i.id}
-                                            onClick={() => {
-                                                // Confirm Map
-                                                // Using updateMapping which is aliased to upsertMapping
+                                      {items.filter(i => (i.name || '').toLowerCase().includes(itemSearch.toLowerCase()) || (i.sku || '').toLowerCase().includes(itemSearch.toLowerCase())).slice(0, 10).map(i => (
+                                          <button type="button"
+                                              key={i.id}
+                                              onClick={() => {
+                                                const existingMapping = mappings.find(m => m.supplierId === mappingSource.supplierId && m.supplierSku === mappingSource.supplierSku);
                                                 updateMapping({
-                                                    id: uuidv4(), // Generate new ID
+                                                    id: existingMapping?.id || uuidv4(),
                                                     supplierId: mappingSource.supplierId,
                                                     supplierSku: mappingSource.supplierSku,
                                                     productId: i.id,
+                                                    matchPriority: existingMapping?.matchPriority || 100,
+                                                    packConversionFactor: existingMapping?.packConversionFactor || 1,
                                                     mappingStatus: 'CONFIRMED',
                                                     mappingMethod: 'MANUAL',
                                                     confidenceScore: 1.0,

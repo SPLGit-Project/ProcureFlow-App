@@ -553,7 +553,7 @@ export const db = {
              mapping_justification: mapping.mappingJustification || {},
              manual_override: mapping.manualOverride || false,
              updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'supplier_id,supplier_sku' });
         if (error) throw error;
     },
 

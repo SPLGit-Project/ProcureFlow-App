@@ -2754,10 +2754,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         await db.upsertMapping(mapping);
         // Optimistic update
         setMappings(prev => {
-             const exists = prev.find(m => m.id === mapping.id);
-             return exists ? prev.map(m => m.id === mapping.id ? mapping : m) : [...prev, mapping];
+             const exists = prev.some(m => m.id === mapping.id || (m.supplierId === mapping.supplierId && m.supplierSku === mapping.supplierSku));
+             return exists
+               ? prev.map(m => (m.id === mapping.id || (m.supplierId === mapping.supplierId && m.supplierSku === mapping.supplierSku)) ? mapping : m)
+               : [...prev, mapping];
         });
-        await refreshAvailability(undefined, [...mappings.filter(m => m.id !== mapping.id), mapping]);
+        await refreshAvailability(undefined, [...mappings.filter(m => m.id !== mapping.id && !(m.supplierId === mapping.supplierId && m.supplierSku === mapping.supplierSku)), mapping]);
         logAction('MAPPING_UPSERTED', { mappingId: mapping.id, productId: mapping.productId, supplierId: mapping.supplierId, status: mapping.mappingStatus });
   };
 

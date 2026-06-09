@@ -309,7 +309,7 @@ export interface SupplierStockSnapshot {
 }
 
 export type MappingStatus = 'PROPOSED' | 'CONFIRMED' | 'REJECTED';
-export type MappingMethod = 'MANUAL' | 'IMPORT' | 'AUTO' | 'LEGACY' | 'AUTO_NORM' | 'AUTO_ALT' | 'AUTO_LEGACY' | 'AUTO_FUZZY';
+export type MappingMethod = 'MANUAL' | 'IMPORT' | 'AUTO' | 'AUTO_V2' | 'MEMORY' | 'LEGACY' | 'AUTO_NORM' | 'AUTO_ALT' | 'AUTO_LEGACY' | 'AUTO_FUZZY';
 
 export interface MappingComponent {
     type: string;
