@@ -1515,7 +1515,7 @@ const Settings = () => {
                           <section className={`rounded-xl border p-4 ${selectedTone.bg} ${selectedTone.border}`}>
                               <div className="flex items-center justify-between gap-3 mb-4">
                                   <div>
-                                      <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Selected system item</div>
+                                      <div className="text-[10px] uppercase font-bold text-secondary dark:text-gray-500">Will be confirmed as</div>
                                       <h4 className="text-lg font-bold text-gray-900 dark:text-white">{selectedGuidedCandidate?.item.name || currentGuidedItem?.name || 'Select a candidate'}</h4>
                                   </div>
                                   <div className="text-right">
@@ -1564,7 +1564,7 @@ const Settings = () => {
                           <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                               <div>
                                   <h4 className="font-bold text-gray-900 dark:text-white">Likely options</h4>
-                                  <p className="text-xs text-secondary dark:text-gray-500">The current proposal is included, followed by other close matches from the item master.</p>
+                                  <p className="text-xs text-secondary dark:text-gray-500">The system's proposal is pre-selected. Click a row to switch — the panel above updates live.</p>
                               </div>
                               <div className="relative min-w-[260px]">
                                   <Search className="absolute left-3 top-2.5 text-gray-400" size={16}/>
@@ -1585,13 +1585,19 @@ const Settings = () => {
                                           type="button"
                                           key={candidate.item.id}
                                           onClick={() => setSelectedCandidateItemId(candidate.item.id)}
-                                          className={`w-full text-left p-4 transition-colors ${isSelected ? 'bg-blue-50/70 dark:bg-blue-950/20' : 'hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                                          className={`w-full text-left p-4 transition-colors ${isSelected ? 'bg-blue-50/70 dark:bg-blue-950/20 ring-1 ring-inset ring-blue-300 dark:ring-blue-700' : 'hover:bg-gray-50 dark:hover:bg-white/5'}`}
                                       >
-                                          <div className="grid grid-cols-1 lg:grid-cols-[1fr_150px_120px] gap-3 lg:items-center">
+                                          <div className="grid grid-cols-1 lg:grid-cols-[28px_1fr_150px_120px] gap-3 lg:items-center">
+                                              <div className="flex items-center justify-center pt-0.5">
+                                                  {isSelected
+                                                      ? <CheckCircle2 size={18} className="text-blue-600 dark:text-blue-400 shrink-0"/>
+                                                      : <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300 dark:border-gray-600"/>
+                                                  }
+                                              </div>
                                               <div>
                                                   <div className="flex items-center gap-2">
                                                       <span className="font-bold text-gray-900 dark:text-white">{candidate.item.name}</span>
-                                                      {candidate.isCurrent && <span className="text-[10px] font-bold text-blue-700 bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 px-2 py-0.5 rounded-full">Current proposal</span>}
+                                                      {candidate.isCurrent && <span className="text-[10px] font-bold text-blue-700 bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 px-2 py-0.5 rounded-full">System proposal</span>}
                                                   </div>
                                                   <div className="text-xs font-mono text-secondary dark:text-gray-500 mt-0.5">{candidate.item.sku}</div>
                                                   <div className="text-[11px] text-secondary dark:text-gray-500 mt-1">{candidate.reasons.slice(0, 3).join(' | ')}</div>
@@ -1617,13 +1623,43 @@ const Settings = () => {
 
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
                           <div>
-                              <div className={`text-xs font-bold ${confidenceTone.text}`}>{confidenceTone.label}</div>
-                              <div className="text-xs text-secondary dark:text-gray-500">Confirming a changed selection saves it as manual mapping memory for future supplier uploads.</div>
+                              {selectedGuidedCandidate && !selectedGuidedCandidate.isCurrent ? (
+                                  <>
+                                      <div className="flex items-center gap-2">
+                                          <span className="text-xs font-bold text-amber-600 dark:text-amber-400">Overriding system proposal</span>
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Manual override</span>
+                                      </div>
+                                      <div className="text-xs text-secondary dark:text-gray-500 mt-0.5">Your selection will replace the proposal and be saved as manual mapping memory.</div>
+                                  </>
+                              ) : (
+                                  <>
+                                      <div className="flex items-center gap-1.5">
+                                          <span className={`text-xs font-bold ${confidenceTone.text}`}>{confidenceTone.label}</span>
+                                          <span className="text-xs text-secondary dark:text-gray-500">—</span>
+                                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[260px]">{selectedGuidedCandidate?.item.name || 'no item selected'}</span>
+                                      </div>
+                                      <div className="text-xs text-secondary dark:text-gray-500 mt-0.5">Confirming locks in the system's proposal for this supplier item.</div>
+                                  </>
+                              )}
                           </div>
                           <div className="flex flex-wrap justify-end gap-3">
-                              <button type="button" onClick={() => { setNotMappedTarget(mapping); setNotMappedReason('No longer required'); }} className="btn-secondary flex items-center gap-2 text-xs"><MinusCircle size={14}/> Not Mapped</button>
-                              <button type="button" onClick={() => confirmGuidedCandidate(guidedCandidates.find(candidate => candidate.isCurrent) || selectedGuidedCandidate)} className="btn-secondary flex items-center gap-2 text-xs"><CheckCircle2 size={14}/> Confirm Proposed</button>
-                              <button type="button" onClick={() => confirmGuidedCandidate(selectedGuidedCandidate)} className="btn-primary flex items-center gap-2 text-xs" disabled={!selectedGuidedCandidate}><Save size={14}/> Save Selected Match</button>
+                              <button
+                                  type="button"
+                                  onClick={() => { setNotMappedTarget(mapping); setNotMappedReason('No longer required'); }}
+                                  className="btn-secondary flex items-center gap-2 text-xs text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/20"
+                              >
+                                  <MinusCircle size={14}/> Not Mapped
+                              </button>
+                              <button
+                                  type="button"
+                                  onClick={() => confirmGuidedCandidate(selectedGuidedCandidate)}
+                                  className="btn-primary flex items-center gap-2 text-sm font-bold px-5"
+                                  disabled={!selectedGuidedCandidate}
+                              >
+                                  <CheckCircle2 size={15}/>
+                                  {selectedGuidedCandidate?.isCurrent === false ? 'Confirm Selected Match' : 'Confirm This Match'}
+                                  <ArrowRight size={14}/>
+                              </button>
                           </div>
                       </div>
                   </div>
