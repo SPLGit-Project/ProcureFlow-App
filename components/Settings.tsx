@@ -2005,7 +2005,7 @@ const Settings = () => {
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                           {rows.map(snapshot => {
                               const mapping = mappings.find(m => m.supplierId === snapshot.supplierId && m.supplierSku === snapshot.supplierSku);
-                              const mappedItem = mapping?.mappingStatus !== 'REJECTED' ? items.find(i => i.id === mapping.productId) : null;
+                              const mappedItem = mapping?.mappingStatus !== 'REJECTED' ? items.find(i => i.id === mapping?.productId) : null;
                               const supplier = suppliers.find(s => s.id === snapshot.supplierId);
 
                               return (
@@ -2914,7 +2914,7 @@ if __name__ == "__main__":
                          <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                              {filteredSnapshots.map(snap => {
                                  const mapping = mappings.find(m => m.supplierId === snap.supplierId && m.supplierSku === snap.supplierSku);
-                                  const mappedItem = mapping?.mappingStatus !== 'REJECTED' ? items.find(i => i.id === mapping.productId) : null;
+                                  const mappedItem = mapping?.mappingStatus !== 'REJECTED' ? items.find(i => i.id === mapping?.productId) : null;
                                   const isConfirmed = mapping?.mappingStatus === 'CONFIRMED' && !!mappedItem;
                                   const isProposed = mapping?.mappingStatus === 'PROPOSED' && !!mappedItem;
                                   const isAddressed = mapping?.mappingStatus === 'REJECTED';
