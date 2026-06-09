@@ -1425,17 +1425,28 @@ const Settings = () => {
                           The system found these potential matches automatically — but needs your confirmation before locking them in. Review each one, adjust if needed, and confirm or reject. Confirmed mappings are saved to System Memory and applied automatically on future uploads.
                       </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                      <div className="min-w-[220px]">
-                          <div className="flex justify-between text-[10px] uppercase font-bold text-secondary dark:text-gray-500 mb-1">
-                              <span>Review progress</span>
-                              <span>{Math.min(guidedMappingIndex + 1, guidedReviewQueue.length)} / {guidedReviewQueue.length}</span>
-                          </div>
-                          <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                              <div className="h-full bg-[var(--color-brand)] transition-all" style={{ width: `${progressPct}%` }}/>
-                          </div>
-                      </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                      {selectedGuidedCandidate && !selectedGuidedCandidate.isCurrent && (
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Manual override</span>
+                      )}
                       <button type="button" onClick={moveToNextGuidedMapping} className="btn-secondary text-xs">Skip</button>
+                      <button
+                          type="button"
+                          onClick={() => { setNotMappedTarget(mapping); setNotMappedReason('No longer required'); }}
+                          className="btn-secondary flex items-center gap-2 text-xs text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/20"
+                      >
+                          <MinusCircle size={14}/> Not Mapped
+                      </button>
+                      <button
+                          type="button"
+                          onClick={() => confirmGuidedCandidate(selectedGuidedCandidate)}
+                          className="btn-primary flex items-center gap-2 text-xs font-bold"
+                          disabled={!selectedGuidedCandidate}
+                      >
+                          <CheckCircle2 size={15}/>
+                          {selectedGuidedCandidate?.isCurrent === false ? 'Confirm Selected Match' : 'Confirm This Match'}
+                          <ArrowRight size={14}/>
+                      </button>
                   </div>
               </div>
 
@@ -1620,48 +1631,6 @@ const Settings = () => {
                               })}
                           </div>
                       </section>
-
-                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
-                          <div>
-                              {selectedGuidedCandidate && !selectedGuidedCandidate.isCurrent ? (
-                                  <>
-                                      <div className="flex items-center gap-2">
-                                          <span className="text-xs font-bold text-amber-600 dark:text-amber-400">Overriding system proposal</span>
-                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Manual override</span>
-                                      </div>
-                                      <div className="text-xs text-secondary dark:text-gray-500 mt-0.5">Your selection will replace the proposal and be saved as manual mapping memory.</div>
-                                  </>
-                              ) : (
-                                  <>
-                                      <div className="flex items-center gap-1.5">
-                                          <span className={`text-xs font-bold ${confidenceTone.text}`}>{confidenceTone.label}</span>
-                                          <span className="text-xs text-secondary dark:text-gray-500">—</span>
-                                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[260px]">{selectedGuidedCandidate?.item.name || 'no item selected'}</span>
-                                      </div>
-                                      <div className="text-xs text-secondary dark:text-gray-500 mt-0.5">Confirming locks in the system's proposal for this supplier item.</div>
-                                  </>
-                              )}
-                          </div>
-                          <div className="flex flex-wrap justify-end gap-3">
-                              <button
-                                  type="button"
-                                  onClick={() => { setNotMappedTarget(mapping); setNotMappedReason('No longer required'); }}
-                                  className="btn-secondary flex items-center gap-2 text-xs text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/20"
-                              >
-                                  <MinusCircle size={14}/> Not Mapped
-                              </button>
-                              <button
-                                  type="button"
-                                  onClick={() => confirmGuidedCandidate(selectedGuidedCandidate)}
-                                  className="btn-primary flex items-center gap-2 text-sm font-bold px-5"
-                                  disabled={!selectedGuidedCandidate}
-                              >
-                                  <CheckCircle2 size={15}/>
-                                  {selectedGuidedCandidate?.isCurrent === false ? 'Confirm Selected Match' : 'Confirm This Match'}
-                                  <ArrowRight size={14}/>
-                              </button>
-                          </div>
-                      </div>
                   </div>
               </div>
           </div>
