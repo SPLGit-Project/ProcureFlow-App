@@ -1368,6 +1368,74 @@ const Settings = () => {
           .slice(0, search ? 12 : 6);
   }, [candidateSearch, currentGuidedItem?.id, currentGuidedMapping, currentGuidedSnapshot, items]);
 
+  const manualCandidates = React.useMemo<MappingCandidate[]>(() => {
+      if (!isManualMapOpen || !mappingSource) return [];
+      
+      const supplierText = [
+          mappingSource.productName,
+          mappingSource.supplierSku,
+          mappingSource.customerStockCode,
+          mappingSource.category,
+          mappingSource.subCategory,
+          mappingSource.stockType
+      ].filter(Boolean).join(' ');
+
+      const supplierNorms = [
+          mappingSource.customerStockCodeNorm,
+          mappingSource.customerStockCodeAltNorm,
+          mappingSource.customerStockCode ? normalizeItemCode(mappingSource.customerStockCode).normalized : '',
+          mappingSource.supplierSku ? normalizeItemCode(mappingSource.supplierSku).normalized : ''
+      ].filter(Boolean);
+
+      const search = itemSearch.trim().toLowerCase();
+
+      return items
+          .filter(item => !search || `${item.name} ${item.sku} ${item.description || ''} ${item.category || ''}`.toLowerCase().includes(search))
+          .map(item => {
+              const itemNorm = item.sapItemCodeNorm || normalizeItemCode(item.sku || '').normalized;
+              const itemAltText = [item.name, item.description, item.sku, item.category, item.subCategory, item.itemType, item.measurements].filter(Boolean).join(' ');
+              const reasons: string[] = [];
+              
+              const existingMapping = mappings.find(m => m.supplierId === mappingSource.supplierId && m.supplierSku === mappingSource.supplierSku && m.productId === item.id);
+              let score = existingMapping ? existingMapping.confidenceScore : 0;
+
+              if (supplierNorms.some(norm => norm && norm === itemNorm)) {
+                  score += 1;
+                  reasons.push('SPL item code matches internal SKU');
+              } else if (supplierNorms.some(norm => norm && (norm.includes(itemNorm) || itemNorm.includes(norm)))) {
+                  score += 0.45;
+                  reasons.push('Close code relationship');
+              }
+
+              const textScore = overlapScore(supplierText, itemAltText);
+              if (textScore >= 0.45) {
+                  score += 0.24;
+                  reasons.push('Strong product wording overlap');
+              } else if (textScore >= 0.2) {
+                  score += 0.12;
+                  reasons.push('Some product wording overlap');
+              }
+
+              if (mappingSource.category && item.category && normalizeSupplierName(mappingSource.category) === normalizeSupplierName(item.category)) {
+                  score += 0.12;
+                  reasons.push('Category aligns');
+              }
+
+              if (existingMapping) {
+                  reasons.unshift('Current mapped item');
+              }
+
+              return {
+                  item,
+                  score: Math.min(1, score),
+                  reasons: reasons.length ? reasons : ['Low signal alternative'],
+                  isCurrent: !!existingMapping
+              };
+          })
+          .sort((a, b) => b.score - a.score)
+          .slice(0, search ? 15 : 8);
+  }, [itemSearch, isManualMapOpen, mappingSource, items, mappings]);
+
   useEffect(() => {
       setSelectedCandidateItemId(currentGuidedMapping?.productId || null);
       setCandidateSearch('');
@@ -5121,43 +5189,70 @@ if __name__ == "__main__":
                                         autoFocus
                                     />
                                 </div>
-                                <div className="mt-2 max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-                                      {items.filter(i => (i.name || '').toLowerCase().includes(itemSearch.toLowerCase()) || (i.sku || '').toLowerCase().includes(itemSearch.toLowerCase())).slice(0, 10).map(i => (
-                                          <button type="button"
-                                              key={i.id}
-                                              onClick={() => {
-                                                const existingMapping = mappings.find(m => m.supplierId === mappingSource.supplierId && m.supplierSku === mappingSource.supplierSku);
-                                                updateMapping({
-                                                    id: existingMapping?.id || uuidv4(),
-                                                    supplierId: mappingSource.supplierId,
-                                                    supplierSku: mappingSource.supplierSku,
-                                                    productId: i.id,
-                                                    matchPriority: existingMapping?.matchPriority || 100,
-                                                    packConversionFactor: existingMapping?.packConversionFactor || 1,
-                                                    mappingStatus: 'CONFIRMED',
-                                                    mappingMethod: 'MANUAL',
-                                                    confidenceScore: 1.0,
-                                                    manualOverride: true,
-                                                    supplierCustomerStockCode: mappingSource.customerStockCode,
-                                                    mappingJustification: {
-                                                        components: [{ type: 'ADMIN_CONFIRMED', score: 1, detail: 'Manually selected and saved to supplier mapping memory' }]
-                                                    },
-                                                } as any).then(() => {
-                                                    setIsManualMapOpen(false);
-                                                    setMappingSource(null);
-                                                    setItemSearch('');
-                                                });
-                                            }}
-                                            className="w-full text-left p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 border-b border-gray-100 dark:border-gray-800 last:border-0 flex justify-between items-center group"
-                                        >
-                                            <div>
-                                                <div className="font-bold text-sm text-gray-900 dark:text-gray-100">{i.name}</div>
-                                                <div className="text-xs text-gray-400 font-mono">{i.sku}</div>
-                                                <div className="text-[10px] text-gray-400">{i.category}</div>
-                                            </div>
-                                            <div className="opacity-0 group-hover:opacity-100 text-blue-600 text-xs font-bold">Select</div>
-                                        </button>
-                                    ))}
+                                <div className="mt-2 max-h-56 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+                                      {manualCandidates.map(candidate => {
+                                          const tone = getConfidenceTone(candidate.score);
+                                          const i = candidate.item;
+                                          return (
+                                              <button type="button"
+                                                  key={i.id}
+                                                  onClick={() => {
+                                                    const existingMapping = mappings.find(m => m.supplierId === mappingSource.supplierId && m.supplierSku === mappingSource.supplierSku);
+                                                    updateMapping({
+                                                        id: existingMapping?.id || uuidv4(),
+                                                        supplierId: mappingSource.supplierId,
+                                                        supplierSku: mappingSource.supplierSku,
+                                                        productId: i.id,
+                                                        matchPriority: existingMapping?.matchPriority || 100,
+                                                        packConversionFactor: existingMapping?.packConversionFactor || 1,
+                                                        mappingStatus: 'CONFIRMED',
+                                                        mappingMethod: 'MANUAL',
+                                                        confidenceScore: candidate.score,
+                                                        manualOverride: true,
+                                                        supplierCustomerStockCode: mappingSource.customerStockCode,
+                                                        mappingJustification: {
+                                                            components: [
+                                                                { type: 'ADMIN_CONFIRMED', score: 1, detail: 'Manually mapped with likely match assistance' },
+                                                                ...candidate.reasons.map(r => ({ type: 'RULE_MATCH', score: candidate.score, detail: r }))
+                                                            ]
+                                                        },
+                                                    } as any).then(() => {
+                                                        setIsManualMapOpen(false);
+                                                        setMappingSource(null);
+                                                        setItemSearch('');
+                                                    });
+                                                }}
+                                                className="w-full text-left p-3 hover:bg-blue-50/70 dark:hover:bg-blue-950/20 border-b border-gray-100 dark:border-gray-800 last:border-0 flex justify-between items-start gap-3 group"
+                                            >
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className="font-bold text-sm text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{i.name}</span>
+                                                        {candidate.isCurrent && (
+                                                            <span className="text-[9px] font-bold text-blue-700 bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full">Current Map</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-xs text-secondary dark:text-gray-400 font-mono mt-0.5">{i.sku}</div>
+                                                    {i.category && <div className="text-[10px] text-tertiary mt-0.5">{i.category}</div>}
+                                                    {candidate.reasons.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            {candidate.reasons.slice(0, 2).map(r => (
+                                                                <span key={r} className="text-[9px] px-1.5 py-0.5 bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded">
+                                                                    {r}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col items-end shrink-0 text-right">
+                                                    <span className={`text-xs font-black ${tone.text}`}>{Math.round(candidate.score * 100)}%</span>
+                                                    <span className="text-[8px] text-tertiary uppercase font-bold tracking-wider">{tone.label}</span>
+                                                    <div className="w-12 h-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-1">
+                                                        <div className={`h-full ${tone.bar}`} style={{ width: `${Math.round(candidate.score * 100)}%` }}/>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                          );
+                                      })}
                                 </div>
                             </div>
 
