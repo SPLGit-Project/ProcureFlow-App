@@ -293,7 +293,6 @@ interface AppContextType {
   runAutoMapping: (supplierId: string) => Promise<{ confirmed: number, proposed: number }>;
   deletePO: (id: string) => Promise<void>;
   getMappingQueue: (supplierId?: string) => Promise<SupplierProductMap[]>;
-  getMappingMemory: (supplierId?: string) => Promise<SupplierProductMap[]>;
   deleteMapping: (id: string) => Promise<void>;
   syncItemsFromSnapshots: (supplierId?: string) => Promise<{ updated: number }>;
   getAuditLogs: (filters?: { startDate?: string, endDate?: string, userId?: string, actionType?: string }) => Promise<SystemAuditLog[]>;
@@ -2687,10 +2686,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       return result;
   };
 
-  const getMappingMemory = async (supplierId?: string) => {
-      return await db.getMappingMemory(supplierId);
-  };
-
   const deleteMapping = async (id: string) => {
       await db.deleteMapping(id);
       setMappings(prev => prev.filter(m => m.id !== id));
@@ -2961,7 +2956,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     getItemFieldRegistry,
     runAutoMapping,
     getMappingQueue,
-    getMappingMemory,
     deleteMapping,
     syncItemsFromSnapshots,
     getAuditLogs,

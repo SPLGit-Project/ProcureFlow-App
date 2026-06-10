@@ -1877,42 +1877,6 @@ export const db = {
         if (error) throw error;
     },
 
-    getMappingMemory: async (supplierId?: string): Promise<SupplierProductMap[]> => {
-        let query = supabase.from('supplier_product_map')
-            .select(`
-                *,
-                item:items(sku, name),
-                supplier:suppliers(name)
-            `)
-            .eq('mapping_status', 'CONFIRMED');
-            
-        if (supplierId) {
-            query = query.eq('supplier_id', supplierId);
-        }
-        
-        const { data, error } = await query;
-        if (error) throw error;
-        
-        return data.map((m: DbSupplierProductMapRow & { item?: { sku: string; name: string }; supplier?: { name: string } }) => ({
-            id: m.id,
-            supplierId: m.supplier_id,
-            supplierName: m.supplier?.name,
-            productId: m.product_id,
-            productName: m.item?.name,
-            internalSku: m.item?.sku,
-            supplierSku: m.supplier_sku,
-            supplierCustomerStockCode: m.supplier_customer_stock_code,
-            matchPriority: m.match_priority,
-            mappingStatus: m.mapping_status,
-            mappingMethod: m.mapping_method,
-            confidenceScore: m.confidence_score,
-            packConversionFactor: m.pack_conversion_factor,
-            mappingJustification: m.mapping_justification,
-            manualOverride: m.manual_override,
-            updatedAt: m.updated_at
-        }));
-    },
-
     deleteMapping: async (id: string): Promise<void> => {
         const { error } = await supabase.from('supplier_product_map').delete().eq('id', id);
         if (error) throw error;

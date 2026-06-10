@@ -13,7 +13,8 @@ import {
     MapPin, Link as LinkIcon, Lock, Box, User, Settings as SettingsIcon, Inbox, MailOpen,
     GitMerge, Fingerprint, Palette, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
-    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3, Sparkles
+    Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3, Sparkles,
+    Building2, Files, FileSpreadsheet
 } from 'lucide-react';
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
@@ -794,9 +795,14 @@ const Settings = () => {
   const [candidateSearch, setCandidateSearch] = useState('');
 
   // --- Email Ingestion Hub State ---
-  const [isAutoIngestEnabled, setIsAutoIngestEnabled] = useState(true);
+  const [isAutoIngestEnabled, setIsAutoIngestEnabled] = useState(() => {
+      const saved = localStorage.getItem('isAutoIngestEnabled');
+      return saved !== null ? saved === 'true' : false;
+  });
   const [manualIngestSupplierId, setManualIngestSupplierId] = useState(AUTO_DETECT_SUPPLIER_VALUE);
   const [manualIngestFile, setManualIngestFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
   const [ingestEmailAddress, setIngestEmailAddress] = useState(inboundEmailAddress);
   const [ingestInterval, setIngestInterval] = useState('Hourly');
   const [ingestionStats, setIngestionStats] = useState<{
@@ -1170,6 +1176,30 @@ const Settings = () => {
       }
 
       throw new Error('The supplier could not be identified from the file contents. Select an existing supplier or add the supplier before uploading.');
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+      setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      
+      const file = e.dataTransfer.files?.[0];
+      if (file) {
+          const ext = file.name.split('.').pop()?.toLowerCase();
+          if (ext && ['xlsx', 'xls', 'csv'].includes(ext)) {
+              setManualIngestFile(file);
+          } else {
+              error('Invalid file type. Please upload an Excel or CSV file.');
+          }
+      }
   };
 
   const handleManualSupplierUpload = async () => {
@@ -1665,6 +1695,7 @@ const Settings = () => {
                               type="button"
                               onClick={() => {
                                   setIsAutoIngestEnabled(false);
+                                  localStorage.setItem('isAutoIngestEnabled', 'false');
                                   success('Manual supplier upload mode enabled.');
                               }}
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isManualMode ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
@@ -1675,6 +1706,7 @@ const Settings = () => {
                               type="button"
                               onClick={() => {
                                   setIsAutoIngestEnabled(true);
+                                  localStorage.setItem('isAutoIngestEnabled', 'true');
                                   success('Automated email ingestion mode enabled.');
                               }}
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isAutoIngestEnabled ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
@@ -1709,12 +1741,21 @@ const Settings = () => {
                                           }}
                                           className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-850 px-3 py-2 rounded-xl text-primary font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                                       >
-                                          <option value={AUTO_DETECT_SUPPLIER_VALUE}>Auto-detect from file</option>
+                                          <option value={AUTO_DETECT_SUPPLIER_VALUE}>All Suppliers (Auto-detect)</option>
                                           {visibleSuppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
                                       </select>
                                   </div>
 
-                                  <label className="block p-5 bg-blue-50/40 dark:bg-blue-950/10 border border-dashed border-blue-300 dark:border-blue-800 rounded-xl cursor-pointer hover:border-blue-500 transition-colors">
+                                  <label
+                                      className={`block p-5 border border-dashed rounded-xl cursor-pointer transition-all ${
+                                          isDragging
+                                              ? 'bg-blue-100/70 border-blue-500 text-blue-700 dark:bg-blue-950/30'
+                                              : 'bg-blue-50/40 dark:bg-blue-950/10 border-blue-300 dark:border-blue-800 hover:border-blue-500'
+                                      }`}
+                                      onDragOver={handleDragOver}
+                                      onDragLeave={handleDragLeave}
+                                      onDrop={handleDrop}
+                                  >
                                       <input
                                           type="file"
                                           accept=".xlsx,.xls,.csv"
@@ -1722,11 +1763,13 @@ const Settings = () => {
                                           onChange={(e) => setManualIngestFile(e.target.files?.[0] || null)}
                                       />
                                       <div className="flex items-center gap-3">
-                                          <div className="p-2 bg-blue-50 dark:bg-blue-950/20 text-blue-600 rounded-lg">
-                                              <Upload size={18} />
+                                          <div className={`p-2 rounded-lg transition-colors ${isDragging ? 'bg-blue-200 text-blue-800 dark:bg-blue-900/40' : 'bg-blue-50 dark:bg-blue-950/20 text-blue-600'}`}>
+                                              <Upload size={18} className={isDragging ? 'animate-bounce' : ''} />
                                           </div>
                                           <div className="min-w-0">
-                                              <p className="font-bold text-gray-900 dark:text-white truncate">{manualIngestFile ? manualIngestFile.name : 'Upload latest supplier file'}</p>
+                                              <p className="font-bold text-gray-900 dark:text-white truncate">
+                                                  {manualIngestFile ? manualIngestFile.name : (isDragging ? 'Drop file here...' : 'Upload latest supplier file')}
+                                              </p>
                                               <p className="text-[10px] text-tertiary dark:text-gray-500">Excel or CSV inventory report</p>
                                           </div>
                                       </div>
@@ -1892,15 +1935,99 @@ const Settings = () => {
                                   </div>
                               </div>
                           ) : (
-                              <div className="h-full rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/20 p-6 flex flex-col justify-center">
-                                  <div className="max-w-xl">
-                                      <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                          <Upload size={18} className="text-blue-500" />
-                                          Select a supplier to begin
-                                      </h4>
-                                      <p className="text-sm text-secondary dark:text-gray-400 mt-2 leading-relaxed">
-                                          Once a supplier is selected, this area shows the current uploaded document, upload date, and row count for that supplier.
-                                      </p>
+                              <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[400px]">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
+                                      <div>
+                                          <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                              <Files size={18} className="text-blue-500" />
+                                              All Suppliers Ingestion Status
+                                          </h4>
+                                          <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
+                                              Overview of latest uploaded files and record counts. Click a supplier to view.
+                                          </p>
+                                      </div>
+                                      <div className="relative min-w-[200px]">
+                                          <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                                          <input
+                                              type="text"
+                                              placeholder="Search suppliers..."
+                                              value={supplierSearchQuery}
+                                              onChange={e => setSupplierSearchQuery(e.target.value)}
+                                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-8 pr-3 py-1.5 rounded-xl text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                          />
+                                      </div>
+                                  </div>
+
+                                  <div className="flex-1 overflow-y-auto max-h-[450px] pr-1">
+                                      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                          {supplierInventoryUploads
+                                              .filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()))
+                                              .map((upload) => {
+                                                  const isUploaded = !!upload.uploadedAt;
+                                                  return (
+                                                      <div
+                                                          key={upload.supplier.id}
+                                                          onClick={() => {
+                                                              setManualIngestSupplierId(upload.supplier.id);
+                                                              setMappingSupplierId(upload.supplier.id);
+                                                          }}
+                                                          className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl cursor-pointer transition-all"
+                                                      >
+                                                          <div className="flex items-center gap-3 min-w-0">
+                                                              <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
+                                                                  <Building2 size={16} className="group-hover:scale-110 transition-transform" />
+                                                              </div>
+                                                              <div className="min-w-0">
+                                                                  <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
+                                                                      {upload.supplier.name}
+                                                                  </div>
+                                                                  <div className="flex items-center gap-2 mt-0.5">
+                                                                      {isUploaded ? (
+                                                                          <>
+                                                                              <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
+                                                                              <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[200px] sm:max-w-[300px]" title={upload.sourceReportName}>
+                                                                                  {upload.sourceReportName}
+                                                                              </span>
+                                                                          </>
+                                                                      ) : (
+                                                                          <span className="text-xs text-tertiary dark:text-gray-500 italic">
+                                                                              No file uploaded yet
+                                                                          </span>
+                                                                      )}
+                                                                  </div>
+                                                              </div>
+                                                          </div>
+
+                                                          <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
+                                                              <div>
+                                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                      isUploaded
+                                                                          ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30'
+                                                                          : 'bg-gray-100 dark:bg-white/5 text-gray-500 border border-gray-200 dark:border-gray-800'
+                                                                  }`}>
+                                                                      {isUploaded ? 'Uploaded' : 'Awaiting File'}
+                                                                  </span>
+                                                              </div>
+                                                              {isUploaded && (
+                                                                  <div className="text-xs">
+                                                                      <div className="font-semibold text-gray-900 dark:text-white">
+                                                                          {upload.recordCount} rows
+                                                                      </div>
+                                                                      <div className="text-[10px] text-tertiary dark:text-gray-500">
+                                                                          {new Date(upload.uploadedAt!).toLocaleDateString()}
+                                                                      </div>
+                                                                  </div>
+                                                              )}
+                                                          </div>
+                                                      </div>
+                                                  );
+                                              })}
+                                          {supplierInventoryUploads.filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase())).length === 0 && (
+                                              <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
+                                                  No suppliers match your search.
+                                              </div>
+                                          )}
+                                      </div>
                                   </div>
                               </div>
                           )
