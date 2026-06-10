@@ -745,7 +745,7 @@ export const db = {
             reasonForRequest: p.reason_for_request,
             customerName: p.customer_name,
             concurRequestNumber: p.concur_request_number,
-            concurPoNumber: Array.from(new Set((p.po_lines || []).map((l: { concur_po_number: string }) => l.concur_po_number).filter(Boolean))).join(', ') || undefined,
+            concurPoNumber: Array.from(new Set((p.lines || []).map((l: { concur_po_number: string }) => l.concur_po_number).filter(Boolean))).join(', ') || undefined,
             comments: p.comments
         }));
     },
