@@ -6082,6 +6082,33 @@ if __name__ == "__main__":
                    </div>
                )}
 
+      {isImporting && (
+          <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/60 backdrop-blur-md transition-all duration-300">
+              <div className="w-full max-w-md bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-800 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center space-y-6">
+                  <div className="relative">
+                      <div className="w-16 h-16 rounded-full border-4 border-blue-100 dark:border-blue-900/30 flex items-center justify-center">
+                          <RefreshCw size={28} className="text-blue-600 dark:text-blue-400 animate-spin" />
+                      </div>
+                      <span className="absolute top-0 right-0 flex h-3 w-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                      </span>
+                  </div>
+                  <div>
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white">Replacing Supplier Inventory</h3>
+                      <p className="mt-2 text-sm text-secondary dark:text-gray-400 leading-relaxed">
+                          Processing report data, running item mapping, and recalculating availability...
+                      </p>
+                  </div>
+                  <div className="w-full bg-gray-100 dark:bg-white/5 h-2 rounded-full overflow-hidden">
+                      <div className="bg-blue-600 dark:bg-blue-50 h-full w-2/3 animate-pulse rounded-full" style={{ animationDuration: '1.5s' }} />
+                  </div>
+                  <div className="text-[10px] uppercase font-bold tracking-widest text-tertiary dark:text-gray-500">
+                      Do not refresh or close this tab
+                  </div>
+              </div>
+          </div>
+      )}
 
     </div>
     </div>
