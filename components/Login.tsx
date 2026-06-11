@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 import { Shield } from 'lucide-react';
 import { consumeSessionLogoutNotice } from '../utils/sessionState.ts';
-import mercerFlowLogo from '../docs/Logo Branding/APP-LOGOS/MercerFlow-Logo.png';
+import mercerFlowLogo from '../docs/Logo Branding/APP-LOGOS/MercerFlow_Logo.gif';
 
 const Login = () => {
   const { login, isAuthenticated, branding, isLoadingAuth } = useApp();
