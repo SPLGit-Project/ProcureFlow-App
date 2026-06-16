@@ -266,6 +266,7 @@ const Settings = () => {
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep, notificationRules, upsertNotificationRule, deleteNotificationRule,
     items, addItem, updateItem, deleteItem,
     catalog, updateCatalogItem, stockSnapshots, pos,
+    emailIngestionQueue, refreshEmailIngestionQueue, updateEmailIngestionItem, downloadInboxAttachment,
     // Actions
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping, deleteMapping, syncItemsFromSnapshots,
@@ -761,6 +762,7 @@ const Settings = () => {
 
   const [importPreview, setImportPreview] = useState<SupplierStockSnapshot[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [isDrainingInbox, setIsDrainingInbox] = useState(false);
 
   // New Paste Import State
   // --- Unified Stock Tab State ---
@@ -1066,7 +1068,8 @@ const Settings = () => {
       supplier: Supplier,
       file: File,
       source: SupplierInventoryIngestSource,
-      parsedResult?: EnhancedParseResult
+      parsedResult?: EnhancedParseResult,
+      options?: { showStats?: boolean }
   ) => {
       const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
       const parsed = parsedResult || await parseStockFileEnhanced(file);
@@ -1106,13 +1109,15 @@ const Settings = () => {
       await refreshAvailability();
       await reloadData();
 
-      setIngestionStats({
-          open: true,
-          supplierName: supplier.name,
-          recordsImported: fullSnapshots.length,
-          confirmedMatches: mappingResults.confirmed,
-          proposedMatches: mappingResults.proposed
-      });
+      if (options?.showStats !== false) {
+          setIngestionStats({
+              open: true,
+              supplierName: supplier.name,
+              recordsImported: fullSnapshots.length,
+              confirmedMatches: mappingResults.confirmed,
+              proposedMatches: mappingResults.proposed
+          });
+      }
 
       return { recordsImported: fullSnapshots.length, mappingResults };
   };
@@ -1248,6 +1253,83 @@ const Settings = () => {
           }
       } finally {
           setIsImporting(false);
+      }
+  };
+
+  // Drain the automated email queue: each PENDING attachment is run through the
+  // SAME parse → supplier detection → import (with stale guard) → auto-mapping
+  // path as a manual upload, then its queue row is marked with the outcome.
+  const drainSupplierInbox = async () => {
+      const pending = emailIngestionQueue.filter(item => item.status === 'PENDING');
+      if (pending.length === 0) {
+          success('No new email attachments to process.');
+          return;
+      }
+      setIsDrainingInbox(true);
+      let processed = 0, rejected = 0, needsSupplier = 0, failed = 0;
+      try {
+          const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
+          for (const item of pending) {
+              try {
+                  const blob = await downloadInboxAttachment(item.storagePath);
+                  const file = new File([blob], item.attachmentName, { type: blob.type || 'application/octet-stream' });
+                  const parsed = await parseStockFileEnhanced(file);
+
+                  if (!parsed.success) {
+                      await updateEmailIngestionItem(item.id, { status: 'FAILED', error: parsed.errors.join('; ').slice(0, 500), processedAt: new Date().toISOString() });
+                      failed++;
+                      continue;
+                  }
+
+                  // Only ingest against a known supplier; never auto-create from
+                  // automation (matches the "pause for supplier creation" rule).
+                  const detectedSupplier = findVisibleSupplierByName(parsed.detectedSupplier?.name);
+                  if (!detectedSupplier) {
+                      await updateEmailIngestionItem(item.id, {
+                          status: 'NEEDS_SUPPLIER',
+                          detectedSupplierName: parsed.detectedSupplier?.name,
+                          reportDate: parsed.reportDate,
+                          error: parsed.detectedSupplier?.name
+                              ? `Supplier "${parsed.detectedSupplier.name}" is not in the supplier master. Add it, then reprocess.`
+                              : 'Could not identify the supplier from the file contents.',
+                          processedAt: new Date().toISOString()
+                      });
+                      needsSupplier++;
+                      continue;
+                  }
+
+                  const result = await processSupplierInventoryFile(detectedSupplier, file, 'Email Ingestion Hub', parsed, { showStats: false });
+                  await updateEmailIngestionItem(item.id, {
+                      status: 'PROCESSED',
+                      detectedSupplierId: detectedSupplier.id,
+                      detectedSupplierName: detectedSupplier.name,
+                      reportDate: parsed.reportDate,
+                      rowsImported: result.recordsImported,
+                      processedAt: new Date().toISOString()
+                  });
+                  processed++;
+              } catch (e: any) {
+                  const stale = parseStaleReportError(e?.message);
+                  if (stale) {
+                      await updateEmailIngestionItem(item.id, {
+                          status: 'REJECTED_STALE',
+                          error: `Report dated ${stale.incoming} is older than the inventory on file (${stale.existing}). Kept the newer data.`,
+                          processedAt: new Date().toISOString()
+                      });
+                      rejected++;
+                  } else {
+                      await updateEmailIngestionItem(item.id, { status: 'FAILED', error: (e?.message || 'Unknown error').slice(0, 500), processedAt: new Date().toISOString() });
+                      failed++;
+                  }
+              }
+          }
+          await refreshEmailIngestionQueue();
+          success(`Inbox processed — ${processed} ingested, ${rejected} stale (skipped), ${needsSupplier} need a supplier, ${failed} failed.`);
+      } catch (e: any) {
+          console.error('Inbox drain failed:', e);
+          error(`Could not process the inbox: ${e.message}`);
+      } finally {
+          setIsDrainingInbox(false);
       }
   };
 
@@ -2145,6 +2227,85 @@ const Settings = () => {
                                       </div>
                                   </div>
                               </div>
+
+                              {/* Email Inbox Queue */}
+                              {(() => {
+                                  const pendingCount = emailIngestionQueue.filter(i => i.status === 'PENDING').length;
+                                  const statusMeta: Record<string, { label: string; cls: string }> = {
+                                      PENDING:        { label: 'Pending',        cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border-blue-100 dark:border-blue-900/30' },
+                                      PROCESSED:      { label: 'Ingested',       cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30' },
+                                      REJECTED_STALE: { label: 'Stale (skipped)', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' },
+                                      NEEDS_SUPPLIER: { label: 'Needs supplier', cls: 'bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400 border-purple-100 dark:border-purple-900/30' },
+                                      FAILED:         { label: 'Failed',         cls: 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-100 dark:border-red-900/30' },
+                                      SKIPPED:        { label: 'Skipped',        cls: 'bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400 border-gray-200 dark:border-gray-800' }
+                                  };
+                                  return (
+                                      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6">
+                                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
+                                              <div>
+                                                  <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                                      <Inbox size={18} className="text-blue-500" />
+                                                      Email Inbox
+                                                      {pendingCount > 0 && (
+                                                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">{pendingCount} new</span>
+                                                      )}
+                                                  </h4>
+                                                  <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
+                                                      Attachments pulled from the mailbox. Processing runs the same parser, stale-file guard, and auto-mapping as manual uploads.
+                                                  </p>
+                                              </div>
+                                              <div className="flex items-center gap-2 shrink-0">
+                                                  <button type="button" onClick={refreshEmailIngestionQueue} className="btn-secondary flex items-center gap-2 text-xs" title="Refresh queue">
+                                                      <RefreshCw size={14} /> Refresh
+                                                  </button>
+                                                  <button
+                                                      type="button"
+                                                      onClick={drainSupplierInbox}
+                                                      disabled={isDrainingInbox || pendingCount === 0}
+                                                      className="btn-primary flex items-center gap-2 text-xs disabled:opacity-50"
+                                                  >
+                                                      {isDrainingInbox ? <RefreshCw size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                                                      Process inbox{pendingCount > 0 ? ` (${pendingCount})` : ''}
+                                                  </button>
+                                              </div>
+                                          </div>
+
+                                          {emailIngestionQueue.length === 0 ? (
+                                              <div className="py-10 text-center">
+                                                  <Inbox size={28} className="mx-auto text-gray-300 dark:text-gray-700 mb-2" />
+                                                  <p className="text-sm text-secondary dark:text-gray-400">No emails received yet.</p>
+                                                  <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Forwarded supplier reports appear here after the next mailbox poll.</p>
+                                              </div>
+                                          ) : (
+                                              <div className="max-h-[320px] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800 pr-1">
+                                                  {emailIngestionQueue.map(item => {
+                                                      const meta = statusMeta[item.status] || statusMeta.SKIPPED;
+                                                      return (
+                                                          <div key={item.id} className="flex items-start justify-between gap-3 py-3">
+                                                              <div className="min-w-0">
+                                                                  <div className="flex items-center gap-2">
+                                                                      <FileSpreadsheet size={14} className="text-gray-400 shrink-0" />
+                                                                      <span className="font-semibold text-sm text-gray-900 dark:text-white truncate max-w-[260px]" title={item.attachmentName}>{item.attachmentName}</span>
+                                                                  </div>
+                                                                  <div className="text-[11px] text-secondary dark:text-gray-500 mt-0.5 truncate max-w-[340px]">
+                                                                      {item.detectedSupplierName || 'Supplier TBD'}
+                                                                      {item.reportDate ? ` · ${item.reportDate}` : ''}
+                                                                      {item.rowsImported != null ? ` · ${item.rowsImported} rows` : ''}
+                                                                      {item.fromAddress ? ` · from ${item.fromAddress}` : ''}
+                                                                  </div>
+                                                                  {item.error && (
+                                                                      <div className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 truncate max-w-[340px]" title={item.error}>{item.error}</div>
+                                                                  )}
+                                                              </div>
+                                                              <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.cls}`}>{meta.label}</span>
+                                                          </div>
+                                                      );
+                                                  })}
+                                              </div>
+                                          )}
+                                      </div>
+                                  );
+                              })()}
 
                               {/* All Suppliers Ingestion Status */}
                               <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[400px]">

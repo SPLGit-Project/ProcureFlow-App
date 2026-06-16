@@ -308,6 +308,26 @@ export interface SupplierStockSnapshot {
   sourceReportName: string;
 }
 
+export type EmailIngestionStatus = 'PENDING' | 'PROCESSED' | 'REJECTED_STALE' | 'NEEDS_SUPPLIER' | 'FAILED' | 'SKIPPED';
+
+export interface EmailIngestionQueueItem {
+  id: string;
+  messageId: string;
+  attachmentName: string;
+  storagePath: string;
+  fromAddress?: string;
+  subject?: string;
+  receivedAt?: string;
+  detectedSupplierId?: string;
+  detectedSupplierName?: string;
+  reportDate?: string;
+  rowsImported?: number;
+  status: EmailIngestionStatus;
+  error?: string;
+  createdAt: string;
+  processedAt?: string;
+}
+
 export type MappingStatus = 'PROPOSED' | 'CONFIRMED' | 'REJECTED';
 export type MappingMethod = 'MANUAL' | 'IMPORT' | 'AUTO' | 'AUTO_V2' | 'MEMORY' | 'LEGACY' | 'AUTO_NORM' | 'AUTO_ALT' | 'AUTO_LEGACY' | 'AUTO_FUZZY';
 

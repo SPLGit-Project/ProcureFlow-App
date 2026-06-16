@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags, MarginThresholds } from '../types.ts';
+import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags, MarginThresholds, EmailIngestionQueueItem } from '../types.ts';
 import { db } from '../services/db.ts';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
@@ -234,7 +234,13 @@ interface AppContextType {
   userSites: Site[]; // Sites the current user has access to (admins see all)
   catalog: SupplierCatalogItem[];
   stockSnapshots: SupplierStockSnapshot[];
-  
+
+  // Automated email ingestion queue
+  emailIngestionQueue: EmailIngestionQueueItem[];
+  refreshEmailIngestionQueue: () => Promise<void>;
+  updateEmailIngestionItem: (id: string, patch: Partial<EmailIngestionQueueItem>) => Promise<void>;
+  downloadInboxAttachment: (storagePath: string) => Promise<Blob>;
+
   // Master Product / Mapping / Availability
   mappings: SupplierProductMap[];
   availability: ProductAvailability[];
@@ -458,6 +464,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [sites, setSites] = useState<Site[]>([]);
   const [catalog, setCatalog] = useState<SupplierCatalogItem[]>([]);
   const [stockSnapshots, setStockSnapshots] = useState<SupplierStockSnapshot[]>([]);
+  const [emailIngestionQueue, setEmailIngestionQueue] = useState<EmailIngestionQueueItem[]>([]);
   
   // New State
   const [mappings, setMappings] = useState<SupplierProductMap[]>([]);
@@ -735,7 +742,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 fetchedBranding,
                 fetchedOptions,
                 fetchedFeatureFlags,
-                fetchedMarginThresholds
+                fetchedMarginThresholds,
+                fetchedEmailQueue
             ] = await Promise.all([
                 safeFetch(db.getRoles(), [], 'roles'),
                 safeFetch(db.getUsers(), [], 'users'),
@@ -754,7 +762,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getBranding(), null, 'branding'),
                 safeFetch(db.getAttributeOptions(), [], 'attributeOptions'),
                 safeFetch(db.getFeatureFlags(), DEFAULT_FEATURE_FLAGS, 'featureFlags'),
-                safeFetch(db.getMarginThresholds(), DEFAULT_MARGIN_THRESHOLDS, 'marginThresholds')
+                safeFetch(db.getMarginThresholds(), DEFAULT_MARGIN_THRESHOLDS, 'marginThresholds'),
+                safeFetch(db.getEmailIngestionQueue(), [], 'emailQueue')
             ]);
 
             let finalRoles = fetchedRoles;
@@ -794,7 +803,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setAttributeOptions(fetchedOptions);
             if (fetchedFeatureFlags) setFeatureFlags(fetchedFeatureFlags);
             if (fetchedMarginThresholds) setMarginThresholds(fetchedMarginThresholds);
-            
+            setEmailIngestionQueue(fetchedEmailQueue);
+
             lastFetchTime.current = Date.now();
         } catch (error) {
             console.error("Failed to load data", error);
@@ -2514,6 +2524,20 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   };
 
+  const refreshEmailIngestionQueue = async (): Promise<void> => {
+      const queue = await db.getEmailIngestionQueue();
+      setEmailIngestionQueue(queue);
+  };
+
+  const updateEmailIngestionItem = async (id: string, patch: Partial<EmailIngestionQueueItem>): Promise<void> => {
+      await db.updateEmailIngestionItem(id, patch);
+      setEmailIngestionQueue(prev => prev.map(item => item.id === id ? { ...item, ...patch } : item));
+  };
+
+  const downloadInboxAttachment = async (storagePath: string): Promise<Blob> => {
+      return db.downloadInboxAttachment(storagePath);
+  };
+
   const importStockSnapshot = async (supplierId: string, date: string, snapshots: SupplierStockSnapshot[]): Promise<void> => {
       try {
           await db.importStockSnapshot(supplierId, date, snapshots);
@@ -2936,8 +2960,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     inboundEmailAddress, updateInboundEmailAddress,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
     suppliers, items, sites, userSites, catalog, stockSnapshots,
+    emailIngestionQueue, refreshEmailIngestionQueue, updateEmailIngestionItem, downloadInboxAttachment,
     mappings, availability, attributeOptions,
-    
+
     // Methods
     importMasterProducts, generateMappings, updateMapping: upsertMapping, refreshAvailability, runDataBackfill,
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep,

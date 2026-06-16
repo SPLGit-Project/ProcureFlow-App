@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient.ts';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds, SupplierContact } from '../types.ts';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds, SupplierContact, EmailIngestionQueueItem } from '../types.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { normalizeSupplierContacts } from '../utils/suppliers.ts';
@@ -1143,6 +1143,50 @@ export const db = {
              p_rows: rows
          });
          if (error) throw error;
+    },
+
+    getEmailIngestionQueue: async (): Promise<EmailIngestionQueueItem[]> => {
+        const { data, error } = await supabase
+            .from('email_ingestion_queue')
+            .select('*')
+            .order('received_at', { ascending: false });
+        if (error) throw error;
+        return (data || []).map((r: Record<string, any>) => ({
+            id: r.id,
+            messageId: r.message_id,
+            attachmentName: r.attachment_name,
+            storagePath: r.storage_path,
+            fromAddress: r.from_address || undefined,
+            subject: r.subject || undefined,
+            receivedAt: r.received_at || undefined,
+            detectedSupplierId: r.detected_supplier_id || undefined,
+            detectedSupplierName: r.detected_supplier_name || undefined,
+            reportDate: r.report_date || undefined,
+            rowsImported: r.rows_imported ?? undefined,
+            status: r.status,
+            error: r.error || undefined,
+            createdAt: r.created_at,
+            processedAt: r.processed_at || undefined
+        }));
+    },
+
+    updateEmailIngestionItem: async (id: string, patch: Partial<EmailIngestionQueueItem>): Promise<void> => {
+        const row: Record<string, any> = {};
+        if (patch.status !== undefined) row.status = patch.status;
+        if (patch.error !== undefined) row.error = patch.error;
+        if (patch.rowsImported !== undefined) row.rows_imported = patch.rowsImported;
+        if (patch.reportDate !== undefined) row.report_date = patch.reportDate;
+        if (patch.detectedSupplierId !== undefined) row.detected_supplier_id = patch.detectedSupplierId;
+        if (patch.detectedSupplierName !== undefined) row.detected_supplier_name = patch.detectedSupplierName;
+        if (patch.processedAt !== undefined) row.processed_at = patch.processedAt;
+        const { error } = await supabase.from('email_ingestion_queue').update(row).eq('id', id);
+        if (error) throw error;
+    },
+
+    downloadInboxAttachment: async (storagePath: string): Promise<Blob> => {
+        const { data, error } = await supabase.storage.from('supplier-inbox').download(storagePath);
+        if (error) throw error;
+        return data;
     },
 
     updateCatalogItem: async (item: SupplierCatalogItem): Promise<void> => {
