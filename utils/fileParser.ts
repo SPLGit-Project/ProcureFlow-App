@@ -705,6 +705,11 @@ export function extractReportDate(fileName: string, rawRows: any[][] = []): stri
         const dt = new Date(Date.UTC(yyyy, m - 1, d));
         // Reject impossible dates (e.g. 31/02) that JS would roll over.
         if (dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return undefined;
+        // Reject absurd far-future dates from filename typos (e.g. "2036"
+        // instead of "2026"). A future report date would permanently win the
+        // staleness check and block every legitimate later upload. Allow a
+        // small window for clock/timezone skew, otherwise fall back.
+        if (dt.getTime() > Date.now() + 45 * 24 * 60 * 60 * 1000) return undefined;
         return `${yyyy}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     };
 

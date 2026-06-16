@@ -30,6 +30,8 @@ function reportDateFromName(name: string): string | null {
     if (yyyy < 2000 || yyyy > 2100) return null
     const dt = new Date(Date.UTC(yyyy, m - 1, d))
     if (dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null
+    // Reject far-future dates from filename typos (e.g. "2036" for "2026").
+    if (dt.getTime() > Date.now() + 45 * 24 * 60 * 60 * 1000) return null
     return `${yyyy}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`
   }
   const iso = name.match(/(20\d{2})[._/-](\d{1,2})[._/-](\d{1,2})/)
@@ -102,19 +104,23 @@ Deno.serve(async (req) => {
     }
     const { access_token } = await tokenResp.json()
 
-    // 3. List unread messages that carry attachments, oldest first.
+    // 3. List unread messages that carry attachments.
+    // NB: Graph rejects $orderby combined with a $filter on other properties
+    // (400 "restriction or sort order too complex"), so we don't order here —
+    // the queue dedupes on (message_id, attachment_name) and the stale-report
+    // guard enforces date correctness regardless of processing order.
     const listUrl =
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages` +
       `?$filter=hasAttachments eq true and isRead eq false` +
-      `&$select=id,subject,receivedDateTime,from&$top=25&$orderby=receivedDateTime asc`
+      `&$select=id,subject,receivedDateTime,from&$top=25`
 
     const listResp = await fetch(listUrl, {
-      headers: { Authorization: `Bearer ${access_token}`, Prefer: 'outlook.body-content-type="text"' },
+      headers: { Authorization: `Bearer ${access_token}` },
     })
     if (!listResp.ok) {
       const errText = await listResp.text()
       console.error("[ingest-supplier-email] Graph list error:", errText)
-      throw new Error(`Graph list messages failed: ${listResp.statusText}`)
+      throw new Error(`Graph list messages failed (${listResp.status}): ${errText.slice(0, 400)}`)
     }
     const { value: messages = [] } = await listResp.json()
     console.log(`[ingest-supplier-email] ${messages.length} unread message(s) with attachments.`)
