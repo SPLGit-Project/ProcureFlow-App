@@ -790,6 +790,7 @@ const Settings = () => {
   const [notMappedTarget, setNotMappedTarget] = useState<SupplierProductMap | null>(null);
   const [notMappedReason, setNotMappedReason] = useState('No longer required');
   const [isManualMapOpen, setIsManualMapOpen] = useState(false);
+  const [isAddItemFromMapOpen, setIsAddItemFromMapOpen] = useState(false);
   const [mappingSource, setMappingSource] = useState<SupplierStockSnapshot | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [guidedMappingIndex, setGuidedMappingIndex] = useState(0);
@@ -1331,6 +1332,42 @@ const Settings = () => {
       } finally {
           setIsDrainingInbox(false);
       }
+  };
+
+  // Create a brand-new master item from the manual-map modal and immediately
+  // map the current supplier item to it — so an admin who spots a missing item
+  // never has to leave the mapping screen.
+  const handleCreateAndMapItem = async (itemData: Partial<Item>) => {
+      if (!mappingSource) return;
+      const newItem = { ...itemData, id: itemData.id || crypto.randomUUID() } as Item;
+      await addItem(newItem);
+
+      const existingMapping = mappings.find(m => m.supplierId === mappingSource.supplierId && m.supplierSku === mappingSource.supplierSku);
+      await updateMapping({
+          id: existingMapping?.id || uuidv4(),
+          supplierId: mappingSource.supplierId,
+          supplierSku: mappingSource.supplierSku,
+          productId: newItem.id,
+          matchPriority: existingMapping?.matchPriority || 100,
+          packConversionFactor: existingMapping?.packConversionFactor || 1,
+          mappingStatus: 'CONFIRMED',
+          mappingMethod: 'MANUAL',
+          confidenceScore: 1.0,
+          manualOverride: true,
+          supplierCustomerStockCode: mappingSource.customerStockCode,
+          mappingJustification: {
+              components: [
+                  { type: 'ADMIN_CONFIRMED', score: 1, detail: 'Created via Add Item and mapped from the manual-map modal' }
+              ]
+          }
+      } as any);
+
+      const mappedSku = mappingSource.supplierSku;
+      setIsAddItemFromMapOpen(false);
+      setIsManualMapOpen(false);
+      setMappingSource(null);
+      setItemSearch('');
+      success(`Created "${newItem.name}" and mapped ${mappedSku} to it.`);
   };
 
   const supplierScopedMappings = React.useMemo(() => {
@@ -5524,12 +5561,37 @@ if __name__ == "__main__":
                                 </div>
                             </div>
 
-                            <div className="flex justify-end pt-2">
-                                <button type="button" onClick={() => { setIsManualMapOpen(false); setMappingSource(null); }} className="text-gray-500 hover:text-gray-700 font-bold text-sm">Cancel</button>
+                            <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800">
+                                <div className="text-xs text-secondary dark:text-gray-500 max-w-[55%]">
+                                    Can't find a match? Create the missing item without leaving this screen.
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button type="button" onClick={() => { setIsManualMapOpen(false); setMappingSource(null); }} className="text-gray-500 hover:text-gray-700 font-bold text-sm">Cancel</button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsAddItemFromMapOpen(true)}
+                                        className="btn-primary flex items-center gap-2 text-sm"
+                                    >
+                                        <Plus size={15} /> Add Item
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
                  </div>
+             )}
+
+             {/* Add-and-map item wizard, launched from the manual-map modal */}
+             {isAddItemFromMapOpen && mappingSource && (
+                 <ItemWizard
+                     isOpen
+                     onClose={() => setIsAddItemFromMapOpen(false)}
+                     onSave={handleCreateAndMapItem}
+                     items={items}
+                     suppliers={suppliers}
+                     attributeOptions={attributeOptions}
+                     upsertAttributeOption={upsertAttributeOption}
+                 />
              )}
     
              {/* Ingestion Success Stats Modal */}
