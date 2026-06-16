@@ -1054,6 +1054,14 @@ const Settings = () => {
 
   type SupplierInventoryIngestSource = 'Manual Upload' | 'Email Ingestion Hub' | 'Auto-Ingestion Daemon';
 
+  // The replace_stock_snapshot RPC raises "STALE_REPORT|<existing>|<incoming>"
+  // when an older report would overwrite newer inventory. Surface it cleanly.
+  const parseStaleReportError = (message?: string): { existing: string; incoming: string } | null => {
+      if (!message) return null;
+      const match = message.match(/STALE_REPORT\|([^|]+)\|([^|\s]+)/);
+      return match ? { existing: match[1], incoming: match[2] } : null;
+  };
+
   const processSupplierInventoryFile = async (
       supplier: Supplier,
       file: File,
@@ -1066,7 +1074,10 @@ const Settings = () => {
           throw new Error(parsed.errors.join('\n'));
       }
 
-      const importDateValue = new Date().toISOString().split('T')[0];
+      // Use the report's own effective date (from filename/content) so the
+      // staleness guard can reject an older report overwriting newer inventory.
+      // Fall back to today only when no date could be detected.
+      const importDateValue = parsed.reportDate || new Date().toISOString().split('T')[0];
       const fullSnapshots: SupplierStockSnapshot[] = (parsed.data || []).map((partial: any) => ({
           id: uuidv4(),
           supplierId: supplier.id,
@@ -1229,7 +1240,12 @@ const Settings = () => {
           success(`${supplier.name} inventory replaced from manual upload (${result.recordsImported} records).`);
       } catch (e: any) {
           console.error('Manual supplier upload failed:', e);
-          error(`Manual upload failed: ${e.message}`);
+          const stale = parseStaleReportError(e?.message);
+          if (stale) {
+              error(`Upload ignored — this report is dated ${stale.incoming}, older than the inventory already on file (${stale.existing}). The newer data was kept.`);
+          } else {
+              error(`Manual upload failed: ${e.message}`);
+          }
       } finally {
           setIsImporting(false);
       }
@@ -2100,36 +2116,127 @@ const Settings = () => {
                               </div>
                           )
                       ) : (
-                          <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6">
-                              <div className="flex items-start gap-3">
-                                  <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600">
-                                      <Inbox size={20} />
+                          <div className="space-y-4">
+                              {/* Mailbox Status Card */}
+                              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
+                                  <div className="flex items-start gap-3">
+                                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600 shrink-0">
+                                          <Inbox size={18} />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                          <h4 className="text-sm font-bold text-gray-900 dark:text-white">Automated Mailbox Pipeline</h4>
+                                          <p className="text-xs text-secondary dark:text-gray-400 mt-0.5 leading-relaxed">
+                                              Attachments received at the inbound mailbox flow through the same supplier detection, normalization, replacement, auto-mapping, and availability refresh process as manual uploads.
+                                          </p>
+                                      </div>
                                   </div>
-                                  <div>
-                                      <h4 className="text-base font-bold text-gray-900 dark:text-white">Automated email ingestion is ready for mailbox setup</h4>
-                                      <p className="text-sm text-secondary dark:text-gray-400 mt-2 leading-relaxed">
-                                          Configure a dedicated inbound address now. When Microsoft Graph polling is connected, attachments received at this mailbox will flow through the same supplier detection, file normalization, replacement, auto-mapping, and availability refresh process as manual uploads.
-                                      </p>
+                                  <div className="grid grid-cols-3 gap-3 mt-4">
+                                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
+                                          <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Mailbox</p>
+                                          <p className="mt-1.5 text-xs font-bold text-gray-900 dark:text-white truncate" title={ingestEmailAddress || undefined}>{ingestEmailAddress || 'Not configured'}</p>
+                                      </div>
+                                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
+                                          <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Polling</p>
+                                          <p className="mt-1.5 text-xs font-bold text-gray-900 dark:text-white">{ingestInterval}</p>
+                                      </div>
+                                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
+                                          <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Parser</p>
+                                          <p className="mt-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">Shared with manual</p>
+                                      </div>
                                   </div>
                               </div>
 
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
-                                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
-                                      <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Mailbox</p>
-                                      <p className="mt-2 text-sm font-bold text-gray-900 dark:text-white truncate">{ingestEmailAddress || 'Not configured'}</p>
+                              {/* All Suppliers Ingestion Status */}
+                              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[400px]">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
+                                      <div>
+                                          <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                              <Files size={18} className="text-blue-500" />
+                                              All Suppliers Ingestion Status
+                                          </h4>
+                                          <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
+                                              Overview of suppliers picked up from email and their upload status per customer.
+                                          </p>
+                                      </div>
+                                      <div className="relative min-w-[200px]">
+                                          <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                                          <input
+                                              type="text"
+                                              placeholder="Search suppliers..."
+                                              value={supplierSearchQuery}
+                                              onChange={e => setSupplierSearchQuery(e.target.value)}
+                                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-8 pr-3 py-1.5 rounded-xl text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                          />
+                                      </div>
                                   </div>
-                                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
-                                      <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Polling</p>
-                                      <p className="mt-2 text-sm font-bold text-gray-900 dark:text-white">{ingestInterval}</p>
-                                  </div>
-                                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
-                                      <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Parser</p>
-                                      <p className="mt-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">Shared with manual</p>
-                                  </div>
-                              </div>
 
-                              <div className="mt-6 rounded-xl border border-blue-100 dark:border-blue-900/30 bg-blue-50 dark:bg-blue-950/10 p-4 text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
-                                  Supplier identity will be cross-checked from email sender metadata and workbook contents. If the attachment identifies a supplier that is missing from the supplier master, the ingest workflow will pause for supplier creation rather than importing against the wrong record.
+                                  <div className="flex-1 overflow-y-auto max-h-[450px] pr-1">
+                                      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                          {supplierInventoryUploads
+                                              .filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()))
+                                              .map((upload) => {
+                                                  const isUploaded = !!upload.uploadedAt;
+                                                  return (
+                                                      <div
+                                                          key={upload.supplier.id}
+                                                          className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-all"
+                                                      >
+                                                          <div className="flex items-center gap-3 min-w-0">
+                                                              <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
+                                                                  <Building2 size={16} className="group-hover:scale-110 transition-transform" />
+                                                              </div>
+                                                              <div className="min-w-0">
+                                                                  <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
+                                                                      {upload.supplier.name}
+                                                                  </div>
+                                                                  <div className="flex items-center gap-2 mt-0.5">
+                                                                      {isUploaded ? (
+                                                                          <>
+                                                                              <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
+                                                                              <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[200px] sm:max-w-[300px]" title={upload.sourceReportName}>
+                                                                                  {upload.sourceReportName}
+                                                                              </span>
+                                                                          </>
+                                                                      ) : (
+                                                                          <span className="text-xs text-tertiary dark:text-gray-500 italic">
+                                                                              No email received yet
+                                                                          </span>
+                                                                      )}
+                                                                  </div>
+                                                              </div>
+                                                          </div>
+
+                                                          <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
+                                                              <div>
+                                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                      isUploaded
+                                                                          ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30'
+                                                                          : 'bg-gray-100 dark:bg-white/5 text-gray-500 border border-gray-200 dark:border-gray-800'
+                                                                  }`}>
+                                                                      {isUploaded ? 'Ingested' : 'Awaiting Email'}
+                                                                  </span>
+                                                              </div>
+                                                              {isUploaded && (
+                                                                  <div className="text-xs">
+                                                                      <div className="font-semibold text-gray-900 dark:text-white">
+                                                                          {upload.recordCount} rows
+                                                                      </div>
+                                                                      <div className="text-[10px] text-tertiary dark:text-gray-500">
+                                                                          {new Date(upload.uploadedAt!).toLocaleDateString()}
+                                                                      </div>
+                                                                  </div>
+                                                              )}
+                                                          </div>
+                                                      </div>
+                                                  );
+                                              })}
+                                          {supplierInventoryUploads.filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase())).length === 0 && (
+                                              <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
+                                                  No suppliers match your search.
+                                              </div>
+                                          )}
+                                      </div>
+                                  </div>
                               </div>
                           </div>
                       )}

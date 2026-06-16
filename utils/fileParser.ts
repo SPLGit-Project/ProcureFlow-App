@@ -34,6 +34,7 @@ export interface EnhancedParseResult {
     dateColumns: DateColumn[];  // Detected date columns for incoming stock
     rawData?: any[];  // Raw data for preview
     detectedSupplier?: SupplierDetection;
+    reportDate?: string;  // YYYY-MM-DD effective date of the report (from filename/content), used for staleness checks
 }
 
 export interface SupplierDetection {
@@ -222,33 +223,116 @@ function includesAll(text: string, terms: string[]): boolean {
     return terms.every(term => text.includes(term));
 }
 
-function detectSupplierFromContent(rawRows: any[][], headers: string[]): SupplierDetection | undefined {
+/**
+ * Determines if the flat workbook text or header text contains segment indicators
+ * for suppliers that send separate files per customer segment (e.g. Simba).
+ */
+function detectSegment(text: string, headerText: string, fileName: string): 'Healthcare' | 'Accommodation' | null {
+    const combined = `${text} ${headerText} ${fileName.toLowerCase()}`;
+    const isHealthcare =
+        combined.includes('healthcare') ||
+        combined.includes('health care') ||
+        combined.includes('health-care') ||
+        /\bhc\b/.test(combined);
+    const isAccommodation =
+        combined.includes('accommodation') ||
+        combined.includes('accomm') ||
+        combined.includes('accomodation') ||
+        combined.includes('hotel') ||
+        /\bacc\b/.test(combined);
+    if (isHealthcare && !isAccommodation) return 'Healthcare';
+    if (isAccommodation && !isHealthcare) return 'Accommodation';
+    return null;
+}
+
+function detectSupplierFromContent(
+    rawRows: any[][],
+    headers: string[],
+    fileName: string = ''
+): SupplierDetection | undefined {
     const text = flattenWorkbookText(rawRows);
     const headerText = headers.map(h => h.toLowerCase()).join(' ');
+    const fileNameLower = fileName.toLowerCase();
     const candidates: SupplierDetection[] = [];
 
+    // ── HOST Supplies ──────────────────────────────────────────────────────────
     if (includesAll(headerText, ['spl part id', 'supplier part id', 'unit price ex gst'])) {
         candidates.push({
             name: 'HOST Supplies',
             confidence: 0.96,
             evidence: ['Detected HOST stocklist schema: SPL Part ID, Supplier Part ID, Unit Price ex GST']
         });
+    } else if (fileNameLower.includes('host') && (fileNameLower.includes('stock') || fileNameLower.includes('inventory'))) {
+        candidates.push({
+            name: 'HOST Supplies',
+            confidence: 0.80,
+            evidence: ['Filename contains HOST + stock/inventory indicator']
+        });
     }
 
+    // ── Frenkel Textiles ───────────────────────────────────────────────────────
     if (includesAll(text, ['inventory report', 'a.c.n 106 563 204']) || includesAll(headerText, ['item code', 'product description', 'new inventory arriving'])) {
         candidates.push({
             name: 'Frenkel Textiles',
             confidence: 0.95,
             evidence: ['Detected Frenkel inventory report structure and ACN/ABN metadata']
         });
+    } else if (fileNameLower.includes('frenkel')) {
+        candidates.push({
+            name: 'Frenkel Textiles',
+            confidence: 0.82,
+            evidence: ['Filename contains Frenkel']
+        });
     }
 
-    if (includesAll(text, ['stock report in quantity', 'stock group customer']) && includesAll(headerText, ['sku', 'product', 'customer stock code', 'stocktype'])) {
-        candidates.push({
-            name: 'Simba',
-            confidence: 0.94,
-            evidence: ['Detected Simba stock report structure; Accommodation/Healthcare values are SPL customer stock groups']
-        });
+    // ── Simba (segment-aware) ──────────────────────────────────────────────────
+    // Simba sends two separate files: one for Healthcare customers and one for
+    // Accommodation customers. The segment is identified from body text, headers,
+    // and the filename — in that priority order.
+    const isSimbaByContent =
+        (includesAll(text, ['stock report in quantity', 'stock group customer']) &&
+         includesAll(headerText, ['sku', 'product', 'customer stock code', 'stocktype'])) ||
+        includesAll(text, ['stock group customer']) && includesAll(headerText, ['customer stock code', 'stocktype']);
+
+    const isSimbaByFilename =
+        fileNameLower.includes('simba') &&
+        (fileNameLower.includes('stock') || fileNameLower.includes('inventory') || fileNameLower.includes('report'));
+
+    if (isSimbaByContent || isSimbaByFilename) {
+        const baseConfidence = isSimbaByContent ? 0.94 : 0.82;
+        const segment = detectSegment(text, headerText, fileName);
+
+        if (segment === 'Healthcare') {
+            candidates.push({
+                name: 'Simba Healthcare',
+                confidence: baseConfidence + 0.02,
+                evidence: [
+                    isSimbaByContent ? 'Detected Simba stock report structure' : 'Filename identifies Simba',
+                    'Segment identified as Healthcare from file content/name'
+                ]
+            });
+        } else if (segment === 'Accommodation') {
+            candidates.push({
+                name: 'Simba Accommodation',
+                confidence: baseConfidence + 0.02,
+                evidence: [
+                    isSimbaByContent ? 'Detected Simba stock report structure' : 'Filename identifies Simba',
+                    'Segment identified as Accommodation from file content/name'
+                ]
+            });
+        } else {
+            // No clear segment signal — fall back to generic Simba.
+            // This is the safest fallback: the import will still succeed
+            // if a supplier named 'Simba' exists in the supplier master.
+            candidates.push({
+                name: 'Simba',
+                confidence: baseConfidence - 0.05,
+                evidence: [
+                    isSimbaByContent ? 'Detected Simba stock report structure' : 'Filename identifies Simba',
+                    'WARNING: Could not determine Healthcare vs Accommodation segment — check the file title and sheet name'
+                ]
+            });
+        }
     }
 
     return candidates.sort((a, b) => b.confidence - a.confidence)[0];
@@ -601,6 +685,60 @@ export function parseDataRows(
 /**
  * Enhanced file parser with confidence scoring and mapping
  */
+/**
+ * Extract the effective "as at" date of a supplier report so we can reject
+ * stale uploads (an older report overwriting newer inventory).
+ *
+ * Strategy (first match wins):
+ *  1. A date embedded in the file name, e.g. "HOST SOH REPORT - 09.06.2026.xlsx"
+ *     or "SPL ... 02_06_2026.zip". Day-first (Australian) is assumed.
+ *  2. A date found in the first ~15 rows of the sheet (report header banners
+ *     often carry "As at 09/06/2026" or "Report Date: 2026-06-09").
+ *
+ * Returns an ISO date string (YYYY-MM-DD) or undefined when nothing is found.
+ */
+export function extractReportDate(fileName: string, rawRows: any[][] = []): string | undefined {
+    const clamp = (y: number, m: number, d: number): string | undefined => {
+        if (m < 1 || m > 12 || d < 1 || d > 31) return undefined;
+        const yyyy = y < 100 ? 2000 + y : y;
+        if (yyyy < 2000 || yyyy > 2100) return undefined;
+        const dt = new Date(Date.UTC(yyyy, m - 1, d));
+        // Reject impossible dates (e.g. 31/02) that JS would roll over.
+        if (dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return undefined;
+        return `${yyyy}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    };
+
+    const fromText = (text: string): string | undefined => {
+        if (!text) return undefined;
+        // ISO first: YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+        const iso = text.match(/(20\d{2})[._/-](\d{1,2})[._/-](\d{1,2})/);
+        if (iso) {
+            const hit = clamp(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+            if (hit) return hit;
+        }
+        // Day-first: DD-MM-YYYY / DD.MM.YYYY / DD_MM_YYYY / DD/MM/YY
+        const dmy = text.match(/(\d{1,2})[._/-](\d{1,2})[._/-](\d{2,4})/);
+        if (dmy) {
+            const hit = clamp(Number(dmy[3]), Number(dmy[2]), Number(dmy[1]));
+            if (hit) return hit;
+        }
+        return undefined;
+    };
+
+    // 1. Filename
+    const fromName = fromText(fileName || '');
+    if (fromName) return fromName;
+
+    // 2. Header banner rows
+    for (let i = 0; i < Math.min(rawRows.length, 15); i++) {
+        const rowText = (rawRows[i] || []).map(cell => (cell == null ? '' : String(cell))).join(' ');
+        const hit = fromText(rowText);
+        if (hit) return hit;
+    }
+
+    return undefined;
+}
+
 export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult> {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -647,7 +785,8 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
 
                 // Create mapping
                 const { mapping, dateColumns } = createMapping(headers, dataRows);
-                const detectedSupplier = detectSupplierFromContent(rawRows, headers);
+                const detectedSupplier = detectSupplierFromContent(rawRows, headers, file.name);
+                const reportDate = extractReportDate(file.name, rawRows);
                 const confidence = calculateConfidence(mapping);
                 
                 const errors: string[] = [];
@@ -693,7 +832,8 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
                     allColumns: headers,
                     dateColumns,
                     rawData: jsonData,  // Full data for processing
-                    detectedSupplier
+                    detectedSupplier,
+                    reportDate
                 });
                 
             } catch (error: any) {
