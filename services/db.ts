@@ -1183,6 +1183,20 @@ export const db = {
         if (error) throw error;
     },
 
+    // Atomically claim a queue row for processing. Returns true only if this
+    // call moved it from PENDING to PROCESSING, guaranteeing exactly-once work
+    // even if the drain runs in two tabs at once.
+    claimEmailIngestionItem: async (id: string): Promise<boolean> => {
+        const { data, error } = await supabase
+            .from('email_ingestion_queue')
+            .update({ status: 'PROCESSING' })
+            .eq('id', id)
+            .eq('status', 'PENDING')
+            .select('id');
+        if (error) throw error;
+        return (data?.length ?? 0) > 0;
+    },
+
     downloadInboxAttachment: async (storagePath: string): Promise<Blob> => {
         const { data, error } = await supabase.storage.from('supplier-inbox').download(storagePath);
         if (error) throw error;

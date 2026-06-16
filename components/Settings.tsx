@@ -266,7 +266,7 @@ const Settings = () => {
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep, notificationRules, upsertNotificationRule, deleteNotificationRule,
     items, addItem, updateItem, deleteItem,
     catalog, updateCatalogItem, stockSnapshots, pos,
-    emailIngestionQueue, refreshEmailIngestionQueue, updateEmailIngestionItem, downloadInboxAttachment,
+    emailIngestionQueue, refreshEmailIngestionQueue, updateEmailIngestionItem, claimEmailIngestionItem, downloadInboxAttachment,
     // Actions
     createPO, addSnapshot, importStockSnapshot, importMasterProducts, runDataBackfill, refreshAvailability,
     mappings, generateMappings, updateMapping, deleteMapping, syncItemsFromSnapshots,
@@ -1271,6 +1271,10 @@ const Settings = () => {
       try {
           const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
           for (const item of pending) {
+              // Atomically claim the row first — if another tab/session already
+              // grabbed it, skip so each file is processed exactly once.
+              const claimed = await claimEmailIngestionItem(item.id);
+              if (!claimed) continue;
               try {
                   const blob = await downloadInboxAttachment(item.storagePath);
                   const file = new File([blob], item.attachmentName, { type: blob.type || 'application/octet-stream' });
@@ -1333,6 +1337,19 @@ const Settings = () => {
           setIsDrainingInbox(false);
       }
   };
+
+  // Auto-run the inbox drain the moment an admin opens the Mapping workbench, so
+  // emailed supplier files import + auto-map with no manual click. Guarded by a
+  // ref (once per visit) and the per-row claim (so it's safe across tabs).
+  const autoDrainedRef = useRef(false);
+  useEffect(() => {
+      if (activeTab !== 'MAPPING') { autoDrainedRef.current = false; return; }
+      if (autoDrainedRef.current || isDrainingInbox) return;
+      if (!hasPermission('manage_items')) return;
+      if (!emailIngestionQueue.some(item => item.status === 'PENDING')) return;
+      autoDrainedRef.current = true;
+      drainSupplierInbox();
+  }, [activeTab, emailIngestionQueue, isDrainingInbox]);
 
   // Create a brand-new master item from the manual-map modal and immediately
   // map the current supplier item to it — so an admin who spots a missing item
@@ -2270,6 +2287,7 @@ const Settings = () => {
                                   const pendingCount = emailIngestionQueue.filter(i => i.status === 'PENDING').length;
                                   const statusMeta: Record<string, { label: string; cls: string }> = {
                                       PENDING:        { label: 'Pending',        cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border-blue-100 dark:border-blue-900/30' },
+                                      PROCESSING:     { label: 'Processing…',    cls: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' },
                                       PROCESSED:      { label: 'Ingested',       cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30' },
                                       REJECTED_STALE: { label: 'Stale (skipped)', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' },
                                       NEEDS_SUPPLIER: { label: 'Needs supplier', cls: 'bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400 border-purple-100 dark:border-purple-900/30' },

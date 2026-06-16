@@ -88,9 +88,9 @@ curl -i -X POST \
 Then open Mapping ▸ Ingest ▸ Automated Email and click **Process inbox**.
 
 ## Known limitations / follow-ups
-- **Only `.xlsx` / `.xls` / `.csv` attachments** are parsed. The SIMBA reports
-  arrive as `.zip`; those are recorded as **Skipped**. Either forward the
-  extracted spreadsheet, or add server-side unzip (next iteration).
+- Parses `.xlsx` / `.xls` / `.csv` attachments **and** spreadsheets inside
+  `.zip` attachments (e.g. the SIMBA reports). Non-spreadsheet attachments and
+  zips with no spreadsheets are recorded as **Skipped**.
 - The poller filters **unread** messages and marks them read after processing,
   so re-running is safe. `email_ingestion_queue` is also de-duped on
   `(message_id, attachment_name)`.

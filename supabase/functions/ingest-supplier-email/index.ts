@@ -1,27 +1,23 @@
 
 import { createClient } from "@supabase/supabase-js"
+import { ZipReader, Uint8ArrayReader, Uint8ArrayWriter, configure } from "jsr:@zip-js/zip-js@2.8.26"
 
 // ingest-supplier-email
 // -----------------------------------------------------------------------------
 // Polls the dedicated supplier-inventory mailbox via Microsoft Graph, lands each
-// spreadsheet attachment in the private "supplier-inbox" storage bucket, and
-// records a PENDING row in email_ingestion_queue. The app drains PENDING rows
-// through the same parser + supplier detection + auto-mapping + stale-report
-// guard used by manual uploads, so there is one ingestion code path.
-//
-// Reuses the SAME Azure AD app registration as sync-directory. That app must be
-// granted the application permission Mail.Read (and admin-consented) so it can
-// read the mailbox. Mailbox address is read from app_config.inbound_email_config
-// (falls back to the INGEST_MAILBOX env var).
+// spreadsheet attachment (including spreadsheets inside .zip attachments) in the
+// private "supplier-inbox" storage bucket, and records a PENDING row in
+// email_ingestion_queue. The app drains PENDING rows through the same parser +
+// supplier detection + auto-mapping + stale-report guard used by manual uploads,
+// so there is one ingestion code path.
+
+configure({ useWebWorkers: false }) // edge runtime has no Web Workers
 
 console.log("ingest-supplier-email function initialized.")
 
 const SUPPORTED_EXT = ["xlsx", "xls", "csv"]
 const BUCKET = "supplier-inbox"
 
-// Lightweight filename date extractor (mirrors utils/fileParser.ts
-// extractReportDate filename logic) so the queue can show a report date before
-// the app drains it. Day-first (Australian) is assumed. Returns YYYY-MM-DD.
 function reportDateFromName(name: string): string | null {
   if (!name) return null
   const clamp = (y: number, m: number, d: number): string | null => {
@@ -35,15 +31,9 @@ function reportDateFromName(name: string): string | null {
     return `${yyyy}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`
   }
   const iso = name.match(/(20\d{2})[._/-](\d{1,2})[._/-](\d{1,2})/)
-  if (iso) {
-    const hit = clamp(Number(iso[1]), Number(iso[2]), Number(iso[3]))
-    if (hit) return hit
-  }
+  if (iso) { const hit = clamp(Number(iso[1]), Number(iso[2]), Number(iso[3])); if (hit) return hit }
   const dmy = name.match(/(\d{1,2})[._/-](\d{1,2})[._/-](\d{2,4})/)
-  if (dmy) {
-    const hit = clamp(Number(dmy[3]), Number(dmy[2]), Number(dmy[1]))
-    if (hit) return hit
-  }
+  if (dmy) { const hit = clamp(Number(dmy[3]), Number(dmy[2]), Number(dmy[1])); if (hit) return hit }
   return null
 }
 
@@ -52,6 +42,41 @@ function base64ToBytes(b64: string): Uint8Array {
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return bytes
+}
+
+function extOf(name: string): string {
+  return name.split(".").pop()?.toLowerCase() ?? ""
+}
+
+// Pull the bytes of a file attachment. Small attachments carry contentBytes
+// inline; larger ones must be fetched via /$value.
+async function getAttachmentBytes(mailbox: string, msgId: string, att: any, token: string): Promise<Uint8Array | null> {
+  if (att.contentBytes) return base64ToBytes(att.contentBytes)
+  const resp = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages/${msgId}/attachments/${att.id}/$value`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!resp.ok) { console.error(`[ingest-supplier-email] $value fetch failed for ${att.name}: ${resp.status}`); return null }
+  return new Uint8Array(await resp.arrayBuffer())
+}
+
+// Extract supported spreadsheets from a .zip's bytes.
+async function extractSpreadsheetsFromZip(bytes: Uint8Array): Promise<{ name: string; data: Uint8Array }[]> {
+  const out: { name: string; data: Uint8Array }[] = []
+  const reader = new ZipReader(new Uint8ArrayReader(bytes))
+  try {
+    const entries = await reader.getEntries()
+    for (const entry of entries) {
+      if (entry.directory) continue
+      const base = (entry.filename.split("/").pop() ?? entry.filename)
+      if (!base || base.startsWith(".") || !SUPPORTED_EXT.includes(extOf(base))) continue
+      const data = await entry.getData!(new Uint8ArrayWriter())
+      out.push({ name: base, data })
+    }
+  } finally {
+    await reader.close()
+  }
+  return out
 }
 
 Deno.serve(async (req) => {
@@ -68,24 +93,16 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // 1. Resolve the mailbox to poll.
     let mailbox = Deno.env.get("INGEST_MAILBOX") ?? ""
-    const { data: cfg } = await supabase
-      .from("app_config")
-      .select("value")
-      .eq("key", "inbound_email_config")
-      .single()
+    const { data: cfg } = await supabase.from("app_config").select("value").eq("key", "inbound_email_config").single()
     if (cfg?.value?.email) mailbox = cfg.value.email
     if (!mailbox) throw new Error("No inbound mailbox configured (app_config.inbound_email_config or INGEST_MAILBOX).")
     console.log(`[ingest-supplier-email] Mailbox: ${mailbox}`)
 
-    // 2. Azure AD client-credentials token (same app as sync-directory).
     const tenantId = Deno.env.get("AZURE_TENANT_ID")
     const clientId = Deno.env.get("AZURE_CLIENT_ID")
     const clientSecret = Deno.env.get("AZURE_CLIENT_SECRET")
-    if (!tenantId || !clientId || !clientSecret) {
-      throw new Error("Missing Azure AD Credentials in Environment Variables")
-    }
+    if (!tenantId || !clientId || !clientSecret) throw new Error("Missing Azure AD Credentials in Environment Variables")
 
     const tokenResp = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
       method: "POST",
@@ -104,19 +121,12 @@ Deno.serve(async (req) => {
     }
     const { access_token } = await tokenResp.json()
 
-    // 3. List unread messages that carry attachments.
-    // NB: Graph rejects $orderby combined with a $filter on other properties
-    // (400 "restriction or sort order too complex"), so we don't order here —
-    // the queue dedupes on (message_id, attachment_name) and the stale-report
-    // guard enforces date correctness regardless of processing order.
+    // List unread messages that carry attachments. (No $orderby — Graph 400s
+    // when it's combined with a $filter on other properties.)
     const listUrl =
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages` +
-      `?$filter=hasAttachments eq true and isRead eq false` +
-      `&$select=id,subject,receivedDateTime,from&$top=25`
-
-    const listResp = await fetch(listUrl, {
-      headers: { Authorization: `Bearer ${access_token}` },
-    })
+      `?$filter=hasAttachments eq true and isRead eq false&$select=id,subject,receivedDateTime,from&$top=25`
+    const listResp = await fetch(listUrl, { headers: { Authorization: `Bearer ${access_token}` } })
     if (!listResp.ok) {
       const errText = await listResp.text()
       console.error("[ingest-supplier-email] Graph list error:", errText)
@@ -128,72 +138,70 @@ Deno.serve(async (req) => {
     let enqueued = 0
     let skipped = 0
 
+    // Upload bytes to storage + record a PENDING queue row for one spreadsheet.
+    const enqueueSpreadsheet = async (msg: any, fromAddr: string | null, name: string, storagePath: string, bytes: Uint8Array, contentType: string) => {
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(storagePath, bytes, { contentType, upsert: true })
+      if (upErr) { console.error(`[ingest-supplier-email] Upload failed ${storagePath}: ${upErr.message}`); return }
+      const { error: insErr } = await supabase.from("email_ingestion_queue").upsert({
+        message_id: msg.id,
+        attachment_id: name,
+        attachment_name: name,
+        storage_path: storagePath,
+        from_address: fromAddr,
+        subject: msg.subject ?? null,
+        received_at: msg.receivedDateTime ?? null,
+        report_date: reportDateFromName(name),
+        status: "PENDING",
+      }, { onConflict: "message_id,attachment_name", ignoreDuplicates: true })
+      if (insErr) { console.error(`[ingest-supplier-email] Queue insert failed ${name}: ${insErr.message}`); return }
+      enqueued++
+    }
+
+    const recordSkipped = async (msg: any, fromAddr: string | null, name: string, reason: string) => {
+      await supabase.from("email_ingestion_queue").upsert({
+        message_id: msg.id, attachment_id: name, attachment_name: name, storage_path: "",
+        from_address: fromAddr, subject: msg.subject ?? null, received_at: msg.receivedDateTime ?? null,
+        status: "SKIPPED", error: reason,
+      }, { onConflict: "message_id,attachment_name", ignoreDuplicates: true })
+      skipped++
+    }
+
     for (const msg of messages) {
       const fromAddr = msg.from?.emailAddress?.address ?? null
       const attResp = await fetch(
         `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages/${msg.id}/attachments`,
         { headers: { Authorization: `Bearer ${access_token}` } },
       )
-      if (!attResp.ok) {
-        console.error(`[ingest-supplier-email] Could not fetch attachments for ${msg.id}: ${attResp.statusText}`)
-        continue
-      }
+      if (!attResp.ok) { console.error(`[ingest-supplier-email] Attachments fetch failed ${msg.id}: ${attResp.statusText}`); continue }
       const { value: attachments = [] } = await attResp.json()
 
       for (const att of attachments) {
         const name: string = att.name ?? "attachment"
-        const ext = name.split(".").pop()?.toLowerCase() ?? ""
+        const ext = extOf(name)
         const isFile = att["@odata.type"] === "#microsoft.graph.fileAttachment"
+        if (!isFile) { await recordSkipped(msg, fromAddr, name, "Not a file attachment"); continue }
 
-        // Only spreadsheet attachments flow through the parser. Other types
-        // (zips, PDFs, inline images) are recorded as SKIPPED so they are
-        // visible but not mistaken for inventory.
-        if (!isFile || !SUPPORTED_EXT.includes(ext) || !att.contentBytes) {
-          await supabase.from("email_ingestion_queue").upsert({
-            message_id: msg.id,
-            attachment_id: att.id ?? null,
-            attachment_name: name,
-            storage_path: "",
-            from_address: fromAddr,
-            subject: msg.subject ?? null,
-            received_at: msg.receivedDateTime ?? null,
-            status: "SKIPPED",
-            error: isFile ? `Unsupported attachment type (.${ext})` : "Not a file attachment",
-          }, { onConflict: "message_id,attachment_name", ignoreDuplicates: true })
-          skipped++
+        if (SUPPORTED_EXT.includes(ext)) {
+          const bytes = await getAttachmentBytes(mailbox, msg.id, att, access_token)
+          if (!bytes) { await recordSkipped(msg, fromAddr, name, "Could not read attachment bytes"); continue }
+          await enqueueSpreadsheet(msg, fromAddr, name, `${msg.id}/${name}`, bytes, att.contentType || "application/octet-stream")
           continue
         }
 
-        const storagePath = `${msg.id}/${name}`
-        const bytes = base64ToBytes(att.contentBytes)
-        const { error: upErr } = await supabase.storage
-          .from(BUCKET)
-          .upload(storagePath, bytes, {
-            contentType: att.contentType || "application/octet-stream",
-            upsert: true,
-          })
-        if (upErr) {
-          console.error(`[ingest-supplier-email] Storage upload failed for ${storagePath}:`, upErr.message)
+        if (ext === "zip") {
+          const zbytes = await getAttachmentBytes(mailbox, msg.id, att, access_token)
+          if (!zbytes) { await recordSkipped(msg, fromAddr, name, "Could not read zip bytes"); continue }
+          let inner: { name: string; data: Uint8Array }[] = []
+          try { inner = await extractSpreadsheetsFromZip(zbytes) }
+          catch (e) { await recordSkipped(msg, fromAddr, name, `Zip could not be opened: ${(e as Error).message}`); continue }
+          if (inner.length === 0) { await recordSkipped(msg, fromAddr, name, "Zip contained no spreadsheet files"); continue }
+          for (const f of inner) {
+            await enqueueSpreadsheet(msg, fromAddr, f.name, `${msg.id}/${att.id}/${f.name}`, f.data, "application/octet-stream")
+          }
           continue
         }
 
-        const { error: insErr } = await supabase.from("email_ingestion_queue").upsert({
-          message_id: msg.id,
-          attachment_id: att.id ?? null,
-          attachment_name: name,
-          storage_path: storagePath,
-          from_address: fromAddr,
-          subject: msg.subject ?? null,
-          received_at: msg.receivedDateTime ?? null,
-          report_date: reportDateFromName(name),
-          status: "PENDING",
-        }, { onConflict: "message_id,attachment_name", ignoreDuplicates: true })
-
-        if (insErr) {
-          console.error(`[ingest-supplier-email] Queue insert failed for ${name}:`, insErr.message)
-          continue
-        }
-        enqueued++
+        await recordSkipped(msg, fromAddr, name, `Unsupported attachment type (.${ext})`)
       }
 
       // Mark the message read so it is not picked up again next poll.
@@ -210,9 +218,6 @@ Deno.serve(async (req) => {
   } catch (error) {
     const err = error as Error
     console.error("[ingest-supplier-email] Error:", err.message)
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    })
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { "Content-Type": "application/json" } })
   }
 })

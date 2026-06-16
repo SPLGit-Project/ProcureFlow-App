@@ -308,7 +308,7 @@ export interface SupplierStockSnapshot {
   sourceReportName: string;
 }
 
-export type EmailIngestionStatus = 'PENDING' | 'PROCESSED' | 'REJECTED_STALE' | 'NEEDS_SUPPLIER' | 'FAILED' | 'SKIPPED';
+export type EmailIngestionStatus = 'PENDING' | 'PROCESSING' | 'PROCESSED' | 'REJECTED_STALE' | 'NEEDS_SUPPLIER' | 'FAILED' | 'SKIPPED';
 
 export interface EmailIngestionQueueItem {
   id: string;

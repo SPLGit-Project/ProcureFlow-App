@@ -239,6 +239,7 @@ interface AppContextType {
   emailIngestionQueue: EmailIngestionQueueItem[];
   refreshEmailIngestionQueue: () => Promise<void>;
   updateEmailIngestionItem: (id: string, patch: Partial<EmailIngestionQueueItem>) => Promise<void>;
+  claimEmailIngestionItem: (id: string) => Promise<boolean>;
   downloadInboxAttachment: (storagePath: string) => Promise<Blob>;
 
   // Master Product / Mapping / Availability
@@ -2534,6 +2535,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setEmailIngestionQueue(prev => prev.map(item => item.id === id ? { ...item, ...patch } : item));
   };
 
+  const claimEmailIngestionItem = async (id: string): Promise<boolean> => {
+      const claimed = await db.claimEmailIngestionItem(id);
+      if (claimed) setEmailIngestionQueue(prev => prev.map(item => item.id === id ? { ...item, status: 'PROCESSING' } : item));
+      return claimed;
+  };
+
   const downloadInboxAttachment = async (storagePath: string): Promise<Blob> => {
       return db.downloadInboxAttachment(storagePath);
   };
@@ -2960,7 +2967,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     inboundEmailAddress, updateInboundEmailAddress,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
     suppliers, items, sites, userSites, catalog, stockSnapshots,
-    emailIngestionQueue, refreshEmailIngestionQueue, updateEmailIngestionItem, downloadInboxAttachment,
+    emailIngestionQueue, refreshEmailIngestionQueue, updateEmailIngestionItem, claimEmailIngestionItem, downloadInboxAttachment,
     mappings, availability, attributeOptions,
 
     // Methods
