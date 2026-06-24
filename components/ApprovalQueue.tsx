@@ -99,7 +99,7 @@ export default function ApprovalQueue() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canApprove = hasPermission('approve_item_requests');
+  const canApprove = hasPermission('approve_item_requests') || hasPermission('manage_development');
   const canViewSell = hasPermission('view_sell_pricing');
   const canViewPurchase = hasPermission('view_purchase_pricing');
 

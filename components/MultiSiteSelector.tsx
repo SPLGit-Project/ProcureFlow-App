@@ -99,7 +99,8 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
     return (
         <div className={`relative ${className}`} ref={containerRef}>
             {/* Trigger Button */}
-            <div 
+            <button 
+                type="button"
                 onClick={() => setIsOpen(!isOpen)}
                 className={`${baseStyles} ${variantStyles[variant]}`}
             >
@@ -107,21 +108,21 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                     <MapPin size={12} className="shrink-0 opacity-60" />
                     <span className="truncate">{label}</span>
                 </span>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <span className="flex items-center gap-1.5 shrink-0">
                     {selectedSiteIds.length > 0 && selectedSiteIds.length < sites.length && (
                         <span className="bg-tranquil shadow-sm shadow-tranquil/30 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                             {selectedSiteIds.length}
                         </span>
                     )}
                     <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-                </div>
-            </div>
+                </span>
+            </button>
 
             {/* Dropdown — positioned to break out of sidebar constraints */}
             {isOpen && (
                 <>
-                    {/* Invisible overlay for mobile — prevents click-through */}
-                    <div className="fixed inset-0 z-40 md:hidden" onClick={() => setIsOpen(false)} />
+                    {/* Dim backdrop overlay for mobile */}
+                    <div className="fixed inset-0 bg-black/55 backdrop-blur-sm z-40 md:hidden animate-fade-in" onClick={() => setIsOpen(false)} />
                     
                     <div className={`
                         z-50 bg-white dark:bg-nocturne shadow-2xl border border-gray-200 dark:border-white/10 overflow-hidden
@@ -145,13 +146,13 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                                 <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-white/5 p-1 rounded-lg">
                                     <button type="button"
                                         onClick={() => onChange(sites.map(s => s.id))}
-                                        className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-white/10 shadow-sm transition-all"
+                                        className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-md text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-white/10 shadow-sm transition-all"
                                     >
                                         All
                                     </button>
                                     <button type="button"
                                         onClick={() => onChange([])}
-                                        className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md text-gray-500 dark:text-gray-400 hover:text-red-600 hover:bg-white dark:hover:bg-white/10 dark:hover:text-red-400 shadow-sm transition-all"
+                                        className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-md text-gray-500 dark:text-gray-400 hover:text-red-600 hover:bg-white dark:hover:bg-white/10 dark:hover:text-red-400 shadow-sm transition-all"
                                     >
                                         None
                                     </button>
@@ -162,9 +163,9 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                                 {/* Close button for mobile */}
                                 <button type="button"
                                     onClick={() => setIsOpen(false)}
-                                    className="md:hidden ml-2 p-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/20 rounded-full text-gray-500 dark:text-gray-300 transition-colors"
+                                    className="md:hidden ml-2 p-2 bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/20 rounded-full text-gray-500 dark:text-gray-300 transition-colors flex items-center justify-center"
                                 >
-                                    <X size={14} />
+                                    <X size={16} />
                                 </button>
                             </div>
                         </div>
@@ -184,7 +185,7 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                                                 key={site.id}
                                                 onClick={() => handleToggle(site.id)}
                                                 className={`
-                                                    group flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200
+                                                    group flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200
                                                     active:scale-[0.98] select-none
                                                     ${isSelected 
                                                         ? 'bg-tranquil/5 dark:bg-tranquil/10 text-tranquil dark:text-white' 

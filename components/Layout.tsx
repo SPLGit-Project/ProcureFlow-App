@@ -81,6 +81,15 @@ const Layout = () => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem(REVAMP_EXPANDED_KEY) === 'true';
   });
+  const [isMobile, setIsMobile] = React.useState(false);
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  const isCollapsed = isSidebarCollapsed && !isMobile;
   const [metaRegistry, setMetaRegistry] = React.useState<Record<string, PageMeta>>({});
 
   const pageMeta = React.useMemo(() => {
@@ -226,7 +235,7 @@ const Layout = () => {
   }, [location.pathname, currentNavItem]);
 
   const isSidebarDark = branding.sidebarTheme === 'brand' || branding.sidebarTheme === 'dark';
-  const sidebarWidthClass = isSidebarCollapsed ? 'md:w-20' : 'md:w-72';
+  const sidebarWidthClass = isCollapsed ? 'md:w-20' : 'md:w-72';
   const sidebarBaseClass =
     'fixed inset-y-0 left-0 z-50 w-72 transform transition-all duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto flex flex-col border-r border-gray-200 dark:border-gray-800 backdrop-blur-xl';
 
@@ -236,7 +245,7 @@ const Layout = () => {
   else if (branding.sidebarTheme === 'brand') sidebarThemeClass = 'bg-[var(--color-brand)] text-white border-r-0';
 
   const getNavLinkClass = (isActive: boolean) => {
-    const compactClass = isSidebarCollapsed ? 'justify-center px-2 py-3.5' : 'gap-3 px-4 py-3';
+    const compactClass = isCollapsed ? 'justify-center px-2 py-3.5' : 'gap-3 px-4 py-3';
     const base = `relative flex items-center rounded-xl transition-all duration-200 font-medium text-sm group ${compactClass}`;
     if (isSidebarDark) {
       return isActive
@@ -453,12 +462,24 @@ const Layout = () => {
           {/* Mobile drawer (all nav items) */}
           {isMobileMenuOpen && (
             <div className="md:hidden fixed inset-y-0 left-0 w-64 z-50 bg-nocturne flex flex-col shadow-2xl rounded-r-2xl animate-slide-in-right">
-              <div className="flex items-center justify-between p-5 border-b border-white/10">
+              <div className="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
                 <span className="text-white font-bold text-sm">{branding.appName}</span>
                 <button type="button" onClick={() => setIsMobileMenuOpen(false)} className="text-white/50 hover:text-white p-1">
                   <X size={20} />
                 </button>
               </div>
+              
+              {userSites.length > 0 && (
+                <div className="px-5 py-3 border-b border-white/5 bg-black/15 shrink-0">
+                  <MultiSiteSelector
+                    sites={userSites}
+                    selectedSiteIds={activeSiteIds}
+                    onChange={setActiveSiteIds}
+                    variant="dark"
+                  />
+                </div>
+              )}
+
               <nav className="flex-1 overflow-y-auto p-3 space-y-1" aria-label="All navigation">
                 {groupedNavItems.map((group, groupIndex) => (
                   <React.Fragment key={group.category}>
@@ -669,6 +690,17 @@ const Layout = () => {
                     >
                       {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                     </button>
+                    <button type="button"
+                      onClick={() => setIsAccountDrawerOpen(true)}
+                      className="md:hidden flex items-center justify-center rounded-xl transition-all border border-tranquil/20 p-0.5 hover:bg-[#0f87a8]"
+                      title="Account settings"
+                    >
+                      <img
+                        src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`}
+                        alt={currentUser.name}
+                        className="w-8 h-8 rounded-lg object-cover"
+                      />
+                    </button>
                   </div>
                 </header>
                 );
@@ -709,7 +741,7 @@ const Layout = () => {
         className={`${sidebarBaseClass} ${sidebarWidthClass} ${sidebarThemeClass} ${isMobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'}`}
       >
         <div
-          className={`p-4 md:py-5 flex items-center gap-3 shrink-0 ${isSidebarCollapsed ? 'md:px-3' : 'md:px-5'}`}
+          className={`p-4 md:py-5 flex items-center gap-3 shrink-0 ${isCollapsed ? 'md:px-3' : 'md:px-5'}`}
         >
           <BrandLogo
             appName={branding.appName}
@@ -718,7 +750,7 @@ const Layout = () => {
             fallbackClassName={isSidebarDark ? 'bg-white text-[var(--color-brand)]' : 'bg-gradient-to-br from-[var(--color-brand)] to-purple-600 text-white'}
           />
 
-          {!isSidebarCollapsed && (
+          {!isCollapsed && (
             <h1 className="text-lg font-bold tracking-tight truncate flex-1" title={branding.appName}>
               {branding.appName}
             </h1>
@@ -729,9 +761,9 @@ const Layout = () => {
               type="button"
               onClick={() => setIsSidebarCollapsed(prev => !prev)}
               className="hidden md:inline-flex p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-              title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              {isSidebarCollapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+              {isCollapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
             </button>
             <button
               type="button"
@@ -744,8 +776,8 @@ const Layout = () => {
         </div>
 
         {userSites.length > 0 && (
-          <div className={`shrink-0 pb-4 ${isSidebarCollapsed ? 'px-2' : 'px-4'}`}>
-            {isSidebarCollapsed ? (
+          <div className={`shrink-0 pb-4 ${isCollapsed ? 'px-2' : 'px-4'}`}>
+            {isCollapsed ? (
               <button
                 type="button"
                 onClick={() => setIsSidebarCollapsed(false)}
@@ -774,8 +806,8 @@ const Layout = () => {
           </div>
         )}
 
-        <nav className={`flex-1 space-y-1 overflow-y-auto py-4 scrollbar-hide ${isSidebarCollapsed ? 'px-2' : 'px-4'}`}>
-          {!isSidebarCollapsed && (
+        <nav className={`flex-1 space-y-1 overflow-y-auto py-4 scrollbar-hide ${isCollapsed ? 'px-2' : 'px-4'}`}>
+          {!isCollapsed && (
             <p className={`px-4 text-xs font-bold uppercase tracking-wider mb-3 ${isSidebarDark ? 'text-white/50' : 'text-tertiary'}`}>
               Menu
             </p>
@@ -789,7 +821,7 @@ const Layout = () => {
                   to={item.path}
                   onClick={() => setIsMobileMenuOpen(false)}
                   className={({ isActive }) => getNavLinkClass(isActive)}
-                  title={isSidebarCollapsed ? item.label : undefined}
+                  title={isCollapsed ? item.label : undefined}
                 >
                   {({ isActive }) => (
                     <>
@@ -797,12 +829,12 @@ const Layout = () => {
                         className={`absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-r-full transition-opacity ${isActive ? (isSidebarDark ? 'bg-white/85' : 'bg-[var(--color-brand)]') : 'opacity-0'}`}
                       />
                       <Icon size={18} className="shrink-0" />
-                      {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
+                      {!isCollapsed && <span className="truncate">{item.label}</span>}
                     </>
                   )}
                 </NavLink>
                 {children.length > 0 && (
-                  <div className={`space-y-0.5 mt-0.5 mb-1 ${!isSidebarCollapsed ? 'ml-3 pl-2.5 border-l-2 border-gray-200 dark:border-gray-700' : ''}`}>
+                  <div className={`space-y-0.5 mt-0.5 mb-1 ${!isCollapsed ? 'ml-3 pl-2.5 border-l-2 border-gray-200 dark:border-gray-700' : ''}`}>
                     {children.map(child => {
                       const CIcon = child.icon;
                       return (
@@ -811,7 +843,7 @@ const Layout = () => {
                           to={child.path}
                           onClick={() => setIsMobileMenuOpen(false)}
                           className={({ isActive }) => {
-                            const compactClass = isSidebarCollapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-3 py-2';
+                            const compactClass = isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-3 py-2';
                             const base = `relative flex items-center rounded-lg transition-all duration-200 font-medium text-xs group ${compactClass}`;
                             if (isSidebarDark) {
                               return isActive
@@ -822,7 +854,7 @@ const Layout = () => {
                               ? `${base} bg-[rgba(var(--color-brand-rgb),0.1)] text-[var(--color-brand)] shadow-sm`
                               : `${base} text-secondary dark:text-slate-500 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-primary dark:hover:text-white`;
                           }}
-                          title={isSidebarCollapsed ? child.label : undefined}
+                          title={isCollapsed ? child.label : undefined}
                         >
                           {({ isActive }) => (
                             <>
@@ -830,7 +862,7 @@ const Layout = () => {
                                 className={`absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full transition-opacity ${isActive ? (isSidebarDark ? 'bg-white/85' : 'bg-[var(--color-brand)]') : 'opacity-0'}`}
                               />
                               <CIcon size={14} className="shrink-0 opacity-80" />
-                              {!isSidebarCollapsed && <span className="truncate">{child.label}</span>}
+                              {!isCollapsed && <span className="truncate">{child.label}</span>}
                             </>
                           )}
                         </NavLink>
@@ -843,7 +875,7 @@ const Layout = () => {
           })}
         </nav>
 
-        {!isSidebarCollapsed && (
+        {!isCollapsed && (
           <div className="mx-4 mb-4 mt-2">
             <VersionBadge />
           </div>
@@ -979,7 +1011,8 @@ const Layout = () => {
 
             <div className="w-px h-6 bg-gray-200 dark:bg-gray-800 mx-0.5 hidden sm:block" />
 
-            <div
+            <button
+              type="button"
               onClick={() => setIsAccountDrawerOpen(true)}
               className="flex items-center gap-2 pl-1 pr-1 md:pr-3 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-white/5 transition-all cursor-pointer group"
             >
@@ -989,14 +1022,14 @@ const Layout = () => {
                     currentUser.avatar ||
                     `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random&color=fff`
                   }
-                  alt="User"
+                  alt={currentUser.name}
                   className="w-full h-full object-cover"
                 />
               </div>
               <span className="hidden md:block text-xs font-bold text-primary dark:text-white group-hover:text-[var(--color-brand)] transition-colors">
                 {currentUser.name.split(' ')[0]}
               </span>
-            </div>
+            </button>
           </div>
         </header>
 

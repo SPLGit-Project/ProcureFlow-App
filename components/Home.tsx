@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Info } from 'lucide-react';
 import { ItemRequest } from '../types';
 import { useApp } from '../context/AppContext';
 import PageHeader from './PageHeader';
@@ -323,7 +323,12 @@ export default function Home() {
                     <article
                       key={app.id}
                       style={appTileStyle}
-                      className={`group relative transform-gpu overflow-hidden rounded-[1.25rem] border text-left transition-all duration-300 sm:rounded-[1.35rem] ${
+                      onClick={() => {
+                        if (!isActive) {
+                          navigate(app.path);
+                        }
+                      }}
+                      className={`group relative transform-gpu overflow-hidden rounded-[1.25rem] border text-left transition-all duration-300 sm:rounded-[1.35rem] cursor-pointer ${
                         isActive
                           ? 'border-[color:var(--app-color)] bg-white dark:bg-[#1d2029]'
                           : 'min-h-[184px] border-gray-200/85 bg-white hover:-translate-y-1 hover:border-[color:var(--app-color)] active:translate-y-0 sm:min-h-[252px] dark:border-white/10 dark:bg-[#15171e] dark:hover:border-[color:var(--app-color)] dark:hover:bg-[#1d2029]'
@@ -336,11 +341,13 @@ export default function Home() {
                         }}
                       />
                       <div className="relative flex h-full flex-col">
-                        <button
-                          type="button"
-                          onClick={() => setActiveAppId(isActive ? null : app.id)}
-                          aria-expanded={isActive}
-                          aria-label={`${isActive ? 'Collapse' : 'Expand'} ${app.brandName}`}
+                        <div
+                          onClick={(e) => {
+                            if (isActive) {
+                              e.stopPropagation();
+                              navigate(app.path);
+                            }
+                          }}
                           className="relative block w-full text-left"
                         >
                           <div className="relative m-2 overflow-hidden rounded-[1rem] border border-white/15 bg-[#100d0f] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:m-3 sm:rounded-[1.1rem]">
@@ -365,27 +372,59 @@ export default function Home() {
                               />
                             </div>
                           </div>
-                        </button>
+                        </div>
 
-                        <div className={`flex min-h-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4 ${isActive ? 'gap-4 pt-1 sm:gap-4' : 'justify-between'}`}>
+                        <div 
+                          onClick={(e) => {
+                            if (isActive) {
+                              e.stopPropagation();
+                            }
+                          }}
+                          className={`flex min-h-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4 ${isActive ? 'gap-4 pt-1 sm:gap-4' : 'justify-between'}`}
+                        >
                           <div>
                             <div className="mb-1 flex items-start justify-between gap-2">
-                              <div className="min-w-0">
+                              <div 
+                                className="min-w-0 flex-1 cursor-pointer"
+                                onClick={(e) => {
+                                  if (isActive) {
+                                    e.stopPropagation();
+                                    navigate(app.path);
+                                  }
+                                }}
+                              >
                                 <p className="text-[8px] font-black uppercase tracking-[0.18em] text-gray-500 sm:text-[10px] sm:tracking-widest dark:text-white/50">{app.label}</p>
                                 <h2 className="mt-2 text-lg font-black leading-tight text-gray-950 sm:text-2xl dark:text-white">{app.brandName}</h2>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => setActiveAppId(isActive ? null : app.id)}
-                                aria-label={`${isActive ? 'Collapse details for' : 'Expand details for'} ${app.brandName}`}
-                                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border transition-all sm:h-9 sm:w-9 sm:rounded-2xl ${
-                                  isActive
-                                    ? 'rotate-90 border-[color:var(--app-color)] bg-[color:var(--app-color)] text-white'
-                                    : 'border-gray-200 bg-white/80 text-gray-500 group-hover:bg-[color:var(--app-color)] group-hover:text-white dark:border-white/10 dark:bg-nocturne/40 dark:text-white/55'
-                                }`}
-                              >
-                                <ArrowRight size={14} className="sm:size-4" />
-                              </button>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveAppId(isActive ? null : app.id);
+                                  }}
+                                  aria-expanded={isActive}
+                                  aria-label={`${isActive ? 'Hide details' : 'Show details'} for ${app.brandName}`}
+                                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border transition-all sm:h-9 sm:w-9 sm:rounded-2xl ${
+                                    isActive
+                                      ? 'border-[color:var(--app-color)] bg-[color:var(--app-color)] text-white'
+                                      : 'border-gray-200 bg-white/80 text-gray-500 hover:bg-gray-100 hover:text-primary dark:border-white/10 dark:bg-nocturne/40 dark:text-white/55 dark:hover:bg-white/10'
+                                  }`}
+                                >
+                                  <Info size={14} className="sm:size-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(app.path);
+                                  }}
+                                  aria-label={`Open ${app.brandName}`}
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white/80 text-gray-500 hover:bg-[color:var(--app-color)] hover:text-white dark:border-white/10 dark:bg-nocturne/40 dark:text-white/55 transition-all sm:h-9 sm:w-9 sm:rounded-2xl"
+                                >
+                                  <ArrowRight size={14} className="sm:size-4" />
+                                </button>
+                              </div>
                             </div>
                             {isActive && (
                               <div className="mt-3 space-y-3">
