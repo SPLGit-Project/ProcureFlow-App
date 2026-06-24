@@ -10,7 +10,8 @@ let CACHE_VERSION = 'v1'; // Default, will be updated from version.json
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/mercer-m-logo.png'
 ];
 
 /**

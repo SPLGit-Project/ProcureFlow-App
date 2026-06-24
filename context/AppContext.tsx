@@ -1437,7 +1437,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       // 2. Apple Touch Icon
       const linkApple = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement || document.createElement('link');
       linkApple.rel = 'apple-touch-icon';
-      linkApple.href = branding.logoUrl;
+      linkApple.href = '/mercer-m-logo.png';
       document.getElementsByTagName('head')[0].appendChild(linkApple);
 
       // 3. Meta Theme Color
@@ -1457,14 +1457,28 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           orientation: "portrait",
           icons: [
               {
-                  src: branding.logoUrl,
-                  sizes: "192x192", // We assume the logo url provided scales or is vector, or browsers handle resize
-                  type: "image/png"
+                  src: "/mercer-m-logo.png",
+                  sizes: "192x192",
+                  type: "image/png",
+                  purpose: "any"
               },
               {
-                  src: branding.logoUrl,
+                  src: "/mercer-m-logo.png",
                   sizes: "512x512",
-                  type: "image/png"
+                  type: "image/png",
+                  purpose: "any"
+              },
+              {
+                  src: "/mercer-m-logo.png",
+                  sizes: "192x192",
+                  type: "image/png",
+                  purpose: "maskable"
+              },
+              {
+                  src: "/mercer-m-logo.png",
+                  sizes: "512x512",
+                  type: "image/png",
+                  purpose: "maskable"
               }
           ]
       };
