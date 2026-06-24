@@ -31,10 +31,8 @@ test.describe('Item Catalogue', () => {
         await gotoAndWait(page, '/item-catalogue');
         // The item catalogue page always renders the heading and control bar regardless of data
         await expect(page.locator('h1:has-text("Item Catalogue")')).toBeVisible();
-        // At least one of: the tab bar, a search input, or a data table must exist
-        const hasTabBar = await page.getByRole('button', { name: /All/ }).isVisible().catch(() => false);
-        const hasSearchInput = await page.locator('input').first().isVisible().catch(() => false);
-        expect(hasTabBar || hasSearchInput).toBeTruthy();
+        // The search input must be visible on the page
+        await expect(page.locator('input').first()).toBeVisible();
     });
 
     test('search filters the list', async ({ page }) => {

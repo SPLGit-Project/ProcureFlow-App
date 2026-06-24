@@ -401,14 +401,7 @@ export default function Home() {
                           </div>
                         </div>
 
-                        {/* Collapsed view brand label */}
-                        {!isActive && (
-                          <div className="px-3 pb-3 text-center sm:px-4 sm:pb-4">
-                            <h2 className="text-sm font-extrabold tracking-tight text-gray-950 dark:text-white sm:text-base">
-                              {app.brandName}
-                            </h2>
-                          </div>
-                        )}
+
 
                         {/* Expanded detail section */}
                         {isActive && (

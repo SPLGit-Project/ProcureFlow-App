@@ -220,9 +220,9 @@ test.describe('Navigation and feature flag gating', () => {
     test('permission-limited home hides unavailable modules', async ({ page }) => {
         await injectTestUser(page, ['view_dashboard']);
         await gotoAndWait(page, '/');
-        await expect(page.getByRole('heading', { name: 'ProcureFlow' })).toBeVisible();
-        await expect(page.getByRole('heading', { name: 'CatalogFlow' })).toBeVisible();
-        await expect(page.getByRole('heading', { name: 'PriceFlow' })).not.toBeVisible();
+        await expect(page.getByAltText('ProcureFlow logo')).toBeVisible();
+        await expect(page.getByAltText('CatalogFlow logo')).toBeVisible();
+        await expect(page.getByAltText('PriceFlow logo')).not.toBeVisible();
         await expect(page.getByText('Quick create')).not.toBeVisible();
         await expect(page.getByText('Recent destinations')).not.toBeVisible();
     });

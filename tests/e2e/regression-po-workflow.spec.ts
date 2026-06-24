@@ -17,8 +17,7 @@ test.describe('PO workflow regression', () => {
         await injectTestUser(page, ['view_dashboard', 'create_request', 'view_items']);
         await gotoAndWait(page, '/create');
         // Form uses comboboxes for site/supplier and a text input for customer name
-        const hasForm = await page.locator('[role="combobox"], input, textarea').first().isVisible().catch(() => false);
-        expect(hasForm).toBeTruthy();
+        await expect(page.locator('[role="combobox"], input, textarea').first()).toBeVisible();
         await page.screenshot({ path: 'test-results/po-create.png', fullPage: true });
     });
 
