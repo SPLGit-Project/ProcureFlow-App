@@ -1,6 +1,7 @@
 {
   "imports": {
     "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.48.1",
-    "mysql": "https://deno.land/x/mysql/mod.ts"
+    "mysql": "https://deno.land/x/mysql/mod.ts",
+    "mssql": "npm:mssql@11"
   }
 }
