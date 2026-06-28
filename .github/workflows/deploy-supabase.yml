@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "supabase/functions/**"
-      - "supabase/migrations/**"
   workflow_dispatch:
 
 jobs:
@@ -22,18 +21,6 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
-
-      - name: Link Supabase project
-        run: |
-          supabase link --project-ref yasosgkznoxamysutxfc
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      - name: Apply pending migrations
-        run: |
-          supabase db push --linked
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy azure-db-proxy edge function
         run: |
