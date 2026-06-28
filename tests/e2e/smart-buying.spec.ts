@@ -37,6 +37,8 @@ test.describe('Smart Buying Dashboard', () => {
     test('budget slider or allocation table is visible in Plan view', async ({ page }) => {
         await injectTestUser(page, ['view_dashboard', 'manage_development']);
         await gotoAndWait(page, '/smart-buying');
+        // Wait for loading spinner to disappear
+        await page.waitForSelector('.animate-spin', { state: 'detached', timeout: 15000 }).catch(() => {});
         // Either a table or budget-related UI should be visible
         const hasTable    = await page.locator('table').isVisible().catch(() => false);
         const hasBudget   = await page.locator('text=/budget|allocation|STAR/i').first().isVisible().catch(() => false);

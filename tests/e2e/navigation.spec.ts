@@ -15,7 +15,7 @@ test.describe('Navigation and feature flag gating', () => {
         await gotoAndWait(page, '/');
         await expect(page.getByText('App drawer')).toBeVisible();
         await expect(page.getByText('MercerFlow Apps')).toBeVisible();
-        await expect(page.getByRole('heading', { level: 1, name: /QA|Welcome back|Good day|MercerFlow/i })).toBeVisible();
+        await expect(page.getByRole('heading', { level: 1, name: /QA|Welcome back|Good day|MercerFlow|Good to see you|tuned/i })).toBeVisible();
         await expect(page.getByText("Today's focus")).toBeVisible();
         await expect(page.getByText('MercerFlow Command')).not.toBeVisible();
         await expect(page.getByText('Recommended next')).not.toBeVisible();
@@ -256,7 +256,7 @@ test.describe('Navigation and feature flag gating', () => {
         await injectTestUser(page);
         await gotoAndWait(page, '/');
         await expect(page.getByText('App drawer')).toBeVisible();
-        await expect(page.getByRole('heading', { level: 1, name: /QA|Welcome back|Good day|MercerFlow/i })).toBeVisible();
+        await expect(page.getByRole('heading', { level: 1, name: /QA|Welcome back|Good day|MercerFlow|Good to see you|tuned/i })).toBeVisible();
         await expect(page.locator('header a[title="Home"]')).toBeVisible();
         await expect(page.locator('header button[title="Light mode"], header button[title="Dark mode"]')).toBeVisible();
         await page.screenshot({ path: 'test-results/home-mobile.png', fullPage: true });
