@@ -321,13 +321,19 @@ Deno.serve(async (req: Request) => {
       params: Record<string, unknown>
     }
 
-    // ── Open MSSQL connection pool ───────────────────────────────────────────
+    // ── Open MSSQL connection pool (Azure AD service principal auth) ─────────
     const pool = await sql.connect({
       server:   config.host,
       port:     config.port || 1433,
       database: config.database,
-      user:     Deno.env.get('AZURE_SQL_USER') ?? '',
-      password: Deno.env.get('AZURE_SQL_PASS') ?? '',
+      authentication: {
+        type: 'azure-active-directory-service-principal-secret',
+        options: {
+          clientId:     Deno.env.get('AZURE_CLIENT_ID') ?? '',
+          clientSecret: Deno.env.get('AZURE_CLIENT_SECRET') ?? '',
+          tenantId:     Deno.env.get('AZURE_TENANT_ID') ?? '',
+        },
+      },
       options: {
         encrypt:                true,
         trustServerCertificate: false,

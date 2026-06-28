@@ -37,11 +37,12 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
-      - name: Set Azure SQL secrets on edge function
+      - name: Set Azure AD service principal secrets on edge function
         run: |
           supabase secrets set \
-            AZURE_SQL_USER="${{ secrets.AZURE_SQL_USER }}" \
-            AZURE_SQL_PASS="${{ secrets.AZURE_SQL_PASS }}" \
+            AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
+            AZURE_CLIENT_SECRET="${{ secrets.AZURE_CLIENT_SECRET }}" \
+            AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
             --project-ref yasosgkznoxamysutxfc
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
