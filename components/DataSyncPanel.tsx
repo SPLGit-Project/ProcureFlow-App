@@ -200,7 +200,7 @@ const DataSyncPanel: React.FC = () => {
   const [connLatency, setConnLatency] = useState<number | null>(null);
   const [showAzureConfig, setShowAzureConfig] = useState(false);
   const [azureHost, setAzureHost] = useState('');
-  const [azurePort, setAzurePort] = useState('5432');
+  const [azurePort, setAzurePort] = useState('1433');
   const [azureDb, setAzureDb] = useState('');
   const [azureProxyUrl, setAzureProxyUrl] = useState('');
   const { toasts, dismissToast, success, error, info } = useToast();

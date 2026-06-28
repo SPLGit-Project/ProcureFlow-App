@@ -1,0 +1,48 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/**"
+      - "supabase/migrations/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply pending migrations
+        run: |
+          supabase db push --project-ref yasosgkznoxamysutxfc
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy azure-db-proxy edge function
+        run: |
+          supabase functions deploy azure-db-proxy \
+            --project-ref yasosgkznoxamysutxfc \
+            --import-map supabase/functions/import_map.json
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Set Azure AD service principal secrets on edge function
+        run: |
+          supabase secrets set \
+            AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
+            AZURE_CLIENT_SECRET="${{ secrets.AZURE_CLIENT_SECRET }}" \
+            AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
+            --project-ref yasosgkznoxamysutxfc
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
