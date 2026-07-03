@@ -10,7 +10,7 @@ interface Props {
     po: PORequest;
     currentUser: User;
     onClose: () => void;
-    onSubmit: (delivery: DeliveryHeader, closedLineIds: string[], newLines: POLineItem[]) => void;
+    onSubmit: (delivery: DeliveryHeader, closedLineIds: string[], newLines: POLineItem[]) => Promise<void>;
 }
 
 const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
@@ -150,8 +150,9 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                     </div>
                     <button 
                         type="button"
-                        onClick={onClose} 
-                        className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors"
+                        onClick={onClose}
+                        disabled={isSubmitting} 
+                        className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <X size={20}/>
                     </button>
@@ -348,7 +349,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                     </div>
 
                     <div className="p-5 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#15171e] flex justify-end gap-3 rounded-b-2xl">
-                        <button type="button" onClick={onClose} className="px-5 py-2.5 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors">Cancel</button>
+                        <button type="button" onClick={onClose} disabled={isSubmitting} className="px-5 py-2.5 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
                         <button 
                             type="submit" 
                             disabled={isSubmitting || (Object.values(receipts).every(v => v === 0) && closedLines.size === 0)}

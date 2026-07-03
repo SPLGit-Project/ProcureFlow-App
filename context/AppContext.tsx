@@ -692,6 +692,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // Data Loading
   const lastFetchTime = React.useRef<number>(0);
+  const deliverySubmitLocksRef = React.useRef<Set<string>>(new Set());
   const reloadData = useCallback(async (silent: boolean = false, force: boolean = false) => {
 
         if (qaMode) {
@@ -2402,6 +2403,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     const p = pos.find(req => req.id === poId);
     if (!p) return;
 
+    const incomingDocket = delivery.docketNumber.trim().toLowerCase();
+    const incomingDate = delivery.date.split('T')[0];
+    const duplicateDelivery = incomingDocket
+      ? p.deliveries.find(existing =>
+          existing.docketNumber.trim().toLowerCase() === incomingDocket &&
+          existing.date.split('T')[0] === incomingDate
+        )
+      : undefined;
+
+    if (duplicateDelivery) {
+      throw new Error(`Delivery docket ${delivery.docketNumber} has already been recorded for this PO on ${incomingDate}. Edit the existing delivery instead of recording it again.`);
+    }
+
+    if (deliverySubmitLocksRef.current.has(poId)) {
+      console.warn(`Delivery submission already in progress for PO ${poId}. Dropping duplicate request.`);
+      return;
+    }
+    deliverySubmitLocksRef.current.add(poId);
+
     let varianceTriggered = false;
 
     const processedExistingLines = p.lines.map(line => {
@@ -2494,10 +2514,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         logAction('DELIVERY_ADDED', { poId, deliveryId: delivery.id, receivedBy: delivery.receivedBy, newStatus });
         
         await reloadData(true, true);
+        deliverySubmitLocksRef.current.delete(poId);
     } catch (e) {
         console.error("Failed to add delivery", e);
         reloadData();
         logAction('DELIVERY_ADD_FAILED', { poId, deliveryId: delivery.id, error: (e as Error).message });
+        deliverySubmitLocksRef.current.delete(poId);
         throw e;
     }
   };

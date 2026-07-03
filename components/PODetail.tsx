@@ -349,7 +349,7 @@ const PODetail = () => {
   const canLinkConcurRequest = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR_REQUEST';
   const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR';
   const canReceive = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
-  const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED');
+  const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
   // isAdmin is defined at the top of the component
   const canEditDeliveries = Boolean(
     po &&
@@ -480,13 +480,18 @@ const PODetail = () => {
       try {
           await addDelivery(po.id, delivery, closedLineIds, newLines);
           setIsDeliveryModalOpen(false);
-      } catch (_error) {
-          alert('Failed to save delivery. Please try again.');
+      } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Please try again.';
+          alert(`Failed to save delivery. ${msg}`);
       }
   };
 
   const handleCompletePO = async () => {
-      if (!globalThis.confirm('Are you sure you want to mark this order as complete? This will finalize all lines and move it to history.')) return;
+      const hasOutstanding = po.lines.some(line => line.quantityReceived < line.quantityOrdered);
+      const confirmMessage = hasOutstanding
+          ? 'Warning: There are outstanding delivery quantities on this order. Completing it will permanently close the PO request and this action cannot be undone. Are you sure you want to proceed?'
+          : 'Are you sure you want to mark this order as complete? This will finalize all lines and move it to history.';
+      if (!globalThis.confirm(confirmMessage)) return;
       
       try {
           await updatePOStatus(po.id, 'CLOSED', {

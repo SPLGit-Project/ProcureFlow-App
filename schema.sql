@@ -1619,12 +1619,25 @@ CREATE POLICY "Enable write access for authenticated users" ON "public"."asset_c
 
 
 
-CREATE POLICY "Requesters can update pending requests" ON "public"."po_requests" FOR UPDATE USING (((("auth"."uid"() IN ( SELECT "users"."auth_user_id"
-   FROM "public"."users"
-  WHERE ("users"."id" = "po_requests"."requester_id"))) AND ("status" = 'PENDING_APPROVAL'::"text")) OR (EXISTS ( SELECT 1
-   FROM ("public"."users" "u"
-     JOIN "public"."roles" "r" ON (("u"."role_id" = "r"."id")))
-  WHERE (("u"."auth_user_id" = "auth"."uid"()) AND ("r"."id" = 'ADMIN'::"text"))))));
+CREATE POLICY "Users with permission can update requests" ON "public"."po_requests" FOR UPDATE TO "authenticated" USING (
+    (((EXISTS ( SELECT 1
+      FROM ("public"."users" "u" JOIN "public"."roles" "r" ON (("u"."role_id" = "r"."id")))
+      WHERE (("u"."auth_user_id" = "auth"."uid"()) AND ("r"."id" = 'ADMIN'::"text"))
+    )) OR ((auth.uid() IN ( SELECT "users"."auth_user_id"
+      FROM "public"."users"
+      WHERE ("users"."id" = "po_requests"."requester_id"))) AND ("status" = ANY (ARRAY['PENDING_APPROVAL'::"text", 'APPROVED_PENDING_CONCUR_REQUEST'::"text", 'APPROVED_PENDING_CONCUR'::"text", 'ACTIVE'::"text", 'RECEIVED'::"text", 'VARIANCE_PENDING'::"text"]))) OR (EXISTS ( SELECT 1
+      FROM ("public"."users" "u" JOIN "public"."roles" "r" ON (("u"."role_id" = "r"."id")))
+      WHERE (("u"."auth_user_id" = "auth"."uid"()) AND ('receive_goods'::"text" = ANY ("r"."permissions")) AND (("po_requests"."site_id")::"text" = ANY ("u"."site_ids"))))))
+) WITH CHECK (
+    (((EXISTS ( SELECT 1
+      FROM ("public"."users" "u" JOIN "public"."roles" "r" ON (("u"."role_id" = "r"."id")))
+      WHERE (("u"."auth_user_id" = "auth"."uid"()) AND ("r"."id" = 'ADMIN'::"text"))
+    )) OR ((auth.uid() IN ( SELECT "users"."auth_user_id"
+      FROM "public"."users"
+      WHERE ("users"."id" = "po_requests"."requester_id"))) AND ("status" = ANY (ARRAY['PENDING_APPROVAL'::"text", 'APPROVED_PENDING_CONCUR_REQUEST'::"text", 'APPROVED_PENDING_CONCUR'::"text", 'ACTIVE'::"text", 'RECEIVED'::"text", 'VARIANCE_PENDING'::"text", 'CLOSED'::"text", 'CANCELLED'::"text"]))) OR (((EXISTS ( SELECT 1
+      FROM ("public"."users" "u" JOIN "public"."roles" "r" ON (("u"."role_id" = "r"."id")))
+      WHERE (("u"."auth_user_id" = "auth"."uid"()) AND ('receive_goods'::"text" = ANY ("r"."permissions")) AND (("po_requests"."site_id")::"text" = ANY ("u"."site_ids"))))) AND ("status" = ANY (ARRAY['ACTIVE'::"text", 'RECEIVED'::"text", 'VARIANCE_PENDING'::"text", 'CLOSED'::"text"]))))
+);
 
 
 
