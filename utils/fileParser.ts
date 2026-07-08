@@ -285,6 +285,21 @@ function detectSupplierFromContent(
         });
     }
 
+    // ── Freudenberg ────────────────────────────────────────────────────────────
+    if (fileNameLower.includes('freudenberg') || fileNameLower.includes('vileda') || fileNameLower.includes('oates')) {
+        candidates.push({
+            name: 'FREUDENBERG HOME AND CLEANING SOLUTIONS PTY. LTD',
+            confidence: 0.95,
+            evidence: ['Filename contains Freudenberg, Vileda, or Oates']
+        });
+    } else if (includesAll(text, ['freudenberg', 'cleaning'])) {
+        candidates.push({
+            name: 'FREUDENBERG HOME AND CLEANING SOLUTIONS PTY. LTD',
+            confidence: 0.90,
+            evidence: ['Content contains Freudenberg and cleaning']
+        });
+    }
+
     // ── Simba (segment-aware) ──────────────────────────────────────────────────
     // Simba sends two separate files: one for Healthcare customers and one for
     // Accommodation customers. The segment is identified from body text, headers,

@@ -21,7 +21,7 @@ import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts'
 import { supabase } from '../lib/supabaseClient.ts';
 import { SupplierStockSnapshot, SupplierProductMap, Item, Supplier, SupplierContact, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType } from '../types.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
-import { canonicalSupplierName, dedupeSuppliersForDisplay, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
+import { canonicalSupplierName, dedupeSuppliersForDisplay, findSupplierByContactEmail, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import { useLocation } from 'react-router-dom';
 import { BrandLogo } from './BrandLogo.tsx';
 // AdminAccessHub removed — access approvals no longer used
@@ -1286,17 +1286,109 @@ const Settings = () => {
                       continue;
                   }
 
-                  // Only ingest against a known supplier; never auto-create from
-                  // automation (matches the "pause for supplier creation" rule).
-                  const detectedSupplier = findVisibleSupplierByName(parsed.detectedSupplier?.name);
+                  // Multi-layered supplier detection:
+                  let detectedSupplier: Supplier | undefined = undefined;
+                  
+                  // A. Try direct sender email (if sent directly by supplier)
+                  if (item.fromAddress) {
+                      const domain = item.fromAddress.split('@').pop()?.toLowerCase();
+                      if (domain && domain !== 'splservices.com.au' && domain !== 'company.com') {
+                          detectedSupplier = findSupplierByContactEmail(visibleSuppliers, item.fromAddress);
+                      }
+                  }
+
+                  // B. Try parsing detected supplier name from file content
+                  if (!detectedSupplier && parsed.detectedSupplier?.name) {
+                      detectedSupplier = findVisibleSupplierByName(parsed.detectedSupplier.name);
+                      
+                      // Fuzzy match: if detected name is "Simba Healthcare" or "Simba Accommodation", 
+                      // try matching against "Simba Global - Healthcare" / "Simba Global - Accommodation"
+                      if (!detectedSupplier) {
+                          const detNameLower = parsed.detectedSupplier.name.toLowerCase();
+                          detectedSupplier = visibleSuppliers.find(s => {
+                              const sNameLower = s.name.toLowerCase();
+                              return (detNameLower.includes('simba') && sNameLower.includes('simba') && (
+                                  (detNameLower.includes('healthcare') && sNameLower.includes('healthcare')) ||
+                                  (detNameLower.includes('accommodation') && sNameLower.includes('accommodation'))
+                              ));
+                          });
+                      }
+                  }
+
+                  // C. Try matching by supplier keywords in filename or email subject (especially for forwarded reports)
+                  if (!detectedSupplier) {
+                      const filenameLower = (item.attachmentName || '').toLowerCase();
+                      const subjectLower = (item.subject || '').toLowerCase();
+                      const combined = `${filenameLower} ${subjectLower}`;
+
+                      let bestMatch: Supplier | undefined = undefined;
+                      let bestScore = 0;
+
+                      for (const s of visibleSuppliers) {
+                          const nameLower = s.name.toLowerCase();
+                          
+                          // Check if full name is present
+                          if (combined.includes(nameLower)) {
+                              bestMatch = s;
+                              break;
+                          }
+                          
+                          // Check for unique keywords
+                          let words = [canonicalSupplierName(s.name)];
+                          if (s.name.includes('NCC')) words.push('ncc');
+                          if (s.name.includes('HOST')) words.push('host');
+                          if (s.name.includes('Frenkel')) words.push('frenkel');
+                          if (s.name.includes('Simba')) words.push('simba');
+                          if (s.name.includes('Global')) words.push('global textile');
+                          if (s.name.includes('Freudenberg')) words.push('freudenberg');
+
+                          for (const w of words) {
+                              if (w && w.length > 2 && combined.includes(w)) {
+                                  // For Simba, resolve segment using filename/subject
+                                  if (w === 'simba') {
+                                      const isAccFilename = filenameLower.includes('accommodation') || filenameLower.includes('accom') || filenameLower.includes('hotel') || /\bacc\b/.test(filenameLower);
+                                      const isHcFilename = filenameLower.includes('healthcare') || filenameLower.includes('health') || /\bhc\b/.test(filenameLower);
+                                      
+                                      const isAcc = isAccFilename || (subjectLower.includes('accommodation') || subjectLower.includes('accom') || subjectLower.includes('hotel') || /\bacc\b/.test(subjectLower));
+                                      const isHc = isHcFilename || (subjectLower.includes('healthcare') || subjectLower.includes('health') || /\bhc\b/.test(subjectLower));
+                                      
+                                      if (isAccFilename && s.name.includes('Accommodation')) {
+                                          bestMatch = s;
+                                          bestScore = 110;
+                                          break;
+                                      } else if (isHcFilename && s.name.includes('Healthcare')) {
+                                          bestMatch = s;
+                                          bestScore = 110;
+                                          break;
+                                      } else if (isAcc && s.name.includes('Accommodation') && bestScore < 100) {
+                                          bestMatch = s;
+                                          bestScore = 100;
+                                      } else if (isHc && s.name.includes('Healthcare') && bestScore < 100) {
+                                          bestMatch = s;
+                                          bestScore = 100;
+                                      }
+                                  } else {
+                                      const score = w.length;
+                                      if (score > bestScore) {
+                                          bestScore = score;
+                                          bestMatch = s;
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                      
+                      if (bestMatch) {
+                          detectedSupplier = bestMatch;
+                      }
+                  }
+
                   if (!detectedSupplier) {
                       await updateEmailIngestionItem(item.id, {
                           status: 'NEEDS_SUPPLIER',
-                          detectedSupplierName: parsed.detectedSupplier?.name,
+                          detectedSupplierName: parsed.detectedSupplier?.name || null,
                           reportDate: parsed.reportDate,
-                          error: parsed.detectedSupplier?.name
-                              ? `Supplier "${parsed.detectedSupplier.name}" is not in the supplier master. Add it, then reprocess.`
-                              : 'Could not identify the supplier from the file contents.',
+                          error: 'Could not identify the supplier from the file name, subject, or contents.',
                           processedAt: new Date().toISOString()
                       });
                       needsSupplier++;
