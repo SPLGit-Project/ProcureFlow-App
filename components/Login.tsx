@@ -1,15 +1,16 @@
-
 import React from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 import { Shield } from 'lucide-react';
 import { consumeSessionLogoutNotice } from '../utils/sessionState.ts';
-import mercerFlowLogo from '../docs/Logo Branding/APP-LOGOS/MercerFlow_Logo.gif';
+import mercerFlowLogoGif from '../docs/Logo Branding/APP-LOGOS/MercerFlow_Logo.gif';
+import mercerFlowLogoPng from '../docs/Logo Branding/APP-LOGOS/MercerFlow-Logo.png';
 
 const Login = () => {
   const { login, isAuthenticated, branding, isLoadingAuth } = useApp();
   const navigate = useNavigate();
   const [logoutNotice] = React.useState(() => consumeSessionLogoutNotice());
+  const [showGif, setShowGif] = React.useState(false);
 
   React.useEffect(() => {
     if (isAuthenticated) {
@@ -17,17 +18,41 @@ const Login = () => {
     }
   }, [isAuthenticated, navigate]);
 
+  React.useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    const cycle = () => {
+      setShowGif(prev => {
+        const next = !prev;
+        // GIF loops for 4.5 seconds; show static logo for 3.5 seconds.
+        timeoutId = setTimeout(cycle, next ? 4500 : 3500);
+        return next;
+      });
+    };
+    timeoutId = setTimeout(cycle, 3500);
+    return () => clearTimeout(timeoutId);
+  }, []);
+
   return (
     <div className="min-h-screen bg-app flex flex-col items-center justify-center p-4">
        
        <div className="bg-white dark:bg-[#171315] rounded-2xl shadow-xl border border-gray-200 dark:border-[#171315] p-8 w-full max-w-md animate-slide-up">
            <div className="flex flex-col items-center mb-8">
                <div className="mb-5 flex w-full justify-center">
-                   <img
-                       src={mercerFlowLogo}
-                       alt="MercerFlow logo"
-                       className="w-full max-w-[260px] rounded-xl border border-white/5 object-contain shadow-[0_18px_50px_rgba(0,0,0,0.22)] dark:border-transparent dark:shadow-none sm:max-w-[300px]"
-                   />
+                   <div 
+                       className="relative w-full max-w-[260px] sm:max-w-[300px]" 
+                       style={{ aspectRatio: '426/240' }}
+                   >
+                       <img
+                           src={mercerFlowLogoPng}
+                           alt="MercerFlow logo static"
+                           className={`absolute inset-0 w-full h-full object-contain rounded-xl border border-white/5 shadow-[0_18px_50px_rgba(0,0,0,0.22)] dark:border-transparent dark:shadow-none transition-opacity duration-1000 ${showGif ? 'opacity-0' : 'opacity-100'}`}
+                       />
+                       <img
+                           src={mercerFlowLogoGif}
+                           alt="MercerFlow logo animated"
+                           className={`absolute inset-0 w-full h-full object-contain rounded-xl border border-white/5 shadow-[0_18px_50px_rgba(0,0,0,0.22)] dark:border-transparent dark:shadow-none transition-opacity duration-1000 ${showGif ? 'opacity-100' : 'opacity-0'}`}
+                       />
+                   </div>
                </div>
                <p className="text-gray-500 dark:text-gray-400 mt-2 text-center">Sign in to access your dashboard</p>
            </div>
