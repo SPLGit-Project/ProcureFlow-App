@@ -821,6 +821,20 @@ const Settings = () => {
   const [isSearchingEmail, setIsSearchingEmail] = useState(false);
   const [emailSearchResults, setEmailSearchResults] = useState<any[]>([]);
 
+  const [emailHubStatusTab, setEmailHubStatusTab] = useState<'QUEUE' | 'SUPPLIERS'>('QUEUE');
+  const [supplierStatusFilter, setSupplierStatusFilter] = useState<'ALL' | 'INGESTED' | 'AWAITING'>('ALL');
+
+  const unmappedCountBySupplier = React.useMemo(() => {
+      const counts: Record<string, number> = {};
+      stockSnapshots.forEach(snapshot => {
+          const mappingExists = mappings.some(mapping => mapping.supplierId === snapshot.supplierId && mapping.supplierSku === snapshot.supplierSku);
+          if (!mappingExists) {
+              counts[snapshot.supplierId] = (counts[snapshot.supplierId] || 0) + 1;
+          }
+      });
+      return counts;
+  }, [stockSnapshots, mappings]);
+
   const supplierInventoryUploads = React.useMemo(() => {
       return visibleSuppliers.map((supplier) => {
           const latestSnapshot = stockSnapshots
@@ -835,6 +849,41 @@ const Settings = () => {
           };
       }).sort((a, b) => a.supplier.name.localeCompare(b.supplier.name));
   }, [stockSnapshots, visibleSuppliers]);
+
+  const latestUpload = React.useMemo(() => {
+      const uploaded = supplierInventoryUploads.filter(u => !!u.uploadedAt);
+      if (uploaded.length === 0) return null;
+      return [...uploaded].sort((a, b) => new Date(b.uploadedAt!).getTime() - new Date(a.uploadedAt!).getTime())[0];
+  }, [supplierInventoryUploads]);
+
+  const sortedUploads = React.useMemo(() => {
+      return [...supplierInventoryUploads].sort((a, b) => {
+          const aUploaded = !!a.uploadedAt;
+          const bUploaded = !!b.uploadedAt;
+          
+          if (aUploaded && !bUploaded) return -1;
+          if (!aUploaded && bUploaded) return 1;
+          
+          if (aUploaded && bUploaded) {
+              return new Date(b.uploadedAt!).getTime() - new Date(a.uploadedAt!).getTime();
+          }
+          
+          return a.supplier.name.localeCompare(b.supplier.name);
+      });
+  }, [supplierInventoryUploads]);
+
+  const filteredUploads = React.useMemo(() => {
+      let list = sortedUploads;
+      if (supplierStatusFilter === 'INGESTED') {
+          list = list.filter(u => !!u.uploadedAt);
+      } else if (supplierStatusFilter === 'AWAITING') {
+          list = list.filter(u => !u.uploadedAt);
+      }
+      if (supplierSearchQuery) {
+          list = list.filter(u => u.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()));
+      }
+      return list;
+  }, [sortedUploads, supplierStatusFilter, supplierSearchQuery]);
 
   useEffect(() => {
       setIngestEmailAddress(inboundEmailAddress);
@@ -1980,7 +2029,6 @@ const Settings = () => {
   };
 
   // --- Email Ingestion Configuration ---
-
   const renderEmailIngestionHub = () => {
       const isManualMode = !isAutoIngestEnabled;
       const selectedManualSupplier = visibleSuppliers.find(supplier => supplier.id === manualIngestSupplierId);
@@ -2028,6 +2076,55 @@ const Settings = () => {
                       </div>
                   </div>
               </div>
+
+              {/* Most Recent Ingestion Hero Banner */}
+              {latestUpload && (
+                  <div className="bg-gradient-to-r from-blue-500/10 via-indigo-500/5 to-transparent border border-blue-100 dark:border-blue-900/30 rounded-2xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in shadow-sm">
+                      <div className="flex items-start gap-4">
+                          <div className="p-3 bg-blue-500 text-white rounded-xl shadow-md shadow-blue-500/15 shrink-0">
+                              <Zap size={22} className="animate-pulse" />
+                          </div>
+                          <div>
+                              <div className="flex items-center gap-2">
+                                  <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 tracking-wider">Most Recent Ingestion</span>
+                                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
+                                  <span className="text-[9px] bg-green-500/10 text-green-600 dark:text-green-400 font-bold px-1.5 py-0.5 rounded-full">Active</span>
+                              </div>
+                              <h4 className="text-base font-bold text-gray-900 dark:text-white mt-1">
+                                  {latestUpload.supplier.name} Ingested
+                              </h4>
+                              <p className="text-xs text-secondary dark:text-gray-400 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <FileSpreadsheet size={13} className="text-gray-400 inline shrink-0" />
+                                  <span className="font-semibold text-gray-805 dark:text-gray-200">{latestUpload.sourceReportName}</span>
+                                  <span className="text-tertiary dark:text-gray-500">•</span>
+                                  <span>{latestUpload.recordCount} rows loaded</span>
+                                  <span className="text-tertiary dark:text-gray-500">•</span>
+                                  <span className="font-medium text-blue-600 dark:text-blue-400">
+                                      {new Date(latestUpload.uploadedAt!).toLocaleString(undefined, {
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                      })}
+                                  </span>
+                              </p>
+                          </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  setMappingSupplierId(latestUpload.supplier.id);
+                                  setMappingSubTab('SUPPLIER_ITEMS');
+                              }}
+                              className="text-xs font-bold text-blue-600 hover:text-blue-750 bg-blue-500/10 hover:bg-blue-500/15 dark:text-blue-400 dark:hover:text-blue-300 px-4 py-2.5 rounded-xl transition-all border border-blue-500/10"
+                          >
+                              Review Mappings
+                          </button>
+                      </div>
+                  </div>
+              )}
 
               {/* Grid Layout: Config on Left, Status/Inbox on Right */}
               <div className={`grid grid-cols-1 gap-6 ${isManualMode ? 'lg:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]' : 'lg:grid-cols-3'}`}>
@@ -2205,7 +2302,7 @@ const Settings = () => {
                   <div className={`${isManualMode ? 'space-y-4' : 'lg:col-span-2 space-y-4'}`}>
                       {isManualMode ? (
                           selectedInventoryUpload ? (
-                              <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col justify-center">
+                              <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col justify-center animate-fade-in">
                                   <div className="max-w-2xl">
                                       <div className="flex items-start justify-between gap-4">
                                           <div>
@@ -2244,10 +2341,20 @@ const Settings = () => {
                                       <p className="text-xs text-secondary dark:text-gray-400 mt-5 leading-relaxed">
                                           Uploading a new file replaces only this supplier's inventory, then continues through the same mapping, memory, and availability refresh process used by automated email ingestion.
                                       </p>
+                                      
+                                      <div className="mt-6 flex justify-end">
+                                          <button
+                                              type="button"
+                                              onClick={() => setManualIngestSupplierId(AUTO_DETECT_SUPPLIER_VALUE)}
+                                              className="text-xs font-bold text-secondary hover:text-primary transition-colors flex items-center gap-1.5"
+                                          >
+                                              ← View all suppliers
+                                          </button>
+                                      </div>
                                   </div>
                               </div>
                           ) : (
-                              <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[400px]">
+                              <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[400px] animate-fade-in">
                                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
                                       <div>
                                           <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -2255,86 +2362,112 @@ const Settings = () => {
                                               All Suppliers Ingestion Status
                                           </h4>
                                           <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
-                                              Overview of latest uploaded files and record counts. Click a supplier to view.
+                                              Overview of latest uploaded files and record counts. Click a supplier to upload/view.
                                           </p>
                                       </div>
-                                      <div className="relative min-w-[200px]">
-                                          <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
-                                          <input
-                                              type="text"
-                                              placeholder="Search suppliers..."
-                                              value={supplierSearchQuery}
-                                              onChange={e => setSupplierSearchQuery(e.target.value)}
-                                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-8 pr-3 py-1.5 rounded-xl text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                                          />
+                                      
+                                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                                          {/* Ingested / Awaiting Filters */}
+                                          <div className="flex rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-0.5 text-xs font-medium">
+                                              {(['ALL', 'INGESTED', 'AWAITING'] as const).map(filterType => {
+                                                  const count = filterType === 'ALL'
+                                                      ? sortedUploads.length
+                                                      : filterType === 'INGESTED'
+                                                          ? sortedUploads.filter(u => !!u.uploadedAt).length
+                                                          : sortedUploads.filter(u => !u.uploadedAt).length;
+                                                  return (
+                                                      <button
+                                                          key={filterType}
+                                                          type="button"
+                                                          onClick={() => setSupplierStatusFilter(filterType)}
+                                                          className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all ${
+                                                              supplierStatusFilter === filterType
+                                                                  ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-xs'
+                                                                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                                          }`}
+                                                      >
+                                                          {filterType.toLowerCase()} ({count})
+                                                      </button>
+                                                  );
+                                              })}
+                                          </div>
+                                          
+                                          <div className="relative min-w-[180px]">
+                                              <Search className="absolute left-2.5 top-2 text-gray-400" size={13} />
+                                              <input
+                                                  type="text"
+                                                  placeholder="Search suppliers..."
+                                                  value={supplierSearchQuery}
+                                                  onChange={e => setSupplierSearchQuery(e.target.value)}
+                                                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-7 pr-3 py-1 rounded-lg text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                              />
+                                          </div>
                                       </div>
                                   </div>
 
-                                  <div className="flex-1 overflow-y-auto max-h-[450px] pr-1">
+                                  <div className="flex-1 overflow-y-auto max-h-[420px] pr-1">
                                       <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                                          {supplierInventoryUploads
-                                              .filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()))
-                                              .map((upload) => {
-                                                  const isUploaded = !!upload.uploadedAt;
-                                                  return (
-                                                      <div
-                                                          key={upload.supplier.id}
-                                                          onClick={() => {
-                                                              setManualIngestSupplierId(upload.supplier.id);
-                                                              setMappingSupplierId(upload.supplier.id);
-                                                          }}
-                                                          className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl cursor-pointer transition-all"
-                                                      >
-                                                          <div className="flex items-center gap-3 min-w-0">
-                                                              <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
-                                                                  <Building2 size={16} className="group-hover:scale-110 transition-transform" />
-                                                              </div>
-                                                              <div className="min-w-0">
-                                                                  <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
-                                                                      {upload.supplier.name}
-                                                                  </div>
-                                                                  <div className="flex items-center gap-2 mt-0.5">
-                                                                      {isUploaded ? (
-                                                                          <>
-                                                                              <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
-                                                                              <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[200px] sm:max-w-[300px]" title={upload.sourceReportName}>
-                                                                                  {upload.sourceReportName}
-                                                                              </span>
-                                                                          </>
-                                                                      ) : (
-                                                                          <span className="text-xs text-tertiary dark:text-gray-500 italic">
-                                                                              No file uploaded yet
-                                                                          </span>
-                                                                      )}
-                                                                  </div>
-                                                              </div>
+                                          {filteredUploads.map((upload) => {
+                                              const isUploaded = !!upload.uploadedAt;
+                                              return (
+                                                  <div
+                                                      key={upload.supplier.id}
+                                                      onClick={() => {
+                                                          setManualIngestSupplierId(upload.supplier.id);
+                                                          setMappingSupplierId(upload.supplier.id);
+                                                      }}
+                                                      className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl cursor-pointer transition-all"
+                                                  >
+                                                      <div className="flex items-center gap-3 min-w-0">
+                                                          <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
+                                                              <Building2 size={16} className="group-hover:scale-110 transition-transform" />
                                                           </div>
-
-                                                          <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
-                                                              <div>
-                                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                                      isUploaded
-                                                                          ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30'
-                                                                          : 'bg-gray-100 dark:bg-white/5 text-gray-500 border border-gray-200 dark:border-gray-800'
-                                                                  }`}>
-                                                                      {isUploaded ? 'Uploaded' : 'Awaiting File'}
-                                                                  </span>
+                                                          <div className="min-w-0">
+                                                              <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
+                                                                  {upload.supplier.name}
                                                               </div>
-                                                              {isUploaded && (
-                                                                  <div className="text-xs">
-                                                                      <div className="font-semibold text-gray-900 dark:text-white">
-                                                                          {upload.recordCount} rows
-                                                                      </div>
-                                                                      <div className="text-[10px] text-tertiary dark:text-gray-500">
-                                                                          {new Date(upload.uploadedAt!).toLocaleDateString()}
-                                                                      </div>
-                                                                  </div>
-                                                              )}
+                                                              <div className="flex items-center gap-2 mt-0.5">
+                                                                  {isUploaded ? (
+                                                                      <>
+                                                                          <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
+                                                                          <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[200px] sm:max-w-[300px]" title={upload.sourceReportName}>
+                                                                              {upload.sourceReportName}
+                                                                          </span>
+                                                                      </>
+                                                                  ) : (
+                                                                      <span className="text-xs text-tertiary dark:text-gray-500 italic">
+                                                                          No file uploaded yet
+                                                                      </span>
+                                                                  )}
+                                                              </div>
                                                           </div>
                                                       </div>
-                                                  );
-                                              })}
-                                          {supplierInventoryUploads.filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase())).length === 0 && (
+
+                                                      <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
+                                                          <div>
+                                                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                  isUploaded
+                                                                      ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30'
+                                                                      : 'bg-gray-100 dark:bg-white/5 text-gray-500 border border-gray-200 dark:border-gray-800'
+                                                              }`}>
+                                                                  {isUploaded ? 'Uploaded' : 'Awaiting File'}
+                                                              </span>
+                                                          </div>
+                                                          {isUploaded && (
+                                                              <div className="text-xs">
+                                                                  <div className="font-semibold text-gray-900 dark:text-white">
+                                                                      {upload.recordCount} rows
+                                                                  </div>
+                                                                  <div className="text-[10px] text-tertiary dark:text-gray-500">
+                                                                      {new Date(upload.uploadedAt!).toLocaleDateString()}
+                                                                  </div>
+                                                              </div>
+                                                          )}
+                                                      </div>
+                                                  </div>
+                                              );
+                                          })}
+                                          {filteredUploads.length === 0 && (
                                               <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
                                                   No suppliers match your search.
                                               </div>
@@ -2346,7 +2479,7 @@ const Settings = () => {
                       ) : (
                           <div className="space-y-4">
                               {/* Mailbox Status Card */}
-                              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
+                              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5 animate-fade-in">
                                   <div className="flex items-start gap-3">
                                       <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600 shrink-0">
                                           <Inbox size={18} />
@@ -2374,7 +2507,7 @@ const Settings = () => {
                                   </div>
                               </div>
 
-                              {/* Email Inbox Queue */}
+                              {/* Tabbed Ingestion Status Panel */}
                               {(() => {
                                   const pendingCount = emailIngestionQueue.filter(i => i.status === 'PENDING').length;
                                   const statusMeta: Record<string, { label: string; cls: string }> = {
@@ -2387,167 +2520,207 @@ const Settings = () => {
                                       SKIPPED:        { label: 'Skipped',        cls: 'bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400 border-gray-200 dark:border-gray-800' }
                                   };
                                   return (
-                                      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6">
-                                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
-                                              <div>
-                                                  <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                                      <Inbox size={18} className="text-blue-500" />
-                                                      Email Inbox
+                                      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[420px] animate-fade-in">
+                                          {/* Tabs Header */}
+                                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
+                                              <div className="flex bg-gray-50 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-800 self-start">
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => setEmailHubStatusTab('QUEUE')}
+                                                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                                          emailHubStatusTab === 'QUEUE'
+                                                              ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-sm'
+                                                              : 'text-secondary hover:text-primary dark:hover:text-white'
+                                                      }`}
+                                                  >
+                                                      <Inbox size={14} />
+                                                      Email Inbox Queue
                                                       {pendingCount > 0 && (
-                                                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">{pendingCount} new</span>
+                                                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                                              {pendingCount}
+                                                          </span>
                                                       )}
-                                                  </h4>
-                                                  <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
-                                                      Attachments pulled from the mailbox. Processing runs the same parser, stale-file guard, and auto-mapping as manual uploads.
-                                                  </p>
-                                              </div>
-                                              <div className="flex items-center gap-2 shrink-0">
-                                                  <button type="button" onClick={refreshEmailIngestionQueue} className="btn-secondary flex items-center gap-2 text-xs" title="Refresh queue">
-                                                      <RefreshCw size={14} /> Refresh
                                                   </button>
                                                   <button
                                                       type="button"
-                                                      onClick={drainSupplierInbox}
-                                                      disabled={isDrainingInbox || pendingCount === 0}
-                                                      className="btn-primary flex items-center gap-2 text-xs disabled:opacity-50"
+                                                      onClick={() => setEmailHubStatusTab('SUPPLIERS')}
+                                                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                                          emailHubStatusTab === 'SUPPLIERS'
+                                                              ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-sm'
+                                                              : 'text-secondary hover:text-primary dark:hover:text-white'
+                                                      }`}
                                                   >
-                                                      {isDrainingInbox ? <RefreshCw size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                                                      Process inbox{pendingCount > 0 ? ` (${pendingCount})` : ''}
+                                                      <Building2 size={14} />
+                                                      Supplier Ingestion Status
                                                   </button>
                                               </div>
+
+                                              {/* Search / Action controls based on active tab */}
+                                              {emailHubStatusTab === 'QUEUE' ? (
+                                                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                                                      <button type="button" onClick={refreshEmailIngestionQueue} className="btn-secondary flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg" title="Refresh queue">
+                                                          <RefreshCw size={13} /> Refresh
+                                                      </button>
+                                                      <button
+                                                          type="button"
+                                                          onClick={drainSupplierInbox}
+                                                          disabled={isDrainingInbox || pendingCount === 0}
+                                                          className="btn-primary flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg disabled:opacity-50"
+                                                      >
+                                                          {isDrainingInbox ? <RefreshCw size={13} className="animate-spin" /> : <Wand2 size={13} />}
+                                                          Process inbox{pendingCount > 0 ? ` (${pendingCount})` : ''}
+                                                      </button>
+                                                  </div>
+                                              ) : (
+                                                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                                                      {/* Filter Buttons */}
+                                                      <div className="flex rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-0.5 text-xs font-medium">
+                                                          {(['ALL', 'INGESTED', 'AWAITING'] as const).map(filterType => {
+                                                              const count = filterType === 'ALL'
+                                                                  ? sortedUploads.length
+                                                                  : filterType === 'INGESTED'
+                                                                      ? sortedUploads.filter(u => !!u.uploadedAt).length
+                                                                      : sortedUploads.filter(u => !u.uploadedAt).length;
+                                                              return (
+                                                                  <button
+                                                                      key={filterType}
+                                                                      type="button"
+                                                                      onClick={() => setSupplierStatusFilter(filterType)}
+                                                                      className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all ${
+                                                                          supplierStatusFilter === filterType
+                                                                              ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-xs'
+                                                                              : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                                                      }`}
+                                                                  >
+                                                                      {filterType.toLowerCase()} ({count})
+                                                                  </button>
+                                                              );
+                                                          })}
+                                                      </div>
+                                                      
+                                                      <div className="relative min-w-[180px]">
+                                                          <Search className="absolute left-2.5 top-2 text-gray-400" size={13} />
+                                                          <input
+                                                              type="text"
+                                                              placeholder="Search suppliers..."
+                                                              value={supplierSearchQuery}
+                                                              onChange={e => setSupplierSearchQuery(e.target.value)}
+                                                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-7 pr-3 py-1 rounded-lg text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                                          />
+                                                      </div>
+                                                  </div>
+                                              )}
                                           </div>
 
-                                          {emailIngestionQueue.length === 0 ? (
-                                              <div className="py-10 text-center">
-                                                  <Inbox size={28} className="mx-auto text-gray-300 dark:text-gray-700 mb-2" />
-                                                  <p className="text-sm text-secondary dark:text-gray-400">No emails received yet.</p>
-                                                  <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Forwarded supplier reports appear here after the next mailbox poll.</p>
-                                              </div>
+                                          {/* Tab Contents */}
+                                          {emailHubStatusTab === 'QUEUE' ? (
+                                              /* Inbound Email Queue */
+                                              emailIngestionQueue.length === 0 ? (
+                                                  <div className="py-14 text-center flex-1 flex flex-col justify-center">
+                                                      <Inbox size={32} className="mx-auto text-gray-300 dark:text-gray-700 mb-2" />
+                                                      <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">No emails received yet.</p>
+                                                      <p className="text-xs text-tertiary dark:text-gray-500 mt-1 max-w-sm mx-auto">Forwarded supplier reports appear here after the next mailbox poll.</p>
+                                                  </div>
+                                              ) : (
+                                                  <div className="flex-1 overflow-y-auto max-h-[380px] divide-y divide-gray-150 dark:divide-gray-800 pr-1">
+                                                      {emailIngestionQueue.map(item => {
+                                                          const meta = statusMeta[item.status] || statusMeta.SKIPPED;
+                                                          return (
+                                                              <div key={item.id} className="flex items-start justify-between gap-3 py-3 last:pb-0">
+                                                                  <div className="min-w-0">
+                                                                      <div className="flex items-center gap-2">
+                                                                          <FileSpreadsheet size={14} className="text-gray-400 shrink-0" />
+                                                                          <span className="font-semibold text-sm text-gray-900 dark:text-white truncate max-w-[280px]" title={item.attachmentName}>{item.attachmentName}</span>
+                                                                      </div>
+                                                                      <div className="text-[11px] text-secondary dark:text-gray-500 mt-0.5 truncate max-w-[380px]">
+                                                                          {item.detectedSupplierName || 'Supplier TBD'}
+                                                                          {item.reportDate ? ` · ${item.reportDate}` : ''}
+                                                                          {item.rowsImported != null ? ` · ${item.rowsImported} rows` : ''}
+                                                                          {item.fromAddress ? ` · from ${item.fromAddress}` : ''}
+                                                                      </div>
+                                                                      {item.error && (
+                                                                          <div className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 truncate max-w-[380px]" title={item.error}>{item.error}</div>
+                                                                      )}
+                                                                  </div>
+                                                                  <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.cls}`}>{meta.label}</span>
+                                                              </div>
+                                                          );
+                                                      })}
+                                                  </div>
+                                              )
                                           ) : (
-                                              <div className="max-h-[320px] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800 pr-1">
-                                                  {emailIngestionQueue.map(item => {
-                                                      const meta = statusMeta[item.status] || statusMeta.SKIPPED;
-                                                      return (
-                                                          <div key={item.id} className="flex items-start justify-between gap-3 py-3">
-                                                              <div className="min-w-0">
-                                                                  <div className="flex items-center gap-2">
-                                                                      <FileSpreadsheet size={14} className="text-gray-400 shrink-0" />
-                                                                      <span className="font-semibold text-sm text-gray-900 dark:text-white truncate max-w-[260px]" title={item.attachmentName}>{item.attachmentName}</span>
+                                              /* Supplier Ingestion Status */
+                                              <div className="flex-1 overflow-y-auto max-h-[380px] pr-1">
+                                                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                                      {filteredUploads.map((upload) => {
+                                                          const isUploaded = !!upload.uploadedAt;
+                                                          return (
+                                                              <div
+                                                                  key={upload.supplier.id}
+                                                                  className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 last:pb-0"
+                                                              >
+                                                                  <div className="flex items-center gap-3 min-w-0">
+                                                                      <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
+                                                                          <Building2 size={16} />
+                                                                      </div>
+                                                                      <div className="min-w-0">
+                                                                          <div className="font-bold text-sm text-gray-900 dark:text-white transition-colors flex items-center gap-1.5">
+                                                                              {upload.supplier.name}
+                                                                          </div>
+                                                                          <div className="flex items-center gap-2 mt-0.5">
+                                                                              {isUploaded ? (
+                                                                                  <>
+                                                                                      <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
+                                                                                      <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[220px] sm:max-w-[320px]" title={upload.sourceReportName}>
+                                                                                          {upload.sourceReportName}
+                                                                                      </span>
+                                                                                  </>
+                                                                              ) : (
+                                                                                  <span className="text-xs text-tertiary dark:text-gray-500 italic">
+                                                                                      No email received yet
+                                                                                  </span>
+                                                                              )}
+                                                                          </div>
+                                                                      </div>
                                                                   </div>
-                                                                  <div className="text-[11px] text-secondary dark:text-gray-500 mt-0.5 truncate max-w-[340px]">
-                                                                      {item.detectedSupplierName || 'Supplier TBD'}
-                                                                      {item.reportDate ? ` · ${item.reportDate}` : ''}
-                                                                      {item.rowsImported != null ? ` · ${item.rowsImported} rows` : ''}
-                                                                      {item.fromAddress ? ` · from ${item.fromAddress}` : ''}
-                                                                  </div>
-                                                                  {item.error && (
-                                                                      <div className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 truncate max-w-[340px]" title={item.error}>{item.error}</div>
-                                                                  )}
-                                                              </div>
-                                                              <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.cls}`}>{meta.label}</span>
-                                                          </div>
-                                                      );
-                                                  })}
-                                              </div>
-                                          )}
-                                      </div>
-                                  );
-                              })()}
 
-                              {/* All Suppliers Ingestion Status */}
-                              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[400px]">
-                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
-                                      <div>
-                                          <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                              <Files size={18} className="text-blue-500" />
-                                              All Suppliers Ingestion Status
-                                          </h4>
-                                          <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
-                                              Overview of suppliers picked up from email and their upload status per customer.
-                                          </p>
-                                      </div>
-                                      <div className="relative min-w-[200px]">
-                                          <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
-                                          <input
-                                              type="text"
-                                              placeholder="Search suppliers..."
-                                              value={supplierSearchQuery}
-                                              onChange={e => setSupplierSearchQuery(e.target.value)}
-                                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-8 pr-3 py-1.5 rounded-xl text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                                          />
-                                      </div>
-                                  </div>
-
-                                  <div className="flex-1 overflow-y-auto max-h-[450px] pr-1">
-                                      <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                                          {supplierInventoryUploads
-                                              .filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()))
-                                              .map((upload) => {
-                                                  const isUploaded = !!upload.uploadedAt;
-                                                  return (
-                                                      <div
-                                                          key={upload.supplier.id}
-                                                          className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-all"
-                                                      >
-                                                          <div className="flex items-center gap-3 min-w-0">
-                                                              <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
-                                                                  <Building2 size={16} className="group-hover:scale-110 transition-transform" />
-                                                              </div>
-                                                              <div className="min-w-0">
-                                                                  <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
-                                                                      {upload.supplier.name}
-                                                                  </div>
-                                                                  <div className="flex items-center gap-2 mt-0.5">
-                                                                      {isUploaded ? (
-                                                                          <>
-                                                                              <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
-                                                                              <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[200px] sm:max-w-[300px]" title={upload.sourceReportName}>
-                                                                                  {upload.sourceReportName}
-                                                                              </span>
-                                                                          </>
-                                                                      ) : (
-                                                                          <span className="text-xs text-tertiary dark:text-gray-500 italic">
-                                                                              No email received yet
+                                                                  <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
+                                                                      <div>
+                                                                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                                                              isUploaded
+                                                                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30'
+                                                                                  : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-gray-800'
+                                                                          }`}>
+                                                                              {isUploaded ? 'Ingested' : 'Awaiting Email'}
                                                                           </span>
+                                                                      </div>
+                                                                      {isUploaded && (
+                                                                          <div className="text-xs">
+                                                                              <div className="font-semibold text-gray-900 dark:text-white">
+                                                                                  {upload.recordCount} rows
+                                                                              </div>
+                                                                              <div className="text-[10px] text-tertiary dark:text-gray-500">
+                                                                                  {new Date(upload.uploadedAt!).toLocaleDateString()}
+                                                                              </div>
+                                                                          </div>
                                                                       )}
                                                                   </div>
                                                               </div>
+                                                          );
+                                                      })}
+                                                      {filteredUploads.length === 0 && (
+                                                          <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
+                                                              No suppliers match your filter/search.
                                                           </div>
-
-                                                          <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
-                                                              <div>
-                                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                                      isUploaded
-                                                                          ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30'
-                                                                          : 'bg-gray-100 dark:bg-white/5 text-gray-500 border border-gray-200 dark:border-gray-800'
-                                                                  }`}>
-                                                                      {isUploaded ? 'Ingested' : 'Awaiting Email'}
-                                                                  </span>
-                                                              </div>
-                                                              {isUploaded && (
-                                                                  <div className="text-xs">
-                                                                      <div className="font-semibold text-gray-900 dark:text-white">
-                                                                          {upload.recordCount} rows
-                                                                      </div>
-                                                                      <div className="text-[10px] text-tertiary dark:text-gray-500">
-                                                                          {new Date(upload.uploadedAt!).toLocaleDateString()}
-                                                                      </div>
-                                                                  </div>
-                                                              )}
-                                                          </div>
-                                                      </div>
-                                                  );
-                                              })}
-                                          {supplierInventoryUploads.filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase())).length === 0 && (
-                                              <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
-                                                  No suppliers match your search.
+                                                      )}
+                                                  </div>
                                               </div>
                                           )}
                                       </div>
-                                  </div>
-                              </div>
-                          </div>
-                      )}
+                                   );
+                               })()}
+                           </div>
+                       )}
                   </div>
               </div>
           </div>
@@ -3681,8 +3854,17 @@ if __name__ == "__main__":
                               onChange={(e) => setMappingSupplierId(e.target.value)}
                               className="min-w-[240px] bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
                           >
-                              <option value="">All suppliers</option>
-                              {visibleSuppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                              <option value="">
+                                  All suppliers {Object.values(unmappedCountBySupplier).reduce((a, b) => a + b, 0) > 0 ? `(${Object.values(unmappedCountBySupplier).reduce((a, b) => a + b, 0)} left to map)` : ''}
+                              </option>
+                              {visibleSuppliers.map(supplier => {
+                                  const count = unmappedCountBySupplier[supplier.id] || 0;
+                                  return (
+                                      <option key={supplier.id} value={supplier.id}>
+                                          {supplier.name} {count > 0 ? `(${count} left to map)` : ''}
+                                      </option>
+                                  );
+                              })}
                           </select>
                           <span className="text-xs font-bold text-gray-500 dark:text-gray-400 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800">
                               {mappingReviewStats.totalSnapshotRows} stock rows
