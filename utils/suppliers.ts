@@ -108,6 +108,8 @@ export const mergeSupplierRecords = (primary: Supplier, duplicate: Supplier): Su
   };
 };
 
+const isPrimarySupplierId = (id?: string) => Boolean(id && (/^([a-f0-9])\1{7}-/i.test(id) || id.startsWith('06a1818b') || id.startsWith('4260a7a3')));
+
 export const dedupeSuppliersForDisplay = (suppliers: Supplier[]): Supplier[] => {
   const byName = new Map<string, Supplier>();
 
@@ -120,7 +122,12 @@ export const dedupeSuppliersForDisplay = (suppliers: Supplier[]): Supplier[] => 
       byName.set(key, { ...supplier, contacts: normalizeSupplierContacts(supplier) });
       return;
     }
-    byName.set(key, mergeSupplierRecords(existing, supplier));
+    
+    // Prefer the record with a primary/seeded UUID
+    const primary = (!isPrimarySupplierId(existing.id) && isPrimarySupplierId(supplier.id)) ? supplier : existing;
+    const secondary = primary === existing ? supplier : existing;
+
+    byName.set(key, mergeSupplierRecords(primary, secondary));
   });
 
   return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));

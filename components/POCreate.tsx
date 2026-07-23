@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
 import { Item, ItemPriceOption, POLineItem, PORequest } from '../types.ts';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
-import { dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
+import { canonicalSupplierName, dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
 import {
   ShoppingCart,
   Search,
@@ -236,7 +236,13 @@ const POCreate = () => {
         let isMapped = false;
 
         if (selectedSupplierId && mappings) {
-             const mapping = mappings.find(m => m.supplierId === selectedSupplierId && m.productId === internalItem.id && m.mappingStatus === 'CONFIRMED');
+             const targetSupplier = suppliers.find(s => s.id === selectedSupplierId);
+             const targetCanonical = targetSupplier ? canonicalSupplierName(targetSupplier.name) : '';
+             const equivalentSupplierIds = targetCanonical
+                 ? suppliers.filter(s => canonicalSupplierName(s.name) === targetCanonical).map(s => s.id)
+                 : [selectedSupplierId];
+
+             const mapping = mappings.find(m => equivalentSupplierIds.includes(m.supplierId) && m.productId === internalItem.id && m.mappingStatus === 'CONFIRMED');
              
              if (mapping) {
                  isMapped = true;
@@ -245,7 +251,7 @@ const POCreate = () => {
 
                  const safeSnapshots = Array.isArray(stockSnapshots) ? stockSnapshots : [];
                  const latestSnapshot = safeSnapshots
-                    .filter(s => s.supplierId === selectedSupplierId && s.supplierSku === mapping.supplierSku)
+                    .filter(s => equivalentSupplierIds.includes(s.supplierId) && s.supplierSku === mapping.supplierSku)
                     .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime())[0];
                 
                  if (latestSnapshot) {

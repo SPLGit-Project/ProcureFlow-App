@@ -2619,12 +2619,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const getEffectiveStock = (itemId: string, supplierId: string): number => {
-      // 1. Find the confirmed mapping
-      const mapping = mappings.find(m => m.productId === itemId && m.supplierId === supplierId && m.mappingStatus === 'CONFIRMED');
+      // Find all supplier IDs matching the same canonical supplier name
+      const targetSupplier = suppliers.find(s => s.id === supplierId);
+      const targetCanonical = targetSupplier ? canonicalSupplierName(targetSupplier.name) : '';
+      const equivalentSupplierIds = targetCanonical
+          ? suppliers.filter(s => canonicalSupplierName(s.name) === targetCanonical).map(s => s.id)
+          : [supplierId];
+
+      // 1. Find the confirmed mapping across equivalent supplier IDs
+      const mapping = mappings.find(m => m.productId === itemId && equivalentSupplierIds.includes(m.supplierId) && m.mappingStatus === 'CONFIRMED');
       if (!mapping) return 0; 
       
       const relevantSnapshots = stockSnapshots
-        .filter(s => s.supplierId === supplierId && s.supplierSku === mapping.supplierSku)
+        .filter(s => equivalentSupplierIds.includes(s.supplierId) && s.supplierSku === mapping.supplierSku)
         .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime());
 
       if (relevantSnapshots.length === 0) return 0; 
