@@ -559,14 +559,22 @@ export const db = {
 
     upsertProductAvailability: async (availabilities: ProductAvailability[]): Promise<void> => {
         if (availabilities.length === 0) return;
-        const { error } = await supabase.from('product_availability').upsert(availabilities.map(a => ({
-             id: a.id,
-             product_id: a.productId,
-             supplier_id: a.supplierId,
-             available_units: a.availableUnits,
-             available_order_qty: a.availableOrderQty,
-             updated_at: new Date().toISOString()
-        })));
+        const dedupedMap = new Map<string, any>();
+        availabilities.forEach(a => {
+            const key = `${a.productId}:${a.supplierId}`;
+            if (!dedupedMap.has(key)) {
+                dedupedMap.set(key, {
+                    id: a.id,
+                    product_id: a.productId,
+                    supplier_id: a.supplierId,
+                    available_units: a.availableUnits,
+                    available_order_qty: a.availableOrderQty,
+                    updated_at: new Date().toISOString()
+                });
+            }
+        });
+        const payload = Array.from(dedupedMap.values());
+        const { error } = await supabase.from('product_availability').upsert(payload, { onConflict: 'product_id,supplier_id' });
         if (error) throw error;
     },
 

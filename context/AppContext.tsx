@@ -2680,7 +2680,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
         });
         
-        const newAvailability: ProductAvailability[] = [];
+        const newAvailabilityMap = new Map<string, ProductAvailability>();
         confirmed.forEach(map => {
             const snapshot = latestStockMap.get(`${map.supplierId}:${map.supplierSku}`);
             if (snapshot) {
@@ -2689,32 +2689,27 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                    const availableUnits = snapshot.availableQty * (map.packConversionFactor || 1);
                    const orderMult = item.defaultOrderMultiple || 1;
                    const availableOrderQty = Math.floor(availableUnits / orderMult) * orderMult;
+                   const key = `${map.productId}:${map.supplierId}`;
                    
-                   newAvailability.push({
-                       id: `avail-${item.id}-${map.supplierId}`, 
-                       productId: item.id,
-                       supplierId: map.supplierId,
-                       availableUnits,
-                       availableOrderQty,
-                       updatedAt: new Date().toISOString()
-                   } as ProductAvailability);
+                   if (!newAvailabilityMap.has(key)) {
+                       const existing = availability.find(a => a.productId === map.productId && a.supplierId === map.supplierId);
+                       newAvailabilityMap.set(key, {
+                           id: existing ? existing.id : crypto.randomUUID(), 
+                           productId: item.id,
+                           supplierId: map.supplierId,
+                           availableUnits,
+                           availableOrderQty,
+                           updatedAt: new Date().toISOString()
+                       } as ProductAvailability);
+                   }
                 }
             }
         });
         
-        // Merge with existing IDs if needed (db upsert handles PK, but here we generate ID based on product+supplier)
-        // Actually, if we use a deterministic ID like `avail-prod-supp`, upsert handles it.
-        // But UUID is required by schema. `avail-prod-supp` is not valid UUID. 
-        // We must fetch existing ID or generate new UUID if not exists.
-        // For simplicity in this step, we'll try to match existing in state.
-        
-        const finalPayload = newAvailability.map(n => {
-            const existing = availability.find(a => a.productId === n.productId && a.supplierId === n.supplierId);
-            return { ...n, id: existing ? existing.id : crypto.randomUUID() };
-        });
+        const finalPayload = Array.from(newAvailabilityMap.values());
 
         await db.upsertProductAvailability(finalPayload);
-        setAvailability(finalPayload); // Ideal: Refetch from DB to get canonical IDs
+        setAvailability(finalPayload);
         logAction('PRODUCT_AVAILABILITY_REFRESHED', { count: finalPayload.length });
     } catch (e) {
         console.error('Failed to refresh availability', e);
