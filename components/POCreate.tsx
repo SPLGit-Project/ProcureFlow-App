@@ -23,6 +23,7 @@ import {
   Calendar,
   ChevronRight,
   Save,
+  Filter,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp.tsx';
@@ -124,6 +125,7 @@ const POCreate = () => {
   const [isCartExpanded, setIsCartExpanded] = useState(initialDraft?.isCartExpanded ?? true);
   const [isCatalogExpanded, setIsCatalogExpanded] = useState(initialDraft?.isCatalogExpanded ?? true);
   const [searchTerm, setSearchTerm] = useState(initialDraft?.searchTerm || '');
+  const [onlyAvailableStock, setOnlyAvailableStock] = useState(false);
   
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   
@@ -224,7 +226,7 @@ const POCreate = () => {
         (item.sku?.toLowerCase() || '').includes(searchTerm.toLowerCase())
     );
 
-    return effectiveItems.map(internalItem => {
+    const mappedItems = effectiveItems.map(internalItem => {
         let supplierSku = 'N/A';
         let supplierCode = 'N/A';
         const priceOptions = normalizeItemPriceOptions(internalItem);
@@ -265,7 +267,13 @@ const POCreate = () => {
             isMapped
         };
     });
-  }, [selectedSupplierId, mappings, activeMasterItems, stockSnapshots, searchTerm, getEffectiveStock]);
+
+    if (onlyAvailableStock) {
+        return mappedItems.filter(item => item.effectiveStock > 0);
+    }
+
+    return mappedItems;
+  }, [selectedSupplierId, mappings, activeMasterItems, stockSnapshots, searchTerm, getEffectiveStock, onlyAvailableStock]);
 
   const sanitizeQuantity = (value: string, fallback: number): number => {
     const digitsOnly = (value || '').replace(/\D/g, '');
@@ -805,20 +813,44 @@ const POCreate = () => {
              className={`flex flex-col bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-0 transition-all duration-300 ${isCatalogExpanded ? 'flex-1' : 'w-20 py-6 items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5'}`}
              onClick={!isCatalogExpanded ? () => setIsCatalogExpanded(true) : undefined}
           >
-             <div className={`p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne flex items-center gap-3 shrink-0 rounded-t-2xl ${isCatalogExpanded ? '' : 'justify-center border-none bg-transparent p-0'}`}>
+             <div className={`p-3.5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne flex items-center justify-between gap-3 shrink-0 rounded-t-2xl ${isCatalogExpanded ? '' : 'justify-center border-none bg-transparent p-0'}`}>
                 {isCatalogExpanded ? (
                     <>
-                        <Search size={18} className="text-gray-400"/>
-                        <input 
-                          type="text" 
-                          placeholder="Search catalog items..." 
-                          className="flex-1 bg-transparent border-none outline-none text-sm text-gray-900 dark:text-white placeholder-gray-400"
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                        <button type="button" onClick={() => setIsCatalogExpanded(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
-                            <ChevronLeft size={18}/>
-                        </button>
+                        <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 px-3 py-1.5 rounded-xl w-64 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-all">
+                            <Search size={15} className="text-gray-400 shrink-0"/>
+                            <input 
+                              type="text" 
+                              placeholder="Search catalog items..." 
+                              className="w-full bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white placeholder-gray-400"
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                            {searchTerm && (
+                              <button type="button" onClick={() => setSearchTerm('')} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0">
+                                <X size={13} />
+                              </button>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setOnlyAvailableStock(prev => !prev)}
+                                className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all ${
+                                    onlyAvailableStock
+                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 shadow-xs'
+                                        : 'bg-gray-50 text-gray-600 dark:bg-white/5 dark:text-gray-400 border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-white/10'
+                                }`}
+                                title="Toggle to show only items with available inventory (> 0)"
+                            >
+                                <Filter size={13} className={onlyAvailableStock ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'} />
+                                Available stock only
+                            </button>
+
+                            <button type="button" onClick={() => setIsCatalogExpanded(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors" title="Collapse catalog panel">
+                                <ChevronLeft size={18}/>
+                            </button>
+                        </div>
                     </>
                 ) : (
                     <div className="flex flex-col items-center gap-6">
@@ -876,7 +908,20 @@ const POCreate = () => {
                  ))}
                  {displayItems.length === 0 && (
                      <div className="py-10 text-center text-gray-400 space-y-3">
-                         <p className="text-sm">No items found matching your search.</p>
+                         <p className="text-sm">
+                             {onlyAvailableStock 
+                                 ? 'No items found with available inventory (> 0).' 
+                                 : 'No items found matching your search.'}
+                         </p>
+                         {onlyAvailableStock && (
+                             <button
+                                 type="button"
+                                 onClick={() => setOnlyAvailableStock(false)}
+                                 className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium block mx-auto"
+                             >
+                                 Show all items (clear available filter)
+                             </button>
+                         )}
                          {featureFlags?.previewEnabled && searchTerm && (
                              <div className="mx-auto max-w-xs text-xs text-amber-600 border border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 rounded-xl p-3">
                                  <p className="font-medium mb-1">Item not in the approved catalogue?</p>
