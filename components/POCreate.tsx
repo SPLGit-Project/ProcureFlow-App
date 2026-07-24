@@ -231,7 +231,8 @@ const POCreate = () => {
         let supplierCode = 'N/A';
         const priceOptions = normalizeItemPriceOptions(internalItem);
         const defaultPriceOption = getDefaultItemPriceOption({ ...internalItem, priceOptions });
-        let estimatedPrice = defaultPriceOption.price || internalItem.unitPrice || 0;
+        const cleanMasterUnitPrice = (internalItem.unitPrice && internalItem.unitPrice > 0 && internalItem.unitPrice < 500) ? internalItem.unitPrice : 0;
+        let estimatedPrice = (defaultPriceOption.price && defaultPriceOption.price < 500) ? defaultPriceOption.price : cleanMasterUnitPrice;
         let effectiveStock = 0;
         let isMapped = false;
 
@@ -250,12 +251,22 @@ const POCreate = () => {
                  supplierCode = mapping.supplierCustomerStockCode || 'N/A';
 
                  const safeSnapshots = Array.isArray(stockSnapshots) ? stockSnapshots : [];
-                 const latestSnapshot = safeSnapshots
-                    .filter(s => equivalentSupplierIds.includes(s.supplierId) && s.supplierSku === mapping.supplierSku)
+                 const targetSkus = new Set([mapping.supplierSku, mapping.supplierCustomerStockCode, internalItem.sku].filter(Boolean));
+
+                 // 1. Try selected supplier's snapshot
+                 let latestSnapshot = safeSnapshots
+                    .filter(s => equivalentSupplierIds.includes(s.supplierId) && (targetSkus.has(s.supplierSku) || (s.customerStockCode && targetSkus.has(s.customerStockCode))))
                     .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime())[0];
+
+                 // 2. Fallback to any supplier's snapshot with a valid unit price (< $500)
+                 if (!latestSnapshot || !latestSnapshot.sellPrice || latestSnapshot.sellPrice > 500) {
+                     latestSnapshot = safeSnapshots
+                        .filter(s => (targetSkus.has(s.supplierSku) || (s.customerStockCode && targetSkus.has(s.customerStockCode))) && s.sellPrice > 0 && s.sellPrice < 500)
+                        .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime())[0];
+                 }
                 
-                 if (latestSnapshot) {
-                     estimatedPrice = latestSnapshot.sellPrice || estimatedPrice;
+                 if (latestSnapshot && latestSnapshot.sellPrice > 0 && latestSnapshot.sellPrice < 500) {
+                     estimatedPrice = latestSnapshot.sellPrice;
                  }
                  
                  effectiveStock = getEffectiveStock(internalItem.id, selectedSupplierId);
