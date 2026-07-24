@@ -380,6 +380,14 @@ function createMapping(headers: string[], rawDataRows?: any[][]): { mapping: Col
         
         // Find best field match for this header
         Object.entries(FIELD_DEFINITIONS).forEach(([fieldName, fieldDef]) => {
+            // Prevent SOH total value headers (e.g. "SOH $ @ Sell") from matching unit sellPrice
+            if (fieldName === 'sellPrice') {
+                const hLower = header.toLowerCase();
+                if (hLower.includes('soh') || hLower.includes('value') || hLower.includes('@')) {
+                    return;
+                }
+            }
+
             let maxSimilarity = 0;
             
             fieldDef.aliases.forEach(alias => {
@@ -394,12 +402,10 @@ function createMapping(headers: string[], rawDataRows?: any[][]): { mapping: Col
             
             // If this is a better match than previous mapping for this field
             if (weightedScore > 0.4 && weightedScore > mapping[fieldName].confidence) {
-                // If this header was previously used by another field, we don't handle that here
-                // We just want the BEST header for EACH field.
                 mapping[fieldName] = {
                     sourceColumn: header,
                     confidence: weightedScore,
-                    alternatives: [] // Computed later if needed
+                    alternatives: []
                 };
             }
         });
