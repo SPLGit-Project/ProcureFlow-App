@@ -167,8 +167,11 @@ export default function ItemCatalogue() {
     else setIsLoading(true);
 
     try {
-      const [itemsRes, workflowRes] = await Promise.all([
-        supabase
+      let allItems: any[] = [];
+      let from = 0;
+      const step = 1000;
+      while (true) {
+        const { data, error } = await supabase
           .from('items')
           .select(
             'id, sku, name, short_name, category, sub_category, ' +
@@ -177,19 +180,25 @@ export default function ItemCatalogue() {
             'sap_item_code_raw, range_name, specs, created_at, ' +
             'unit_price, uom, upq, min_level, max_level'
           )
-          .order('name'),
-        supabase
-          .from('item_requests')
-          .select('resulting_item_id')
-          .not('resulting_item_id', 'is', null),
-      ]);
+          .order('name')
+          .range(from, from + step - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allItems.push(...data);
+        if (data.length < step) break;
+        from += step;
+      }
 
-      if (itemsRes.error) throw itemsRes.error;
-      if (workflowRes.error) throw workflowRes.error;
+      const { data: workflowData, error: workflowErr } = await supabase
+        .from('item_requests')
+        .select('resulting_item_id')
+        .not('resulting_item_id', 'is', null);
 
-      setItems((itemsRes.data ?? []) as unknown as ItemRow[]);
+      if (workflowErr) throw workflowErr;
+
+      setItems(allItems as unknown as ItemRow[]);
       setWorkflowItemIds(
-        new Set((workflowRes.data ?? []).map((r: { resulting_item_id: string }) => r.resulting_item_id))
+        new Set((workflowData ?? []).map((r: { resulting_item_id: string }) => r.resulting_item_id))
       );
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load items');
