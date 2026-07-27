@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient.ts';
 import {
   BookOpen, Search, RefreshCw, Package,
   Cpu, CheckCircle2, XCircle, SlidersHorizontal, X,
-  Download, Edit2, History, Archive, CheckCircle, Plus,
+  Download, Edit2, History, Archive, CheckCircle, Plus, RotateCcw,
 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { generateItemCode } from '../utils/itemNameGenerator';
@@ -101,15 +101,23 @@ type TabType = 'all' | 'workflow' | 'legacy';
 // ── Stat card ──────────────────────────────────────────────────────────────────
 
 function StatCard({
-  label, value, sub, highlight,
-}: { label: string; value: number; sub?: string; highlight?: boolean }) {
+  label, value, sub, highlight, onClick, clickable
+}: { label: string; value: number; sub?: string; highlight?: boolean; onClick?: () => void; clickable?: boolean }) {
   return (
-    <div className={`border rounded-2xl px-5 py-4 flex flex-col gap-1 transition-colors ${
-      highlight
-        ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
-        : 'bg-white dark:bg-nocturne border-gray-100 dark:border-gray-800'
-    }`}>
-      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</span>
+    <div
+      onClick={onClick}
+      className={`border rounded-2xl px-5 py-4 flex flex-col gap-1 transition-all ${
+        clickable ? 'cursor-pointer hover:border-[var(--color-brand)] hover:shadow-md hover:-translate-y-0.5 group' : ''
+      } ${
+        highlight
+          ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
+          : 'bg-white dark:bg-nocturne border-gray-100 dark:border-gray-800'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</span>
+        {clickable && <RotateCcw size={14} className="text-gray-400 group-hover:text-[var(--color-brand)] transition-colors" />}
+      </div>
       <span className={`text-2xl font-black ${highlight ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}`}>
         {value.toLocaleString()}
       </span>
@@ -159,6 +167,11 @@ export default function ItemCatalogue() {
   const [auditItem, setAuditItem] = useState<ItemRow | null>(null);
   const [confirmArchive, setConfirmArchive] = useState<ItemRow | null>(null);
   const [confirmReactivate, setConfirmReactivate] = useState<ItemRow | null>(null);
+
+  // ── Archived items modal state ───────────────────────────────────────────
+  const [isArchivedModalOpen, setIsArchivedModalOpen] = useState(false);
+  const [archivedSearch, setArchivedSearch] = useState('');
+  const [reinstatingId, setReinstatingId] = useState<string | null>(null);
 
   // ── Load data ─────────────────────────────────────────────────────────────
 
@@ -371,7 +384,35 @@ export default function ItemCatalogue() {
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Archived Items List & Reinstate Handler ─────────────────────────────
+
+  const archivedItems = useMemo(() => {
+    return items.filter(i => i.active_flag === false);
+  }, [items]);
+
+  const filteredArchivedItems = useMemo(() => {
+    const q = archivedSearch.toLowerCase().trim();
+    if (!q) return archivedItems;
+    return archivedItems.filter(i =>
+      i.name.toLowerCase().includes(q) ||
+      (i.sku ?? '').toLowerCase().includes(q) ||
+      (i.sap_item_code_raw ?? '').toLowerCase().includes(q) ||
+      (i.category ?? '').toLowerCase().includes(q)
+    );
+  }, [archivedItems, archivedSearch]);
+
+  const handleReinstateSingle = async (item: ItemRow) => {
+    setReinstatingId(item.id);
+    try {
+      await reactivateItem(item.id);
+      success(`"${item.name}" reinstated and restored to active catalogue`);
+      await Promise.all([loadData(true), reloadData(true)]);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to reinstate item');
+    } finally {
+      setReinstatingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-page-entry max-w-7xl mx-auto">
@@ -447,7 +488,13 @@ export default function ItemCatalogue() {
           <StatCard
             label={filterActiveOnly ? 'Archived (hidden)' : 'Active'}
             value={stats.fifth}
-            sub={filterActiveOnly ? 'not shown above' : undefined}
+            sub={filterActiveOnly ? (stats.fifth > 0 ? 'Click to view & reinstate' : 'No hidden items') : undefined}
+            clickable={filterActiveOnly && stats.fifth > 0}
+            onClick={() => {
+              if (filterActiveOnly && stats.fifth > 0) {
+                setIsArchivedModalOpen(true);
+              }
+            }}
           />
         </div>
       )}
@@ -840,6 +887,122 @@ export default function ItemCatalogue() {
         onConfirm={handleReactivateConfirm}
         onCancel={() => setConfirmReactivate(null)}
       />
+      {/* Archived (Hidden) Items Modal */}
+      {isArchivedModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white dark:bg-nocturne rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Archive size={22} className="text-amber-500" /> Archived (Hidden) Items
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {archivedItems.length} items currently archived. Search and reinstate any item to restore it across ProcureFlow.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsArchivedModalOpen(false);
+                  setArchivedSearch('');
+                }}
+                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors text-gray-500"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800/60 bg-white dark:bg-nocturne">
+              <div className="relative">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={archivedSearch}
+                  onChange={e => setArchivedSearch(e.target.value)}
+                  placeholder="Search archived SKU, SAP Code, Name or Category (e.g. BM1R)..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-medium focus:outline-none focus:border-[var(--color-brand)] dark:text-white"
+                />
+                {archivedSearch && (
+                  <button
+                    onClick={() => setArchivedSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 font-semibold"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {filteredArchivedItems.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <Package size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm font-semibold">
+                    {archivedSearch ? 'No archived items match your search.' : 'No archived items found.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {filteredArchivedItems.map(item => (
+                    <div
+                      key={item.id}
+                      className="py-3 px-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl flex items-center justify-between gap-4 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                            {item.name}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-mono text-xs font-semibold">
+                            {item.sku || item.sap_item_code_raw || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
+                          {item.category && <span>Category: {item.category}</span>}
+                          {item.item_pool && <span>Pool: {item.item_pool}</span>}
+                          {item.item_catalog && <span>Catalogue: {item.item_catalog}</span>}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleReinstateSingle(item)}
+                        disabled={reinstatingId === item.id}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm shrink-0"
+                      >
+                        {reinstatingId === item.id ? (
+                          <>
+                            <RefreshCw size={14} className="animate-spin" /> Reinstating...
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw size={14} /> Reinstate Item
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-white/5 text-xs text-gray-500 dark:text-gray-400">
+              <span>Showing {filteredArchivedItems.length} of {archivedItems.length} archived items</span>
+              <button
+                onClick={() => {
+                  setIsArchivedModalOpen(false);
+                  setArchivedSearch('');
+                }}
+                className="px-5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
