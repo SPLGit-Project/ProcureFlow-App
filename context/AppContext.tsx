@@ -1547,6 +1547,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           provider: 'azure',
           options: {
               scopes: 'openid profile email User.Read User.ReadBasic.All Mail.Send offline_access',
+              queryParams: {
+                  prompt: 'select_account'
+              },
               redirectTo: globalThis.location.origin
           }
       });
@@ -1614,9 +1617,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       clearRoleOverride();
 
+      // Immediately clear local state so the UI instantly resets to the login screen
+      setCurrentUser(null);
+      setIsAuthenticated(false);
+      setIsPendingApproval(false);
+
       if (qaMode) {
-          setIsAuthenticated(false);
-          setCurrentUser(null);
           logoutInProgressRef.current = false;
           return;
       }
@@ -1624,9 +1630,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       try {
           await supabase.auth.signOut();
       } catch (error) {
+          console.error("Logout failed:", error);
+      } finally {
           logoutInProgressRef.current = false;
           logoutReasonRef.current = null;
-          throw error;
       }
   };
 

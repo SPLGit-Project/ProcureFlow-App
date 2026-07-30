@@ -213,7 +213,17 @@ const OnboardingWizard = () => {
                 {/* Footer Actions */}
                 <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#15171e] flex justify-between items-center">
                     {step === 1 ? (
-                        <button type="button" onClick={() => logout()} className="text-gray-500 hover:text-gray-700 font-medium text-sm">
+                        <button 
+                            type="button" 
+                            onClick={async () => {
+                                try {
+                                    await logout();
+                                } catch (e) {
+                                    console.error("Logout error:", e);
+                                }
+                            }} 
+                            className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm transition-colors cursor-pointer"
+                        >
                             Cancel & Sign Out
                         </button>
                     ) : (
