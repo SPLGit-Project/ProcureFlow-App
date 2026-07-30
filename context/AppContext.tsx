@@ -1053,11 +1053,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
         if (!silent) setIsLoadingAuth(true);
         try {
-            const email = session.user.email?.toLowerCase();
+            const email = (
+                session.user.email || 
+                session.user.user_metadata?.preferred_username || 
+                session.user.user_metadata?.email || 
+                session.user.user_metadata?.custom_claims?.upn || 
+                ''
+            ).toLowerCase().trim();
             console.log("Auth: Handling user auth for", email);
 
             // 1. Security: Domain Lock
-            if (!email?.toLowerCase().endsWith('@splservices.com.au')) {
+            const allowedDomains = ['splservices.com.au', 'splaundry.com.au', 'southpacificlaundry.com.au', 'southpacificlaundry.onmicrosoft.com', 'procureflow.dev'];
+            const userDomain = email.includes('@') ? email.split('@')[1] : '';
+            if (!email || !userDomain || !allowedDomains.includes(userDomain)) {
                 console.error("Auth: Unauthorized domain:", email);
                 alert("Access Restricted: Only @splservices.com.au accounts are allowed.");
                 await supabase.auth.signOut();
@@ -1182,7 +1190,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     const isFirstUser = finalCount === 0;
 
                     // Check for pre-provisioned user (by email) with different ID
-                    const { data: preUser } = await supabase.from('users').select('*, user_roles(role_id)').ilike('email', session.user.email || '').maybeSingle();
+                    const { data: preUser } = await supabase.from('users').select('*, user_roles(role_id)').ilike('email', email).maybeSingle();
                     
                     let roleToUse = isFirstUser ? 'ADMIN' : 'SITE_USER';
                     let statusToUse = isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL';
@@ -1206,8 +1214,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     const dbUser = {
                         id: session.user.id,
                         auth_user_id: session.user.id,
-                        email: session.user.email || '',
-                        name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'Unknown User',
+                        email: email,
+                        name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0] || 'Unknown User',
                         role_id: roleToUse,
                         status: statusToUse,
                         avatar: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || '',
@@ -1361,7 +1369,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 const { data: { session } } = await supabase.auth.getSession();
                 
                 if (session) {
-                     if (!currentUser || session.user.email !== currentUser.email) {
+                     const sessEmail = (
+                         session.user.email || 
+                         session.user.user_metadata?.preferred_username || 
+                         session.user.user_metadata?.email || 
+                         session.user.user_metadata?.custom_claims?.upn || 
+                         ''
+                     ).toLowerCase().trim();
+                     if (!currentUser || sessEmail !== currentUser.email.toLowerCase()) {
                          await handleUserAuth(session, true); 
                      } else {
                          await handleUserAuth(session, true);
