@@ -947,6 +947,7 @@ export default function ItemCatalogue() {
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Pool / Catalogue</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Attributes</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Weight</th>
+                  <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Unit Price</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">RFID</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Status</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800 text-right sticky right-0 bg-gray-50 dark:bg-[#15171e] shadow-[-8px_0_10px_-8px_rgba(0,0,0,0.06)]">
@@ -1025,6 +1026,11 @@ export default function ItemCatalogue() {
                       {/* Weight */}
                       <td className="px-4 py-3 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
                         {displayWeight ?? <span className="text-gray-300 dark:text-gray-700">—</span>}
+                      </td>
+
+                      {/* Unit Price */}
+                      <td className="px-4 py-3 text-xs font-mono font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        {item.unit_price != null ? `$${item.unit_price.toFixed(2)}` : <span className="text-gray-300 dark:text-gray-700">—</span>}
                       </td>
 
                       {/* RFID */}
