@@ -6,6 +6,7 @@ import {
   BookOpen, Search, RefreshCw, Package,
   Cpu, CheckCircle2, XCircle, SlidersHorizontal, X,
   Download, Edit2, History, Archive, CheckCircle, Plus, RotateCcw,
+  Tag, ChevronDown, DollarSign,
 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { generateItemCode } from '../utils/itemNameGenerator';
@@ -13,7 +14,7 @@ import { ItemWizard } from './ItemWizard.tsx';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { useToast } from './ToastNotification';
-import { Item } from '../types.ts';
+import { Item, ItemPriceOption } from '../types.ts';
 
 // ── Raw DB row type (snake_case from Supabase) ────────────────────────────────
 
@@ -96,6 +97,124 @@ function getDisplayWeight(item: ItemRow): string | null {
   return null;
 }
 
+function getItemPriceOptions(item: ItemRow): ItemPriceOption[] {
+  const specs = item.specs && typeof item.specs === 'object' ? item.specs : {};
+  const rawOpts = (
+    Array.isArray(specs.priceOptions) ? specs.priceOptions :
+    Array.isArray(specs.price_options) ? specs.price_options :
+    Array.isArray(specs.priceOptionsList) ? specs.priceOptionsList :
+    Array.isArray((item as any).priceOptions) ? (item as any).priceOptions :
+    []
+  ) as ItemPriceOption[];
+
+  const validOpts = rawOpts
+    .filter(o => o && typeof o === 'object' && o.activeFlag !== false)
+    .map((o, idx) => ({
+      id: String(o.id || `opt-${idx + 1}`),
+      label: String(o.label || `Option ${idx + 1}`).trim(),
+      price: typeof o.price === 'number' ? o.price : parseFloat(String(o.price || 0)) || 0,
+      isDefault: Boolean(o.isDefault),
+      activeFlag: true,
+    }));
+
+  if (validOpts.length > 0) {
+    return validOpts;
+  }
+
+  if (item.unit_price != null) {
+    return [{
+      id: 'standard',
+      label: 'Standard',
+      price: item.unit_price,
+      isDefault: true,
+      activeFlag: true,
+    }];
+  }
+
+  return [];
+}
+
+function SmartPriceCell({ item }: { item: ItemRow }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const options = useMemo(() => getItemPriceOptions(item), [item]);
+
+  if (options.length === 0) {
+    return <span className="text-gray-300 dark:text-gray-700">—</span>;
+  }
+
+  if (options.length === 1) {
+    return (
+      <span className="font-mono text-xs font-semibold text-gray-800 dark:text-gray-200">
+        ${options[0].price.toFixed(2)}
+      </span>
+    );
+  }
+
+  const defaultOpt = options.find(o => o.isDefault) || options[0];
+  const prices = options.map(o => o.price);
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  const isRange = minP !== maxP;
+
+  return (
+    <div className="relative inline-block text-left" onMouseLeave={() => setIsOpen(false)}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(v => !v)}
+        onMouseEnter={() => setIsOpen(true)}
+        className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/60 dark:border-emerald-800/60 transition-all cursor-pointer shadow-2xs"
+      >
+        <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-300">
+          ${defaultOpt.price.toFixed(2)}
+        </span>
+        <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-white dark:bg-emerald-900/80 px-1.5 py-0.5 rounded-md border border-emerald-200/50 dark:border-emerald-700/50">
+          +{options.length - 1} more
+          <ChevronDown size={10} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-1 z-30 w-60 p-3 bg-white dark:bg-[#1a1d24] rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 text-xs animate-in fade-in zoom-in-95 duration-100">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 dark:border-gray-800">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-1">
+              <Tag size={12} className="text-emerald-500" /> Price Options ({options.length})
+            </span>
+            {isRange && (
+              <span className="text-[10px] font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                ${minP.toFixed(2)} – ${maxP.toFixed(2)}
+              </span>
+            )}
+          </div>
+          <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+            {options.map((opt, idx) => (
+              <div
+                key={opt.id || idx}
+                className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl transition-colors ${
+                  opt.isDefault
+                    ? 'bg-emerald-50/80 dark:bg-emerald-900/30 text-emerald-900 dark:text-emerald-200 font-semibold border border-emerald-200/50 dark:border-emerald-800/50'
+                    : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                  <span className="truncate" title={opt.label}>{opt.label}</span>
+                  {opt.isDefault && (
+                    <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/80 px-1.5 py-0.2 rounded shrink-0">
+                      Default
+                    </span>
+                  )}
+                </div>
+                <span className="font-mono text-xs font-bold text-gray-900 dark:text-white shrink-0">
+                  ${opt.price.toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function doesItemMatchSearch(item: ItemRow, rawQuery: string): boolean {
   const q = rawQuery.trim().toLowerCase();
   if (!q) return true;
@@ -124,15 +243,17 @@ function doesItemMatchSearch(item: ItemRow, rawQuery: string): boolean {
   if ((item.uom ?? '').toLowerCase().includes(q)) return true;
   if (item.upq != null && item.upq.toString().includes(cleanQ)) return true;
 
-  // 4. Unit Price
-  if (item.unit_price != null) {
-    const priceNum = item.unit_price.toString();
-    const priceFixed = item.unit_price.toFixed(2);
+  // 4. Unit Price & Multi-Price Options
+  const priceOpts = getItemPriceOptions(item);
+  for (const opt of priceOpts) {
+    const priceNum = opt.price.toString();
+    const priceFixed = opt.price.toFixed(2);
     const priceFormatted = `$${priceFixed}`;
     if (
       priceNum.includes(cleanQ) ||
       priceFixed.includes(cleanQ) ||
-      priceFormatted.toLowerCase().includes(q)
+      priceFormatted.toLowerCase().includes(q) ||
+      opt.label.toLowerCase().includes(q)
     ) {
       return true;
     }
@@ -368,13 +489,15 @@ export default function ItemCatalogue() {
       if (filterColour && item.item_colour !== filterColour) return false;
       if (filterRfid !== null && !!item.rfid_flag !== filterRfid) return false;
 
-      if (filterMinPrice !== '') {
-        const minP = parseFloat(filterMinPrice);
-        if (!isNaN(minP) && (item.unit_price == null || item.unit_price < minP)) return false;
-      }
-      if (filterMaxPrice !== '') {
-        const maxP = parseFloat(filterMaxPrice);
-        if (!isNaN(maxP) && (item.unit_price == null || item.unit_price > maxP)) return false;
+      if (filterMinPrice !== '' || filterMaxPrice !== '') {
+        const minP = filterMinPrice !== '' ? parseFloat(filterMinPrice) : -Infinity;
+        const maxP = filterMaxPrice !== '' ? parseFloat(filterMaxPrice) : Infinity;
+        const priceOpts = getItemPriceOptions(item);
+        if (priceOpts.length === 0) return false;
+        const hasMatchingPrice = priceOpts.some(
+          o => !isNaN(o.price) && o.price >= minP && o.price <= maxP
+        );
+        if (!hasMatchingPrice) return false;
       }
 
       const itemGsm = item.item_weight ?? (typeof item.specs?.gsm === 'number' ? item.specs.gsm : (parseFloat(String(item.specs?.gsm ?? '')) || null));
@@ -1029,8 +1152,8 @@ export default function ItemCatalogue() {
                       </td>
 
                       {/* Unit Price */}
-                      <td className="px-4 py-3 text-xs font-mono font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                        {item.unit_price != null ? `$${item.unit_price.toFixed(2)}` : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <SmartPriceCell item={item} />
                       </td>
 
                       {/* RFID */}
