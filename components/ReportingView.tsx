@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import {
     AlertCircle,
+    AlignLeft,
     BarChart3,
     Building2,
     CheckCircle2,
@@ -2054,6 +2055,7 @@ const LinenInjectionVisual = ({
     const isSingleSite = selectedSite !== 'ALL';
     const metricLabel = chartMetric === 'ITEM' ? 'Item' : chartMetric === 'SUPPLIER' ? 'Supplier' : chartMetric === 'DATE' ? 'Month / Date' : 'Site';
     const [chartViewType, setChartViewType] = useState<'VALUE' | 'QTY'>('VALUE');
+    const [chartOrientation, setChartOrientation] = useState<'HORIZONTAL_BAR' | 'VERTICAL_CLUSTERED'>('HORIZONTAL_BAR');
 
     // Multi-site comparison metrics (seeded with all available operating sites)
     const siteComparison = useMemo(() => {
@@ -2282,15 +2284,41 @@ const LinenInjectionVisual = ({
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                         <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                                     {isSingleSite
                                         ? `Item Injected vs. Ordered ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} for ${selectedSite}`
                                         : `Site Injected vs. Ordered ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} Comparison`}
                                 </h3>
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300">
-                                    Clustered Bar
-                                </span>
+                                {/* Orientation Toggle: Horizontal Bar vs Vertical Cluster */}
+                                <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-0.5 shadow-sm">
+                                    <button
+                                        type="button"
+                                        onClick={() => setChartOrientation('HORIZONTAL_BAR')}
+                                        className={`px-2 py-0.5 text-[11px] font-bold rounded-md transition-all flex items-center gap-1 ${
+                                            chartOrientation === 'HORIZONTAL_BAR'
+                                                ? 'bg-emerald-600 text-white shadow-sm'
+                                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                        }`}
+                                        title="Horizontal Bar Chart (side-by-side horizontal bars, optimal for long product names)"
+                                    >
+                                        <AlignLeft size={12} />
+                                        Horizontal Bar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setChartOrientation('VERTICAL_CLUSTERED')}
+                                        className={`px-2 py-0.5 text-[11px] font-bold rounded-md transition-all flex items-center gap-1 ${
+                                            chartOrientation === 'VERTICAL_CLUSTERED'
+                                                ? 'bg-emerald-600 text-white shadow-sm'
+                                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                        }`}
+                                        title="Vertical Clustered Column Chart"
+                                    >
+                                        <BarChart3 size={12} />
+                                        Vertical Cluster
+                                    </button>
+                                </div>
                             </div>
                             <p className="text-xs text-tertiary dark:text-gray-500 mt-1">
                                 {isSingleSite
@@ -2326,44 +2354,99 @@ const LinenInjectionVisual = ({
                             <span className="text-xs text-tertiary dark:text-gray-500 hidden sm:inline">{chartData.length} {metricLabel.toLowerCase()}s</span>
                         </div>
                     </div>
-                    <div className="h-[340px] min-w-[560px]">
+                    <div className="h-[360px] min-w-[560px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 70 }}>
-                                <CartesianGrid strokeDasharray="3 3" opacity={0.18} vertical={false} />
-                                <XAxis dataKey="name" angle={-35} textAnchor="end" height={88} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
-                                <YAxis
-                                    tickFormatter={(val) => chartViewType === 'VALUE' ? `$${Number(val).toLocaleString()}` : Number(val).toLocaleString()}
-                                    tick={{ fontSize: 12, fill: '#888' }}
-                                />
-                                <RechartsTooltip
-                                    formatter={(value: number, name: string) => [
-                                        chartViewType === 'VALUE' ? currency(value) : `${numberValue(value)} units`,
-                                        name === 'injectedValue'
-                                            ? 'Injected (Delivered) Spend'
-                                            : name === 'orderedValue'
-                                            ? 'Ordered PO Value'
-                                            : name === 'injectedQty'
-                                            ? 'Injected Units'
-                                            : name === 'orderedQty'
-                                            ? 'Ordered Units'
-                                            : name
-                                    ]}
-                                    labelFormatter={(label) => `${metricLabel}: ${label}`}
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                />
-                                <Legend />
-                                {chartViewType === 'VALUE' ? (
-                                    <>
-                                        <Bar dataKey="injectedValue" name="Injected Spend ($)" fill="#10b981" radius={[4, 4, 0, 0]} />
-                                        <Bar dataKey="orderedValue" name="Ordered PO Value ($)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                                    </>
-                                ) : (
-                                    <>
-                                        <Bar dataKey="injectedQty" name="Injected Units" fill="#10b981" radius={[4, 4, 0, 0]} />
-                                        <Bar dataKey="orderedQty" name="Ordered Units" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                                    </>
-                                )}
-                            </BarChart>
+                            {chartOrientation === 'HORIZONTAL_BAR' ? (
+                                <BarChart
+                                    layout="vertical"
+                                    data={chartData}
+                                    margin={{ top: 8, right: 30, left: 10, bottom: 10 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" opacity={0.18} horizontal={false} />
+                                    <XAxis
+                                        type="number"
+                                        tickFormatter={(val) => chartViewType === 'VALUE' ? `$${Number(val).toLocaleString()}` : Number(val).toLocaleString()}
+                                        tick={{ fontSize: 11, fill: '#888' }}
+                                    />
+                                    <YAxis
+                                        type="category"
+                                        dataKey="name"
+                                        width={170}
+                                        interval={0}
+                                        tick={{ fontSize: 11, fill: '#888' }}
+                                        tickFormatter={(val) => typeof val === 'string' && val.length > 24 ? `${val.substring(0, 24)}...` : val}
+                                    />
+                                    <RechartsTooltip
+                                        formatter={(value: number, name: string) => [
+                                            chartViewType === 'VALUE' ? currency(value) : `${numberValue(value)} units`,
+                                            name === 'injectedValue'
+                                                ? 'Injected (Delivered) Spend'
+                                                : name === 'orderedValue'
+                                                ? 'Ordered PO Value'
+                                                : name === 'injectedQty'
+                                                ? 'Injected Units'
+                                                : name === 'orderedQty'
+                                                ? 'Ordered Units'
+                                                : name
+                                        ]}
+                                        labelFormatter={(label) => `${metricLabel}: ${label}`}
+                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Legend />
+                                    {chartViewType === 'VALUE' ? (
+                                        <>
+                                            <Bar dataKey="injectedValue" name="Injected Spend ($)" fill="#10b981" radius={[0, 4, 4, 0]} />
+                                            <Bar dataKey="orderedValue" name="Ordered PO Value ($)" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Bar dataKey="injectedQty" name="Injected Units" fill="#10b981" radius={[0, 4, 4, 0]} />
+                                            <Bar dataKey="orderedQty" name="Ordered Units" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                                        </>
+                                    )}
+                                </BarChart>
+                            ) : (
+                                <BarChart
+                                    layout="horizontal"
+                                    data={chartData}
+                                    margin={{ top: 8, right: 20, left: 0, bottom: 70 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" opacity={0.18} vertical={false} />
+                                    <XAxis dataKey="name" angle={-35} textAnchor="end" height={88} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
+                                    <YAxis
+                                        tickFormatter={(val) => chartViewType === 'VALUE' ? `$${Number(val).toLocaleString()}` : Number(val).toLocaleString()}
+                                        tick={{ fontSize: 12, fill: '#888' }}
+                                    />
+                                    <RechartsTooltip
+                                        formatter={(value: number, name: string) => [
+                                            chartViewType === 'VALUE' ? currency(value) : `${numberValue(value)} units`,
+                                            name === 'injectedValue'
+                                                ? 'Injected (Delivered) Spend'
+                                                : name === 'orderedValue'
+                                                ? 'Ordered PO Value'
+                                                : name === 'injectedQty'
+                                                ? 'Injected Units'
+                                                : name === 'orderedQty'
+                                                ? 'Ordered Units'
+                                                : name
+                                        ]}
+                                        labelFormatter={(label) => `${metricLabel}: ${label}`}
+                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Legend />
+                                    {chartViewType === 'VALUE' ? (
+                                        <>
+                                            <Bar dataKey="injectedValue" name="Injected Spend ($)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="orderedValue" name="Ordered PO Value ($)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Bar dataKey="injectedQty" name="Injected Units" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="orderedQty" name="Ordered Units" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                                        </>
+                                    )}
+                                </BarChart>
+                            )}
                         </ResponsiveContainer>
                     </div>
                 </div>
