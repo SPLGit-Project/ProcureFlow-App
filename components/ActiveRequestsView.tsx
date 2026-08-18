@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
-import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin, Download, CalendarRange, FunnelX } from 'lucide-react';
+import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin, Download, CalendarRange, FunnelX, Edit2 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { PORequest, POStatus } from '../types.ts';
 import {
@@ -29,8 +29,13 @@ const ACTIVE_REQUEST_STATUS_OPTIONS: StatusOption[] = [
 const toDateInputValue = (value: string | null) => value ?? '';
 
 const ActiveRequestsView = () => {
-    const { pos, isLoadingData, linkConcurPO, linkConcurRequest, currentUser: _currentUser } = useApp();
+    const { pos, isLoadingData, linkConcurPO, linkConcurRequest, currentUser, hasPermission } = useApp();
     const navigate = useNavigate();
+
+    const canUserLinkPO = (po: PORequest) => {
+        const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
+        return isAdmin || hasPermission('link_concur') || po.requesterId === currentUser?.id;
+    };
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMode, setFilterMode] = useState<ActiveRequestFilterMode>('ALL');
     const [selectedSite, setSelectedSite] = useState('ALL');
@@ -404,6 +409,14 @@ const ActiveRequestsView = () => {
                                             >
                                                 <LinkIcon size={14} /> Link ID
                                             </button>
+                                        ) : canUserLinkPO(po) ? (
+                                             <button 
+                                                 onClick={() => handleOpenConcurModal(po)}
+                                                 className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1 ml-auto"
+                                                 title="Amend Concur PO Number"
+                                             >
+                                                 <Edit2 size={14} /> Amend PO
+                                             </button>
                                         ) : (
                                             <button 
                                                 className="px-3 py-1.5 text-gray-400 text-xs font-bold rounded-lg border border-transparent hover:border-gray-200 dark:hover:border-gray-700 flex items-center gap-1 ml-auto"

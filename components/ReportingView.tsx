@@ -7,6 +7,7 @@ import {
     Download,
     FileText,
     Package,
+    PackageCheck,
     Search,
     TrendingUp,
     Layers,
@@ -27,10 +28,39 @@ import {
     XAxis,
     YAxis
 } from 'recharts';
-import type { PORequest, POStatus } from '../types.ts';
+import type { Item, PORequest, POStatus } from '../types.ts';
 
-type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY' | 'SUPPLIER_INVENTORY' | 'SUPPLIER_ITEM_MAPPING' | 'SUPPLIER_PRICE_VARIANCE';
+type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY' | 'LINEN_INJECTION' | 'SUPPLIER_INVENTORY' | 'SUPPLIER_ITEM_MAPPING' | 'SUPPLIER_PRICE_VARIANCE';
 type ReportRow = Record<string, string | number>;
+
+interface LinenInjectionReportRow extends ReportRow {
+    id: string;
+    poNumber: string;
+    concurPoNumber: string;
+    requestNumber: string;
+    concurRequestNumber: string;
+    requestDate: string;
+    closedDate: string;
+    latestDeliveryDate: string;
+    deliveryDates: string;
+    dockets: string;
+    invoices: string;
+    site: string;
+    siteId: string;
+    supplier: string;
+    supplierId: string;
+    itemId: string;
+    item: string;
+    sku: string;
+    category: string;
+    orderedQty: number;
+    injectedQty: number;
+    unitPrice: number;
+    injectedValue: number;
+    orderedValue: number;
+    requester: string;
+    status: POStatus;
+}
 
 interface MonthlySummaryReportRow extends ReportRow {
     id: string;
@@ -156,6 +186,7 @@ const REPORT_TITLES: Record<ReportType, string> = {
     DELIVERY_RECONCILIATION: 'Full Delivery Reconciliation',
     ITEM_REQUEST_HISTORY: 'Item Request History by Site',
     MONTHLY_SUMMARY: 'Monthly PO & Receipting Summary',
+    LINEN_INJECTION: 'Linen Injection Report',
     SUPPLIER_INVENTORY: 'Available Supplier Inventory Report',
     SUPPLIER_ITEM_MAPPING: 'Supplier Item Mapping Report',
     SUPPLIER_PRICE_VARIANCE: 'Supplier Price Sync Variance Report'
@@ -170,13 +201,14 @@ const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
     DELIVERY_RECONCILIATION: 'Complete picture of order fulfillment. Compare ordered vs. received quantities across all PO lines to identify pending amounts and value variances.',
     ITEM_REQUEST_HISTORY: 'Search and select an item to see its most recent request activity at each site, with a detailed line-level export for deeper review.',
     MONTHLY_SUMMARY: 'Reconcile PO requests since July 2025. Groups POs monthly, showing total issued PO values, goods received (GR) values, and remaining open values.',
+    LINEN_INJECTION: 'Comprehensive breakdown of all linen injected into circulation from closed purchase orders, detailing item quantities, unit pricing, and total injected value across sites and suppliers.',
     SUPPLIER_INVENTORY: 'Provides by supplier the most recent inventory stock data available within the app, including SOH, available quantities, and stock on backorder.',
     SUPPLIER_ITEM_MAPPING: 'Provides a complete overview of the mapping of supplier items to corresponding items in the internal catalogue.',
     SUPPLIER_PRICE_VARIANCE: 'Compares supplier price reports against the internal catalogue prices for confirmed mappings, highlighting variations and sync status.'
 };
 
 const DELIVERY_REPORTS: ReportType[] = ['OUTSTANDING_DELIVERIES', 'DELIVERY_VARIANCE', 'DELIVERY_RECONCILIATION'];
-const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY', 'SUPPLIER_INVENTORY', 'SUPPLIER_ITEM_MAPPING', 'SUPPLIER_PRICE_VARIANCE'];
+const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY', 'LINEN_INJECTION', 'SUPPLIER_INVENTORY', 'SUPPLIER_ITEM_MAPPING', 'SUPPLIER_PRICE_VARIANCE'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ACTIVE_DELIVERY_STATUSES: POStatus[] = ['ACTIVE', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST', 'VARIANCE_PENDING'];
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4'];
@@ -185,7 +217,7 @@ const currency = (value: number) => `$${value.toLocaleString(undefined, { minimu
 const numberValue = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 const percentValue = (value: number) => `${Math.round(value)}%`;
 const statusLabel = (status: string) => status.replaceAll('_', ' ');
-const reportFileName = (report: ReportType) => `${report === 'OUTSTANDING_DELIVERIES' ? 'outstanding-deliveries' : report === 'DELIVERY_VARIANCE' ? 'delivery-variance' : report.toLowerCase().replaceAll('_', '-')}-${new Date().toISOString().split('T')[0]}.csv`;
+const reportFileName = (report: ReportType) => `${report === 'OUTSTANDING_DELIVERIES' ? 'outstanding-deliveries' : report === 'DELIVERY_VARIANCE' ? 'delivery-variance' : report === 'LINEN_INJECTION' ? 'linen-injection' : report.toLowerCase().replaceAll('_', '-')}-${new Date().toISOString().split('T')[0]}.csv`;
 
 const getPoNumber = (po: PORequest, linePoNumber?: string) => linePoNumber || po.concurPoNumber || po.lines[0]?.concurPoNumber || 'Pending';
 
@@ -504,6 +536,81 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
     return rows.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 };
 
+const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInjectionReportRow[] => {
+    const itemCategoryMap = new Map<string, string>();
+    (itemsList || []).forEach((item) => {
+        if (item.id && item.category) itemCategoryMap.set(item.id, item.category);
+        if (item.sku && item.category) itemCategoryMap.set(item.sku, item.category);
+    });
+
+    const rows: LinenInjectionReportRow[] = [];
+
+    pos.forEach((po) => {
+        if (po.status !== 'CLOSED') return;
+
+        const site = po.site || 'Unknown Site';
+        const supplier = po.supplierName || 'Unknown Supplier';
+        const requestNumber = po.displayId || po.id.substring(0, 8);
+        const concurRequestNumber = po.concurRequestNumber || '';
+
+        const closedEvent = (po.approvalHistory || []).slice().reverse().find(
+            (e) => e.action === 'ADMIN_OVERRIDE' || e.comments?.toLowerCase().includes('complete') || e.comments?.toLowerCase().includes('closed')
+        );
+        const latestDelivery = (po.deliveries || []).map(d => d.date).filter(Boolean).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || '-';
+        const closedDate = closedEvent?.date || (latestDelivery !== '-' ? latestDelivery : po.requestDate);
+
+        po.lines.forEach((line) => {
+            const orderedQty = Number(line.quantityOrdered || 0);
+            const receivedQty = Number(line.quantityReceived || 0);
+            // In a closed PO, received quantity reflects the physical quantity delivered/injected into the site.
+            // If receipts were logged, injectedQty is receivedQty; if closed with 0 recorded receipts, fallback to orderedQty.
+            const injectedQty = receivedQty > 0 ? receivedQty : orderedQty;
+            const unitPrice = Number(line.unitPrice || 0);
+            const injectedValue = injectedQty * unitPrice;
+            const orderedValue = orderedQty * unitPrice;
+
+            const concurPoNumber = line.concurPoNumber || po.concurPoNumber || '';
+            const poNumber = getPoNumber(po, line.concurPoNumber);
+            const deliveryDates = getDeliveryDatesForLine(po, line.id);
+            const latestDeliveryDate = getLatestDeliveryDateForLine(po, line.id);
+            const dockets = getDocketsForLine(po, line.id);
+            const invoices = getInvoicesForLine(po, line.id);
+            const category = itemCategoryMap.get(line.itemId) || itemCategoryMap.get(line.sku) || 'Linen / Textiles';
+
+            rows.push({
+                id: line.id,
+                poNumber,
+                concurPoNumber,
+                requestNumber,
+                concurRequestNumber,
+                requestDate: po.requestDate,
+                closedDate,
+                latestDeliveryDate,
+                deliveryDates,
+                dockets,
+                invoices,
+                site,
+                siteId: po.siteId || '',
+                supplier,
+                supplierId: po.supplierId || '',
+                itemId: line.itemId || '',
+                item: line.itemName || 'Unknown Item',
+                sku: line.sku || '',
+                category,
+                orderedQty,
+                injectedQty,
+                unitPrice,
+                injectedValue,
+                orderedValue,
+                requester: po.requesterName || 'Unknown',
+                status: po.status
+            });
+        });
+    });
+
+    return rows.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+};
+
 const buildSupplierInventoryRows = (
     snapshots: any[],
     suppliersList: any[]
@@ -743,6 +850,32 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
         ];
     }
 
+    if (report === 'LINEN_INJECTION') {
+        return [
+            { key: 'requestNumber', label: 'Request Number' },
+            { key: 'concurRequestNumber', label: 'Concur Request Number' },
+            { key: 'poNumber', label: 'PO Number' },
+            { key: 'concurPoNumber', label: 'Concur PO Number' },
+            { key: 'requestDate', label: 'Request Date' },
+            { key: 'closedDate', label: 'Completion / Closed Date' },
+            { key: 'site', label: 'Site' },
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'item', label: 'Item Name' },
+            { key: 'sku', label: 'SKU' },
+            { key: 'category', label: 'Category' },
+            { key: 'injectedQty', label: 'Injected QTY' },
+            { key: 'orderedQty', label: 'Ordered QTY' },
+            { key: 'unitPrice', label: 'Unit Price' },
+            { key: 'injectedValue', label: 'Injected Value ($)' },
+            { key: 'orderedValue', label: 'Ordered Value ($)' },
+            { key: 'deliveryDates', label: 'Delivery Dates' },
+            { key: 'dockets', label: 'Delivery Dockets' },
+            { key: 'invoices', label: 'Invoice Numbers' },
+            { key: 'requester', label: 'Requester' },
+            { key: 'status', label: 'Status' }
+        ];
+    }
+
     if (report === 'SUPPLIER_INVENTORY') {
         return [
             { key: 'supplier', label: 'Supplier' },
@@ -836,8 +969,10 @@ const ReportingView = () => {
     const lastRun = cachedRunTimes[activeReport];
     const isDeliveryReport = DELIVERY_REPORTS.includes(activeReport);
     const isItemHistoryReport = activeReport === 'ITEM_REQUEST_HISTORY';
+    const isLinenInjectionReport = activeReport === 'LINEN_INJECTION';
+    const isDateFilterableReport = isItemHistoryReport || isLinenInjectionReport;
     const isFilterableReport = FILTERABLE_REPORTS.includes(activeReport);
-    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport || activeReport === 'MONTHLY_SUMMARY' || activeReport === 'SUPPLIER_INVENTORY' || activeReport === 'SUPPLIER_ITEM_MAPPING' || activeReport === 'SUPPLIER_PRICE_VARIANCE';
+    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport || activeReport === 'MONTHLY_SUMMARY' || isLinenInjectionReport || activeReport === 'SUPPLIER_INVENTORY' || activeReport === 'SUPPLIER_ITEM_MAPPING' || activeReport === 'SUPPLIER_PRICE_VARIANCE';
 
     const siteOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.site || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
     const supplierOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.supplier || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
@@ -871,6 +1006,7 @@ const ReportingView = () => {
                 row.site,
                 row.item,
                 row.sku,
+                row.category,
                 row.requester,
                 row.status,
                 row.exceptionType,
@@ -881,7 +1017,7 @@ const ReportingView = () => {
             const matchesItem = selectedItemId === 'ALL' || row.itemId === selectedItemId || row.item === selectedItemId;
 
             let matchesDate = true;
-            if (isItemHistoryReport && row.requestDate) {
+            if (isDateFilterableReport && row.requestDate) {
                 const requestTime = new Date(row.requestDate as string).getTime();
                 if (!isNaN(requestTime)) {
                     if (dateRangeType === 'RECENT') {
@@ -910,7 +1046,7 @@ const ReportingView = () => {
 
             return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate;
         });
-    }, [isFilterableReport, isItemHistoryReport, activeReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier, dateRangeType, customStartDate, customEndDate]);
+    }, [isFilterableReport, isDateFilterableReport, activeReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier, dateRangeType, customStartDate, customEndDate]);
 
     const outstandingRows = visibleReportData as OutstandingDeliveryReportRow[];
     const varianceRows = visibleReportData as DeliveryVarianceReportRow[];
@@ -922,6 +1058,7 @@ const ReportingView = () => {
     }, [outstandingRows]);
     const reconciliationRows = visibleReportData as DeliveryReconciliationRow[];
     const itemHistoryRows = visibleReportData as ItemRequestHistoryRow[];
+    const linenInjectionRows = visibleReportData as LinenInjectionReportRow[];
 
     const reconciliationSummary = useMemo(() => {
         const totalOrdered = reconciliationRows.reduce((sum, row) => sum + row.orderedValue, 0);
@@ -964,6 +1101,29 @@ const ReportingView = () => {
         };
     }, [itemHistoryRows]);
 
+    const linenInjectionSummary = useMemo(() => {
+        const totalInjectedValue = linenInjectionRows.reduce((sum, row) => sum + row.injectedValue, 0);
+        const totalInjectedUnits = linenInjectionRows.reduce((sum, row) => sum + row.injectedQty, 0);
+        const totalOrderedUnits = linenInjectionRows.reduce((sum, row) => sum + row.orderedQty, 0);
+        const totalOrderedValue = linenInjectionRows.reduce((sum, row) => sum + row.orderedValue, 0);
+        const uniquePos = new Set(linenInjectionRows.map((row) => row.poNumber || row.requestNumber));
+        const uniqueSites = new Set(linenInjectionRows.map((row) => row.site));
+        const uniqueSuppliers = new Set(linenInjectionRows.map((row) => row.supplier));
+        const uniqueItems = new Set(linenInjectionRows.map((row) => row.item));
+
+        return {
+            totalInjectedValue,
+            totalInjectedUnits,
+            totalOrderedUnits,
+            totalOrderedValue,
+            closedPoCount: uniquePos.size,
+            lineCount: linenInjectionRows.length,
+            siteCount: uniqueSites.size,
+            supplierCount: uniqueSuppliers.size,
+            itemCount: uniqueItems.size
+        };
+    }, [linenInjectionRows]);
+
     const switchReport = (report: ReportType) => {
         setActiveReport(report);
         setViewMode('CHART');
@@ -972,6 +1132,9 @@ const ReportingView = () => {
         setSelectedSite('ALL');
         setSelectedSupplier('ALL');
         setSelectedItemId('ALL');
+        setDateRangeType('RECENT');
+        setCustomStartDate('');
+        setCustomEndDate('');
         setMonthlyStartDate('2025-07-01');
         setMonthlyEndDate(() => new Date().toISOString().split('T')[0]);
     };
@@ -998,6 +1161,8 @@ const ReportingView = () => {
                 data = buildItemRequestHistoryRows(pos);
             } else if (activeReport === 'MONTHLY_SUMMARY') {
                 data = buildMonthlySummaryRows(pos, monthlyStartDate, monthlyEndDate);
+            } else if (activeReport === 'LINEN_INJECTION') {
+                data = buildLinenInjectionRows(pos, items);
             } else if (activeReport === 'SUPPLIER_INVENTORY') {
                 data = buildSupplierInventoryRows(stockSnapshots, suppliers);
             } else if (activeReport === 'SUPPLIER_ITEM_MAPPING') {
@@ -1105,6 +1270,34 @@ const ReportingView = () => {
         return Object.values(grouped).sort((a, b) => b.orderedQty - a.orderedQty).slice(0, 12);
     }, [itemHistoryRows, chartMetric]);
 
+    const linenInjectionChartData = useMemo(() => {
+        const grouped: Record<string, { name: string; injectedValue: number; injectedQty: number; orderedQty: number; lineCount: number }> = {};
+        linenInjectionRows.forEach((row) => {
+            let key = 'Unknown';
+            if (chartMetric === 'SITE') key = row.site || 'Unknown Site';
+            else if (chartMetric === 'SUPPLIER') key = row.supplier || 'Unknown Supplier';
+            else if (chartMetric === 'ITEM') {
+                const skuStr = row.sku ? ` (${row.sku})` : '';
+                key = `${row.item || 'Unknown'}${skuStr}`;
+            } else if (chartMetric === 'DATE') {
+                const dateObj = new Date(row.requestDate);
+                if (!isNaN(dateObj.getTime())) {
+                    key = `${MONTH_NAMES[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
+                } else {
+                    key = row.requestDate || 'Unknown';
+                }
+            }
+
+            grouped[key] ||= { name: key, injectedValue: 0, injectedQty: 0, orderedQty: 0, lineCount: 0 };
+            grouped[key].injectedValue += row.injectedValue;
+            grouped[key].injectedQty += row.injectedQty;
+            grouped[key].orderedQty += row.orderedQty;
+            grouped[key].lineCount += 1;
+        });
+
+        return Object.values(grouped).sort((a, b) => b.injectedValue - a.injectedValue).slice(0, 12);
+    }, [linenInjectionRows, chartMetric]);
+
     const hasActiveFilters = Boolean(
         searchTerm.trim() ||
         selectedSite !== 'ALL' ||
@@ -1114,7 +1307,7 @@ const ReportingView = () => {
             monthlyStartDate !== '2025-07-01' ||
             monthlyEndDate !== new Date().toISOString().split('T')[0]
         )) ||
-        (isItemHistoryReport && (
+        (isDateFilterableReport && (
             dateRangeType !== 'RECENT' ||
             customStartDate !== '' ||
             customEndDate !== ''
@@ -1145,6 +1338,7 @@ const ReportingView = () => {
                         <div className="flex flex-col sm:flex-row xl:flex-col gap-2">
                             <ReportButton active={activeReport === 'OUTSTANDING_DELIVERIES'} icon={AlertCircle} label="Outstanding Deliveries" onClick={() => switchReport('OUTSTANDING_DELIVERIES')} />
                             <ReportButton active={activeReport === 'ALL_DELIVERIES'} icon={Package} label="All Deliveries" onClick={() => switchReport('ALL_DELIVERIES')} />
+                            <ReportButton active={activeReport === 'LINEN_INJECTION'} icon={PackageCheck} label="Linen Injection" onClick={() => switchReport('LINEN_INJECTION')} />
                             <ReportButton active={activeReport === 'DELIVERY_VARIANCE'} icon={TrendingUp} label="Delivery Variance" onClick={() => switchReport('DELIVERY_VARIANCE')} />
                             <ReportButton active={activeReport === 'DELIVERY_RECONCILIATION'} icon={Layers} label="Full Reconciliation" onClick={() => switchReport('DELIVERY_RECONCILIATION')} />
                             <ReportButton active={activeReport === 'ITEM_REQUEST_HISTORY'} icon={History} label="Item Request History" onClick={() => switchReport('ITEM_REQUEST_HISTORY')} />
@@ -1207,7 +1401,7 @@ const ReportingView = () => {
                                     {canUseChart && viewMode === 'CHART' && (
                                         <div className="flex flex-wrap items-center gap-3">
                                             <div className="text-sm font-bold text-gray-900 dark:text-white flex flex-wrap items-center gap-x-4 gap-y-1">
-                                                {activeReport !== 'MONTHLY_SUMMARY' && (
+                                                {activeReport !== 'MONTHLY_SUMMARY' && activeReport !== 'LINEN_INJECTION' && (
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="text-xs font-medium text-tertiary dark:text-gray-500">
                                                             {activeReport === 'OUTSTANDING_DELIVERIES' ? 'Total Outstanding:' : activeReport === 'DELIVERY_VARIANCE' ? 'Total Variance:' : activeReport === 'ITEM_REQUEST_HISTORY' ? 'Total Ordered Units:' : 'Total Value:'}
@@ -1223,6 +1417,22 @@ const ReportingView = () => {
                                                         <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Ordered Value:</span>
                                                         {currency(itemHistorySummary.totalValue)}
                                                     </div>
+                                                )}
+                                                {activeReport === 'LINEN_INJECTION' && (
+                                                    <>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Injected Value:</span>
+                                                            {currency(linenInjectionSummary.totalInjectedValue)}
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
+                                                            <span className="text-xs font-medium text-tertiary dark:text-gray-500">Injected Units:</span>
+                                                            {numberValue(linenInjectionSummary.totalInjectedUnits)}
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
+                                                            <span className="text-xs font-medium text-tertiary dark:text-gray-500">Closed Orders:</span>
+                                                            {linenInjectionSummary.closedPoCount}
+                                                        </div>
+                                                    </>
                                                 )}
                                                 {activeReport === 'MONTHLY_SUMMARY' && (() => {
                                                     const summaryData = getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[]);
@@ -1256,7 +1466,8 @@ const ReportingView = () => {
                                                         className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                                     >
                                                         {activeReport === 'ALL_DELIVERIES' && <option value="DATE">Delivery Date</option>}
-                                                        {activeReport === 'ITEM_REQUEST_HISTORY' && <option value="ITEM">Item</option>}
+                                                        {(activeReport === 'ITEM_REQUEST_HISTORY' || activeReport === 'LINEN_INJECTION') && <option value="ITEM">Item</option>}
+                                                        {activeReport === 'LINEN_INJECTION' && <option value="DATE">Month / Date</option>}
                                                         <option value="SUPPLIER">Supplier</option>
                                                         <option value="SITE">Site</option>
                                                     </select>
@@ -1269,7 +1480,7 @@ const ReportingView = () => {
                                 {isFilterableReport && (
                                     <div className="space-y-3">
                                         <div className={`grid grid-cols-1 gap-2 ${
-                                            isItemHistoryReport 
+                                            isDateFilterableReport 
                                                 ? 'md:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_150px_170px_auto]' 
                                                 : activeReport === 'MONTHLY_SUMMARY'
                                                     ? 'md:grid-cols-[minmax(0,1fr)_130px_140px_180px_180px_auto]'
@@ -1280,11 +1491,11 @@ const ReportingView = () => {
                                                 <input
                                                     value={searchTerm}
                                                     onChange={(event) => setSearchTerm(event.target.value)}
-                                                    placeholder={isItemHistoryReport ? 'Search item, SKU, PO, site, supplier' : 'Search reports'}
+                                                    placeholder={isDateFilterableReport ? 'Search item, SKU, PO, site, supplier' : 'Search reports'}
                                                     className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                                 />
                                             </label>
-                                            {isItemHistoryReport && (
+                                            {isDateFilterableReport && (
                                                 <select
                                                     value={selectedItemId}
                                                     onChange={(event) => setSelectedItemId(event.target.value)}
@@ -1352,7 +1563,7 @@ const ReportingView = () => {
                                             </button>
                                         </div>
 
-                                        {isItemHistoryReport && (
+                                        {isDateFilterableReport && (
                                             <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
                                                 <span className="text-xs font-semibold text-secondary dark:text-gray-400">Date Range:</span>
                                                 <select
@@ -1361,7 +1572,7 @@ const ReportingView = () => {
                                                     className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                                 >
                                                     <option value="RECENT">Last 30 Days</option>
-                                                    <option value="HISTORICAL">Most Recent</option>
+                                                    <option value="HISTORICAL">Since July 2025</option>
                                                     <option value="ALL">All Time</option>
                                                     <option value="CUSTOM">Custom Range...</option>
                                                 </select>
@@ -1414,6 +1625,8 @@ const ReportingView = () => {
                                 <DeliveryReconciliationVisual rows={reconciliationRows} summary={reconciliationSummary} />
                             ) : activeReport === 'ITEM_REQUEST_HISTORY' && viewMode === 'CHART' ? (
                                 <ItemRequestHistoryVisual summary={itemHistorySummary} chartData={itemHistoryChartData} selectedItemLabel={itemOptions.find((item) => item.id === selectedItemId)?.label || 'All items'} chartMetric={chartMetric} />
+                            ) : activeReport === 'LINEN_INJECTION' && viewMode === 'CHART' ? (
+                                <LinenInjectionVisual rows={linenInjectionRows} summary={linenInjectionSummary} chartData={linenInjectionChartData} chartMetric={chartMetric} />
                             ) : activeReport === 'MONTHLY_SUMMARY' && viewMode === 'CHART' ? (
                                 <MonthlySummaryVisual rows={getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])} />
                             ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
@@ -1774,6 +1987,140 @@ const MonthlySummaryVisual = ({ rows }: { rows: MonthlySummaryAggregatedRow[] })
     );
 };
 
+const LinenInjectionVisual = ({
+    rows,
+    summary,
+    chartData,
+    chartMetric
+}: {
+    rows: LinenInjectionReportRow[];
+    summary: {
+        totalInjectedValue: number;
+        totalInjectedUnits: number;
+        totalOrderedUnits: number;
+        totalOrderedValue: number;
+        closedPoCount: number;
+        lineCount: number;
+        siteCount: number;
+        supplierCount: number;
+        itemCount: number;
+    };
+    chartData: Array<{ name: string; injectedValue: number; injectedQty: number; orderedQty: number; lineCount: number }>;
+    chartMetric: ChartMetric;
+}) => {
+    const metricLabel = chartMetric === 'ITEM' ? 'Item' : chartMetric === 'SUPPLIER' ? 'Supplier' : chartMetric === 'DATE' ? 'Month / Date' : 'Site';
+
+    const topItems = useMemo(() => {
+        const itemMap = new Map<string, { item: string; sku: string; supplier: string; totalQty: number; totalValue: number; siteCount: Set<string> }>();
+        rows.forEach((r) => {
+            const key = r.sku ? `${r.item}__${r.sku}` : r.item;
+            if (!itemMap.has(key)) {
+                itemMap.set(key, { item: r.item, sku: r.sku, supplier: r.supplier, totalQty: 0, totalValue: 0, siteCount: new Set() });
+            }
+            const existing = itemMap.get(key)!;
+            existing.totalQty += r.injectedQty;
+            existing.totalValue += r.injectedValue;
+            existing.siteCount.add(r.site);
+        });
+        return Array.from(itemMap.values()).sort((a, b) => b.totalValue - a.totalValue).slice(0, 5);
+    }, [rows]);
+
+    return (
+        <div data-testid="linen-injection-report-visual" className="p-4 md:p-6 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <MetricCard
+                    label="Total Linen Injected"
+                    value={currency(summary.totalInjectedValue)}
+                    sub={`${numberValue(summary.totalInjectedUnits)} units delivered`}
+                    icon={TrendingUp}
+                    color="bg-emerald-600"
+                />
+                <MetricCard
+                    label="Injected Units"
+                    value={numberValue(summary.totalInjectedUnits)}
+                    sub={`Across ${summary.lineCount} closed line items`}
+                    icon={Package}
+                    color="bg-sky-500"
+                />
+                <MetricCard
+                    label="Closed PO Orders"
+                    value={String(summary.closedPoCount)}
+                    sub={`Avg ${currency(summary.closedPoCount ? summary.totalInjectedValue / summary.closedPoCount : 0)} per order`}
+                    icon={CheckCircle2}
+                    color="bg-blue-600"
+                />
+                <MetricCard
+                    label="Operational Coverage"
+                    value={`${summary.siteCount} Sites • ${summary.itemCount} Items`}
+                    sub={`Supplied by ${summary.supplierCount} partner${summary.supplierCount === 1 ? '' : 's'}`}
+                    icon={Layers}
+                    color="bg-violet-600"
+                />
+            </div>
+
+            <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Linen Injected Value ($) by {metricLabel}</h3>
+                            <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Comparing total injected values and physical quantities</p>
+                        </div>
+                        <span className="text-xs text-tertiary dark:text-gray-500">{chartData.length} {metricLabel.toLowerCase()} groups</span>
+                    </div>
+                    <div className="h-[340px] min-w-[560px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 70 }}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.18} vertical={false} />
+                                <XAxis dataKey="name" angle={-35} textAnchor="end" height={88} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
+                                <YAxis tickFormatter={(val) => `$${Number(val).toLocaleString()}`} tick={{ fontSize: 12, fill: '#888' }} />
+                                <RechartsTooltip
+                                    formatter={(value: number, name: string) => [
+                                        name === 'injectedQty' ? numberValue(value) : currency(value),
+                                        name === 'injectedQty' ? 'Injected Units' : 'Injected Value'
+                                    ]}
+                                    labelFormatter={(label) => `${metricLabel}: ${label}`}
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                />
+                                <Legend />
+                                <Bar dataKey="injectedValue" name="Injected Value ($)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 flex flex-col justify-between">
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Top Injected Linen Items</h3>
+                        <div className="space-y-3">
+                            {topItems.map((item, idx) => (
+                                <div key={`${item.item}-${idx}`} className="flex justify-between items-center text-xs border-b border-gray-100 dark:border-gray-800 pb-2.5">
+                                    <div className="min-w-0 pr-2">
+                                        <p className="font-bold text-gray-900 dark:text-white truncate" title={item.item}>{item.item}</p>
+                                        <p className="text-[10px] text-tertiary dark:text-gray-500 font-mono">
+                                            {item.sku || 'No SKU'} • {item.siteCount.size} site{item.siteCount.size === 1 ? '' : 's'}
+                                        </p>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        <p className="font-bold text-emerald-600 dark:text-emerald-400">{currency(item.totalValue)}</p>
+                                        <p className="text-[10px] text-tertiary dark:text-gray-500">{numberValue(item.totalQty)} units</p>
+                                    </div>
+                                </div>
+                            ))}
+                            {topItems.length === 0 && (
+                                <div className="text-center py-8 text-xs text-tertiary">No closed orders in selected range.</div>
+                            )}
+                        </div>
+                    </div>
+                    <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-secondary dark:text-gray-400 flex items-center justify-between">
+                        <span>Total Injected Volume:</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{numberValue(summary.totalInjectedUnits)} units</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: ReportRow[] }) => (
     <table className="w-full min-w-[900px] text-sm text-left">
         <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
@@ -1915,6 +2262,20 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-5 py-4">Status</th>
                     </>
                 )}
+                {activeReport === 'LINEN_INJECTION' && (
+                    <>
+                        <th className="px-5 py-4">Request # / PO # / Date</th>
+                        <th className="px-5 py-4">Site / Requester</th>
+                        <th className="px-5 py-4">Supplier</th>
+                        <th className="px-5 py-4">Item / SKU</th>
+                        <th className="px-5 py-4 text-center text-emerald-600 dark:text-emerald-400">Injected QTY</th>
+                        <th className="px-5 py-4 text-center">Ordered QTY</th>
+                        <th className="px-5 py-4 text-right">Unit Price</th>
+                        <th className="px-5 py-4 text-right text-emerald-600 dark:text-emerald-400">Injected Value</th>
+                        <th className="px-5 py-4">Completion Date</th>
+                        <th className="px-5 py-4">Status</th>
+                    </>
+                )}
             </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1949,6 +2310,7 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         {activeReport === 'ALL_DELIVERIES' && <AllDeliveryRow row={row} />}
                         {activeReport === 'DELIVERY_VARIANCE' && <DeliveryVarianceRow row={row as DeliveryVarianceReportRow} />}
                         {activeReport === 'ITEM_REQUEST_HISTORY' && <ItemRequestHistoryRowView row={row as ItemRequestHistoryRow} />}
+                        {activeReport === 'LINEN_INJECTION' && <LinenInjectionRowView row={row as LinenInjectionReportRow} />}
                         {activeReport === 'MONTHLY_SUMMARY' && <MonthlySummaryRow row={row as MonthlySummaryReportRow} />}
                         {activeReport === 'FINANCE_SUMMARY' && <FinanceRow row={row} />}
                         {activeReport === 'PO_STATUS' && <PoStatusRow row={row} />}
@@ -1982,6 +2344,46 @@ const ItemRequestHistoryRowView = ({ row }: { row: ItemRequestHistoryRow }) => (
         <td className="px-5 py-3 text-center font-bold text-orange-500">{numberValue(row.remainingQty)}</td>
         <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(row.totalValue)}</td>
         <td className="px-5 py-3"><StatusPill label={statusLabel(row.status)} /></td>
+    </>
+);
+
+const LinenInjectionRowView = ({ row }: { row: LinenInjectionReportRow }) => (
+    <>
+        <td className="px-5 py-3">
+            <div className="font-bold text-gray-900 dark:text-white">{row.requestNumber}</div>
+            {row.concurRequestNumber && (
+                <div className="text-[10px] text-tertiary dark:text-gray-500 font-mono">Concur Req: {row.concurRequestNumber}</div>
+            )}
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">PO: {row.poNumber || '-'}</div>
+            <div className="text-[10px] text-tertiary dark:text-gray-400">{row.requestDate}</div>
+        </td>
+        <td className="px-5 py-3 text-secondary dark:text-gray-300">
+            <div className="font-medium text-gray-900 dark:text-white">{row.site}</div>
+            <div className="text-[10px] text-tertiary dark:text-gray-500">{row.requester}</div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white">{row.supplier}</div>
+            {row.dockets && row.dockets !== '-' && (
+                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[150px]" title={`Docket: ${row.dockets}`}>Docket: {row.dockets}</div>
+            )}
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white max-w-[220px] truncate" title={row.item}>{row.item}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.sku || '-'}</div>
+        </td>
+        <td className="px-5 py-3 text-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">{numberValue(row.injectedQty)}</td>
+        <td className="px-5 py-3 text-center font-medium text-secondary dark:text-gray-400">{numberValue(row.orderedQty)}</td>
+        <td className="px-5 py-3 text-right text-secondary dark:text-gray-400">{currency(row.unitPrice)}</td>
+        <td className="px-5 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">{currency(row.injectedValue)}</td>
+        <td className="px-5 py-3 text-xs text-secondary dark:text-gray-400 whitespace-nowrap">
+            <div>{row.closedDate || row.latestDeliveryDate || row.requestDate}</div>
+            {row.latestDeliveryDate && row.latestDeliveryDate !== '-' && row.latestDeliveryDate !== row.closedDate && (
+                <div className="text-[9px] text-tertiary dark:text-gray-500">Delivered: {row.latestDeliveryDate}</div>
+            )}
+        </td>
+        <td className="px-5 py-3">
+            <StatusPill label="CLOSED" />
+        </td>
     </>
 );
 

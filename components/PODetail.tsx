@@ -347,7 +347,7 @@ const PODetail = () => {
 
   const canApprove = hasPermission('approve_requests') && po?.status === 'PENDING_APPROVAL';
   const canLinkConcurRequest = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR_REQUEST';
-  const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR';
+  const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id || isAdmin) && ['APPROVED_PENDING_CONCUR', 'ACTIVE'].includes(po?.status || '');
   const canReceive = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
   const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
   // isAdmin is defined at the top of the component
@@ -884,9 +884,9 @@ const PODetail = () => {
                     </button>
               )}
               {canLinkConcur && (
-                    <button disabled={isSubmitting} type="button" onClick={() => setIsConcurModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium disabled:opacity-50 disabled:animate-none">
-                       <LinkIcon size={18} /> Link Concur PO
-                    </button>
+                     <button disabled={isSubmitting} type="button" onClick={() => setIsConcurModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 font-medium disabled:opacity-50 ${po.status === 'APPROVED_PENDING_CONCUR' ? 'animate-pulse' : ''}`}>
+                        <LinkIcon size={18} /> {po.status === 'ACTIVE' ? 'Amend Concur PO' : 'Link Concur PO'}
+                     </button>
               )}
               {canReceive && (
                    <button disabled={isSubmitting} type="button" onClick={() => setIsDeliveryModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 rounded-xl flex items-center gap-2 font-medium shadow-lg transition-all disabled:opacity-50 ${
