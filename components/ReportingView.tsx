@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext.tsx';
 import {
     AlertCircle,
     BarChart3,
+    Building2,
     CheckCircle2,
     Download,
     FileText,
@@ -11,6 +12,7 @@ import {
     Search,
     TrendingUp,
     Layers,
+    ArrowRight,
     ArrowRightLeft,
     History,
     Calendar
@@ -1124,10 +1126,21 @@ const ReportingView = () => {
         };
     }, [linenInjectionRows]);
 
+    const handleSiteChange = (site: string) => {
+        setSelectedSite(site);
+        if (activeReport === 'LINEN_INJECTION') {
+            if (site !== 'ALL' && chartMetric === 'SITE') {
+                setChartMetric('ITEM');
+            } else if (site === 'ALL' && chartMetric === 'ITEM') {
+                setChartMetric('SITE');
+            }
+        }
+    };
+
     const switchReport = (report: ReportType) => {
         setActiveReport(report);
         setViewMode('CHART');
-        setChartMetric(report === 'ALL_DELIVERIES' ? 'DATE' : 'SUPPLIER');
+        setChartMetric(report === 'ALL_DELIVERIES' ? 'DATE' : report === 'LINEN_INJECTION' ? 'SITE' : 'SUPPLIER');
         setSearchTerm('');
         setSelectedSite('ALL');
         setSelectedSupplier('ALL');
@@ -1495,20 +1508,11 @@ const ReportingView = () => {
                                                     className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                                 />
                                             </label>
-                                            {isDateFilterableReport && (
-                                                <select
-                                                    value={selectedItemId}
-                                                    onChange={(event) => setSelectedItemId(event.target.value)}
-                                                    className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                >
-                                                    {itemOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                                                </select>
-                                            )}
                                             {activeReport !== 'SUPPLIER_INVENTORY' && activeReport !== 'SUPPLIER_ITEM_MAPPING' && activeReport !== 'SUPPLIER_PRICE_VARIANCE' && (
                                                 <select
                                                     value={selectedSite}
-                                                    onChange={(event) => setSelectedSite(event.target.value)}
-                                                    className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                    onChange={(event) => handleSiteChange(event.target.value)}
+                                                    className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none font-medium"
                                                 >
                                                     {siteOptions.map((site) => <option key={site} value={site}>{site === 'ALL' ? 'All sites' : site}</option>)}
                                                 </select>
@@ -1520,6 +1524,15 @@ const ReportingView = () => {
                                             >
                                                 {supplierOptions.map((supplier) => <option key={supplier} value={supplier}>{supplier === 'ALL' ? 'All suppliers' : supplier}</option>)}
                                             </select>
+                                            {isDateFilterableReport && (
+                                                <select
+                                                    value={selectedItemId}
+                                                    onChange={(event) => setSelectedItemId(event.target.value)}
+                                                    className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                >
+                                                    {itemOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                                                </select>
+                                            )}
                                             {activeReport === 'MONTHLY_SUMMARY' && (
                                                 <>
                                                     <div className="flex items-center gap-1.5 min-w-[140px]">
@@ -1626,7 +1639,14 @@ const ReportingView = () => {
                             ) : activeReport === 'ITEM_REQUEST_HISTORY' && viewMode === 'CHART' ? (
                                 <ItemRequestHistoryVisual summary={itemHistorySummary} chartData={itemHistoryChartData} selectedItemLabel={itemOptions.find((item) => item.id === selectedItemId)?.label || 'All items'} chartMetric={chartMetric} />
                             ) : activeReport === 'LINEN_INJECTION' && viewMode === 'CHART' ? (
-                                <LinenInjectionVisual rows={linenInjectionRows} summary={linenInjectionSummary} chartData={linenInjectionChartData} chartMetric={chartMetric} />
+                                <LinenInjectionVisual
+                                    rows={linenInjectionRows}
+                                    summary={linenInjectionSummary}
+                                    chartData={linenInjectionChartData}
+                                    chartMetric={chartMetric}
+                                    selectedSite={selectedSite}
+                                    onSelectSite={handleSiteChange}
+                                />
                             ) : activeReport === 'MONTHLY_SUMMARY' && viewMode === 'CHART' ? (
                                 <MonthlySummaryVisual rows={getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])} />
                             ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
@@ -1991,7 +2011,9 @@ const LinenInjectionVisual = ({
     rows,
     summary,
     chartData,
-    chartMetric
+    chartMetric,
+    selectedSite,
+    onSelectSite
 }: {
     rows: LinenInjectionReportRow[];
     summary: {
@@ -2007,9 +2029,132 @@ const LinenInjectionVisual = ({
     };
     chartData: Array<{ name: string; injectedValue: number; injectedQty: number; orderedQty: number; lineCount: number }>;
     chartMetric: ChartMetric;
+    selectedSite: string;
+    onSelectSite: (site: string) => void;
 }) => {
+    const isSingleSite = selectedSite !== 'ALL';
     const metricLabel = chartMetric === 'ITEM' ? 'Item' : chartMetric === 'SUPPLIER' ? 'Supplier' : chartMetric === 'DATE' ? 'Month / Date' : 'Site';
 
+    // Multi-site comparison metrics
+    const siteComparison = useMemo(() => {
+        const siteMap = new Map<string, {
+            site: string;
+            injectedValue: number;
+            injectedQty: number;
+            orderCount: Set<string>;
+            itemCount: Set<string>;
+            topItem: { name: string; value: number };
+            itemsMap: Map<string, { name: string; value: number }>;
+        }>();
+
+        rows.forEach((r) => {
+            const site = r.site || 'Unknown Site';
+            if (!siteMap.has(site)) {
+                siteMap.set(site, {
+                    site,
+                    injectedValue: 0,
+                    injectedQty: 0,
+                    orderCount: new Set(),
+                    itemCount: new Set(),
+                    topItem: { name: '', value: 0 },
+                    itemsMap: new Map()
+                });
+            }
+            const entry = siteMap.get(site)!;
+            entry.injectedValue += r.injectedValue;
+            entry.injectedQty += r.injectedQty;
+            entry.orderCount.add(r.poNumber || r.requestNumber);
+            entry.itemCount.add(r.item);
+
+            const currentItemVal = (entry.itemsMap.get(r.item)?.value || 0) + r.injectedValue;
+            entry.itemsMap.set(r.item, { name: r.item, value: currentItemVal });
+            if (currentItemVal > entry.topItem.value) {
+                entry.topItem = { name: r.item, value: currentItemVal };
+            }
+        });
+
+        return Array.from(siteMap.values())
+            .map((s) => ({
+                site: s.site,
+                injectedValue: s.injectedValue,
+                injectedQty: s.injectedQty,
+                orderCount: s.orderCount.size,
+                itemCount: s.itemCount.size,
+                topItemName: s.topItem.name,
+                spendPct: summary.totalInjectedValue > 0 ? (s.injectedValue / summary.totalInjectedValue) * 100 : 0
+            }))
+            .sort((a, b) => b.injectedValue - a.injectedValue);
+    }, [rows, summary.totalInjectedValue]);
+
+    // Single-site item & cost breakdown
+    const siteItemBreakdown = useMemo(() => {
+        const itemMap = new Map<string, {
+            item: string;
+            sku: string;
+            category: string;
+            supplier: string;
+            unitPrice: number;
+            injectedQty: number;
+            orderedQty: number;
+            injectedValue: number;
+            latestDate: string;
+        }>();
+
+        rows.forEach((r) => {
+            const key = r.sku ? `${r.item}__${r.sku}` : r.item;
+            if (!itemMap.has(key)) {
+                itemMap.set(key, {
+                    item: r.item,
+                    sku: r.sku,
+                    category: r.category,
+                    supplier: r.supplier,
+                    unitPrice: r.unitPrice,
+                    injectedQty: 0,
+                    orderedQty: 0,
+                    injectedValue: 0,
+                    latestDate: r.closedDate || r.latestDeliveryDate || r.requestDate
+                });
+            }
+            const entry = itemMap.get(key)!;
+            entry.injectedQty += r.injectedQty;
+            entry.orderedQty += r.orderedQty;
+            entry.injectedValue += r.injectedValue;
+            if (r.unitPrice) entry.unitPrice = r.unitPrice;
+            if (r.closedDate && (!entry.latestDate || new Date(r.closedDate).getTime() > new Date(entry.latestDate).getTime())) {
+                entry.latestDate = r.closedDate;
+            }
+        });
+
+        return Array.from(itemMap.values())
+            .map((item) => ({
+                ...item,
+                spendPct: summary.totalInjectedValue > 0 ? (item.injectedValue / summary.totalInjectedValue) * 100 : 0
+            }))
+            .sort((a, b) => b.injectedValue - a.injectedValue);
+    }, [rows, summary.totalInjectedValue]);
+
+    // Single-site supplier breakdown
+    const siteSupplierBreakdown = useMemo(() => {
+        const supplierMap = new Map<string, { supplier: string; injectedValue: number; injectedQty: number }>();
+        rows.forEach((r) => {
+            const supp = r.supplier || 'Unknown Supplier';
+            if (!supplierMap.has(supp)) {
+                supplierMap.set(supp, { supplier: supp, injectedValue: 0, injectedQty: 0 });
+            }
+            const entry = supplierMap.get(supp)!;
+            entry.injectedValue += r.injectedValue;
+            entry.injectedQty += r.injectedQty;
+        });
+
+        return Array.from(supplierMap.values())
+            .map((supp) => ({
+                ...supp,
+                spendPct: summary.totalInjectedValue > 0 ? (supp.injectedValue / summary.totalInjectedValue) * 100 : 0
+            }))
+            .sort((a, b) => b.injectedValue - a.injectedValue);
+    }, [rows, summary.totalInjectedValue]);
+
+    // Top network items (for multi-site mode)
     const topItems = useMemo(() => {
         const itemMap = new Map<string, { item: string; sku: string; supplier: string; totalQty: number; totalValue: number; siteCount: Set<string> }>();
         rows.forEach((r) => {
@@ -2027,43 +2172,85 @@ const LinenInjectionVisual = ({
 
     return (
         <div data-testid="linen-injection-report-visual" className="p-4 md:p-6 space-y-6">
+            {/* Focus Context Banner */}
+            {isSingleSite ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                            <Building2 size={16} />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300 uppercase tracking-wider">Site Focus</span>
+                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-600 text-white">{selectedSite}</span>
+                            </div>
+                            <p className="text-xs text-emerald-800/80 dark:text-emerald-400 mt-0.5">
+                                Showing item-level unit cost, quantities, and total expenditure for {selectedSite}.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => onSelectSite('ALL')}
+                        className="px-3 py-1.5 bg-white dark:bg-nocturne border border-emerald-300 dark:border-emerald-800 text-xs font-bold text-emerald-700 dark:text-emerald-300 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shrink-0 shadow-sm"
+                    >
+                        ← View All Sites Comparison
+                    </button>
+                </div>
+            ) : (
+                <div className="flex items-center justify-between gap-3 p-3 bg-blue-50/70 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs text-blue-800 dark:text-blue-300">
+                    <div className="flex items-center gap-2">
+                        <Building2 size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                        <span><strong>Multi-Site View:</strong> Comparing linen injection spend across <strong>{summary.siteCount} operating sites</strong>. Select a site to view its item &amp; cost breakdown.</span>
+                    </div>
+                    <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium shrink-0">Filter by Supplier using the dropdown above</span>
+                </div>
+            )}
+
+            {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                 <MetricCard
-                    label="Total Linen Injected"
+                    label={isSingleSite ? `${selectedSite} Injected Spend` : 'Total Linen Injected'}
                     value={currency(summary.totalInjectedValue)}
                     sub={`${numberValue(summary.totalInjectedUnits)} units delivered`}
                     icon={TrendingUp}
                     color="bg-emerald-600"
                 />
                 <MetricCard
-                    label="Injected Units"
+                    label={isSingleSite ? 'Site Injected Units' : 'Total Injected Units'}
                     value={numberValue(summary.totalInjectedUnits)}
                     sub={`Across ${summary.lineCount} closed line items`}
                     icon={Package}
                     color="bg-sky-500"
                 />
                 <MetricCard
-                    label="Closed PO Orders"
+                    label={isSingleSite ? 'Site Closed Orders' : 'Closed PO Orders'}
                     value={String(summary.closedPoCount)}
                     sub={`Avg ${currency(summary.closedPoCount ? summary.totalInjectedValue / summary.closedPoCount : 0)} per order`}
                     icon={CheckCircle2}
                     color="bg-blue-600"
                 />
                 <MetricCard
-                    label="Operational Coverage"
-                    value={`${summary.siteCount} Sites • ${summary.itemCount} Items`}
-                    sub={`Supplied by ${summary.supplierCount} partner${summary.supplierCount === 1 ? '' : 's'}`}
+                    label={isSingleSite ? 'Site Item Varieties' : 'Active Operating Sites'}
+                    value={isSingleSite ? `${summary.itemCount} Items` : `${summary.siteCount} Sites`}
+                    sub={isSingleSite ? `Supplied by ${summary.supplierCount} partner${summary.supplierCount === 1 ? '' : 's'}` : `Across ${summary.itemCount} items from ${summary.supplierCount} suppliers`}
                     icon={Layers}
                     color="bg-violet-600"
                 />
             </div>
 
+            {/* Upper Chart & Breakdown Cards */}
             <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
+                {/* Left Chart Card */}
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
                     <div className="flex items-center justify-between gap-3 mb-4">
                         <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Linen Injected Value ($) by {metricLabel}</h3>
-                            <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Comparing total injected values and physical quantities</p>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                                {isSingleSite ? `Item Spend & Cost Breakdown for ${selectedSite}` : `Site Total Spend Comparison ($)`}
+                            </h3>
+                            <p className="text-xs text-tertiary dark:text-gray-500 mt-1">
+                                {isSingleSite ? `Ranking top injected items by total expenditure at this facility` : `Comparing total linen injection investment across all operating locations`}
+                            </p>
                         </div>
                         <span className="text-xs text-tertiary dark:text-gray-500">{chartData.length} {metricLabel.toLowerCase()} groups</span>
                     </div>
@@ -2088,35 +2275,229 @@ const LinenInjectionVisual = ({
                     </div>
                 </div>
 
-                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 flex flex-col justify-between">
-                    <div>
-                        <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Top Injected Linen Items</h3>
-                        <div className="space-y-3">
-                            {topItems.map((item, idx) => (
-                                <div key={`${item.item}-${idx}`} className="flex justify-between items-center text-xs border-b border-gray-100 dark:border-gray-800 pb-2.5">
-                                    <div className="min-w-0 pr-2">
-                                        <p className="font-bold text-gray-900 dark:text-white truncate" title={item.item}>{item.item}</p>
-                                        <p className="text-[10px] text-tertiary dark:text-gray-500 font-mono">
-                                            {item.sku || 'No SKU'} • {item.siteCount.size} site{item.siteCount.size === 1 ? '' : 's'}
-                                        </p>
+                {/* Right Summary Card */}
+                {isSingleSite ? (
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 flex flex-col justify-between">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Supplier Spend for {selectedSite}</h3>
+                            <div className="space-y-3">
+                                {siteSupplierBreakdown.map((supp, idx) => (
+                                    <div key={`${supp.supplier}-${idx}`} className="text-xs border-b border-gray-100 dark:border-gray-800 pb-2.5">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <p className="font-bold text-gray-900 dark:text-white truncate" title={supp.supplier}>{supp.supplier}</p>
+                                            <p className="font-bold text-emerald-600 dark:text-emerald-400 shrink-0">{currency(supp.injectedValue)}</p>
+                                        </div>
+                                        <div className="flex items-center justify-between text-[10px] text-tertiary dark:text-gray-500">
+                                            <span>{numberValue(supp.injectedQty)} units</span>
+                                            <span>{percentValue(supp.spendPct)} of site spend</span>
+                                        </div>
+                                        <div className="w-full bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden mt-1">
+                                            <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, supp.spendPct)}%` }} />
+                                        </div>
                                     </div>
-                                    <div className="text-right shrink-0">
-                                        <p className="font-bold text-emerald-600 dark:text-emerald-400">{currency(item.totalValue)}</p>
-                                        <p className="text-[10px] text-tertiary dark:text-gray-500">{numberValue(item.totalQty)} units</p>
-                                    </div>
-                                </div>
-                            ))}
-                            {topItems.length === 0 && (
-                                <div className="text-center py-8 text-xs text-tertiary">No closed orders in selected range.</div>
-                            )}
+                                ))}
+                                {siteSupplierBreakdown.length === 0 && (
+                                    <div className="text-center py-8 text-xs text-tertiary">No supplier data for this site.</div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-secondary dark:text-gray-400 flex items-center justify-between">
+                            <span>Total Site Volume:</span>
+                            <span className="font-bold text-gray-900 dark:text-white">{numberValue(summary.totalInjectedUnits)} units</span>
                         </div>
                     </div>
-                    <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-secondary dark:text-gray-400 flex items-center justify-between">
-                        <span>Total Injected Volume:</span>
-                        <span className="font-bold text-gray-900 dark:text-white">{numberValue(summary.totalInjectedUnits)} units</span>
+                ) : (
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 flex flex-col justify-between">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Top Injected Linen Items</h3>
+                            <div className="space-y-3">
+                                {topItems.map((item, idx) => (
+                                    <div key={`${item.item}-${idx}`} className="flex justify-between items-center text-xs border-b border-gray-100 dark:border-gray-800 pb-2.5">
+                                        <div className="min-w-0 pr-2">
+                                            <p className="font-bold text-gray-900 dark:text-white truncate" title={item.item}>{item.item}</p>
+                                            <p className="text-[10px] text-tertiary dark:text-gray-500 font-mono">
+                                                {item.sku || 'No SKU'} • {item.siteCount.size} site{item.siteCount.size === 1 ? '' : 's'}
+                                            </p>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                            <p className="font-bold text-emerald-600 dark:text-emerald-400">{currency(item.totalValue)}</p>
+                                            <p className="text-[10px] text-tertiary dark:text-gray-500">{numberValue(item.totalQty)} units</p>
+                                        </div>
+                                    </div>
+                                ))}
+                                {topItems.length === 0 && (
+                                    <div className="text-center py-8 text-xs text-tertiary">No closed orders in selected range.</div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-secondary dark:text-gray-400 flex items-center justify-between">
+                            <span>Network Total Volume:</span>
+                            <span className="font-bold text-gray-900 dark:text-white">{numberValue(summary.totalInjectedUnits)} units</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Lower Section: Multi-Site Comparative Matrix OR Single-Site Item Cost Table */}
+            {!isSingleSite ? (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] overflow-hidden shadow-sm">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-gray-50/50 dark:bg-white/5">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <Building2 size={16} className="text-[var(--color-brand)]" />
+                                Site Expenditure Comparison Matrix
+                            </h3>
+                            <p className="text-xs text-tertiary dark:text-gray-500 mt-0.5">
+                                Comparative spend, injected quantities, and top item for each operating location
+                            </p>
+                        </div>
+                        <span className="text-xs font-semibold text-secondary dark:text-gray-400">
+                            {siteComparison.length} Active Sites
+                        </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-gray-50/80 dark:bg-gray-900/40 text-secondary dark:text-gray-400 uppercase text-[10px] font-bold border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="px-4 py-3">Site Location</th>
+                                    <th className="px-4 py-3 text-right">Injected Spend ($)</th>
+                                    <th className="px-4 py-3">% of Total Spend</th>
+                                    <th className="px-4 py-3 text-center">Injected Units</th>
+                                    <th className="px-4 py-3 text-center">Closed POs</th>
+                                    <th className="px-4 py-3">Top Injected Item</th>
+                                    <th className="px-4 py-3 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {siteComparison.map((site, idx) => (
+                                    <tr key={`${site.site}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                        <td className="px-4 py-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-black text-[10px] shrink-0">
+                                                {idx + 1}
+                                            </div>
+                                            <span>{site.site}</span>
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                                            {currency(site.injectedValue)}
+                                        </td>
+                                        <td className="px-4 py-3 min-w-[140px]">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
+                                                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, site.spendPct)}%` }} />
+                                                </div>
+                                                <span className="text-[11px] font-medium text-secondary dark:text-gray-400 w-10 text-right">{percentValue(site.spendPct)}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-medium text-gray-800 dark:text-gray-200">
+                                            {numberValue(site.injectedQty)}
+                                        </td>
+                                        <td className="px-4 py-3 text-center text-secondary dark:text-gray-400 font-mono">
+                                            {site.orderCount}
+                                        </td>
+                                        <td className="px-4 py-3 text-secondary dark:text-gray-300 max-w-[200px] truncate" title={site.topItemName}>
+                                            {site.topItemName || '-'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <button
+                                                type="button"
+                                                onClick={() => onSelectSite(site.site)}
+                                                className="px-2.5 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white dark:hover:bg-[var(--color-brand)] text-gray-700 dark:text-gray-300 rounded font-semibold text-[11px] transition-colors inline-flex items-center gap-1 shadow-sm"
+                                            >
+                                                Item Breakdown <ArrowRight size={12} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {siteComparison.length === 0 && (
+                                    <tr>
+                                        <td colSpan={7} className="text-center py-8 text-secondary dark:text-gray-400">No site activity found.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-            </div>
+            ) : (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] overflow-hidden shadow-sm">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-gray-50/50 dark:bg-white/5">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <Package size={16} className="text-emerald-600" />
+                                Injected Linen Item &amp; Cost Breakdown for {selectedSite}
+                            </h3>
+                            <p className="text-xs text-tertiary dark:text-gray-500 mt-0.5">
+                                Line item quantities, unit prices, total cost, and delivery dates for this site
+                            </p>
+                        </div>
+                        <span className="text-xs font-semibold text-secondary dark:text-gray-400">
+                            {siteItemBreakdown.length} Distinct Products
+                        </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-gray-50/80 dark:bg-gray-900/40 text-secondary dark:text-gray-400 uppercase text-[10px] font-bold border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="px-4 py-3">Item Name / SKU</th>
+                                    <th className="px-4 py-3">Category</th>
+                                    <th className="px-4 py-3">Supplier</th>
+                                    <th className="px-4 py-3 text-center text-emerald-600 dark:text-emerald-400">Injected QTY</th>
+                                    <th className="px-4 py-3 text-center">Ordered QTY</th>
+                                    <th className="px-4 py-3 text-right">Unit Price</th>
+                                    <th className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400 font-bold">Total Injected Cost</th>
+                                    <th className="px-4 py-3">% Site Spend</th>
+                                    <th className="px-4 py-3">Latest Activity</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {siteItemBreakdown.map((item, idx) => (
+                                    <tr key={`${item.item}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                        <td className="px-4 py-3">
+                                            <div className="font-bold text-gray-900 dark:text-white max-w-[240px] truncate" title={item.item}>{item.item}</div>
+                                            <div className="text-[10px] text-tertiary dark:text-gray-500 font-mono">{item.sku || '-'}</div>
+                                        </td>
+                                        <td className="px-4 py-3 text-secondary dark:text-gray-400">
+                                            <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[10px] font-medium">{item.category}</span>
+                                        </td>
+                                        <td className="px-4 py-3 text-secondary dark:text-gray-300 font-medium">
+                                            {item.supplier}
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">
+                                            {numberValue(item.injectedQty)}
+                                        </td>
+                                        <td className="px-4 py-3 text-center text-secondary dark:text-gray-400 font-medium">
+                                            {numberValue(item.orderedQty)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-secondary dark:text-gray-400 font-mono">
+                                            {currency(item.unitPrice)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20 text-sm">
+                                            {currency(item.injectedValue)}
+                                        </td>
+                                        <td className="px-4 py-3 min-w-[120px]">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                                                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, item.spendPct)}%` }} />
+                                                </div>
+                                                <span className="text-[10px] text-secondary dark:text-gray-400 w-8 text-right">{percentValue(item.spendPct)}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-secondary dark:text-gray-400 whitespace-nowrap text-[11px]">
+                                            {item.latestDate}
+                                        </td>
+                                    </tr>
+                                ))}
+                                {siteItemBreakdown.length === 0 && (
+                                    <tr>
+                                        <td colSpan={9} className="text-center py-8 text-secondary dark:text-gray-400">No items found for this site.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
