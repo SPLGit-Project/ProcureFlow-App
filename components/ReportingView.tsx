@@ -2280,17 +2280,17 @@ const LinenInjectionVisual = ({
 
             {/* Upper Chart & Breakdown Cards */}
             <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
-                {/* Left Clustered Bar Chart Card */}
+                {/* Left Bar Chart Card */}
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                         <div>
                             <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                                     {isSingleSite
-                                        ? `Item Injected vs. Ordered ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} for ${selectedSite}`
-                                        : `Site Injected vs. Ordered ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} Comparison`}
+                                        ? `Item Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} for ${selectedSite}`
+                                        : `Site Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} Comparison`}
                                 </h3>
-                                {/* Orientation Toggle: Horizontal Bar vs Vertical Cluster */}
+                                {/* Orientation Toggle: Horizontal Bar vs Vertical Bar */}
                                 <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-0.5 shadow-sm">
                                     <button
                                         type="button"
@@ -2300,7 +2300,7 @@ const LinenInjectionVisual = ({
                                                 ? 'bg-emerald-600 text-white shadow-sm'
                                                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                                         }`}
-                                        title="Horizontal Bar Chart (side-by-side horizontal bars, optimal for long product names)"
+                                        title="Horizontal Bar Chart (optimal for long product names)"
                                     >
                                         <AlignLeft size={12} />
                                         Horizontal Bar
@@ -2313,17 +2313,17 @@ const LinenInjectionVisual = ({
                                                 ? 'bg-emerald-600 text-white shadow-sm'
                                                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                                         }`}
-                                        title="Vertical Clustered Column Chart"
+                                        title="Vertical Bar Chart"
                                     >
                                         <BarChart3 size={12} />
-                                        Vertical Cluster
+                                        Vertical Bar
                                     </button>
                                 </div>
                             </div>
                             <p className="text-xs text-tertiary dark:text-gray-500 mt-1">
                                 {isSingleSite
-                                    ? `Clustered comparison of injected (received) vs. initial ordered amounts per product`
-                                    : `Clustered comparison of injected vs. ordered amounts across operating locations`}
+                                    ? `Ranking top injected items by total expenditure at this facility`
+                                    : `Comparing total linen injection investment across operating locations`}
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2377,33 +2377,20 @@ const LinenInjectionVisual = ({
                                         tickFormatter={(val) => typeof val === 'string' && val.length > 24 ? `${val.substring(0, 24)}...` : val}
                                     />
                                     <RechartsTooltip
-                                        formatter={(value: number, name: string) => [
+                                        formatter={(value: number) => [
                                             chartViewType === 'VALUE' ? currency(value) : `${numberValue(value)} units`,
-                                            name === 'injectedValue'
-                                                ? 'Injected (Delivered) Spend'
-                                                : name === 'orderedValue'
-                                                ? 'Ordered PO Value'
-                                                : name === 'injectedQty'
-                                                ? 'Injected Units'
-                                                : name === 'orderedQty'
-                                                ? 'Ordered Units'
-                                                : name
+                                            chartViewType === 'VALUE' ? 'Injected Spend' : 'Injected Units'
                                         ]}
                                         labelFormatter={(label) => `${metricLabel}: ${label}`}
                                         contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                     />
                                     <Legend />
-                                    {chartViewType === 'VALUE' ? (
-                                        <>
-                                            <Bar dataKey="injectedValue" name="Injected Spend ($)" fill="#10b981" radius={[0, 4, 4, 0]} />
-                                            <Bar dataKey="orderedValue" name="Ordered PO Value ($)" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Bar dataKey="injectedQty" name="Injected Units" fill="#10b981" radius={[0, 4, 4, 0]} />
-                                            <Bar dataKey="orderedQty" name="Ordered Units" fill="#6366f1" radius={[0, 4, 4, 0]} />
-                                        </>
-                                    )}
+                                    <Bar
+                                        dataKey={chartViewType === 'VALUE' ? 'injectedValue' : 'injectedQty'}
+                                        name={chartViewType === 'VALUE' ? 'Injected Spend ($)' : 'Injected Units (QTY)'}
+                                        fill="#10b981"
+                                        radius={[0, 4, 4, 0]}
+                                    />
                                 </BarChart>
                             ) : (
                                 <BarChart
@@ -2418,33 +2405,20 @@ const LinenInjectionVisual = ({
                                         tick={{ fontSize: 12, fill: '#888' }}
                                     />
                                     <RechartsTooltip
-                                        formatter={(value: number, name: string) => [
+                                        formatter={(value: number) => [
                                             chartViewType === 'VALUE' ? currency(value) : `${numberValue(value)} units`,
-                                            name === 'injectedValue'
-                                                ? 'Injected (Delivered) Spend'
-                                                : name === 'orderedValue'
-                                                ? 'Ordered PO Value'
-                                                : name === 'injectedQty'
-                                                ? 'Injected Units'
-                                                : name === 'orderedQty'
-                                                ? 'Ordered Units'
-                                                : name
+                                            chartViewType === 'VALUE' ? 'Injected Spend' : 'Injected Units'
                                         ]}
                                         labelFormatter={(label) => `${metricLabel}: ${label}`}
                                         contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                     />
                                     <Legend />
-                                    {chartViewType === 'VALUE' ? (
-                                        <>
-                                            <Bar dataKey="injectedValue" name="Injected Spend ($)" fill="#10b981" radius={[4, 4, 0, 0]} />
-                                            <Bar dataKey="orderedValue" name="Ordered PO Value ($)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Bar dataKey="injectedQty" name="Injected Units" fill="#10b981" radius={[4, 4, 0, 0]} />
-                                            <Bar dataKey="orderedQty" name="Ordered Units" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                                        </>
-                                    )}
+                                    <Bar
+                                        dataKey={chartViewType === 'VALUE' ? 'injectedValue' : 'injectedQty'}
+                                        name={chartViewType === 'VALUE' ? 'Injected Spend ($)' : 'Injected Units (QTY)'}
+                                        fill="#10b981"
+                                        radius={[4, 4, 0, 0]}
+                                    />
                                 </BarChart>
                             )}
                         </ResponsiveContainer>
