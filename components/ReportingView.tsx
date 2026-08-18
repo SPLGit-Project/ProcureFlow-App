@@ -30,7 +30,7 @@ import {
     XAxis,
     YAxis
 } from 'recharts';
-import type { Item, PORequest, POStatus } from '../types.ts';
+import type { Item, PORequest, POStatus, Site } from '../types.ts';
 
 type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY' | 'LINEN_INJECTION' | 'SUPPLIER_INVENTORY' | 'SUPPLIER_ITEM_MAPPING' | 'SUPPLIER_PRICE_VARIANCE';
 type ReportRow = Record<string, string | number>;
@@ -934,7 +934,8 @@ const buildCsv = (report: ReportType, data: ReportRow[]) => {
 };
 
 const ReportingView = () => {
-    const { pos, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers, hasPermission } = useApp();
+    const { pos, allPos, sites, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers, hasPermission } = useApp();
+    const reportPos = (allPos && allPos.length > 0) ? allPos : pos;
     useSetPageMeta({ disableBodyScroll: true });
     const [activeReport, setActiveReport] = useState<ReportType>(() => {
         const saved = sessionStorage.getItem('pf_active_report');
@@ -947,7 +948,10 @@ const ReportingView = () => {
     const [selectedSite, setSelectedSite] = useState('ALL');
     const [selectedSupplier, setSelectedSupplier] = useState('ALL');
     const [selectedItemId, setSelectedItemId] = useState('ALL');
-    const [dateRangeType, setDateRangeType] = useState<'RECENT' | 'HISTORICAL' | 'ALL' | 'CUSTOM'>('RECENT');
+    const [dateRangeType, setDateRangeType] = useState<'RECENT' | 'HISTORICAL' | 'ALL' | 'CUSTOM'>(() => {
+        const saved = sessionStorage.getItem('pf_active_report');
+        return saved === 'LINEN_INJECTION' ? 'ALL' : 'RECENT';
+    });
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [monthlyStartDate, setMonthlyStartDate] = useState('2025-07-01');
@@ -976,7 +980,11 @@ const ReportingView = () => {
     const isFilterableReport = FILTERABLE_REPORTS.includes(activeReport);
     const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport || activeReport === 'MONTHLY_SUMMARY' || isLinenInjectionReport || activeReport === 'SUPPLIER_INVENTORY' || activeReport === 'SUPPLIER_ITEM_MAPPING' || activeReport === 'SUPPLIER_PRICE_VARIANCE';
 
-    const siteOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.site || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
+    const siteOptions = useMemo(() => {
+        const fromData = reportData.map((row) => String(row.site || '')).filter(Boolean);
+        const fromContext = (sites || []).map((s) => s.name).filter(Boolean);
+        return ['ALL', ...Array.from(new Set([...fromData, ...fromContext])).sort((a, b) => a.localeCompare(b))];
+    }, [reportData, sites]);
     const supplierOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.supplier || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
 
     const itemOptions = useMemo(() => {
@@ -1019,27 +1027,34 @@ const ReportingView = () => {
             const matchesItem = selectedItemId === 'ALL' || row.itemId === selectedItemId || row.item === selectedItemId;
 
             let matchesDate = true;
-            if (isDateFilterableReport && row.requestDate) {
-                const requestTime = new Date(row.requestDate as string).getTime();
-                if (!isNaN(requestTime)) {
-                    if (dateRangeType === 'RECENT') {
-                        const threshold = new Date();
-                        threshold.setDate(threshold.getDate() - 30);
-                        matchesDate = requestTime >= threshold.getTime();
-                    } else if (dateRangeType === 'HISTORICAL') {
-                        const startDate = new Date('2025-07-01T00:00:00');
-                        matchesDate = requestTime >= startDate.getTime();
-                    } else if (dateRangeType === 'CUSTOM') {
-                        if (customStartDate) {
-                            const start = new Date(customStartDate + 'T00:00:00');
-                            if (!isNaN(start.getTime())) {
-                                matchesDate = matchesDate && requestTime >= start.getTime();
-                            }
-                        }
-                        if (customEndDate) {
-                            const end = new Date(customEndDate + 'T23:59:59');
-                            if (!isNaN(end.getTime())) {
-                                matchesDate = matchesDate && requestTime <= end.getTime();
+            if (isDateFilterableReport) {
+                if (dateRangeType === 'ALL') {
+                    matchesDate = true;
+                } else {
+                    const rawDate = (activeReport === 'LINEN_INJECTION' ? (row.closedDate || row.latestDeliveryDate || row.requestDate) : row.requestDate) as string;
+                    if (rawDate && rawDate !== '-') {
+                        const dateTime = new Date(rawDate).getTime();
+                        if (!isNaN(dateTime)) {
+                            if (dateRangeType === 'RECENT') {
+                                const threshold = new Date();
+                                threshold.setDate(threshold.getDate() - 30);
+                                matchesDate = dateTime >= threshold.getTime();
+                            } else if (dateRangeType === 'HISTORICAL') {
+                                const startDate = new Date('2025-07-01T00:00:00');
+                                matchesDate = dateTime >= startDate.getTime();
+                            } else if (dateRangeType === 'CUSTOM') {
+                                if (customStartDate) {
+                                    const start = new Date(customStartDate + 'T00:00:00');
+                                    if (!isNaN(start.getTime())) {
+                                        matchesDate = matchesDate && dateTime >= start.getTime();
+                                    }
+                                }
+                                if (customEndDate) {
+                                    const end = new Date(customEndDate + 'T23:59:59');
+                                    if (!isNaN(end.getTime())) {
+                                        matchesDate = matchesDate && dateTime <= end.getTime();
+                                    }
+                                }
                             }
                         }
                     }
@@ -1145,7 +1160,7 @@ const ReportingView = () => {
         setSelectedSite('ALL');
         setSelectedSupplier('ALL');
         setSelectedItemId('ALL');
-        setDateRangeType('RECENT');
+        setDateRangeType(report === 'LINEN_INJECTION' ? 'ALL' : 'RECENT');
         setCustomStartDate('');
         setCustomEndDate('');
         setMonthlyStartDate('2025-07-01');
@@ -1159,23 +1174,23 @@ const ReportingView = () => {
             let data: ReportRow[] = [];
 
             if (activeReport === 'OUTSTANDING_DELIVERIES') {
-                data = buildOutstandingDeliveryRows(pos);
+                data = buildOutstandingDeliveryRows(reportPos);
             } else if (activeReport === 'DELIVERY_VARIANCE') {
-                data = buildDeliveryVarianceRows(pos);
+                data = buildDeliveryVarianceRows(reportPos);
             } else if (activeReport === 'FINANCE_SUMMARY') {
-                data = buildFinanceRows(pos);
+                data = buildFinanceRows(reportPos);
             } else if (activeReport === 'ALL_DELIVERIES') {
-                data = buildAllDeliveriesRows(pos);
+                data = buildAllDeliveriesRows(reportPos);
             } else if (activeReport === 'PO_STATUS') {
-                data = buildPoStatusRows(pos);
+                data = buildPoStatusRows(reportPos);
             } else if (activeReport === 'DELIVERY_RECONCILIATION') {
-                data = buildReconciliationRows(pos);
+                data = buildReconciliationRows(reportPos);
             } else if (activeReport === 'ITEM_REQUEST_HISTORY') {
-                data = buildItemRequestHistoryRows(pos);
+                data = buildItemRequestHistoryRows(reportPos);
             } else if (activeReport === 'MONTHLY_SUMMARY') {
-                data = buildMonthlySummaryRows(pos, monthlyStartDate, monthlyEndDate);
+                data = buildMonthlySummaryRows(reportPos, monthlyStartDate, monthlyEndDate);
             } else if (activeReport === 'LINEN_INJECTION') {
-                data = buildLinenInjectionRows(pos, items);
+                data = buildLinenInjectionRows(reportPos, items);
             } else if (activeReport === 'SUPPLIER_INVENTORY') {
                 data = buildSupplierInventoryRows(stockSnapshots, suppliers);
             } else if (activeReport === 'SUPPLIER_ITEM_MAPPING') {
@@ -1646,6 +1661,7 @@ const ReportingView = () => {
                                     chartMetric={chartMetric}
                                     selectedSite={selectedSite}
                                     onSelectSite={handleSiteChange}
+                                    availableSites={sites}
                                 />
                             ) : activeReport === 'MONTHLY_SUMMARY' && viewMode === 'CHART' ? (
                                 <MonthlySummaryVisual rows={getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])} />
@@ -2013,7 +2029,8 @@ const LinenInjectionVisual = ({
     chartData,
     chartMetric,
     selectedSite,
-    onSelectSite
+    onSelectSite,
+    availableSites
 }: {
     rows: LinenInjectionReportRow[];
     summary: {
@@ -2031,11 +2048,12 @@ const LinenInjectionVisual = ({
     chartMetric: ChartMetric;
     selectedSite: string;
     onSelectSite: (site: string) => void;
+    availableSites?: Site[];
 }) => {
     const isSingleSite = selectedSite !== 'ALL';
     const metricLabel = chartMetric === 'ITEM' ? 'Item' : chartMetric === 'SUPPLIER' ? 'Supplier' : chartMetric === 'DATE' ? 'Month / Date' : 'Site';
 
-    // Multi-site comparison metrics
+    // Multi-site comparison metrics (seeded with all available operating sites)
     const siteComparison = useMemo(() => {
         const siteMap = new Map<string, {
             site: string;
@@ -2046,6 +2064,21 @@ const LinenInjectionVisual = ({
             topItem: { name: string; value: number };
             itemsMap: Map<string, { name: string; value: number }>;
         }>();
+
+        // Seed available organizational sites
+        (availableSites || []).forEach((s) => {
+            if (s.name) {
+                siteMap.set(s.name, {
+                    site: s.name,
+                    injectedValue: 0,
+                    injectedQty: 0,
+                    orderCount: new Set(),
+                    itemCount: new Set(),
+                    topItem: { name: '', value: 0 },
+                    itemsMap: new Map()
+                });
+            }
+        });
 
         rows.forEach((r) => {
             const site = r.site || 'Unknown Site';
@@ -2083,8 +2116,10 @@ const LinenInjectionVisual = ({
                 topItemName: s.topItem.name,
                 spendPct: summary.totalInjectedValue > 0 ? (s.injectedValue / summary.totalInjectedValue) * 100 : 0
             }))
-            .sort((a, b) => b.injectedValue - a.injectedValue);
-    }, [rows, summary.totalInjectedValue]);
+            .sort((a, b) => b.injectedValue - a.injectedValue || a.site.localeCompare(b.site));
+    }, [rows, summary.totalInjectedValue, availableSites]);
+
+    const activeSitesCount = siteComparison.filter(s => s.injectedValue > 0 || s.injectedQty > 0).length;
 
     // Single-site item & cost breakdown
     const siteItemBreakdown = useMemo(() => {
@@ -2201,7 +2236,7 @@ const LinenInjectionVisual = ({
                 <div className="flex items-center justify-between gap-3 p-3 bg-blue-50/70 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs text-blue-800 dark:text-blue-300">
                     <div className="flex items-center gap-2">
                         <Building2 size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
-                        <span><strong>Multi-Site View:</strong> Comparing linen injection spend across <strong>{summary.siteCount} operating sites</strong>. Select a site to view its item &amp; cost breakdown.</span>
+                        <span><strong>Multi-Site View:</strong> Comparing linen injection spend across <strong>{activeSitesCount} active sites</strong> ({siteComparison.length} operating facilities). Select a site to view its item &amp; cost breakdown.</span>
                     </div>
                     <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium shrink-0">Filter by Supplier using the dropdown above</span>
                 </div>
@@ -2352,7 +2387,7 @@ const LinenInjectionVisual = ({
                             </p>
                         </div>
                         <span className="text-xs font-semibold text-secondary dark:text-gray-400">
-                            {siteComparison.length} Active Sites
+                            {activeSitesCount} Active / {siteComparison.length} Total Operating Sites
                         </span>
                     </div>
 
@@ -2370,45 +2405,50 @@ const LinenInjectionVisual = ({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                                {siteComparison.map((site, idx) => (
-                                    <tr key={`${site.site}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                                        <td className="px-4 py-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                            <div className="w-6 h-6 rounded bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-black text-[10px] shrink-0">
-                                                {idx + 1}
-                                            </div>
-                                            <span>{site.site}</span>
-                                        </td>
-                                        <td className="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 text-sm">
-                                            {currency(site.injectedValue)}
-                                        </td>
-                                        <td className="px-4 py-3 min-w-[140px]">
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex-1 bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
-                                                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, site.spendPct)}%` }} />
+                                {siteComparison.map((site, idx) => {
+                                    const hasActivity = site.injectedValue > 0 || site.injectedQty > 0;
+                                    return (
+                                        <tr key={`${site.site}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                            <td className="px-4 py-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                                <div className={`w-6 h-6 rounded flex items-center justify-center font-black text-[10px] shrink-0 ${
+                                                    hasActivity ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                                                }`}>
+                                                    {idx + 1}
                                                 </div>
-                                                <span className="text-[11px] font-medium text-secondary dark:text-gray-400 w-10 text-right">{percentValue(site.spendPct)}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-center font-medium text-gray-800 dark:text-gray-200">
-                                            {numberValue(site.injectedQty)}
-                                        </td>
-                                        <td className="px-4 py-3 text-center text-secondary dark:text-gray-400 font-mono">
-                                            {site.orderCount}
-                                        </td>
-                                        <td className="px-4 py-3 text-secondary dark:text-gray-300 max-w-[200px] truncate" title={site.topItemName}>
-                                            {site.topItemName || '-'}
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <button
-                                                type="button"
-                                                onClick={() => onSelectSite(site.site)}
-                                                className="px-2.5 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white dark:hover:bg-[var(--color-brand)] text-gray-700 dark:text-gray-300 rounded font-semibold text-[11px] transition-colors inline-flex items-center gap-1 shadow-sm"
-                                            >
-                                                Item Breakdown <ArrowRight size={12} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                                <span>{site.site}</span>
+                                            </td>
+                                            <td className={`px-4 py-3 text-right font-bold text-sm ${hasActivity ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-600'}`}>
+                                                {currency(site.injectedValue)}
+                                            </td>
+                                            <td className="px-4 py-3 min-w-[140px]">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex-1 bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
+                                                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, site.spendPct)}%` }} />
+                                                    </div>
+                                                    <span className="text-[11px] font-medium text-secondary dark:text-gray-400 w-10 text-right">{percentValue(site.spendPct)}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-center font-medium text-gray-800 dark:text-gray-200">
+                                                {numberValue(site.injectedQty)}
+                                            </td>
+                                            <td className="px-4 py-3 text-center text-secondary dark:text-gray-400 font-mono">
+                                                {site.orderCount}
+                                            </td>
+                                            <td className="px-4 py-3 text-secondary dark:text-gray-300 max-w-[200px] truncate" title={site.topItemName}>
+                                                {site.topItemName || (hasActivity ? '-' : <span className="italic text-tertiary dark:text-gray-500 text-[11px]">No injection in period</span>)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onSelectSite(site.site)}
+                                                    className="px-2.5 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white dark:hover:bg-[var(--color-brand)] text-gray-700 dark:text-gray-300 rounded font-semibold text-[11px] transition-colors inline-flex items-center gap-1 shadow-sm"
+                                                >
+                                                    Item Breakdown <ArrowRight size={12} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                                 {siteComparison.length === 0 && (
                                     <tr>
                                         <td colSpan={7} className="text-center py-8 text-secondary dark:text-gray-400">No site activity found.</td>
