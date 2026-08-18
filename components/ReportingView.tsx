@@ -1299,7 +1299,7 @@ const ReportingView = () => {
     }, [itemHistoryRows, chartMetric]);
 
     const linenInjectionChartData = useMemo(() => {
-        const grouped: Record<string, { name: string; injectedValue: number; injectedQty: number; orderedQty: number; lineCount: number }> = {};
+        const grouped: Record<string, { name: string; injectedValue: number; orderedValue: number; injectedQty: number; orderedQty: number; lineCount: number }> = {};
         linenInjectionRows.forEach((row) => {
             let key = 'Unknown';
             if (chartMetric === 'SITE') key = row.site || 'Unknown Site';
@@ -1316,8 +1316,9 @@ const ReportingView = () => {
                 }
             }
 
-            grouped[key] ||= { name: key, injectedValue: 0, injectedQty: 0, orderedQty: 0, lineCount: 0 };
+            grouped[key] ||= { name: key, injectedValue: 0, orderedValue: 0, injectedQty: 0, orderedQty: 0, lineCount: 0 };
             grouped[key].injectedValue += row.injectedValue;
+            grouped[key].orderedValue += row.orderedValue;
             grouped[key].injectedQty += row.injectedQty;
             grouped[key].orderedQty += row.orderedQty;
             grouped[key].lineCount += 1;
@@ -2044,7 +2045,7 @@ const LinenInjectionVisual = ({
         supplierCount: number;
         itemCount: number;
     };
-    chartData: Array<{ name: string; injectedValue: number; injectedQty: number; orderedQty: number; lineCount: number }>;
+    chartData: Array<{ name: string; injectedValue: number; orderedValue: number; injectedQty: number; orderedQty: number; lineCount: number }>;
     chartMetric: ChartMetric;
     selectedSite: string;
     onSelectSite: (site: string) => void;
@@ -2052,6 +2053,7 @@ const LinenInjectionVisual = ({
 }) => {
     const isSingleSite = selectedSite !== 'ALL';
     const metricLabel = chartMetric === 'ITEM' ? 'Item' : chartMetric === 'SUPPLIER' ? 'Supplier' : chartMetric === 'DATE' ? 'Month / Date' : 'Site';
+    const [chartViewType, setChartViewType] = useState<'VALUE' | 'QTY'>('VALUE');
 
     // Multi-site comparison metrics (seeded with all available operating sites)
     const siteComparison = useMemo(() => {
@@ -2276,35 +2278,91 @@ const LinenInjectionVisual = ({
 
             {/* Upper Chart & Breakdown Cards */}
             <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
-                {/* Left Chart Card */}
+                {/* Left Clustered Bar Chart Card */}
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
-                    <div className="flex items-center justify-between gap-3 mb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                         <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                                {isSingleSite ? `Item Spend & Cost Breakdown for ${selectedSite}` : `Site Total Spend Comparison ($)`}
-                            </h3>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                                    {isSingleSite
+                                        ? `Item Injected vs. Ordered ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} for ${selectedSite}`
+                                        : `Site Injected vs. Ordered ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} Comparison`}
+                                </h3>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300">
+                                    Clustered Bar
+                                </span>
+                            </div>
                             <p className="text-xs text-tertiary dark:text-gray-500 mt-1">
-                                {isSingleSite ? `Ranking top injected items by total expenditure at this facility` : `Comparing total linen injection investment across all operating locations`}
+                                {isSingleSite
+                                    ? `Clustered comparison of injected (received) vs. initial ordered amounts per product`
+                                    : `Clustered comparison of injected vs. ordered amounts across operating locations`}
                             </p>
                         </div>
-                        <span className="text-xs text-tertiary dark:text-gray-500">{chartData.length} {metricLabel.toLowerCase()} groups</span>
+                        <div className="flex items-center gap-2">
+                            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-900/50">
+                                <button
+                                    type="button"
+                                    onClick={() => setChartViewType('VALUE')}
+                                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                                        chartViewType === 'VALUE'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-sm font-bold'
+                                            : 'text-tertiary dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    Spend ($)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setChartViewType('QTY')}
+                                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                                        chartViewType === 'QTY'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-sm font-bold'
+                                            : 'text-tertiary dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    Units (Qty)
+                                </button>
+                            </div>
+                            <span className="text-xs text-tertiary dark:text-gray-500 hidden sm:inline">{chartData.length} {metricLabel.toLowerCase()}s</span>
+                        </div>
                     </div>
                     <div className="h-[340px] min-w-[560px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 70 }}>
                                 <CartesianGrid strokeDasharray="3 3" opacity={0.18} vertical={false} />
                                 <XAxis dataKey="name" angle={-35} textAnchor="end" height={88} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
-                                <YAxis tickFormatter={(val) => `$${Number(val).toLocaleString()}`} tick={{ fontSize: 12, fill: '#888' }} />
+                                <YAxis
+                                    tickFormatter={(val) => chartViewType === 'VALUE' ? `$${Number(val).toLocaleString()}` : Number(val).toLocaleString()}
+                                    tick={{ fontSize: 12, fill: '#888' }}
+                                />
                                 <RechartsTooltip
                                     formatter={(value: number, name: string) => [
-                                        name === 'injectedQty' ? numberValue(value) : currency(value),
-                                        name === 'injectedQty' ? 'Injected Units' : 'Injected Value'
+                                        chartViewType === 'VALUE' ? currency(value) : `${numberValue(value)} units`,
+                                        name === 'injectedValue'
+                                            ? 'Injected (Delivered) Spend'
+                                            : name === 'orderedValue'
+                                            ? 'Ordered PO Value'
+                                            : name === 'injectedQty'
+                                            ? 'Injected Units'
+                                            : name === 'orderedQty'
+                                            ? 'Ordered Units'
+                                            : name
                                     ]}
                                     labelFormatter={(label) => `${metricLabel}: ${label}`}
                                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                 />
                                 <Legend />
-                                <Bar dataKey="injectedValue" name="Injected Value ($)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                {chartViewType === 'VALUE' ? (
+                                    <>
+                                        <Bar dataKey="injectedValue" name="Injected Spend ($)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="orderedValue" name="Ordered PO Value ($)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                    </>
+                                ) : (
+                                    <>
+                                        <Bar dataKey="injectedQty" name="Injected Units" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="orderedQty" name="Ordered Units" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                                    </>
+                                )}
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
