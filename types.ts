@@ -397,7 +397,10 @@ export interface PORequest {
   supplierId: string;
   supplierName: string;
   status: POStatus;
-  totalAmount: number;
+  totalAmount: number; // Stored subtotal (Ex-GST) for backwards compatibility
+  subtotalAmount?: number; // Explicit Ex-GST subtotal
+  taxTotalAmount?: number; // Total GST amount
+  totalAmountIncGst?: number; // Gross total amount including GST
   approvalHistory: ApprovalEvent[];
   lines: POLineItem[];
   deliveries: DeliveryHeader[];
@@ -422,6 +425,11 @@ export interface POLineItem {
   upq?: number; // Units Per Quantity (Pack Size)
   priceOptionId?: string;
   priceOptionLabel?: string;
+  // GST and Tax Calculation
+  taxCode?: string; // e.g. 'GST', 'FRE'
+  taxRate?: number; // percentage, e.g. 10.00
+  taxAmount?: number; // calculated GST amount
+  totalPriceIncGst?: number; // gross total amount (totalPrice + taxAmount)
   // Concur Linkage
   concurPoNumber?: string; // The external PO number from Concur
   isForceClosed?: boolean; // If true, line is considered complete even if qty < ordered

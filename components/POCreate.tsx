@@ -30,6 +30,7 @@ import ContextHelp from './ContextHelp.tsx';
 import PageHeader from './PageHeader';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
+import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations.ts';
 
 const PRICE_MATCH_TOLERANCE = 0.0001;
 const PO_CREATE_DRAFT_VERSION = 1;
@@ -319,7 +320,17 @@ const POCreate = () => {
           line.quantityOrdered
         );
         nextQty = Math.max(1, baseQty + delta);
-        return { ...line, quantityOrdered: nextQty, totalPrice: nextQty * line.unitPrice };
+        const pricing = calculateLinePricing(nextQty, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+        return {
+          ...line,
+          quantityOrdered: pricing.quantityOrdered,
+          unitPrice: pricing.unitPrice,
+          totalPrice: pricing.totalPrice,
+          taxCode: pricing.taxCode,
+          taxRate: pricing.taxRate,
+          taxAmount: pricing.taxAmount,
+          totalPriceIncGst: pricing.totalPriceIncGst
+        };
       }
       return line;
     }));
@@ -339,7 +350,17 @@ const POCreate = () => {
           quantityValue ?? quantityDrafts[lineId] ?? String(line.quantityOrdered),
           line.quantityOrdered
         );
-        return { ...line, quantityOrdered: parsedQty, totalPrice: parsedQty * line.unitPrice };
+        const pricing = calculateLinePricing(parsedQty, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+        return {
+          ...line,
+          quantityOrdered: pricing.quantityOrdered,
+          unitPrice: pricing.unitPrice,
+          totalPrice: pricing.totalPrice,
+          taxCode: pricing.taxCode,
+          taxRate: pricing.taxRate,
+          taxAmount: pricing.taxAmount,
+          totalPriceIncGst: pricing.totalPriceIncGst
+        };
       }
       return line;
     }));
@@ -351,7 +372,16 @@ const POCreate = () => {
     if (isNaN(newPrice)) return;
     setCart(prev => prev.map(line => {
         if (line.id === lineId) {
-            return { ...line, unitPrice: newPrice, totalPrice: line.quantityOrdered * newPrice };
+            const pricing = calculateLinePricing(line.quantityOrdered, newPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+            return {
+                ...line,
+                unitPrice: pricing.unitPrice,
+                totalPrice: pricing.totalPrice,
+                taxCode: pricing.taxCode,
+                taxRate: pricing.taxRate,
+                taxAmount: pricing.taxAmount,
+                totalPriceIncGst: pricing.totalPriceIncGst
+            };
         }
         return line;
     }));
@@ -391,6 +421,8 @@ const POCreate = () => {
       
       if (qty <= 0) return;
 
+      const pricing = calculateLinePricing(qty, price, 'GST', 10.0);
+
       setCart(prev => {
           const existing = prev.find(line =>
               isSameCartPriceLine(
@@ -403,12 +435,18 @@ const POCreate = () => {
           );
           if (existing) {
               const newQty = existing.quantityOrdered + qty;
+              const mergedPricing = calculateLinePricing(newQty, price, existing.taxCode || 'GST', existing.taxRate ?? 10.0);
               return prev.map(line => 
                   line.id === existing.id
                   ? {
                       ...line,
-                      quantityOrdered: newQty,
-                      totalPrice: Number((newQty * line.unitPrice).toFixed(2)),
+                      quantityOrdered: mergedPricing.quantityOrdered,
+                      unitPrice: mergedPricing.unitPrice,
+                      totalPrice: mergedPricing.totalPrice,
+                      taxCode: mergedPricing.taxCode,
+                      taxRate: mergedPricing.taxRate,
+                      taxAmount: mergedPricing.taxAmount,
+                      totalPriceIncGst: mergedPricing.totalPriceIncGst,
                       priceOptionId: line.priceOptionId ?? selectedPriceOptionId,
                       priceOptionLabel: line.priceOptionLabel ?? selectedPriceOptionLabel
                     }
@@ -420,10 +458,14 @@ const POCreate = () => {
               itemId: selectedDetailItem.id,
               itemName: selectedDetailItem.name,
               sku: selectedDetailItem.sku,
-              quantityOrdered: qty,
+              quantityOrdered: pricing.quantityOrdered,
               quantityReceived: 0,
-              unitPrice: price,
-              totalPrice: Number((price * qty).toFixed(2)),
+              unitPrice: pricing.unitPrice,
+              totalPrice: pricing.totalPrice,
+              taxCode: pricing.taxCode,
+              taxRate: pricing.taxRate,
+              taxAmount: pricing.taxAmount,
+              totalPriceIncGst: pricing.totalPriceIncGst,
               upq: upq,
               priceOptionId: selectedPriceOptionId,
               priceOptionLabel: selectedPriceOptionLabel
@@ -467,6 +509,8 @@ const POCreate = () => {
     setCart(finalCart);
     setQuantityDrafts({});
 
+    const totals = calculatePOTotals(finalCart);
+
     const newPO: PORequest = {
       id: currentSubmissionId,
       requestDate: requestDate,
@@ -477,7 +521,10 @@ const POCreate = () => {
       supplierId: selectedSupplier.id,
       supplierName: selectedSupplier.name,
       status: 'PENDING_APPROVAL',
-      totalAmount: finalCart.reduce((sum, line) => sum + line.totalPrice, 0),
+      totalAmount: totals.subtotalAmount,
+      subtotalAmount: totals.subtotalAmount,
+      taxTotalAmount: totals.taxTotalAmount,
+      totalAmountIncGst: totals.totalAmountIncGst,
       lines: finalCart,
       approvalHistory: [
         { id: uuidv4(), action: 'SUBMITTED', approverName: currentUser.name, date: getLocalDateInputValue() }
@@ -506,10 +553,20 @@ const POCreate = () => {
         const draft = quantityDrafts[line.id];
         if (draft !== undefined && draft !== String(line.quantityOrdered)) {
             const committedQty = sanitizeQuantity(draft, line.quantityOrdered);
-            return { ...line, quantityOrdered: committedQty, totalPrice: committedQty * line.unitPrice };
+            const pricing = calculateLinePricing(committedQty, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+            return {
+                ...line,
+                quantityOrdered: pricing.quantityOrdered,
+                totalPrice: pricing.totalPrice,
+                taxCode: pricing.taxCode,
+                taxRate: pricing.taxRate,
+                taxAmount: pricing.taxAmount,
+                totalPriceIncGst: pricing.totalPriceIncGst
+            };
         }
         return line;
     });
+    const totals = calculatePOTotals(finalCart);
     const draftPO: PORequest = {
         id: uuidv4(),
         requestDate,
@@ -520,7 +577,10 @@ const POCreate = () => {
         supplierId: selectedSupplier.id,
         supplierName: selectedSupplier.name,
         status: 'DRAFT',
-        totalAmount: finalCart.reduce((sum, line) => sum + line.totalPrice, 0),
+        totalAmount: totals.subtotalAmount,
+        subtotalAmount: totals.subtotalAmount,
+        taxTotalAmount: totals.taxTotalAmount,
+        totalAmountIncGst: totals.totalAmountIncGst,
         lines: finalCart,
         approvalHistory: [
             { id: uuidv4(), action: 'DRAFT_SAVED', approverName: currentUser.name, date: getLocalDateInputValue() }
@@ -542,7 +602,7 @@ const POCreate = () => {
     }
   };
 
-  const cartTotal = cart.reduce((s, l) => s + l.totalPrice, 0);
+  const cartTotals = useMemo(() => calculatePOTotals(cart), [cart]);
 
   // Cart Component (Used in Desktop Sidebar and Mobile Drawer)
   const CartContent = () => (
@@ -606,7 +666,10 @@ const POCreate = () => {
                                  <span className="text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">
                                      {line.quantityOrdered.toLocaleString()} x ${line.unitPrice.toFixed(2)}
                                  </span>
-                                 <span className="font-bold text-gray-900 dark:text-white">${line.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                 <div className="text-right">
+                                     <span className="font-bold text-gray-900 dark:text-white block">${line.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                     <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">(${Number(line.totalPriceIncGst ?? (line.totalPrice * 1.10)).toFixed(2)} inc GST)</span>
+                                 </div>
                              </div>
                          </div>
                     </div>
@@ -614,17 +677,30 @@ const POCreate = () => {
             )}
          </div>
          <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#15171e] shrink-0 pb-safe-or-4">
-             <div className="flex justify-between items-center mb-4">
-                 <span className="text-gray-500 dark:text-gray-400 text-sm">Total Estimated</span>
-                 <span className="text-xl font-bold text-gray-900 dark:text-white">
-                     ${cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                 </span>
+             <div className="space-y-1.5 mb-4 text-xs">
+                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                     <span>Subtotal (Ex GST)</span>
+                     <span className="font-semibold text-gray-900 dark:text-gray-200">${cartTotals.subtotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                 </div>
+                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                     <span>GST (10%)</span>
+                     <span className="font-semibold text-gray-900 dark:text-gray-200">${cartTotals.taxTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                 </div>
+                 <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between items-baseline">
+                     <div>
+                         <span className="text-sm font-bold text-gray-900 dark:text-white">Order Total (Inc GST)</span>
+                         <span className="block text-[10px] text-blue-600 dark:text-blue-400 font-medium">SAP Concur Parity Total</span>
+                     </div>
+                     <span className="text-lg font-black text-gray-900 dark:text-white">
+                         ${cartTotals.totalAmountIncGst.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                     </span>
+                 </div>
              </div>
              <button
                type="button"
                onClick={handleSaveDraft}
                disabled={!selectedSupplier || isSavingDraft || isSubmitting}
-               className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 py-2.5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex justify-center items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+               className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 py-2.5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex justify-center items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed mb-2"
              >
                {isSavingDraft ? 'Saving...' : <><Save size={15} /> Save as Draft</>}
              </button>
@@ -632,7 +708,7 @@ const POCreate = () => {
                type="button"
                onClick={() => guardedSubmit(handleSubmit)}
                disabled={cart.length === 0 || isSubmitting}
-               className="w-full bg-[var(--color-brand)] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+               className="w-full bg-[var(--color-brand)] text-white py-3 rounded-xl font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
              >
                 {isSubmitting ? 'Submitting...' : <>Submit Request <ArrowRight size={18} /></>}
              </button>
@@ -1137,7 +1213,7 @@ const POCreate = () => {
                      </div>
 
                      <div className="shrink-0 font-bold text-xs text-gray-900 dark:text-white transform -rotate-90 whitespace-nowrap mb-2">
-                         ${cartTotal.toLocaleString(undefined, { notation: 'compact' })}
+                         ${cartTotals.totalAmountIncGst.toLocaleString(undefined, { notation: 'compact' })}
                      </div>
                  </div>
              )}
@@ -1165,8 +1241,13 @@ const POCreate = () => {
                       <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mb-0.5">
                           <ShoppingCart size={12}/> {cart.length} items <ChevronUp size={12}/>
                       </div>
-                      <div className="font-bold text-xl text-gray-900 dark:text-white truncate">
-                          ${cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      <div className="flex items-baseline gap-2">
+                          <span className="font-bold text-xl text-gray-900 dark:text-white truncate">
+                              ${cartTotals.totalAmountIncGst.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                              (${cartTotals.subtotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} ex)
+                          </span>
                       </div>
                   </button>
                   <div className="flex gap-2">

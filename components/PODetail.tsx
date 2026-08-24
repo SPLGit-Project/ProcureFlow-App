@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
+import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations.ts';
 
 const PO_DETAIL_EDIT_DRAFT_VERSION = 1;
 const PO_DETAIL_EDIT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -549,10 +550,16 @@ const PODetail = () => {
       const parsed = Math.max(1, Math.floor(Number(rawValue) || 0));
       setEditableLines(prev => prev.map(line => {
           if (line.id !== lineId) return line;
+          const pricing = calculateLinePricing(parsed, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
           return {
               ...line,
-              quantityOrdered: parsed,
-              totalPrice: Number((parsed * line.unitPrice).toFixed(2))
+              quantityOrdered: pricing.quantityOrdered,
+              unitPrice: pricing.unitPrice,
+              totalPrice: pricing.totalPrice,
+              taxCode: pricing.taxCode,
+              taxRate: pricing.taxRate,
+              taxAmount: pricing.taxAmount,
+              totalPriceIncGst: pricing.totalPriceIncGst
           };
       }));
   };
@@ -561,10 +568,15 @@ const PODetail = () => {
       const parsed = Math.max(0, Number(rawValue) || 0);
       setEditableLines(prev => prev.map(line => {
           if (line.id !== lineId) return line;
+          const pricing = calculateLinePricing(line.quantityOrdered, parsed, line.taxCode || 'GST', line.taxRate ?? 10.0);
           return {
               ...line,
-              unitPrice: parsed,
-              totalPrice: Number((line.quantityOrdered * parsed).toFixed(2))
+              unitPrice: pricing.unitPrice,
+              totalPrice: pricing.totalPrice,
+              taxCode: pricing.taxCode,
+              taxRate: pricing.taxRate,
+              taxAmount: pricing.taxAmount,
+              totalPriceIncGst: pricing.totalPriceIncGst
           };
       }));
   };
@@ -585,16 +597,21 @@ const PODetail = () => {
       const quantityOrdered = Math.max(1, Math.floor(Number(addItemQty) || 0));
       const unitPrice = Math.max(0, Number(addItemPrice) || 0);
       const selectedPriceOption = normalizeItemPriceOptions(selectedItem).find(opt => opt.id === addItemPriceOptionId);
+      const pricing = calculateLinePricing(quantityOrdered, unitPrice, 'GST', 10.0);
 
       const newLine: POLineItem = {
           id: uuidv4(),
           itemId: selectedItem.id,
           itemName: selectedItem.name,
           sku: selectedItem.sku,
-          quantityOrdered,
+          quantityOrdered: pricing.quantityOrdered,
           quantityReceived: 0,
-          unitPrice,
-          totalPrice: Number((quantityOrdered * unitPrice).toFixed(2)),
+          unitPrice: pricing.unitPrice,
+          totalPrice: pricing.totalPrice,
+          taxCode: pricing.taxCode,
+          taxRate: pricing.taxRate,
+          taxAmount: pricing.taxAmount,
+          totalPriceIncGst: pricing.totalPriceIncGst,
           priceOptionId: selectedPriceOption?.id,
           priceOptionLabel: selectedPriceOption?.label
       };
@@ -1242,96 +1259,159 @@ const PODetail = () => {
                           )}
                       </div>
                   )}
+
+                  {/* Financial Summary KPI Cards for Lines */}
+                  {linesInView.length > 0 && (() => {
+                      const viewTotals = calculatePOTotals(linesInView);
+                      return (
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-gray-50/70 dark:bg-white/5 border-b border-gray-200 dark:border-gray-800">
+                              <div className="p-3 bg-white dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-700/60 shadow-xs">
+                                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Subtotal (Ex GST)</p>
+                                  <p className="text-base font-bold text-gray-900 dark:text-white mt-0.5">{formatCurrency(viewTotals.subtotalAmount)}</p>
+                              </div>
+                              <div className="p-3 bg-white dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-700/60 shadow-xs">
+                                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">GST (10%)</p>
+                                  <p className="text-base font-bold text-gray-900 dark:text-white mt-0.5">{formatCurrency(viewTotals.taxTotalAmount)}</p>
+                              </div>
+                              <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-800/40 shadow-xs">
+                                  <div className="flex items-center justify-between">
+                                      <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">Order Total (Inc GST)</p>
+                                      <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300">SAP Concur</span>
+                                  </div>
+                                  <p className="text-base font-black text-blue-900 dark:text-blue-200 mt-0.5">{formatCurrency(viewTotals.totalAmountIncGst)}</p>
+                              </div>
+                          </div>
+                      );
+                  })()}
+
                   <table className="w-full text-left text-sm text-secondary dark:text-gray-400">
                       <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
                           <tr>
                               <th className="px-6 py-4">Item Details</th>
-                              <th className="px-6 py-4 text-center">Ordered</th>
-                              <th className="px-6 py-4 text-center">Received</th>
-                              <th className="px-6 py-4 text-right">Unit Price</th>
-                              <th className="px-6 py-4 text-right">Total</th>
-                              {isEditing && <th className="px-6 py-4 text-center">Actions</th>}
+                              <th className="px-4 py-4 text-center">Ordered</th>
+                              <th className="px-4 py-4 text-center">Received</th>
+                              <th className="px-4 py-4 text-right">Unit Price (Ex)</th>
+                              <th className="px-3 py-4 text-center">Tax Code</th>
+                              <th className="px-4 py-4 text-right">GST (10%)</th>
+                              <th className="px-6 py-4 text-right">Total (Inc GST)</th>
+                              {isEditing && <th className="px-4 py-4 text-center">Actions</th>}
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                          {linesInView.map(line => (
-                              <tr key={line.id} className="hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors">
-                                  <td className="px-6 py-4">
-                                      <div className="font-bold text-primary dark:text-white">{line.itemName}</div>
-                                      <div className="text-xs text-tertiary dark:text-gray-500 font-mono mt-0.5">{line.sku}</div>
-                                      {line.priceOptionLabel && (
-                                          <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-1">{line.priceOptionLabel}</div>
-                                      )}
-                                  </td>
-                                  <td className="px-6 py-4 text-center font-medium text-primary dark:text-white">
-                                      {isEditing ? (
-                                          <input 
-                                              type="number" 
-                                              className="w-20 px-2 py-1 text-center border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                                              value={line.quantityOrdered}
-                                              min={1}
-                                              step={1}
-                                              onChange={(e) => handleLineQtyChange(line.id, e.target.value)}
-                                          />
-                                      ) : (
-                                          line.quantityOrdered
-                                      )}
-                                  </td>
-                                  <td className="px-6 py-4 text-center">
-                                      <div className="flex flex-col items-center justify-center">
-                                          <span className={line.quantityReceived >= line.quantityOrdered ? 'text-green-600 dark:text-green-500 font-bold' : 'text-secondary'}>
-                                              {line.quantityReceived}
-                                          </span>
-                                          {line.quantityReceived > line.quantityOrdered && (
-                                              <span className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-500/20 mt-1 whitespace-nowrap">
-                                                  +{line.quantityReceived - line.quantityOrdered} Over
-                                              </span>
+                          {linesInView.map(line => {
+                              const pricing = calculateLinePricing(
+                                  line.quantityOrdered,
+                                  line.unitPrice,
+                                  line.taxCode || 'GST',
+                                  line.taxRate ?? 10.0
+                              );
+                              return (
+                                  <tr key={line.id} className="hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors">
+                                      <td className="px-6 py-4">
+                                          <div className="font-bold text-primary dark:text-white">{line.itemName}</div>
+                                          <div className="text-xs text-tertiary dark:text-gray-500 font-mono mt-0.5">{line.sku}</div>
+                                          {line.priceOptionLabel && (
+                                              <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-1">{line.priceOptionLabel}</div>
                                           )}
-                                      </div>
-                                  </td>
-                                  <td className="px-6 py-4 text-right">
-                                      {isEditing ? (
-                                          <div className="flex items-center justify-end gap-1">
-                                              <span className="text-gray-400">$</span>
+                                      </td>
+                                      <td className="px-4 py-4 text-center font-medium text-primary dark:text-white">
+                                          {isEditing ? (
                                               <input 
                                                   type="number" 
-                                                  className="w-24 px-2 py-1 text-right border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                                                  value={line.unitPrice}
-                                                  step="0.01"
-                                                  min="0"
-                                                  onChange={(e) => handleLinePriceChange(line.id, e.target.value)}
+                                                  className="w-20 px-2 py-1 text-center border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                  value={line.quantityOrdered}
+                                                  min={1}
+                                                  step={1}
+                                                  onChange={(e) => handleLineQtyChange(line.id, e.target.value)}
                                               />
-                                          </div>
-                                      ) : (
-                                          `$${line.unitPrice.toFixed(2)}`
-                                      )}
-                                  </td>
-                                  <td className="px-6 py-4 text-right font-bold text-primary dark:text-white">
-                                      ${(line.totalPrice ?? (line.quantityOrdered * line.unitPrice)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </td>
-                                  {isEditing && canEditRequest && (
-                                      <td className="px-6 py-4 text-center">
-                                          <button
-                                              type="button"
-                                              onClick={() => handleRemoveDraftLine(line.id)}
-                                              disabled={linesInView.length <= 1}
-                                              className="p-2 text-red-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed"
-                                              title={linesInView.length <= 1 ? 'At least one line is required' : 'Remove line'}
-                                          >
-                                              <Trash2 size={16} />
-                                          </button>
+                                          ) : (
+                                              line.quantityOrdered
+                                          )}
                                       </td>
-                                  )}
-                              </tr>
-                          ))}
+                                      <td className="px-4 py-4 text-center">
+                                          <div className="flex flex-col items-center justify-center">
+                                              <span className={line.quantityReceived >= line.quantityOrdered ? 'text-green-600 dark:text-green-500 font-bold' : 'text-secondary'}>
+                                                  {line.quantityReceived}
+                                              </span>
+                                              {line.quantityReceived > line.quantityOrdered && (
+                                                  <span className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-500/20 mt-1 whitespace-nowrap">
+                                                      +{line.quantityReceived - line.quantityOrdered} Over
+                                                  </span>
+                                              )}
+                                          </div>
+                                      </td>
+                                      <td className="px-4 py-4 text-right">
+                                          {isEditing ? (
+                                              <div className="flex items-center justify-end gap-1">
+                                                  <span className="text-gray-400">$</span>
+                                                  <input 
+                                                      type="number" 
+                                                      className="w-24 px-2 py-1 text-right border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                      value={line.unitPrice}
+                                                      step="0.01"
+                                                      min="0"
+                                                      onChange={(e) => handleLinePriceChange(line.id, e.target.value)}
+                                                  />
+                                              </div>
+                                          ) : (
+                                              formatCurrency(line.unitPrice)
+                                          )}
+                                      </td>
+                                      <td className="px-3 py-4 text-center">
+                                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                              {line.taxCode || 'GST'}
+                                          </span>
+                                      </td>
+                                      <td className="px-4 py-4 text-right font-mono text-gray-600 dark:text-gray-300 text-xs">
+                                          {formatCurrency(pricing.taxAmount)}
+                                      </td>
+                                      <td className="px-6 py-4 text-right font-bold text-primary dark:text-white">
+                                          <div>{formatCurrency(pricing.totalPriceIncGst)}</div>
+                                          <div className="text-[10px] font-normal text-gray-400">({formatCurrency(pricing.totalPrice)} ex)</div>
+                                      </td>
+                                      {isEditing && canEditRequest && (
+                                          <td className="px-4 py-4 text-center">
+                                              <button
+                                                  type="button"
+                                                  onClick={() => handleRemoveDraftLine(line.id)}
+                                                  disabled={linesInView.length <= 1}
+                                                  className="p-2 text-red-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed"
+                                                  title={linesInView.length <= 1 ? 'At least one line is required' : 'Remove line'}
+                                              >
+                                                  <Trash2 size={16} />
+                                              </button>
+                                          </td>
+                                      )}
+                                  </tr>
+                              );
+                          })}
                           {linesInView.length === 0 && (
                               <tr>
-                                  <td colSpan={isEditing ? 6 : 5} className="px-6 py-10 text-center text-gray-400">
+                                  <td colSpan={isEditing ? 8 : 7} className="px-6 py-10 text-center text-gray-400">
                                       No line items.
                                   </td>
                               </tr>
                           )}
                       </tbody>
+                      {linesInView.length > 0 && (() => {
+                          const viewTotals = calculatePOTotals(linesInView);
+                          return (
+                              <tfoot className="bg-gray-50/80 dark:bg-[#15171e] border-t-2 border-gray-200 dark:border-gray-800 font-semibold text-xs">
+                                  <tr>
+                                      <td colSpan={5} className="py-2.5 px-6 text-right text-gray-500 uppercase text-[10px] font-bold">Subtotal (Ex GST):</td>
+                                      <td colSpan={isEditing ? 3 : 2} className="py-2.5 px-6 text-right font-mono text-gray-900 dark:text-white">{formatCurrency(viewTotals.subtotalAmount)}</td>
+                                  </tr>
+                                  <tr>
+                                      <td colSpan={5} className="py-2 px-6 text-right text-gray-500 uppercase text-[10px] font-bold">Total GST (10%):</td>
+                                      <td colSpan={isEditing ? 3 : 2} className="py-2 px-6 text-right font-mono text-gray-900 dark:text-white">{formatCurrency(viewTotals.taxTotalAmount)}</td>
+                                  </tr>
+                                  <tr className="border-t border-gray-200 dark:border-gray-700 bg-blue-50/40 dark:bg-blue-900/10">
+                                      <td colSpan={5} className="py-3 px-6 text-right font-bold text-gray-900 dark:text-white uppercase text-[11px]">SAP Concur Order Total (Inc GST):</td>
+                                      <td colSpan={isEditing ? 3 : 2} className="py-3 px-6 text-right font-black text-base text-[var(--color-brand)] font-mono">{formatCurrency(viewTotals.totalAmountIncGst)}</td>
+                                  </tr>
+                              </tfoot>
+                          );
+                      })()}
                   </table>
               </div>
           )}

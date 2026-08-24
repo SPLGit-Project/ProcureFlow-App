@@ -61,6 +61,8 @@ interface LinenInjectionReportRow extends ReportRow {
     unitPrice: number;
     injectedValue: number;
     orderedValue: number;
+    injectedValueIncGst?: number;
+    orderedValueIncGst?: number;
     requester: string;
     status: POStatus;
 }
@@ -88,6 +90,11 @@ interface MonthlySummaryReportRow extends ReportRow {
     orderedValue: number;
     receivedValue: number;
     openValue: number;
+    taxRate?: number;
+    taxAmount?: number;
+    orderedValueIncGst?: number;
+    receivedValueIncGst?: number;
+    openValueIncGst?: number;
     status: POStatus;
 }
 
@@ -95,8 +102,11 @@ interface MonthlySummaryAggregatedRow extends ReportRow {
     monthKey: string;
     month: string;
     totalPoAmount: number;
+    totalPoAmountIncGst?: number;
     grAmount: number;
+    grAmountIncGst?: number;
     openPoAmount: number;
+    openPoAmountIncGst?: number;
 }
 type ViewMode = 'CHART' | 'RAW_DATA';
 type ChartMetric = 'DATE' | 'SUPPLIER' | 'SITE' | 'ITEM';
@@ -151,6 +161,10 @@ interface DeliveryReconciliationRow extends ReportRow {
     receivedValue: number;
     pendingValue: number;
     varianceValue: number;
+    orderedValueIncGst?: number;
+    receivedValueIncGst?: number;
+    pendingValueIncGst?: number;
+    varianceValueIncGst?: number;
     status: POStatus;
 }
 
@@ -377,6 +391,10 @@ const buildFinanceRows = (pos: PORequest[]): ReportRow[] => {
         po.deliveries.forEach((delivery) => {
             delivery.lines.forEach((line) => {
                 const poLine = po.lines.find((candidate) => candidate.id === line.poLineId);
+                const amountEx = Number(line.quantity || 0) * Number(poLine?.unitPrice || 0);
+                const taxRate = poLine?.taxRate ?? 10.0;
+                const taxAmount = Number((amountEx * (taxRate / 100)).toFixed(2));
+                const amountIncGst = Number((amountEx + taxAmount).toFixed(2));
                 data.push({
                     id: line.id,
                     poNumber: getPoNumber(po, poLine?.concurPoNumber),
@@ -384,7 +402,9 @@ const buildFinanceRows = (pos: PORequest[]): ReportRow[] => {
                     invoice: line.invoiceNumber || '-',
                     docket: delivery.docketNumber,
                     receivedDate: delivery.date,
-                    amount: Number(line.quantity || 0) * Number(poLine?.unitPrice || 0),
+                    amount: amountEx,
+                    taxAmount,
+                    amountIncGst,
                     isCapitalised: line.isCapitalised ? 'Yes' : 'No',
                     capDate: line.capitalisedDate || '-'
                 });
@@ -395,22 +415,31 @@ const buildFinanceRows = (pos: PORequest[]): ReportRow[] => {
     return data;
 };
 
-const buildPoStatusRows = (pos: PORequest[]): ReportRow[] => pos.map((po) => ({
-    id: po.id,
-    displayId: po.displayId || '',
-    supplier: po.supplierName,
-    requester: po.requesterName,
-    date: po.requestDate,
-    total: po.totalAmount,
-    status: po.status,
-    lineCount: po.lines.length
-}));
+const buildPoStatusRows = (pos: PORequest[]): ReportRow[] => pos.map((po) => {
+    const subtotal = po.subtotalAmount ?? po.totalAmount;
+    const gst = po.taxTotalAmount ?? Number((subtotal * 0.10).toFixed(2));
+    const totalIncGst = po.totalAmountIncGst ?? Number((subtotal + gst).toFixed(2));
+    return {
+        id: po.id,
+        displayId: po.displayId || '',
+        supplier: po.supplierName,
+        requester: po.requesterName,
+        date: po.requestDate,
+        subtotalExGst: subtotal,
+        taxGst: gst,
+        totalIncGst: totalIncGst,
+        total: totalIncGst,
+        status: po.status,
+        lineCount: po.lines.length
+    };
+});
 
 const buildReconciliationRows = (pos: PORequest[]): DeliveryReconciliationRow[] => {
     return pos.flatMap((po) => po.lines.map((line) => {
         const ordered = Number(line.quantityOrdered || 0);
         const received = Number(line.quantityReceived || 0);
         const unitPrice = Number(line.unitPrice || 0);
+        const taxRate = line.taxRate ?? 10.0;
         
         const pendingQty = Math.max(0, ordered - received);
         const overQty = Math.max(0, received - ordered);
@@ -419,6 +448,11 @@ const buildReconciliationRows = (pos: PORequest[]): DeliveryReconciliationRow[] 
         const receivedValue = received * unitPrice;
         const pendingValue = pendingQty * unitPrice;
         const varianceValue = receivedValue - orderedValue;
+
+        const orderedValueIncGst = Number((orderedValue * (1 + taxRate / 100)).toFixed(2));
+        const receivedValueIncGst = Number((receivedValue * (1 + taxRate / 100)).toFixed(2));
+        const pendingValueIncGst = Number((pendingValue * (1 + taxRate / 100)).toFixed(2));
+        const varianceValueIncGst = Number((varianceValue * (1 + taxRate / 100)).toFixed(2));
 
         return {
             id: line.id,
@@ -435,6 +469,10 @@ const buildReconciliationRows = (pos: PORequest[]): DeliveryReconciliationRow[] 
             receivedValue,
             pendingValue,
             varianceValue,
+            orderedValueIncGst,
+            receivedValueIncGst,
+            pendingValueIncGst,
+            varianceValueIncGst,
             status: po.status
         };
     })).sort((a, b) => b.orderedValue - a.orderedValue);
@@ -494,10 +532,16 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
             const received = Number(line.quantityReceived || 0);
             const remaining = line.isForceClosed ? 0 : Math.max(0, ordered - received);
             const unitPrice = Number(line.unitPrice || 0);
+            const taxRate = line.taxRate ?? 10.0;
 
             const orderedValue = ordered * unitPrice;
             const receivedValue = received * unitPrice;
             const openValue = remaining * unitPrice;
+
+            const taxAmount = Number((orderedValue * (taxRate / 100)).toFixed(2));
+            const orderedValueIncGst = Number((orderedValue + taxAmount).toFixed(2));
+            const receivedValueIncGst = Number((receivedValue * (1 + taxRate / 100)).toFixed(2));
+            const openValueIncGst = Number((openValue * (1 + taxRate / 100)).toFixed(2));
 
             const requestNumber = po.displayId || po.id.substring(0, 8);
             const concurRequestNumber = po.concurRequestNumber || '';
@@ -531,6 +575,11 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
                 orderedValue,
                 receivedValue,
                 openValue,
+                taxRate,
+                taxAmount,
+                orderedValueIncGst,
+                receivedValueIncGst,
+                openValueIncGst,
                 status: po.status
             });
         });
@@ -571,6 +620,9 @@ const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInje
             const unitPrice = Number(line.unitPrice || 0);
             const injectedValue = injectedQty * unitPrice;
             const orderedValue = orderedQty * unitPrice;
+            const taxRate = line.taxRate ?? 10.0;
+            const injectedValueIncGst = Number((injectedValue * (1 + taxRate / 100)).toFixed(2));
+            const orderedValueIncGst = Number((orderedValue * (1 + taxRate / 100)).toFixed(2));
 
             const concurPoNumber = line.concurPoNumber || po.concurPoNumber || '';
             const poNumber = getPoNumber(po, line.concurPoNumber);
@@ -605,6 +657,8 @@ const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInje
                 unitPrice,
                 injectedValue,
                 orderedValue,
+                injectedValueIncGst,
+                orderedValueIncGst,
                 requester: po.requesterName || 'Unknown',
                 status: po.status
             });
@@ -733,19 +787,25 @@ const getMonthlySummaryData = (rows: MonthlySummaryReportRow[]): MonthlySummaryA
     const summaryMap: Record<string, MonthlySummaryAggregatedRow> = {};
 
     rows.forEach((row) => {
-        const { monthKey, month, orderedValue, receivedValue, openValue } = row;
+        const { monthKey, month, orderedValue, receivedValue, openValue, orderedValueIncGst, receivedValueIncGst, openValueIncGst } = row;
         if (!summaryMap[monthKey]) {
             summaryMap[monthKey] = {
                 monthKey,
                 month,
                 totalPoAmount: 0,
+                totalPoAmountIncGst: 0,
                 grAmount: 0,
-                openPoAmount: 0
+                grAmountIncGst: 0,
+                openPoAmount: 0,
+                openPoAmountIncGst: 0
             };
         }
         summaryMap[monthKey].totalPoAmount += orderedValue;
+        summaryMap[monthKey].totalPoAmountIncGst = (summaryMap[monthKey].totalPoAmountIncGst || 0) + (orderedValueIncGst ?? orderedValue * 1.10);
         summaryMap[monthKey].grAmount += receivedValue;
+        summaryMap[monthKey].grAmountIncGst = (summaryMap[monthKey].grAmountIncGst || 0) + (receivedValueIncGst ?? receivedValue * 1.10);
         summaryMap[monthKey].openPoAmount += openValue;
+        summaryMap[monthKey].openPoAmountIncGst = (summaryMap[monthKey].openPoAmountIncGst || 0) + (openValueIncGst ?? openValue * 1.10);
     });
 
     return Object.values(summaryMap).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
@@ -799,10 +859,12 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'pendingQty', label: 'Pending Qty' },
             { key: 'overQty', label: 'Over Qty' },
             { key: 'unitPrice', label: 'Unit Price' },
-            { key: 'orderedValue', label: 'Ordered Value' },
-            { key: 'receivedValue', label: 'Delivered Value' },
-            { key: 'pendingValue', label: 'Pending Value' },
-            { key: 'varianceValue', label: 'Value Variance' },
+            { key: 'orderedValue', label: 'Ordered Value (Ex GST)' },
+            { key: 'orderedValueIncGst', label: 'Ordered Value (Inc GST)' },
+            { key: 'receivedValue', label: 'Delivered Value (Ex GST)' },
+            { key: 'receivedValueIncGst', label: 'Delivered Value (Inc GST)' },
+            { key: 'pendingValue', label: 'Pending Value (Ex GST)' },
+            { key: 'varianceValue', label: 'Value Variance (Ex GST)' },
             { key: 'status', label: 'PO Status' }
         ];
     }
@@ -827,6 +889,35 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
         ];
     }
 
+    if (report === 'FINANCE_SUMMARY') {
+        return [
+            { key: 'receivedDate', label: 'Received Date' },
+            { key: 'docket', label: 'Docket Number' },
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'poNumber', label: 'PO Number' },
+            { key: 'invoice', label: 'Invoice Number' },
+            { key: 'amount', label: 'Value (Ex GST)' },
+            { key: 'taxAmount', label: 'GST (10%)' },
+            { key: 'amountIncGst', label: 'Total (Inc GST)' },
+            { key: 'isCapitalised', label: 'Capitalised' },
+            { key: 'capDate', label: 'Capitalised Date' }
+        ];
+    }
+
+    if (report === 'PO_STATUS') {
+        return [
+            { key: 'displayId', label: 'Request / PO Number' },
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'requester', label: 'Requester' },
+            { key: 'date', label: 'Request Date' },
+            { key: 'subtotalExGst', label: 'Subtotal (Ex GST)' },
+            { key: 'taxGst', label: 'GST (10%)' },
+            { key: 'totalIncGst', label: 'Total (Inc GST / Concur)' },
+            { key: 'lineCount', label: 'Item Lines' },
+            { key: 'status', label: 'Status' }
+        ];
+    }
+
     if (report === 'MONTHLY_SUMMARY') {
         return [
             { key: 'month', label: 'Month' },
@@ -845,10 +936,14 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'deliveryDates', label: 'Delivery Dates' },
             { key: 'dockets', label: 'Delivery Dockets' },
             { key: 'invoices', label: 'Invoice Numbers' },
-            { key: 'unitPrice', label: 'Unit Price' },
-            { key: 'orderedValue', label: 'Ordered Value' },
-            { key: 'receivedValue', label: 'Received Value' },
-            { key: 'openValue', label: 'Open Value' },
+            { key: 'unitPrice', label: 'Unit Price (Ex GST)' },
+            { key: 'orderedValue', label: 'Ordered Value (Ex GST)' },
+            { key: 'taxAmount', label: 'GST (10%)' },
+            { key: 'orderedValueIncGst', label: 'Ordered Value (Inc GST)' },
+            { key: 'receivedValue', label: 'Received Value (Ex GST)' },
+            { key: 'receivedValueIncGst', label: 'Received Value (Inc GST)' },
+            { key: 'openValue', label: 'Open Value (Ex GST)' },
+            { key: 'openValueIncGst', label: 'Open Value (Inc GST)' },
             { key: 'status', label: 'PO Status' }
         ];
     }
@@ -1467,21 +1562,27 @@ const ReportingView = () => {
                                                 {activeReport === 'MONTHLY_SUMMARY' && (() => {
                                                     const summaryData = getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[]);
                                                     const totalPo = summaryData.reduce((sum, r) => sum + r.totalPoAmount, 0);
+                                                    const totalPoInc = summaryData.reduce((sum, r) => sum + (r.totalPoAmountIncGst || r.totalPoAmount * 1.10), 0);
                                                     const totalGr = summaryData.reduce((sum, r) => sum + r.grAmount, 0);
+                                                    const totalGrInc = summaryData.reduce((sum, r) => sum + (r.grAmountIncGst || r.grAmount * 1.10), 0);
                                                     const totalOpen = summaryData.reduce((sum, r) => sum + r.openPoAmount, 0);
+                                                    const totalOpenInc = summaryData.reduce((sum, r) => sum + (r.openPoAmountIncGst || r.openPoAmount * 1.10), 0);
                                                     return (
                                                         <>
                                                             <div className="flex items-center gap-1.5">
-                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total PO Issued:</span>
-                                                                {currency(totalPo)}
+                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total PO Issued (Inc GST):</span>
+                                                                <span className="font-bold">{currency(totalPoInc)}</span>
+                                                                <span className="text-[10px] text-gray-400">({currency(totalPo)} ex)</span>
                                                             </div>
                                                             <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
-                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Received (GR):</span>
-                                                                {currency(totalGr)}
+                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Received (Inc GST):</span>
+                                                                <span className="font-bold text-emerald-600 dark:text-emerald-400">{currency(totalGrInc)}</span>
+                                                                <span className="text-[10px] text-gray-400">({currency(totalGr)} ex)</span>
                                                             </div>
                                                             <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
-                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Open Value:</span>
-                                                                {currency(totalOpen)}
+                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Open (Inc GST):</span>
+                                                                <span className="font-bold text-orange-500">{currency(totalOpenInc)}</span>
+                                                                <span className="text-[10px] text-gray-400">({currency(totalOpen)} ex)</span>
                                                             </div>
                                                         </>
                                                     );
@@ -1980,10 +2081,13 @@ const ItemRequestHistoryVisual = ({ summary, chartData, selectedItemLabel, chart
 const MonthlySummaryVisual = ({ rows }: { rows: MonthlySummaryAggregatedRow[] }) => {
     const summary = useMemo(() => {
         const totalPo = rows.reduce((sum, r) => sum + r.totalPoAmount, 0);
+        const totalPoInc = rows.reduce((sum, r) => sum + (r.totalPoAmountIncGst || r.totalPoAmount * 1.10), 0);
         const totalGr = rows.reduce((sum, r) => sum + r.grAmount, 0);
+        const totalGrInc = rows.reduce((sum, r) => sum + (r.grAmountIncGst || r.grAmount * 1.10), 0);
         const totalOpen = rows.reduce((sum, r) => sum + r.openPoAmount, 0);
+        const totalOpenInc = rows.reduce((sum, r) => sum + (r.openPoAmountIncGst || r.openPoAmount * 1.10), 0);
         const rate = totalPo > 0 ? (totalGr / totalPo) * 100 : 0;
-        return { totalPo, totalGr, totalOpen, rate, monthCount: rows.length };
+        return { totalPo, totalPoInc, totalGr, totalGrInc, totalOpen, totalOpenInc, rate, monthCount: rows.length };
     }, [rows]);
 
     const chartData = useMemo(() => {
@@ -1993,9 +2097,9 @@ const MonthlySummaryVisual = ({ rows }: { rows: MonthlySummaryAggregatedRow[] })
     return (
         <div data-testid="monthly-summary-report-visual" className="p-4 md:p-6 space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                <MetricCard label="Total PO Issued" value={currency(summary.totalPo)} sub={`Across ${summary.monthCount} month${summary.monthCount === 1 ? '' : 's'}`} icon={Package} color="bg-blue-600" />
-                <MetricCard label="Total Received (GR)" value={currency(summary.totalGr)} sub="Delivered goods value" icon={CheckCircle2} color="bg-emerald-600" />
-                <MetricCard label="Total Open Value" value={currency(summary.totalOpen)} sub="Outstanding unreceived value" icon={AlertCircle} color="bg-orange-500" />
+                <MetricCard label="Total PO Issued (Inc GST)" value={currency(summary.totalPoInc)} sub={`Ex GST: ${currency(summary.totalPo)} · ${summary.monthCount} mo`} icon={Package} color="bg-blue-600" />
+                <MetricCard label="Total Received (GR Inc GST)" value={currency(summary.totalGrInc)} sub={`Ex GST: ${currency(summary.totalGr)}`} icon={CheckCircle2} color="bg-emerald-600" />
+                <MetricCard label="Total Open Value (Inc GST)" value={currency(summary.totalOpenInc)} sub={`Ex GST: ${currency(summary.totalOpen)}`} icon={AlertCircle} color="bg-orange-500" />
                 <MetricCard label="Fulfillment Rate" value={percentValue(summary.rate)} sub="Goods Received vs PO Issued" icon={TrendingUp} color="bg-violet-600" />
             </div>
 
@@ -2769,7 +2873,9 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-6 py-4">Received / Docket</th>
                         <th className="px-6 py-4">Supplier</th>
                         <th className="px-6 py-4">Invoice #</th>
-                        <th className="px-6 py-4 text-right">Value</th>
+                        <th className="px-6 py-4 text-right">Value (Ex GST)</th>
+                        <th className="px-6 py-4 text-right">GST (10%)</th>
+                        <th className="px-6 py-4 text-right">Total (Inc GST)</th>
                         <th className="px-6 py-4 text-center">Capitalised</th>
                         <th className="px-6 py-4">Date</th>
                     </>
@@ -2778,7 +2884,9 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                     <>
                         <th className="px-6 py-4">PO Details</th>
                         <th className="px-6 py-4">Requester</th>
-                        <th className="px-6 py-4 text-right">Total</th>
+                        <th className="px-6 py-4 text-right">Subtotal (Ex GST)</th>
+                        <th className="px-6 py-4 text-right">GST (10%)</th>
+                        <th className="px-6 py-4 text-right">Total (Inc GST)</th>
                         <th className="px-6 py-4 text-center">Lines</th>
                         <th className="px-6 py-4">Status</th>
                     </>
@@ -2791,10 +2899,10 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-5 py-4 text-center">Ordered</th>
                         <th className="px-5 py-4 text-center">Received</th>
                         <th className="px-5 py-4 text-center text-orange-500">Remaining</th>
-                        <th className="px-5 py-4 text-right">Unit Price</th>
-                        <th className="px-5 py-4 text-right">Ordered Value</th>
-                        <th className="px-5 py-4 text-right">Received Value</th>
-                        <th className="px-5 py-4 text-right text-orange-500">Open Value</th>
+                        <th className="px-5 py-4 text-right">Unit Price (Ex)</th>
+                        <th className="px-5 py-4 text-right">Ordered (Inc GST)</th>
+                        <th className="px-5 py-4 text-right">Received (Inc GST)</th>
+                        <th className="px-5 py-4 text-right text-orange-500">Open (Inc GST)</th>
                         <th className="px-5 py-4">Status</th>
                     </>
                 )}
@@ -2806,8 +2914,9 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-5 py-4">Item / SKU</th>
                         <th className="px-5 py-4 text-center text-emerald-600 dark:text-emerald-400">Injected QTY</th>
                         <th className="px-5 py-4 text-center">Ordered QTY</th>
-                        <th className="px-5 py-4 text-right">Unit Price</th>
-                        <th className="px-5 py-4 text-right text-emerald-600 dark:text-emerald-400">Injected Value</th>
+                        <th className="px-5 py-4 text-right">Unit Price (Ex)</th>
+                        <th className="px-5 py-4 text-right text-emerald-600 dark:text-emerald-400">Injected (Inc GST)</th>
+                        <th className="px-5 py-4 text-right">Ordered (Inc GST)</th>
                         <th className="px-5 py-4">Completion Date</th>
                         <th className="px-5 py-4">Status</th>
                     </>
@@ -2831,10 +2940,17 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                             <td className="px-5 py-4 text-center font-medium">{numberValue(r.orderedQty)}</td>
                             <td className="px-5 py-4 text-center font-medium">{numberValue(r.receivedQty)}</td>
                             <td className="px-5 py-4 text-center font-bold text-orange-500">{numberValue(r.pendingQty)}</td>
-                            <td className="px-5 py-4 text-right font-medium">{currency(r.orderedValue)}</td>
-                            <td className="px-5 py-4 text-right font-medium">{currency(r.receivedValue)}</td>
-                            <td className={`px-5 py-4 text-right font-bold ${r.varianceValue > 0 ? 'text-red-500' : r.varianceValue < 0 ? 'text-orange-500' : 'text-emerald-500'}`}>
-                                {r.varianceValue > 0 ? '+' : ''}{currency(r.varianceValue)}
+                            <td className="px-5 py-4 text-right font-medium">
+                                <div>{currency(Number(r.orderedValueIncGst ?? (Number(r.orderedValue || 0) * 1.10)))}</div>
+                                <div className="text-[10px] text-gray-400">({currency(Number(r.orderedValue || 0))} ex)</div>
+                            </td>
+                            <td className="px-5 py-4 text-right font-medium">
+                                <div>{currency(Number(r.receivedValueIncGst ?? (Number(r.receivedValue || 0) * 1.10)))}</div>
+                                <div className="text-[10px] text-gray-400">({currency(Number(r.receivedValue || 0))} ex)</div>
+                            </td>
+                            <td className={`px-5 py-4 text-right font-bold ${Number(r.varianceValue || 0) > 0 ? 'text-red-500' : Number(r.varianceValue || 0) < 0 ? 'text-orange-500' : 'text-emerald-500'}`}>
+                                <div>{Number(r.varianceValue || 0) > 0 ? '+' : ''}{currency(Number(r.varianceValueIncGst ?? (Number(r.varianceValue || 0) * 1.10)))}</div>
+                                <div className="text-[10px] font-normal text-gray-400">({currency(Number(r.varianceValue || 0))} ex)</div>
                             </td>
                         </tr>
                     );
@@ -2878,7 +2994,7 @@ const ItemRequestHistoryRowView = ({ row }: { row: ItemRequestHistoryRow }) => (
         <td className="px-5 py-3 text-center font-medium">{numberValue(row.orderedQty)}</td>
         <td className="px-5 py-3 text-center text-green-600">{numberValue(row.receivedQty)}</td>
         <td className="px-5 py-3 text-center font-bold text-orange-500">{numberValue(row.remainingQty)}</td>
-        <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(row.totalValue)}</td>
+        <td className="px-5 py-3 text-right font-medium">{currency(row.totalValue)}</td>
         <td className="px-5 py-3"><StatusPill label={statusLabel(row.status)} /></td>
     </>
 );
@@ -2892,29 +3008,45 @@ const LinenInjectionRowView = ({ row }: { row: LinenInjectionReportRow }) => (
             )}
             <div className="text-xs text-tertiary dark:text-gray-500 font-mono">PO: {row.poNumber || '-'}</div>
             <div className="text-[10px] text-tertiary dark:text-gray-400">{row.requestDate}</div>
-        </td>
-        <td className="px-5 py-3 text-secondary dark:text-gray-300">
-            <div className="font-medium text-gray-900 dark:text-white">{row.site}</div>
-            <div className="text-[10px] text-tertiary dark:text-gray-500">{row.requester}</div>
-        </td>
-        <td className="px-5 py-3">
-            <div className="font-medium text-gray-900 dark:text-white">{row.supplier}</div>
             {row.dockets && row.dockets !== '-' && (
-                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[150px]" title={`Docket: ${row.dockets}`}>Docket: {row.dockets}</div>
+                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[180px] mt-0.5" title={`Dockets: ${row.dockets}`}>Dockets: {row.dockets}</div>
             )}
         </td>
         <td className="px-5 py-3">
-            <div className="font-medium text-gray-900 dark:text-white max-w-[220px] truncate" title={row.item}>{row.item}</div>
-            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.sku || '-'}</div>
+            <div className="font-medium text-gray-900 dark:text-white">{row.site}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500">{row.requester}</div>
         </td>
-        <td className="px-5 py-3 text-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">{numberValue(row.injectedQty)}</td>
-        <td className="px-5 py-3 text-center font-medium text-secondary dark:text-gray-400">{numberValue(row.orderedQty)}</td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white">{row.supplier}</div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white max-w-[200px] truncate" title={row.item}>{row.item}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.sku || '-'}</div>
+            <div className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">{row.category}</div>
+            {row.invoices && row.invoices !== '-' && (
+                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[180px] mt-0.5" title={`Invoices: ${row.invoices}`}>Invoices: {row.invoices}</div>
+            )}
+        </td>
+        <td className="px-5 py-3 text-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-900/10">
+            <div>{numberValue(row.injectedQty)}</div>
+            {row.deliveryDates && row.deliveryDates !== '-' && (
+                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[120px] mx-auto" title={`Delivered: ${row.deliveryDates}`}>Delivered: {row.deliveryDates}</div>
+            )}
+        </td>
+        <td className="px-5 py-3 text-center font-medium text-gray-600 dark:text-gray-400">{numberValue(row.orderedQty)}</td>
         <td className="px-5 py-3 text-right text-secondary dark:text-gray-400">{currency(row.unitPrice)}</td>
-        <td className="px-5 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">{currency(row.injectedValue)}</td>
-        <td className="px-5 py-3 text-xs text-secondary dark:text-gray-400 whitespace-nowrap">
-            <div>{row.closedDate || row.latestDeliveryDate || row.requestDate}</div>
+        <td className="px-5 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-900/10">
+            <div>{currency(row.injectedValueIncGst ?? row.injectedValue * 1.10)}</div>
+            <div className="text-[10px] font-normal text-gray-400">({currency(row.injectedValue)} ex)</div>
+        </td>
+        <td className="px-5 py-3 text-right font-medium text-gray-600 dark:text-gray-300">
+            <div>{currency(row.orderedValueIncGst ?? row.orderedValue * 1.10)}</div>
+            <div className="text-[10px] text-gray-400">({currency(row.orderedValue)} ex)</div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white text-xs">{row.closedDate}</div>
             {row.latestDeliveryDate && row.latestDeliveryDate !== '-' && row.latestDeliveryDate !== row.closedDate && (
-                <div className="text-[9px] text-tertiary dark:text-gray-500">Delivered: {row.latestDeliveryDate}</div>
+                <div className="text-[10px] text-tertiary dark:text-gray-500">Delivered: {row.latestDeliveryDate}</div>
             )}
         </td>
         <td className="px-5 py-3">
@@ -2956,9 +3088,18 @@ const MonthlySummaryRow = ({ row }: { row: MonthlySummaryReportRow }) => (
         </td>
         <td className="px-5 py-3 text-center font-bold text-orange-500 bg-orange-50/50 dark:bg-orange-900/5">{numberValue(row.remainingQty)}</td>
         <td className="px-5 py-3 text-right text-secondary dark:text-gray-400">{currency(row.unitPrice)}</td>
-        <td className="px-5 py-3 text-right font-medium">{currency(row.orderedValue)}</td>
-        <td className="px-5 py-3 text-right font-medium text-green-600 dark:text-green-400">{currency(row.receivedValue)}</td>
-        <td className="px-5 py-3 text-right font-bold text-orange-500 bg-orange-50/50 dark:bg-orange-900/5">{currency(row.openValue)}</td>
+        <td className="px-5 py-3 text-right font-medium">
+            <div>{currency(row.orderedValueIncGst ?? row.orderedValue * 1.10)}</div>
+            <div className="text-[10px] text-gray-400">({currency(row.orderedValue)} ex)</div>
+        </td>
+        <td className="px-5 py-3 text-right font-medium text-green-600 dark:text-green-400">
+            <div>{currency(row.receivedValueIncGst ?? row.receivedValue * 1.10)}</div>
+            <div className="text-[10px] text-gray-400">({currency(row.receivedValue)} ex)</div>
+        </td>
+        <td className="px-5 py-3 text-right font-bold text-orange-500 bg-orange-50/50 dark:bg-orange-900/5">
+            <div>{currency(row.openValueIncGst ?? row.openValue * 1.10)}</div>
+            <div className="text-[10px] font-normal text-gray-400">({currency(row.openValue)} ex)</div>
+        </td>
         <td className="px-5 py-3"><StatusPill label={statusLabel(row.status)} /></td>
     </>
 );
@@ -3039,6 +3180,8 @@ const FinanceRow = ({ row }: { row: ReportRow }) => (
         </td>
         <td className="px-6 py-3 font-mono text-xs">{row.invoice}</td>
         <td className="px-6 py-3 text-right font-medium">{currency(Number(row.amount || 0))}</td>
+        <td className="px-6 py-3 text-right font-mono text-xs text-gray-500">{currency(Number(row.taxAmount || 0))}</td>
+        <td className="px-6 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(Number(row.amountIncGst || 0))}</td>
         <td className="px-6 py-3 text-center">
             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${row.isCapitalised === 'Yes' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-secondary dark:bg-white/10 dark:text-gray-400'}`}>
                 {row.isCapitalised}
@@ -3058,7 +3201,9 @@ const PoStatusRow = ({ row }: { row: ReportRow }) => (
             <div className="text-sm">{row.requester}</div>
             <div className="text-xs text-tertiary dark:text-gray-400">{row.date}</div>
         </td>
-        <td className="px-6 py-3 text-right font-medium">{currency(Number(row.total || 0))}</td>
+        <td className="px-6 py-3 text-right font-mono text-xs">{currency(Number(row.subtotalExGst ?? (row.total || 0)))}</td>
+        <td className="px-6 py-3 text-right font-mono text-xs text-gray-500">{currency(Number(row.taxGst || 0))}</td>
+        <td className="px-6 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(Number(row.totalIncGst ?? (row.total || 0)))}</td>
         <td className="px-6 py-3 text-center">{row.lineCount}</td>
         <td className="px-6 py-3"><StatusPill label={statusLabel(String(row.status))} /></td>
     </>

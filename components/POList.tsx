@@ -21,6 +21,7 @@ import ContextHelp from './ContextHelp';
 import PageHeader from './PageHeader';
 import { useSetPageMeta } from '../context/PageMetaContext.tsx';
 import { ToastContainer, useToast } from './ToastNotification';
+import { formatCurrency } from '../utils/taxCalculations.ts';
 
 type BaseFilter = 'ALL' | 'PENDING' | 'COMPLETED';
 
@@ -517,7 +518,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                 <th className="px-6 py-4">Concur PR #</th>
                 <th className="px-6 py-4">Concur PO #</th>
                 {filter === 'PENDING' && <th className="px-6 py-4">Requester</th>}
-                <th className="px-6 py-4 text-right">Amount</th>
+                <th className="px-6 py-4 text-right">Total (Inc GST)</th>
                 <th className="px-6 py-4 text-center">Status</th>
                 <th className="px-6 py-4 text-center">Action</th>
               </tr>
@@ -554,7 +555,8 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                     </td>
                   )}
                   <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">
-                    ${po.totalAmount.toLocaleString()}
+                    <div className="font-semibold">{formatCurrency(po.totalAmountIncGst ?? (po.totalAmount * 1.10))}</div>
+                    <div className="text-[10px] text-gray-400 dark:text-gray-500 font-normal">({formatCurrency(po.subtotalAmount ?? po.totalAmount)} ex)</div>
                   </td>
                   <td className="px-6 py-4 text-center">
                     <StatusBadge status={po.status} />
@@ -610,7 +612,10 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                     {po.customerName || '-'}
                   </span>
                 </div>
-                <div className="font-bold text-gray-900 dark:text-white text-base">${po.totalAmount.toLocaleString()}</div>
+                <div className="text-right">
+                  <div className="font-bold text-gray-900 dark:text-white text-base">{formatCurrency(po.totalAmountIncGst ?? (po.totalAmount * 1.10))}</div>
+                  <div className="text-[10px] text-gray-400 dark:text-gray-500">({formatCurrency(po.subtotalAmount ?? po.totalAmount)} ex)</div>
+                </div>
               </div>
 
               {filter === 'PENDING' && (
