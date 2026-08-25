@@ -13,7 +13,7 @@ import {
 import catalogFlowLogo from '../docs/Logo Branding/APP-LOGOS/CatalogFlow-Logo.png';
 import priceFlowLogo from '../docs/Logo Branding/APP-LOGOS/PriceFlow-Logo.png';
 import procureFlowLogo from '../docs/Logo Branding/APP-LOGOS/ProcureFlow-Logo.png';
-import { getSessionLinenFact } from '../constants/linenFacts';
+import { getSessionLaundryInsight } from '../constants/linenFacts';
 
 interface CommandApp {
   id: string;
@@ -256,15 +256,14 @@ export default function Home() {
     ? homeExperience.greetingText
     : greetingOptions[getDayIndex(currentUser?.id || firstName, greetingOptions.length)];
   const messageType = homeExperience?.messageType || 'quote';
-  const linenFact = React.useMemo(() => getSessionLinenFact(), [currentUser?.id]);
-  const quoteTemplate = messageType === 'announcement'
+  const laundryInsight = React.useMemo(() => getSessionLaundryInsight(), [currentUser?.id]);
+  const isCustomOrAnnouncement = messageType === 'announcement' || (homeExperience?.quoteMode === 'custom' && Boolean(homeExperience.quoteText?.trim()));
+  const customMessage = messageType === 'announcement'
     ? (homeExperience?.quoteText?.trim() || 'No announcement is currently active.')
-    : homeExperience?.quoteMode === 'custom' && homeExperience.quoteText?.trim()
-      ? homeExperience.quoteText
-      : linenFact;
+    : (homeExperience?.quoteText?.trim() || '');
   const greeting = applyTemplate(greetingTemplate, templateValues);
-  const dailyMessage = applyTemplate(quoteTemplate, templateValues);
-  const dailyMessageLabel = messageType === 'announcement' ? 'Announcement' : "Today's focus";
+  const dailyMessage = applyTemplate(customMessage, templateValues);
+  const dailyMessageLabel = messageType === 'announcement' ? 'Announcement' : 'Laundry Insights';
 
   React.useEffect(() => {
     if (activeAppId && !commandApps.some(app => app.id === activeAppId)) {
@@ -285,9 +284,22 @@ export default function Home() {
               </h1>
             </div>
 
-            <div className="rounded-2xl border border-gray-200/80 bg-white/85 px-4 py-3 shadow-[0_14px_35px_rgba(15,23,42,0.08)] lg:w-[330px] dark:border-white/10 dark:bg-[#15171e] dark:shadow-none">
+            <div className="rounded-2xl border border-gray-200/80 bg-white/85 px-4 py-3 shadow-[0_14px_35px_rgba(15,23,42,0.08)] lg:w-[360px] dark:border-white/10 dark:bg-[#15171e] dark:shadow-none">
               <p className="text-[10px] font-black uppercase tracking-widest text-tranquil">{dailyMessageLabel}</p>
-              <p className="mt-2 text-sm font-semibold leading-6 text-gray-700 dark:text-white/70">{dailyMessage}</p>
+              {isCustomOrAnnouncement ? (
+                <p className="mt-2 text-sm font-semibold leading-6 text-gray-700 dark:text-white/70">{dailyMessage}</p>
+              ) : (
+                <div className="mt-2 space-y-1.5 text-xs">
+                  <p className="font-bold leading-snug text-gray-900 dark:text-white">
+                    <span className="mr-1.5 font-black text-tranquil">Q:</span>
+                    {laundryInsight.question}
+                  </p>
+                  <p className="font-medium leading-relaxed text-gray-600 dark:text-white/70">
+                    <span className="mr-1.5 font-black text-tranquil">A:</span>
+                    {laundryInsight.answer}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
