@@ -13,6 +13,7 @@ import {
 import catalogFlowLogo from '../docs/Logo Branding/APP-LOGOS/CatalogFlow-Logo.png';
 import priceFlowLogo from '../docs/Logo Branding/APP-LOGOS/PriceFlow-Logo.png';
 import procureFlowLogo from '../docs/Logo Branding/APP-LOGOS/ProcureFlow-Logo.png';
+import { getSessionLinenFact } from '../constants/linenFacts';
 
 interface CommandApp {
   id: string;
@@ -48,16 +49,6 @@ const greetingOptions = [
   '{first_name}, MercerFlow has prioritised the work that matters.',
   'Good to see you, {first_name}. Start with the signal that creates flow.',
   '{first_name}, your command view is tuned for {site_label}.',
-];
-
-const dailyQuotes = [
-  'Progress improves when the next best action is obvious.',
-  'Small improvements, repeated daily, become operational advantage.',
-  'Clear priorities turn busy teams into effective teams.',
-  'Leadership is making the important work easier to see.',
-  'Quality improves when decisions are visible, timely, and owned.',
-  'Continuous improvement starts with one well-chosen action.',
-  'The strongest systems reduce noise before they ask for effort.',
 ];
 
 const getDayIndex = (seed: string, length: number) => {
@@ -265,11 +256,12 @@ export default function Home() {
     ? homeExperience.greetingText
     : greetingOptions[getDayIndex(currentUser?.id || firstName, greetingOptions.length)];
   const messageType = homeExperience?.messageType || 'quote';
+  const linenFact = React.useMemo(() => getSessionLinenFact(), [currentUser?.id]);
   const quoteTemplate = messageType === 'announcement'
     ? (homeExperience?.quoteText?.trim() || 'No announcement is currently active.')
     : homeExperience?.quoteMode === 'custom' && homeExperience.quoteText?.trim()
       ? homeExperience.quoteText
-      : dailyQuotes[getDayIndex(`${currentUser?.id || firstName}-quote`, dailyQuotes.length)];
+      : linenFact;
   const greeting = applyTemplate(greetingTemplate, templateValues);
   const dailyMessage = applyTemplate(quoteTemplate, templateValues);
   const dailyMessageLabel = messageType === 'announcement' ? 'Announcement' : "Today's focus";

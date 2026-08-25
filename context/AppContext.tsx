@@ -12,6 +12,7 @@ import {
     SESSION_WARNING_WINDOW_MS,
     writeSessionLogoutNotice
 } from '../utils/sessionState.ts';
+import { resetSessionLinenFact } from '../constants/linenFacts.ts';
 
 interface DevelopmentFixtures {
   users: User[];
@@ -682,6 +683,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       hydrateDevelopmentData(fixtures);
       setRoles([...fixtures.roles]);
       clearRoleOverride();
+      resetSessionLinenFact();
       setCurrentUser(fixtures.adminUser);
       setIsAuthenticated(true);
       setIsPendingApproval(false);
@@ -946,6 +948,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             } else if (eventType === 'SIGNED_OUT') {
                 console.log("Auth: Signed out");
                 clearRoleOverride();
+                resetSessionLinenFact();
                 setCurrentUser(null);
                 setIsAuthenticated(false);
                 setIsPendingApproval(false);
@@ -1616,6 +1619,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
 
       clearRoleOverride();
+      resetSessionLinenFact();
 
       // Immediately clear local state so the UI instantly resets to the login screen
       setCurrentUser(null);

@@ -4565,11 +4565,11 @@ if __name__ == "__main__":
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    {(brandingForm.homeExperience?.messageType || 'quote') === 'announcement' ? 'Announcement source' : 'Daily quote source'}
+                                    {(brandingForm.homeExperience?.messageType || 'quote') === 'announcement' ? 'Announcement source' : 'Daily focus source'}
                                 </label>
                                 <div className="grid grid-cols-2 gap-2">
                                     {[
-                                        { id: 'random', label: 'Quote of today' },
+                                        { id: 'random', label: 'Linen & Industry facts' },
                                         { id: 'custom', label: 'Admin set' },
                                     ].map(option => (
                                         <button
@@ -4598,7 +4598,7 @@ if __name__ == "__main__":
                                     disabled={brandingForm.homeExperience?.quoteMode !== 'custom'}
                                     placeholder={(brandingForm.homeExperience?.messageType || 'quote') === 'announcement'
                                         ? 'System maintenance is scheduled for Friday at 4:00 PM.'
-                                        : 'Progress improves when the next best action is obvious.'}
+                                        : 'Flax requires virtually zero irrigation and minimal pesticides, making linen one of the most sustainable textiles.'}
                                     value={brandingForm.homeExperience?.quoteText || ''}
                                     onChange={e => setBrandingForm(prev => ({
                                         ...prev,
@@ -4611,7 +4611,7 @@ if __name__ == "__main__":
                                 <p className="mt-2 text-[10px] font-medium text-gray-400">
                                     {(brandingForm.homeExperience?.messageType || 'quote') === 'announcement'
                                         ? 'Announcements are fixed until an admin changes or switches them back to Quote.'
-                                        : 'Random mode rotates leadership and continuous-improvement messages daily.'}
+                                        : 'Random mode rotates bite-sized facts about linen creation, development, and industrial laundry processing each time you log in.'}
                                 </p>
                             </div>
                         </div>
