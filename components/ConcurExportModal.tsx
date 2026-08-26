@@ -213,6 +213,7 @@ const ConcurExportModal: React.FC<ConcurExportModalProps> = ({ po, onClose }) =>
                                 <tr>
                                     <th className="py-2.5 px-3">Item / Description</th>
                                     <th className="py-2.5 px-3">SKU</th>
+                                    <th className="py-2.5 px-3 text-center">Need by Date</th>
                                     <th className="py-2.5 px-3 text-center">Qty</th>
                                     <th className="py-2.5 px-3 text-right">Unit Price (Ex)</th>
                                     <th className="py-2.5 px-3 text-center">Tax Code</th>
@@ -227,6 +228,7 @@ const ConcurExportModal: React.FC<ConcurExportModalProps> = ({ po, onClose }) =>
                                         <tr key={line.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
                                             <td className="py-3 px-3 font-medium text-gray-900 dark:text-gray-100 max-w-[200px] truncate">{line.itemName}</td>
                                             <td className="py-3 px-3 text-gray-500 dark:text-gray-400 font-mono">{line.sku}</td>
+                                            <td className="py-3 px-3 text-center text-xs text-gray-600 dark:text-gray-300 font-mono">{line.needByDate || (po.requestDate ? po.requestDate.split('T')[0] : '-')}</td>
                                             <td className="py-3 px-3 text-center font-semibold text-gray-900 dark:text-gray-100">{pricing.quantityOrdered}</td>
                                             <td className="py-3 px-3 text-right text-gray-700 dark:text-gray-300 font-mono">{formatCurrency(pricing.unitPrice)}</td>
                                             <td className="py-3 px-3 text-center">
@@ -242,15 +244,15 @@ const ConcurExportModal: React.FC<ConcurExportModalProps> = ({ po, onClose }) =>
                             </tbody>
                             <tfoot className="bg-gray-50/80 dark:bg-white/5 border-t-2 border-gray-200 dark:border-gray-800 font-semibold text-xs">
                                 <tr>
-                                    <td colSpan={4} className="py-2.5 px-3 text-right text-gray-500 uppercase text-[10px] font-bold">Subtotal (Ex GST):</td>
+                                    <td colSpan={5} className="py-2.5 px-3 text-right text-gray-500 uppercase text-[10px] font-bold">Subtotal (Ex GST):</td>
                                     <td colSpan={3} className="py-2.5 px-3 text-right font-mono text-gray-900 dark:text-white">{formatCurrency(totals.subtotalAmount)}</td>
                                 </tr>
                                 <tr>
-                                    <td colSpan={4} className="py-2 px-3 text-right text-gray-500 uppercase text-[10px] font-bold">Total GST (10%):</td>
+                                    <td colSpan={5} className="py-2 px-3 text-right text-gray-500 uppercase text-[10px] font-bold">Total GST (10%):</td>
                                     <td colSpan={3} className="py-2 px-3 text-right font-mono text-gray-900 dark:text-white">{formatCurrency(totals.taxTotalAmount)}</td>
                                 </tr>
                                 <tr className="border-t border-gray-200 dark:border-gray-700 bg-[var(--color-brand)]/5 dark:bg-[var(--color-brand)]/10">
-                                    <td colSpan={4} className="py-3 px-3 text-right font-bold text-gray-900 dark:text-white uppercase text-[11px]">SAP Concur Total (Inc GST):</td>
+                                    <td colSpan={5} className="py-3 px-3 text-right font-bold text-gray-900 dark:text-white uppercase text-[11px]">SAP Concur Total (Inc GST):</td>
                                     <td colSpan={3} className="py-3 px-3 text-right font-black text-base text-[var(--color-brand)] font-mono">{formatCurrency(totals.totalAmountIncGst)}</td>
                                 </tr>
                             </tfoot>

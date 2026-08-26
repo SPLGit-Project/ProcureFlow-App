@@ -434,6 +434,9 @@ export interface POLineItem {
   concurPoNumber?: string; // The external PO number from Concur
   isForceClosed?: boolean; // If true, line is considered complete even if qty < ordered
   
+  // Delivery Timing
+  needByDate?: string; // Requested delivery date / Need by date for this line item
+
   // Governed Pricing
   sellPriceRecordId?: string; // Links to the specific item_sell_prices record used
   priceAtOrderTime?: number; // Snapshot of the price at the time of order creation

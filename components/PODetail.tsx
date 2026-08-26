@@ -17,6 +17,17 @@ import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../util
 const PO_DETAIL_EDIT_DRAFT_VERSION = 1;
 const PO_DETAIL_EDIT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
+const formatDisplayDate = (d?: string) => {
+  if (!d) return '-';
+  try {
+    const parsed = new Date(d);
+    if (isNaN(parsed.getTime())) return d;
+    return parsed.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch {
+    return d;
+  }
+};
+
 interface PODetailEditDraft {
   headerEdits: {
     clientName: string;
@@ -564,8 +575,8 @@ const PODetail = () => {
       }));
   };
 
-  const handleLinePriceChange = (lineId: string, rawValue: string) => {
-      const parsed = Math.max(0, Number(rawValue) || 0);
+  const handleLinePriceChange = (lineId: string, value: string) => {
+      const parsed = Math.max(0, Number(value) || 0);
       setEditableLines(prev => prev.map(line => {
           if (line.id !== lineId) return line;
           const pricing = calculateLinePricing(line.quantityOrdered, parsed, line.taxCode || 'GST', line.taxRate ?? 10.0);
@@ -577,6 +588,16 @@ const PODetail = () => {
               taxRate: pricing.taxRate,
               taxAmount: pricing.taxAmount,
               totalPriceIncGst: pricing.totalPriceIncGst
+          };
+      }));
+  };
+
+  const handleLineNeedByDateChange = (lineId: string, value: string) => {
+      setEditableLines(prev => prev.map(line => {
+          if (line.id !== lineId) return line;
+          return {
+              ...line,
+              needByDate: value || undefined
           };
       }));
   };
@@ -613,7 +634,8 @@ const PODetail = () => {
           taxAmount: pricing.taxAmount,
           totalPriceIncGst: pricing.totalPriceIncGst,
           priceOptionId: selectedPriceOption?.id,
-          priceOptionLabel: selectedPriceOption?.label
+          priceOptionLabel: selectedPriceOption?.label,
+          needByDate: po?.requestDate ? po.requestDate.split('T')[0] : undefined
       };
 
       setEditableLines(prev => [...prev, newLine]);
@@ -1296,6 +1318,7 @@ const PODetail = () => {
                       <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
                           <tr>
                               <th className="px-6 py-4">Item Details</th>
+                              <th className="px-4 py-4 text-center">Need by Date</th>
                               <th className="px-4 py-4 text-center">Ordered</th>
                               <th className="px-4 py-4 text-center">Received</th>
                               <th className="px-4 py-4 text-right">Unit Price (Ex)</th>
@@ -1320,6 +1343,20 @@ const PODetail = () => {
                                           <div className="text-xs text-tertiary dark:text-gray-500 font-mono mt-0.5">{line.sku}</div>
                                           {line.priceOptionLabel && (
                                               <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-1">{line.priceOptionLabel}</div>
+                                          )}
+                                      </td>
+                                      <td className="px-4 py-4 text-center">
+                                          {isEditing ? (
+                                              <input 
+                                                  type="date" 
+                                                  className="w-36 px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                  value={line.needByDate || (po?.requestDate ? po.requestDate.split('T')[0] : '')}
+                                                  onChange={(e) => handleLineNeedByDateChange(line.id, e.target.value)}
+                                              />
+                                          ) : (
+                                              <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">
+                                                  {formatDisplayDate(line.needByDate || po?.requestDate)}
+                                              </span>
                                           )}
                                       </td>
                                       <td className="px-4 py-4 text-center font-medium text-primary dark:text-white">
@@ -1395,7 +1432,7 @@ const PODetail = () => {
                           })}
                           {linesInView.length === 0 && (
                               <tr>
-                                  <td colSpan={isEditing ? 8 : 7} className="px-6 py-10 text-center text-gray-400">
+                                  <td colSpan={isEditing ? 9 : 8} className="px-6 py-10 text-center text-gray-400">
                                       No line items.
                                   </td>
                               </tr>
@@ -1406,15 +1443,15 @@ const PODetail = () => {
                           return (
                               <tfoot className="bg-gray-50/80 dark:bg-[#15171e] border-t-2 border-gray-200 dark:border-gray-800 font-semibold text-xs">
                                   <tr>
-                                      <td colSpan={5} className="py-2.5 px-6 text-right text-gray-500 uppercase text-[10px] font-bold">Subtotal (Ex GST):</td>
+                                      <td colSpan={6} className="py-2.5 px-6 text-right text-gray-500 uppercase text-[10px] font-bold">Subtotal (Ex GST):</td>
                                       <td colSpan={isEditing ? 3 : 2} className="py-2.5 px-6 text-right font-mono text-gray-900 dark:text-white">{formatCurrency(viewTotals.subtotalAmount)}</td>
                                   </tr>
                                   <tr>
-                                      <td colSpan={5} className="py-2 px-6 text-right text-gray-500 uppercase text-[10px] font-bold">Total GST (10%):</td>
+                                      <td colSpan={6} className="py-2 px-6 text-right text-gray-500 uppercase text-[10px] font-bold">Total GST (10%):</td>
                                       <td colSpan={isEditing ? 3 : 2} className="py-2 px-6 text-right font-mono text-gray-900 dark:text-white">{formatCurrency(viewTotals.taxTotalAmount)}</td>
                                   </tr>
                                   <tr className="border-t border-gray-200 dark:border-gray-700 bg-blue-50/40 dark:bg-blue-900/10">
-                                      <td colSpan={5} className="py-3 px-6 text-right font-bold text-gray-900 dark:text-white uppercase text-[11px]">SAP Concur Order Total (Inc GST):</td>
+                                      <td colSpan={6} className="py-3 px-6 text-right font-bold text-gray-900 dark:text-white uppercase text-[11px]">SAP Concur Order Total (Inc GST):</td>
                                       <td colSpan={isEditing ? 3 : 2} className="py-3 px-6 text-right font-black text-base text-[var(--color-brand)] font-mono">{formatCurrency(viewTotals.totalAmountIncGst)}</td>
                                   </tr>
                               </tfoot>

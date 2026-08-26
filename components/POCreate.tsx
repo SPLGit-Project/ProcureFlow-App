@@ -136,6 +136,7 @@ const POCreate = () => {
   const [modalUpq, setModalUpq] = useState(1);
   const [modalPriceOptionId, setModalPriceOptionId] = useState('');
   const [modalPriceOptions, setModalPriceOptions] = useState<ItemPriceOption[]>([]);
+  const [modalNeedByDate, setModalNeedByDate] = useState('');
 
   useEffect(() => {
     if (selectedSiteId && sites.some(site => site.id === selectedSiteId)) return;
@@ -390,11 +391,16 @@ const POCreate = () => {
   const removeFromCart = (lineId: string) => {
     setCart(prev => prev.filter(l => l.id !== lineId));
   };
+
+  const updateLineNeedByDate = (lineId: string, newDate: string) => {
+    setCart(prev => prev.map(line => line.id === lineId ? { ...line, needByDate: newDate } : line));
+  };
   
   // Modal Handlers
   const openItemDetail = (item: POCreateCatalogItem) => {
       setSelectedDetailItem(item);
       setModalQuantity(1);
+      setModalNeedByDate(requestDate ? requestDate.split('T')[0] : getLocalDateInputValue());
       
       const baseOptions = normalizeItemPriceOptions(item);
       const hasEstimatedMatch = baseOptions.some(opt => Math.abs(opt.price - Number(item.price || 0)) < 0.0001);
@@ -448,7 +454,8 @@ const POCreate = () => {
                       taxAmount: mergedPricing.taxAmount,
                       totalPriceIncGst: mergedPricing.totalPriceIncGst,
                       priceOptionId: line.priceOptionId ?? selectedPriceOptionId,
-                      priceOptionLabel: line.priceOptionLabel ?? selectedPriceOptionLabel
+                      priceOptionLabel: line.priceOptionLabel ?? selectedPriceOptionLabel,
+                      needByDate: modalNeedByDate || line.needByDate || (requestDate ? requestDate.split('T')[0] : undefined)
                     }
                   : line
               );
@@ -468,7 +475,8 @@ const POCreate = () => {
               totalPriceIncGst: pricing.totalPriceIncGst,
               upq: upq,
               priceOptionId: selectedPriceOptionId,
-              priceOptionLabel: selectedPriceOptionLabel
+              priceOptionLabel: selectedPriceOptionLabel,
+              needByDate: modalNeedByDate || (requestDate ? requestDate.split('T')[0] : undefined)
           }];
       });
 
@@ -671,6 +679,15 @@ const POCreate = () => {
                                      <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">(${Number(line.totalPriceIncGst ?? (line.totalPrice * 1.10)).toFixed(2)} inc GST)</span>
                                  </div>
                              </div>
+                         </div>
+                         <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800/60 text-xs text-gray-500 dark:text-gray-400">
+                             <span className="text-[11px] font-semibold">Need by:</span>
+                             <input 
+                                 type="date"
+                                 className="bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-0.5 text-xs text-gray-800 dark:text-gray-200 focus:border-[var(--color-brand)] outline-none"
+                                 value={line.needByDate || (requestDate ? requestDate.split('T')[0] : '')}
+                                 onChange={(e) => updateLineNeedByDate(line.id, e.target.value)}
+                             />
                          </div>
                     </div>
                 ))
@@ -1148,6 +1165,16 @@ const POCreate = () => {
                                     </button>
                                 </div>
                              </div>
+                        </div>
+
+                        <div className="mt-4">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Need by Date</label>
+                            <input 
+                                type="date" 
+                                className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] outline-none"
+                                value={modalNeedByDate}
+                                onChange={e => setModalNeedByDate(e.target.value)}
+                            />
                         </div>
                     </div>
 

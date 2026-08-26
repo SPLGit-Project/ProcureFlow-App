@@ -76,6 +76,7 @@ interface MonthlySummaryReportRow extends ReportRow {
     requestNumber: string;
     concurRequestNumber: string;
     requestDate: string;
+    needByDate?: string;
     site: string;
     supplier: string;
     item: string;
@@ -561,6 +562,7 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
                 requestNumber,
                 concurRequestNumber,
                 requestDate: po.requestDate,
+                needByDate: line.needByDate || (po.requestDate ? po.requestDate.split('T')[0] : ''),
                 supplier,
                 site,
                 item: line.itemName || 'Unknown Item',
@@ -925,6 +927,7 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'concurRequestNumber', label: 'Concur Request Number' },
             { key: 'poNumber', label: 'PO Number' },
             { key: 'concurPoNumber', label: 'Concur PO Number' },
+            { key: 'needByDate', label: 'Need by Date' },
             { key: 'requestDate', label: 'Request Date' },
             { key: 'site', label: 'Site' },
             { key: 'supplier', label: 'Supplier' },
