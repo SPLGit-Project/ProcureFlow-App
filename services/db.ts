@@ -1037,7 +1037,9 @@ export const db = {
             tax_rate: line.taxRate ?? 10.0,
             tax_amount: line.taxAmount ?? Number((line.totalPrice * 0.10).toFixed(2)),
             total_price_inc_gst: line.totalPriceIncGst ?? Number((line.totalPrice * 1.10).toFixed(2)),
-            concur_po_number: line.concurPoNumber || updates.concurPoNumber
+            concur_po_number: updates.concurPoNumber !== undefined
+                ? (updates.concurPoNumber.trim() || null)
+                : (line.concurPoNumber || null)
         }));
 
         const { error: rpcError } = await supabase.rpc('update_pending_po_request', {

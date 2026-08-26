@@ -2256,7 +2256,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               ...line,
               quantityOrdered,
               unitPrice,
-              totalPrice: Number((quantityOrdered * unitPrice).toFixed(2))
+              totalPrice: Number((quantityOrdered * unitPrice).toFixed(2)),
+              concurPoNumber: updates.concurPoNumber !== undefined
+                  ? (updates.concurPoNumber.trim() || undefined)
+                  : line.concurPoNumber
           };
       });
 
@@ -2281,13 +2284,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
           setPos(prev => prev.map(p => {
               if (p.id !== poId) return p;
+              const nextConcurPo = updates.concurPoNumber !== undefined
+                  ? (updates.concurPoNumber.trim() || undefined)
+                  : p.concurPoNumber;
+              const nextConcurReq = updates.concurRequestNumber !== undefined
+                  ? (updates.concurRequestNumber.trim() || undefined)
+                  : p.concurRequestNumber;
               return {
                   ...p,
                   customerName: updates.customerName,
                   reasonForRequest: updates.reasonForRequest,
                   comments: updates.comments,
-                  concurRequestNumber: updates.concurRequestNumber ?? p.concurRequestNumber,
-                  concurPoNumber: updates.concurPoNumber ?? p.concurPoNumber,
+                  concurRequestNumber: nextConcurReq,
+                  concurPoNumber: nextConcurPo,
                   totalAmount: Number(totalAmount.toFixed(2)),
                   lines: normalizedLines
               };

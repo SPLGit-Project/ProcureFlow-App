@@ -634,13 +634,21 @@ const PODetail = () => {
                 ? (headerEdits.reason as 'Depletion' | 'New Customer' | 'Other')
                 : 'Depletion';
 
+            const trimmedConcurPo = headerEdits.concurPoNumber.trim();
+            const trimmedConcurReq = headerEdits.concurRequestNumber.trim();
+
+            const updatedLines = editableLines.map(line => ({
+                ...line,
+                concurPoNumber: trimmedConcurPo || undefined
+            }));
+
             await updatePendingPO(po.id, {
                 customerName: headerEdits.clientName,
                 reasonForRequest: validReason,
                 comments: headerEdits.comments,
-                concurRequestNumber: headerEdits.concurRequestNumber,
-                concurPoNumber: headerEdits.concurPoNumber,
-                lines: editableLines
+                concurRequestNumber: trimmedConcurReq,
+                concurPoNumber: trimmedConcurPo,
+                lines: updatedLines
             });
             
             clearDraft(editDraftKey);
