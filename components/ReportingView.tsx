@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useState, useRef, type ComponentType } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import {
     AlertCircle,
     AlignLeft,
     BarChart3,
     Building2,
+    Check,
     CheckCircle2,
+    ChevronDown,
     Download,
     FileText,
+    Filter,
+    MapPin,
     Package,
     PackageCheck,
     Search,
@@ -16,7 +20,8 @@ import {
     ArrowRight,
     ArrowRightLeft,
     History,
-    Calendar
+    Calendar,
+    X
 } from 'lucide-react';
 import PageHeader from './PageHeader.tsx';
 import { useSetPageMeta } from '../context/PageMetaContext.tsx';
@@ -44,6 +49,8 @@ interface LinenInjectionReportRow extends ReportRow {
     concurRequestNumber: string;
     requestDate: string;
     closedDate: string;
+    monthKey?: string;
+    month?: string;
     latestDeliveryDate: string;
     deliveryDates: string;
     dockets: string;
@@ -600,6 +607,7 @@ const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInje
     const rows: LinenInjectionReportRow[] = [];
 
     pos.forEach((po) => {
+        // Strictly only include CLOSED PO requests (no pending, draft, active, or variance requests)
         if (po.status !== 'CLOSED') return;
 
         const site = po.site || 'Unknown Site';
@@ -611,14 +619,15 @@ const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInje
             (e) => e.action === 'ADMIN_OVERRIDE' || e.comments?.toLowerCase().includes('complete') || e.comments?.toLowerCase().includes('closed')
         );
         const latestDelivery = (po.deliveries || []).map(d => d.date).filter(Boolean).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || '-';
-        const closedDate = closedEvent?.date || (latestDelivery !== '-' ? latestDelivery : po.requestDate);
+        const poClosedDate = closedEvent?.date || (latestDelivery !== '-' ? latestDelivery : po.requestDate);
 
         po.lines.forEach((line) => {
             const orderedQty = Number(line.quantityOrdered || 0);
             const receivedQty = Number(line.quantityReceived || 0);
-            // In a closed PO, received quantity reflects the physical quantity delivered/injected into the site.
-            // If receipts were logged, injectedQty is receivedQty; if closed with 0 recorded receipts, fallback to orderedQty.
-            const injectedQty = receivedQty > 0 ? receivedQty : orderedQty;
+            // In a closed PO, only include items that were physically receipted into circulation
+            if (receivedQty <= 0) return;
+
+            const injectedQty = receivedQty;
             const unitPrice = Number(line.unitPrice || 0);
             const injectedValue = injectedQty * unitPrice;
             const orderedValue = orderedQty * unitPrice;
@@ -634,6 +643,13 @@ const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInje
             const invoices = getInvoicesForLine(po, line.id);
             const category = itemCategoryMap.get(line.itemId) || itemCategoryMap.get(line.sku) || 'Linen / Textiles';
 
+            const closedDate = latestDeliveryDate !== '-' ? latestDeliveryDate : poClosedDate;
+            const dateObj = new Date(closedDate);
+            const year = !isNaN(dateObj.getTime()) ? dateObj.getFullYear() : new Date(po.requestDate).getFullYear();
+            const monthNum = !isNaN(dateObj.getTime()) ? dateObj.getMonth() : new Date(po.requestDate).getMonth();
+            const monthKey = `${year}-${String(monthNum + 1).padStart(2, '0')}`;
+            const monthDisplay = `${MONTH_NAMES[monthNum]} ${year}`;
+
             rows.push({
                 id: line.id,
                 poNumber,
@@ -642,6 +658,8 @@ const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInje
                 concurRequestNumber,
                 requestDate: po.requestDate,
                 closedDate,
+                monthKey,
+                month: monthDisplay,
                 latestDeliveryDate,
                 deliveryDates,
                 dockets,
@@ -667,7 +685,7 @@ const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInje
         });
     });
 
-    return rows.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+    return rows.sort((a, b) => new Date(b.closedDate || b.requestDate).getTime() - new Date(a.closedDate || a.requestDate).getTime());
 };
 
 const buildSupplierInventoryRows = (
@@ -1032,6 +1050,232 @@ const buildCsv = (report: ReportType, data: ReportRow[]) => {
     return [headers, ...rows].join('\n');
 };
 
+interface MultiSiteSlicerProps {
+    availableSites: string[];
+    selectedSites: string[];
+    onChange: (sites: string[]) => void;
+    className?: string;
+}
+
+const MultiSiteSlicer: React.FC<MultiSiteSlicerProps> = ({
+    availableSites,
+    selectedSites,
+    onChange,
+    className = ''
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setIsOpen(false);
+        };
+        if (isOpen) document.addEventListener('keydown', handleEsc);
+        return () => document.removeEventListener('keydown', handleEsc);
+    }, [isOpen]);
+
+    const isAllSelected = selectedSites.length === 0 || selectedSites.includes('ALL') || selectedSites.length === availableSites.length;
+
+    const handleToggle = (site: string) => {
+        if (isAllSelected) {
+            const rest = availableSites.filter((s) => s !== site);
+            onChange(rest);
+        } else if (selectedSites.includes(site)) {
+            const next = selectedSites.filter((s) => s !== site);
+            onChange(next.length === 0 ? ['ALL'] : next);
+        } else {
+            const next = [...selectedSites, site];
+            if (next.length === availableSites.length) {
+                onChange(['ALL']);
+            } else {
+                onChange(next);
+            }
+        }
+    };
+
+    const handleSelectOnly = (site: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        onChange([site]);
+    };
+
+    const handleSelectAll = () => {
+        onChange(['ALL']);
+    };
+
+    const handleClearNone = () => {
+        onChange([]);
+    };
+
+    let label = 'All Sites';
+    if (selectedSites.length === 0) {
+        label = 'No Sites Selected';
+    } else if (isAllSelected) {
+        label = `All Sites (${availableSites.length})`;
+    } else if (selectedSites.length === 1) {
+        label = selectedSites[0];
+    } else {
+        label = `${selectedSites.length} Sites Selected`;
+    }
+
+    const filteredSites = availableSites.filter((s) =>
+        s.toLowerCase().includes(searchQuery.trim().toLowerCase())
+    );
+
+    const getInitials = (name: string) =>
+        name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+
+    const getColor = (index: number) => {
+        const colors = [
+            'bg-blue-500', 'bg-emerald-500', 'bg-violet-500',
+            'bg-amber-500', 'bg-rose-500', 'bg-cyan-500',
+            'bg-indigo-500', 'bg-orange-500', 'bg-teal-500', 'bg-pink-500'
+        ];
+        return colors[index % colors.length];
+    };
+
+    return (
+        <div className={`relative ${className}`} ref={containerRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm bg-white dark:bg-nocturne border rounded-lg transition-colors font-medium outline-none ${
+                    !isAllSelected && selectedSites.length > 0
+                        ? 'border-emerald-500 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20 bg-emerald-50/30 dark:bg-emerald-950/20'
+                        : 'border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white hover:border-gray-300 dark:hover:border-gray-700'
+                }`}
+                title="Filter by one or multiple sites"
+            >
+                <div className="flex items-center gap-2 min-w-0">
+                    <Building2 size={15} className={`shrink-0 ${!isAllSelected && selectedSites.length > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-tertiary dark:text-gray-500'}`} />
+                    <span className="truncate text-xs font-semibold">{label}</span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                    {!isAllSelected && selectedSites.length > 0 && (
+                        <span className="bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                            {selectedSites.length}
+                        </span>
+                    )}
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                </div>
+            </button>
+
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-1.5 w-72 md:w-80 bg-white dark:bg-[#181a24] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700/80 z-50 overflow-hidden animate-fade-in flex flex-col max-h-[380px]">
+                    {/* Header */}
+                    <div className="p-2.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-white/5 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900 dark:text-white">
+                            <Filter size={13} className="text-emerald-600" />
+                            <span>Site Slicer</span>
+                            <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 ml-1">
+                                {isAllSelected ? `${availableSites.length}/${availableSites.length}` : `${selectedSites.length}/${availableSites.length}`}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={handleSelectAll}
+                                className="px-2 py-0.5 text-[10px] font-bold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shadow-xs"
+                            >
+                                All
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleClearNone}
+                                className="px-2 py-0.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded hover:text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shadow-xs"
+                            >
+                                None
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Search box */}
+                    {availableSites.length > 5 && (
+                        <div className="p-2 border-b border-gray-100 dark:border-gray-800">
+                            <div className="relative">
+                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search sites..."
+                                    className="w-full pl-7 pr-2.5 py-1 text-xs bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                                />
+                                {searchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Scrollable list */}
+                    <div className="overflow-y-auto p-1.5 flex-1 divide-y divide-gray-50 dark:divide-gray-800/50">
+                        {filteredSites.map((site, index) => {
+                            const isChecked = isAllSelected || selectedSites.includes(site);
+                            return (
+                                <div
+                                    key={site}
+                                    onClick={() => handleToggle(site)}
+                                    className={`group flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
+                                        isChecked
+                                            ? 'bg-emerald-50/50 dark:bg-emerald-950/20 text-gray-900 dark:text-white'
+                                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        <div
+                                            className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                                                isChecked
+                                                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                                                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-transparent group-hover:border-emerald-500'
+                                            }`}
+                                        >
+                                            {isChecked && <Check size={11} strokeWidth={3} />}
+                                        </div>
+                                        <div className={`w-5 h-5 ${getColor(index)} rounded flex items-center justify-center font-bold text-[9px] text-white shrink-0 shadow-2xs`}>
+                                            {getInitials(site)}
+                                        </div>
+                                        <span className={`text-xs truncate ${isChecked ? 'font-bold text-gray-900 dark:text-white' : 'font-medium'}`}>
+                                            {site}
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleSelectOnly(site, e)}
+                                        className="opacity-0 group-hover:opacity-100 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline px-1.5 py-0.5 rounded transition-opacity"
+                                        title={`Filter strictly to ${site}`}
+                                    >
+                                        Only
+                                    </button>
+                                </div>
+                            );
+                        })}
+                        {filteredSites.length === 0 && (
+                            <div className="p-4 text-center text-xs text-gray-400 italic">No matching sites found</div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ReportingView = () => {
     const { pos, allPos, sites, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers, hasPermission } = useApp();
     const reportPos = (allPos && allPos.length > 0) ? allPos : pos;
@@ -1044,13 +1288,14 @@ const ReportingView = () => {
     const [viewMode, setViewMode] = useState<ViewMode>('CHART');
     const [chartMetric, setChartMetric] = useState<ChartMetric>('SUPPLIER');
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedSite, setSelectedSite] = useState('ALL');
+    const [selectedSites, setSelectedSites] = useState<string[]>(['ALL']);
     const [selectedSupplier, setSelectedSupplier] = useState('ALL');
     const [selectedItemId, setSelectedItemId] = useState('ALL');
-    const [dateRangeType, setDateRangeType] = useState<'RECENT' | 'HISTORICAL' | 'ALL' | 'CUSTOM'>(() => {
+    const [dateRangeType, setDateRangeType] = useState<'RECENT' | 'HISTORICAL' | 'ALL' | 'CUSTOM' | 'MONTH'>(() => {
         const saved = sessionStorage.getItem('pf_active_report');
         return saved === 'LINEN_INJECTION' ? 'ALL' : 'RECENT';
     });
+    const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [monthlyStartDate, setMonthlyStartDate] = useState('2025-07-01');
@@ -1082,8 +1327,9 @@ const ReportingView = () => {
     const siteOptions = useMemo(() => {
         const fromData = reportData.map((row) => String(row.site || '')).filter(Boolean);
         const fromContext = (sites || []).map((s) => s.name).filter(Boolean);
-        return ['ALL', ...Array.from(new Set([...fromData, ...fromContext])).sort((a, b) => a.localeCompare(b))];
+        return Array.from(new Set([...fromData, ...fromContext])).filter(Boolean).sort((a, b) => a.localeCompare(b));
     }, [reportData, sites]);
+
     const supplierOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.supplier || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
 
     const itemOptions = useMemo(() => {
@@ -1098,10 +1344,30 @@ const ReportingView = () => {
         return [{ id: 'ALL', label: 'All items' }, ...Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label))];
     }, [reportData]);
 
+    const availableMonths = useMemo(() => {
+        const monthsMap = new Map<string, string>();
+        reportData.forEach((row) => {
+            const rawDate = (activeReport === 'LINEN_INJECTION' ? (row.closedDate || row.latestDeliveryDate || row.requestDate) : row.requestDate) as string;
+            if (rawDate && rawDate !== '-') {
+                const d = new Date(rawDate);
+                if (!isNaN(d.getTime())) {
+                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+                    monthsMap.set(key, label);
+                }
+            }
+        });
+        return Array.from(monthsMap.entries())
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([key, label]) => ({ key, label }));
+    }, [reportData, activeReport]);
+
     const visibleReportData = useMemo(() => {
         if (!isFilterableReport) return reportData;
 
         const query = searchTerm.trim().toLowerCase();
+        const isAllSites = selectedSites.length === 0 || selectedSites.includes('ALL');
+
         return reportData.filter((row) => {
             const matchesSearch = !query || [
                 row.poNumber,
@@ -1121,7 +1387,8 @@ const ReportingView = () => {
                 row.exceptionType,
                 row.month
             ].some((value) => String(value || '').toLowerCase().includes(query));
-            const matchesSite = selectedSite === 'ALL' || row.site === selectedSite;
+
+            const matchesSite = isAllSites || selectedSites.includes(String(row.site || ''));
             const matchesSupplier = selectedSupplier === 'ALL' || row.supplier === selectedSupplier;
             const matchesItem = selectedItemId === 'ALL' || row.itemId === selectedItemId || row.item === selectedItemId;
 
@@ -1134,7 +1401,15 @@ const ReportingView = () => {
                     if (rawDate && rawDate !== '-') {
                         const dateTime = new Date(rawDate).getTime();
                         if (!isNaN(dateTime)) {
-                            if (dateRangeType === 'RECENT') {
+                            if (dateRangeType === 'MONTH') {
+                                if (selectedMonth && selectedMonth !== 'ALL') {
+                                    const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+                                    const d = new Date(rawDate);
+                                    matchesDate = d.getFullYear() === selYear && (d.getMonth() + 1) === selMonth;
+                                } else {
+                                    matchesDate = true;
+                                }
+                            } else if (dateRangeType === 'RECENT') {
                                 const threshold = new Date();
                                 threshold.setDate(threshold.getDate() - 30);
                                 matchesDate = dateTime >= threshold.getTime();
@@ -1162,7 +1437,7 @@ const ReportingView = () => {
 
             return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate;
         });
-    }, [isFilterableReport, isDateFilterableReport, activeReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier, dateRangeType, customStartDate, customEndDate]);
+    }, [isFilterableReport, isDateFilterableReport, activeReport, reportData, searchTerm, selectedItemId, selectedSites, selectedSupplier, dateRangeType, selectedMonth, customStartDate, customEndDate]);
 
     const outstandingRows = visibleReportData as OutstandingDeliveryReportRow[];
     const varianceRows = visibleReportData as DeliveryVarianceReportRow[];
@@ -1240,14 +1515,41 @@ const ReportingView = () => {
         };
     }, [linenInjectionRows]);
 
-    const handleSiteChange = (site: string) => {
-        setSelectedSite(site);
+    const handleSitesChange = (newSites: string[]) => {
+        setSelectedSites(newSites.length === 0 ? ['ALL'] : newSites);
         if (activeReport === 'LINEN_INJECTION') {
-            if (site !== 'ALL' && chartMetric === 'SITE') {
+            if (newSites.length === 1 && !newSites.includes('ALL') && chartMetric === 'SITE') {
                 setChartMetric('ITEM');
-            } else if (site === 'ALL' && chartMetric === 'ITEM') {
+            } else if ((newSites.length > 1 || newSites.includes('ALL')) && chartMetric === 'ITEM') {
                 setChartMetric('SITE');
             }
+        }
+    };
+
+    const handleToggleSite = (siteName: string) => {
+        setSelectedSites((prev) => {
+            const cleaned = prev.filter((s) => s !== 'ALL');
+            if (cleaned.includes(siteName)) {
+                const next = cleaned.filter((s) => s !== siteName);
+                return next.length === 0 ? ['ALL'] : next;
+            } else {
+                const next = [...cleaned, siteName];
+                return next.length === siteOptions.length ? ['ALL'] : next;
+            }
+        });
+    };
+
+    const handleSelectOnlySite = (siteName: string) => {
+        setSelectedSites([siteName]);
+        if (activeReport === 'LINEN_INJECTION' && chartMetric === 'SITE') {
+            setChartMetric('ITEM');
+        }
+    };
+
+    const handleSelectAllSites = () => {
+        setSelectedSites(['ALL']);
+        if (activeReport === 'LINEN_INJECTION' && chartMetric === 'ITEM') {
+            setChartMetric('SITE');
         }
     };
 
@@ -1256,10 +1558,11 @@ const ReportingView = () => {
         setViewMode('CHART');
         setChartMetric(report === 'ALL_DELIVERIES' ? 'DATE' : report === 'LINEN_INJECTION' ? 'SITE' : 'SUPPLIER');
         setSearchTerm('');
-        setSelectedSite('ALL');
+        setSelectedSites(['ALL']);
         setSelectedSupplier('ALL');
         setSelectedItemId('ALL');
         setDateRangeType(report === 'LINEN_INJECTION' ? 'ALL' : 'RECENT');
+        setSelectedMonth('ALL');
         setCustomStartDate('');
         setCustomEndDate('');
         setMonthlyStartDate('2025-07-01');
@@ -1407,11 +1710,12 @@ const ReportingView = () => {
                 const skuStr = row.sku ? ` (${row.sku})` : '';
                 key = `${row.item || 'Unknown'}${skuStr}`;
             } else if (chartMetric === 'DATE') {
-                const dateObj = new Date(row.requestDate);
+                const targetDate = (row.closedDate || row.latestDeliveryDate || row.requestDate) as string;
+                const dateObj = new Date(targetDate);
                 if (!isNaN(dateObj.getTime())) {
                     key = `${MONTH_NAMES[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
                 } else {
-                    key = row.requestDate || 'Unknown';
+                    key = targetDate || 'Unknown';
                 }
             }
 
@@ -1426,20 +1730,24 @@ const ReportingView = () => {
         return Object.values(grouped).sort((a, b) => b.injectedValue - a.injectedValue).slice(0, 12);
     }, [linenInjectionRows, chartMetric]);
 
+    const isAllSitesSelected = selectedSites.length === 0 || selectedSites.includes('ALL') || selectedSites.length === siteOptions.length;
+
+    const defaultDateRange = activeReport === 'LINEN_INJECTION' ? 'ALL' : 'RECENT';
+    const isDateRangeFiltered = (dateRangeType as string) !== defaultDateRange ||
+        ((dateRangeType as string) === 'MONTH' && selectedMonth !== 'ALL') ||
+        customStartDate !== '' ||
+        customEndDate !== '';
+
     const hasActiveFilters = Boolean(
         searchTerm.trim() ||
-        selectedSite !== 'ALL' ||
+        !isAllSitesSelected ||
         selectedSupplier !== 'ALL' ||
         selectedItemId !== 'ALL' ||
         (activeReport === 'MONTHLY_SUMMARY' && (
             monthlyStartDate !== '2025-07-01' ||
             monthlyEndDate !== new Date().toISOString().split('T')[0]
         )) ||
-        (isDateFilterableReport && (
-            dateRangeType !== 'RECENT' ||
-            customStartDate !== '' ||
-            customEndDate !== ''
-        ))
+        (isDateFilterableReport && isDateRangeFiltered)
     );
 
     if (!hasPermission('view_reports')) {
@@ -1630,13 +1938,11 @@ const ReportingView = () => {
                                                 />
                                             </label>
                                             {activeReport !== 'SUPPLIER_INVENTORY' && activeReport !== 'SUPPLIER_ITEM_MAPPING' && activeReport !== 'SUPPLIER_PRICE_VARIANCE' && (
-                                                <select
-                                                    value={selectedSite}
-                                                    onChange={(event) => handleSiteChange(event.target.value)}
-                                                    className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none font-medium"
-                                                >
-                                                    {siteOptions.map((site) => <option key={site} value={site}>{site === 'ALL' ? 'All sites' : site}</option>)}
-                                                </select>
+                                                <MultiSiteSlicer
+                                                    availableSites={siteOptions}
+                                                    selectedSites={selectedSites}
+                                                    onChange={handleSitesChange}
+                                                />
                                             )}
                                             <select
                                                 value={selectedSupplier}
@@ -1680,10 +1986,11 @@ const ReportingView = () => {
                                                 type="button"
                                                 onClick={() => {
                                                     setSearchTerm('');
-                                                    setSelectedSite('ALL');
+                                                    setSelectedSites(['ALL']);
                                                     setSelectedSupplier('ALL');
                                                     setSelectedItemId('ALL');
-                                                    setDateRangeType('RECENT');
+                                                    setDateRangeType(activeReport === 'LINEN_INJECTION' ? 'ALL' : 'RECENT');
+                                                    setSelectedMonth('ALL');
                                                     setCustomStartDate('');
                                                     setCustomEndDate('');
                                                     setMonthlyStartDate('2025-07-01');
@@ -1705,11 +2012,34 @@ const ReportingView = () => {
                                                     onChange={(event) => setDateRangeType(event.target.value as any)}
                                                     className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                                 >
+                                                    <option value="ALL">All Time (Closed POs)</option>
+                                                    <option value="MONTH">Specific Month...</option>
                                                     <option value="RECENT">Last 30 Days</option>
                                                     <option value="HISTORICAL">Since July 2025</option>
-                                                    <option value="ALL">All Time</option>
                                                     <option value="CUSTOM">Custom Range...</option>
                                                 </select>
+
+                                                {dateRangeType === 'MONTH' && (
+                                                    <div className="flex items-center gap-2 animate-fade-in">
+                                                        <select
+                                                            value={selectedMonth}
+                                                            onChange={(e) => setSelectedMonth(e.target.value)}
+                                                            className="text-xs bg-white dark:bg-nocturne border border-emerald-500 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-emerald-500 outline-none font-bold"
+                                                        >
+                                                            <option value="ALL">All Recorded Months</option>
+                                                            {availableMonths.map((m) => (
+                                                                <option key={m.key} value={m.key}>{m.label}</option>
+                                                            ))}
+                                                        </select>
+                                                        <input
+                                                            type="month"
+                                                            value={selectedMonth !== 'ALL' ? selectedMonth : ''}
+                                                            onChange={(e) => setSelectedMonth(e.target.value || 'ALL')}
+                                                            className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-emerald-500 outline-none"
+                                                            title="Pick any calendar month"
+                                                        />
+                                                    </div>
+                                                )}
 
                                                 {dateRangeType === 'CUSTOM' && (
                                                     <div className="flex items-center gap-2 animate-fade-in">
@@ -1765,9 +2095,14 @@ const ReportingView = () => {
                                     summary={linenInjectionSummary}
                                     chartData={linenInjectionChartData}
                                     chartMetric={chartMetric}
-                                    selectedSite={selectedSite}
-                                    onSelectSite={handleSiteChange}
+                                    selectedSites={selectedSites}
+                                    onToggleSite={handleToggleSite}
+                                    onSelectOnlySite={handleSelectOnlySite}
+                                    onSelectAllSites={handleSelectAllSites}
                                     availableSites={sites}
+                                    siteOptions={siteOptions}
+                                    selectedMonth={selectedMonth}
+                                    dateRangeType={dateRangeType}
                                 />
                             ) : activeReport === 'MONTHLY_SUMMARY' && viewMode === 'CHART' ? (
                                 <MonthlySummaryVisual rows={getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])} />
@@ -2137,9 +2472,14 @@ const LinenInjectionVisual = ({
     summary,
     chartData,
     chartMetric,
-    selectedSite,
-    onSelectSite,
-    availableSites
+    selectedSites,
+    onToggleSite,
+    onSelectOnlySite,
+    onSelectAllSites,
+    availableSites,
+    siteOptions,
+    selectedMonth,
+    dateRangeType
 }: {
     rows: LinenInjectionReportRow[];
     summary: {
@@ -2155,16 +2495,30 @@ const LinenInjectionVisual = ({
     };
     chartData: Array<{ name: string; injectedValue: number; orderedValue: number; injectedQty: number; orderedQty: number; lineCount: number }>;
     chartMetric: ChartMetric;
-    selectedSite: string;
-    onSelectSite: (site: string) => void;
+    selectedSites: string[];
+    onToggleSite: (site: string) => void;
+    onSelectOnlySite: (site: string) => void;
+    onSelectAllSites: () => void;
     availableSites?: Site[];
+    siteOptions?: string[];
+    selectedMonth?: string;
+    dateRangeType?: string;
 }) => {
-    const isSingleSite = selectedSite !== 'ALL';
+    const allSiteNames = useMemo(() => {
+        if (siteOptions && siteOptions.length > 0) return siteOptions;
+        return (availableSites || []).map((s) => s.name).filter(Boolean);
+    }, [siteOptions, availableSites]);
+
+    const isAllSelected = selectedSites.length === 0 || selectedSites.includes('ALL') || selectedSites.length === allSiteNames.length;
+    const isSingleSite = selectedSites.length === 1 && !selectedSites.includes('ALL');
+    const singleSiteName = isSingleSite ? selectedSites[0] : '';
+    const isMultiSiteSubset = !isAllSelected && selectedSites.length > 1;
+
     const metricLabel = chartMetric === 'ITEM' ? 'Item' : chartMetric === 'SUPPLIER' ? 'Supplier' : chartMetric === 'DATE' ? 'Month / Date' : 'Site';
     const [chartViewType, setChartViewType] = useState<'VALUE' | 'QTY'>('VALUE');
     const [chartOrientation, setChartOrientation] = useState<'HORIZONTAL_BAR' | 'VERTICAL_CLUSTERED'>('HORIZONTAL_BAR');
 
-    // Multi-site comparison metrics (seeded with all available operating sites)
+    // Multi-site comparison metrics
     const siteComparison = useMemo(() => {
         const siteMap = new Map<string, {
             site: string;
@@ -2176,11 +2530,12 @@ const LinenInjectionVisual = ({
             itemsMap: Map<string, { name: string; value: number }>;
         }>();
 
-        // Seed available organizational sites
-        (availableSites || []).forEach((s) => {
-            if (s.name) {
-                siteMap.set(s.name, {
-                    site: s.name,
+        // Seed available operating sites based on current selection scope
+        const seedSites = isMultiSiteSubset ? selectedSites : allSiteNames;
+        seedSites.forEach((s) => {
+            if (s && s !== 'ALL') {
+                siteMap.set(s, {
+                    site: s,
                     injectedValue: 0,
                     injectedQty: 0,
                     orderCount: new Set(),
@@ -2228,9 +2583,9 @@ const LinenInjectionVisual = ({
                 spendPct: summary.totalInjectedValue > 0 ? (s.injectedValue / summary.totalInjectedValue) * 100 : 0
             }))
             .sort((a, b) => b.injectedValue - a.injectedValue || a.site.localeCompare(b.site));
-    }, [rows, summary.totalInjectedValue, availableSites]);
+    }, [rows, summary.totalInjectedValue, isMultiSiteSubset, selectedSites, allSiteNames]);
 
-    const activeSitesCount = siteComparison.filter(s => s.injectedValue > 0 || s.injectedQty > 0).length;
+    const activeSitesCount = siteComparison.filter((s) => s.injectedValue > 0 || s.injectedQty > 0).length;
 
     // Single-site item & cost breakdown
     const siteItemBreakdown = useMemo(() => {
@@ -2258,7 +2613,7 @@ const LinenInjectionVisual = ({
                     injectedQty: 0,
                     orderedQty: 0,
                     injectedValue: 0,
-                    latestDate: r.closedDate || r.latestDeliveryDate || r.requestDate
+                    latestDate: (r.closedDate || r.latestDeliveryDate || r.requestDate) as string
                 });
             }
             const entry = itemMap.get(key)!;
@@ -2266,8 +2621,9 @@ const LinenInjectionVisual = ({
             entry.orderedQty += r.orderedQty;
             entry.injectedValue += r.injectedValue;
             if (r.unitPrice) entry.unitPrice = r.unitPrice;
-            if (r.closedDate && (!entry.latestDate || new Date(r.closedDate).getTime() > new Date(entry.latestDate).getTime())) {
-                entry.latestDate = r.closedDate;
+            const rowDate = (r.closedDate || r.latestDeliveryDate || r.requestDate) as string;
+            if (rowDate && (!entry.latestDate || new Date(rowDate).getTime() > new Date(entry.latestDate).getTime())) {
+                entry.latestDate = rowDate;
             }
         });
 
@@ -2316,8 +2672,86 @@ const LinenInjectionVisual = ({
         return Array.from(itemMap.values()).sort((a, b) => b.totalValue - a.totalValue).slice(0, 5);
     }, [rows]);
 
+    const formattedMonth = useMemo(() => {
+        if (dateRangeType === 'MONTH' && selectedMonth && selectedMonth !== 'ALL') {
+            const [y, m] = selectedMonth.split('-').map(Number);
+            if (y && m) return `${MONTH_NAMES[m - 1]} ${y}`;
+        }
+        return '';
+    }, [dateRangeType, selectedMonth]);
+
     return (
         <div data-testid="linen-injection-report-visual" className="p-4 md:p-6 space-y-6">
+            {/* Quick Interactive Site Slicer Chips */}
+            {allSiteNames.length > 1 && (
+                <div className="p-3 bg-white dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-800 shadow-xs space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <Filter size={13} className="text-emerald-600" />
+                            <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">Multi-Site Slicer</span>
+                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                {isAllSelected ? `All ${allSiteNames.length} sites selected` : `${selectedSites.length} of ${allSiteNames.length} sites selected`}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={onSelectAllSites}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                                    isAllSelected
+                                        ? 'bg-emerald-600 text-white shadow-xs'
+                                        : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                }`}
+                            >
+                                Select All Sites
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        {allSiteNames.map((siteName) => {
+                            const isSelected = isAllSelected || selectedSites.includes(siteName);
+                            return (
+                                <div
+                                    key={siteName}
+                                    className={`inline-flex items-center rounded-lg border transition-all ${
+                                        isSelected
+                                            ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500/50 text-emerald-900 dark:text-emerald-200 shadow-2xs'
+                                            : 'bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400 hover:border-gray-300'
+                                    }`}
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => onToggleSite(siteName)}
+                                        className="px-2.5 py-1 text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                                        title={`Toggle ${siteName} in filter`}
+                                    >
+                                        <div
+                                            className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${
+                                                isSelected
+                                                    ? 'bg-emerald-600 text-white'
+                                                    : 'border border-gray-300 dark:border-gray-600 bg-white dark:bg-transparent'
+                                            }`}
+                                        >
+                                            {isSelected && <Check size={10} strokeWidth={3} />}
+                                        </div>
+                                        <span className={isSelected ? 'font-bold' : ''}>{siteName}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => onSelectOnlySite(siteName)}
+                                        className="pr-2 pl-0.5 py-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline border-l border-emerald-200 dark:border-emerald-900/50 opacity-70 hover:opacity-100"
+                                        title={`Focus strictly on ${siteName}`}
+                                    >
+                                        Only
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* Focus Context Banner */}
             {isSingleSite ? (
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl">
@@ -2328,56 +2762,88 @@ const LinenInjectionVisual = ({
                         <div>
                             <div className="flex items-center gap-2">
                                 <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300 uppercase tracking-wider">Site Focus</span>
-                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-600 text-white">{selectedSite}</span>
+                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-600 text-white">{singleSiteName}</span>
+                                {formattedMonth && (
+                                    <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-700 text-emerald-100">{formattedMonth}</span>
+                                )}
                             </div>
                             <p className="text-xs text-emerald-800/80 dark:text-emerald-400 mt-0.5">
-                                Showing item-level unit cost, quantities, and total expenditure for {selectedSite}.
+                                Showing item-level unit cost, receipted quantities, and closed PO expenditure for <strong>{singleSiteName}</strong> {formattedMonth ? `in ${formattedMonth}` : ''}.
                             </p>
                         </div>
                     </div>
                     <button
                         type="button"
-                        onClick={() => onSelectSite('ALL')}
-                        className="px-3 py-1.5 bg-white dark:bg-nocturne border border-emerald-300 dark:border-emerald-800 text-xs font-bold text-emerald-700 dark:text-emerald-300 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shrink-0 shadow-sm"
+                        onClick={onSelectAllSites}
+                        className="px-3 py-1.5 bg-white dark:bg-nocturne border border-emerald-300 dark:border-emerald-800 text-xs font-bold text-emerald-700 dark:text-emerald-300 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shrink-0 shadow-xs"
                     >
                         ← View All Sites Comparison
+                    </button>
+                </div>
+            ) : isMultiSiteSubset ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-sky-50/80 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/40 rounded-xl">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                            <Filter size={16} />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-sky-900 dark:text-sky-300 uppercase tracking-wider">Multi-Site Subset Active</span>
+                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-sky-600 text-white">{selectedSites.length} Sites Selected</span>
+                                {formattedMonth && (
+                                    <span className="px-2 py-0.5 rounded text-xs font-bold bg-sky-700 text-sky-100">{formattedMonth}</span>
+                                )}
+                            </div>
+                            <p className="text-xs text-sky-800/80 dark:text-sky-400 mt-0.5">
+                                Comparing receipted &amp; closed linen injection expenditure across {selectedSites.join(', ')} {formattedMonth ? `for ${formattedMonth}` : ''}.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onSelectAllSites}
+                        className="px-3 py-1.5 bg-white dark:bg-nocturne border border-sky-300 dark:border-sky-800 text-xs font-bold text-sky-700 dark:text-sky-300 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors shrink-0 shadow-xs"
+                    >
+                        ← Reset to All Sites
                     </button>
                 </div>
             ) : (
                 <div className="flex items-center justify-between gap-3 p-3 bg-blue-50/70 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs text-blue-800 dark:text-blue-300">
                     <div className="flex items-center gap-2">
                         <Building2 size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
-                        <span><strong>Multi-Site View:</strong> Comparing linen injection spend across <strong>{activeSitesCount} active sites</strong> ({siteComparison.length} operating facilities). Select a site to view its item &amp; cost breakdown.</span>
+                        <span>
+                            <strong>Closed PO Network View:</strong> Comparing linen injection spend across <strong>{activeSitesCount} active sites</strong> ({siteComparison.length} facilities total) {formattedMonth ? `for ${formattedMonth}` : ''}. Only receipted &amp; closed orders are included.
+                        </span>
                     </div>
-                    <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium shrink-0">Filter by Supplier using the dropdown above</span>
+                    <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium shrink-0 hidden md:inline">Use the slicer above to select single or multiple sites</span>
                 </div>
             )}
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                 <MetricCard
-                    label={isSingleSite ? `${selectedSite} Injected Spend` : 'Total Linen Injected'}
+                    label={isSingleSite ? `${singleSiteName} Injected Spend` : isMultiSiteSubset ? 'Selected Sites Injected Spend' : 'Total Linen Injected Spend'}
                     value={currency(summary.totalInjectedValue)}
-                    sub={`${numberValue(summary.totalInjectedUnits)} units delivered`}
+                    sub={`${numberValue(summary.totalInjectedUnits)} units receipted & closed`}
                     icon={TrendingUp}
                     color="bg-emerald-600"
                 />
                 <MetricCard
-                    label={isSingleSite ? 'Site Injected Units' : 'Total Injected Units'}
+                    label={isSingleSite ? 'Site Receipted Units' : 'Total Receipted Units'}
                     value={numberValue(summary.totalInjectedUnits)}
                     sub={`Across ${summary.lineCount} closed line items`}
                     icon={Package}
                     color="bg-sky-500"
                 />
                 <MetricCard
-                    label={isSingleSite ? 'Site Closed Orders' : 'Closed PO Orders'}
+                    label={isSingleSite ? 'Site Closed POs' : 'Closed PO Orders'}
                     value={String(summary.closedPoCount)}
                     sub={`Avg ${currency(summary.closedPoCount ? summary.totalInjectedValue / summary.closedPoCount : 0)} per order`}
                     icon={CheckCircle2}
                     color="bg-blue-600"
                 />
                 <MetricCard
-                    label={isSingleSite ? 'Site Item Varieties' : 'Active Operating Sites'}
+                    label={isSingleSite ? 'Site Item Varieties' : 'Operating Facilities'}
                     value={isSingleSite ? `${summary.itemCount} Items` : `${summary.siteCount} Sites`}
                     sub={isSingleSite ? `Supplied by ${summary.supplierCount} partner${summary.supplierCount === 1 ? '' : 's'}` : `Across ${summary.itemCount} items from ${summary.supplierCount} suppliers`}
                     icon={Layers}
@@ -2394,17 +2860,17 @@ const LinenInjectionVisual = ({
                             <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                                     {isSingleSite
-                                        ? `Item Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} for ${selectedSite}`
+                                        ? `Item Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} for ${singleSiteName}`
                                         : `Site Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} Comparison`}
                                 </h3>
-                                {/* Orientation Toggle: Horizontal Bar vs Vertical Bar */}
-                                <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-0.5 shadow-sm">
+                                {/* Orientation Toggle */}
+                                <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-0.5 shadow-xs">
                                     <button
                                         type="button"
                                         onClick={() => setChartOrientation('HORIZONTAL_BAR')}
                                         className={`px-2 py-0.5 text-[11px] font-bold rounded-md transition-all flex items-center gap-1 ${
                                             chartOrientation === 'HORIZONTAL_BAR'
-                                                ? 'bg-emerald-600 text-white shadow-sm'
+                                                ? 'bg-emerald-600 text-white shadow-xs'
                                                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                                         }`}
                                         title="Horizontal Bar Chart (optimal for long product names)"
@@ -2417,7 +2883,7 @@ const LinenInjectionVisual = ({
                                         onClick={() => setChartOrientation('VERTICAL_CLUSTERED')}
                                         className={`px-2 py-0.5 text-[11px] font-bold rounded-md transition-all flex items-center gap-1 ${
                                             chartOrientation === 'VERTICAL_CLUSTERED'
-                                                ? 'bg-emerald-600 text-white shadow-sm'
+                                                ? 'bg-emerald-600 text-white shadow-xs'
                                                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                                         }`}
                                         title="Vertical Bar Chart"
@@ -2429,8 +2895,8 @@ const LinenInjectionVisual = ({
                             </div>
                             <p className="text-xs text-tertiary dark:text-gray-500 mt-1">
                                 {isSingleSite
-                                    ? `Ranking top injected items by total expenditure at this facility`
-                                    : `Comparing total linen injection investment across operating locations`}
+                                    ? `Ranking top injected items by receipted expenditure at this facility`
+                                    : `Comparing closed linen injection investment across operating locations`}
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2440,7 +2906,7 @@ const LinenInjectionVisual = ({
                                     onClick={() => setChartViewType('VALUE')}
                                     className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
                                         chartViewType === 'VALUE'
-                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-sm font-bold'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-xs font-bold'
                                             : 'text-tertiary dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                                     }`}
                                 >
@@ -2451,7 +2917,7 @@ const LinenInjectionVisual = ({
                                     onClick={() => setChartViewType('QTY')}
                                     className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
                                         chartViewType === 'QTY'
-                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-sm font-bold'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-xs font-bold'
                                             : 'text-tertiary dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                                     }`}
                                 >
@@ -2536,7 +3002,7 @@ const LinenInjectionVisual = ({
                 {isSingleSite ? (
                     <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 flex flex-col justify-between">
                         <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Supplier Spend for {selectedSite}</h3>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Supplier Spend for {singleSiteName}</h3>
                             <div className="space-y-3">
                                 {siteSupplierBreakdown.map((supp, idx) => (
                                     <div key={`${supp.supplier}-${idx}`} className="text-xs border-b border-gray-100 dark:border-gray-800 pb-2.5">
@@ -2588,7 +3054,7 @@ const LinenInjectionVisual = ({
                             </div>
                         </div>
                         <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-secondary dark:text-gray-400 flex items-center justify-between">
-                            <span>Network Total Volume:</span>
+                            <span>Selected Network Volume:</span>
                             <span className="font-bold text-gray-900 dark:text-white">{numberValue(summary.totalInjectedUnits)} units</span>
                         </div>
                     </div>
@@ -2605,11 +3071,11 @@ const LinenInjectionVisual = ({
                                 Site Expenditure Comparison Matrix
                             </h3>
                             <p className="text-xs text-tertiary dark:text-gray-500 mt-0.5">
-                                Comparative spend, injected quantities, and top item for each operating location
+                                Comparative spend, receipted quantities, and top item for each operating location (closed POs only)
                             </p>
                         </div>
                         <span className="text-xs font-semibold text-secondary dark:text-gray-400">
-                            {activeSitesCount} Active / {siteComparison.length} Total Operating Sites
+                            {activeSitesCount} Active / {siteComparison.length} Filtered Sites
                         </span>
                     </div>
 
@@ -2629,9 +3095,22 @@ const LinenInjectionVisual = ({
                             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                 {siteComparison.map((site, idx) => {
                                     const hasActivity = site.injectedValue > 0 || site.injectedQty > 0;
+                                    const isSiteSelected = isAllSelected || selectedSites.includes(site.site);
                                     return (
                                         <tr key={`${site.site}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                                             <td className="px-4 py-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onToggleSite(site.site)}
+                                                    className={`w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0 ${
+                                                        isSiteSelected
+                                                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                                                            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-transparent'
+                                                    }`}
+                                                    title={`Toggle ${site.site} in comparative filter`}
+                                                >
+                                                    {isSiteSelected && <Check size={11} strokeWidth={3} />}
+                                                </button>
                                                 <div className={`w-6 h-6 rounded flex items-center justify-center font-black text-[10px] shrink-0 ${
                                                     hasActivity ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'
                                                 }`}>
@@ -2662,8 +3141,9 @@ const LinenInjectionVisual = ({
                                             <td className="px-4 py-3 text-right">
                                                 <button
                                                     type="button"
-                                                    onClick={() => onSelectSite(site.site)}
-                                                    className="px-2.5 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white dark:hover:bg-[var(--color-brand)] text-gray-700 dark:text-gray-300 rounded font-semibold text-[11px] transition-colors inline-flex items-center gap-1 shadow-sm"
+                                                    onClick={() => onSelectOnlySite(site.site)}
+                                                    className="px-2.5 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white dark:hover:bg-[var(--color-brand)] text-gray-700 dark:text-gray-300 rounded font-semibold text-[11px] transition-colors inline-flex items-center gap-1 shadow-xs"
+                                                    title={`View detailed item breakdown for ${site.site}`}
                                                 >
                                                     Item Breakdown <ArrowRight size={12} />
                                                 </button>
@@ -2673,7 +3153,7 @@ const LinenInjectionVisual = ({
                                 })}
                                 {siteComparison.length === 0 && (
                                     <tr>
-                                        <td colSpan={7} className="text-center py-8 text-secondary dark:text-gray-400">No site activity found.</td>
+                                        <td colSpan={7} className="text-center py-8 text-secondary dark:text-gray-400">No site activity found for selected filter.</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -2686,10 +3166,10 @@ const LinenInjectionVisual = ({
                         <div>
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
                                 <Package size={16} className="text-emerald-600" />
-                                Injected Linen Item &amp; Cost Breakdown for {selectedSite}
+                                Injected Linen Item &amp; Cost Breakdown for {singleSiteName}
                             </h3>
                             <p className="text-xs text-tertiary dark:text-gray-500 mt-0.5">
-                                Line item quantities, unit prices, total cost, and delivery dates for this site
+                                Line item receipted quantities, unit prices, total cost, and delivery dates for this site (closed POs only)
                             </p>
                         </div>
                         <span className="text-xs font-semibold text-secondary dark:text-gray-400">
