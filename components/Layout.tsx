@@ -46,6 +46,7 @@ import { MultiSiteSelector } from './MultiSiteSelector.tsx';
 import TaskDrawer from './TaskDrawer.tsx';
 import AccountDrawer from './AccountDrawer.tsx';
 import { BrandLogo } from './BrandLogo.tsx';
+import procureFlowLogo from '../docs/Logo Branding/LOGO-NEW/Procureflow_Logo.png';
 
 const SIDEBAR_COLLAPSED_KEY = 'pf-sidebar-collapsed';
 const REVAMP_EXPANDED_KEY = 'pf-revamp-sidebar-expanded';
@@ -290,14 +291,35 @@ const Layout = () => {
             className="hidden md:flex fixed left-4 top-4 bottom-4 z-50 flex-col rounded-2xl shadow-xl overflow-hidden transition-all duration-300 bg-nocturne text-white"
             style={{ width: sidebarW }}
           >
-            {/* Logo / app name */}
+            {/* Logo */}
             <div
-              className={`pt-4 pb-3 shrink-0 flex items-center transition-all duration-300 ${isRevampExpanded ? 'px-2 gap-3' : 'px-2 justify-center'}`}
+              className={`pt-4 pb-3 shrink-0 flex items-center transition-all duration-300 ${
+                isRevampExpanded ? 'px-3 justify-center' : 'px-2 justify-center'
+              }`}
             >
-              <BrandLogo appName={branding.appName} logoUrl={branding.logoUrl} size="md" />
-              {isRevampExpanded && (
-                <span className="text-white font-bold text-sm truncate">{branding.appName}</span>
-              )}
+              <Link
+                to="/"
+                className="w-full flex items-center justify-center transition-opacity hover:opacity-90"
+                title={branding.appName || 'ProcureFlow'}
+              >
+                {isRevampExpanded ? (
+                  <div className="w-full h-11 bg-white rounded-xl p-1.5 flex items-center justify-center shadow-md border border-white/10 overflow-hidden">
+                    <img
+                      src={branding.logoUrl || procureFlowLogo}
+                      alt={branding.appName ? `${branding.appName} logo` : 'ProcureFlow logo'}
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-11 h-11 bg-white rounded-xl p-1.5 flex items-center justify-center shadow-md border border-white/10 overflow-hidden shrink-0">
+                    <img
+                      src={branding.logoUrl || procureFlowLogo}
+                      alt={branding.appName ? `${branding.appName} logo` : 'ProcureFlow logo'}
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                )}
+              </Link>
             </div>
 
             {/* Nav items + scroll indicator */}
@@ -462,8 +484,19 @@ const Layout = () => {
           {/* Mobile drawer (all nav items) */}
           {isMobileMenuOpen && (
             <div className="md:hidden fixed inset-y-0 left-0 w-64 z-50 bg-nocturne flex flex-col shadow-2xl rounded-r-2xl animate-slide-in-right">
-              <div className="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
-                <span className="text-white font-bold text-sm">{branding.appName}</span>
+              <div className="flex items-center justify-between p-4 border-b border-white/10 shrink-0">
+                <Link
+                  to="/"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="h-10 px-2.5 py-1 bg-white rounded-xl flex items-center justify-center shadow-sm max-w-[150px] overflow-hidden"
+                  title={branding.appName || 'ProcureFlow'}
+                >
+                  <img
+                    src={branding.logoUrl || procureFlowLogo}
+                    alt={branding.appName ? `${branding.appName} logo` : 'ProcureFlow logo'}
+                    className="h-full w-auto object-contain"
+                  />
+                </Link>
                 <button type="button" onClick={() => setIsMobileMenuOpen(false)} className="text-white/50 hover:text-white p-1">
                   <X size={20} />
                 </button>
@@ -743,18 +776,29 @@ const Layout = () => {
         <div
           className={`p-4 md:py-5 flex items-center gap-3 shrink-0 ${isCollapsed ? 'md:px-3' : 'md:px-5'}`}
         >
-          <BrandLogo
-            appName={branding.appName}
-            logoUrl={branding.logoUrl}
-            size="sm"
-            fallbackClassName={isSidebarDark ? 'bg-white text-[var(--color-brand)]' : 'bg-gradient-to-br from-[var(--color-brand)] to-purple-600 text-white'}
-          />
-
-          {!isCollapsed && (
-            <h1 className="text-lg font-bold tracking-tight truncate flex-1" title={branding.appName}>
-              {branding.appName}
-            </h1>
-          )}
+          <Link
+            to="/"
+            className="flex items-center gap-3 overflow-hidden"
+            title={branding.appName || 'ProcureFlow'}
+          >
+            {isCollapsed ? (
+              <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-sm shrink-0 border border-gray-200 dark:border-white/10 overflow-hidden">
+                <img
+                  src={branding.logoUrl || procureFlowLogo}
+                  alt={branding.appName ? `${branding.appName} logo` : 'ProcureFlow logo'}
+                  className="h-full w-full object-contain"
+                />
+              </div>
+            ) : (
+              <div className="h-11 px-2.5 py-1 bg-white rounded-xl flex items-center justify-center shadow-sm border border-gray-200 dark:border-white/10 overflow-hidden max-w-[170px]">
+                <img
+                  src={branding.logoUrl || procureFlowLogo}
+                  alt={branding.appName ? `${branding.appName} logo` : 'ProcureFlow logo'}
+                  className="h-full w-auto object-contain"
+                />
+              </div>
+            )}
+          </Link>
 
           <div className="ml-auto flex items-center gap-1">
             <button
