@@ -305,16 +305,16 @@ const Layout = () => {
                 {isRevampExpanded ? (
                   <div className="w-full h-11 bg-white rounded-xl p-1.5 flex items-center justify-center shadow-md border border-white/10 overflow-hidden">
                     <img
-                      src={branding.logoUrl || procureFlowLogo}
-                      alt={branding.appName ? `${branding.appName} logo` : 'ProcureFlow logo'}
+                      src={procureFlowLogo}
+                      alt="ProcureFlow logo"
                       className="h-full w-full object-contain"
                     />
                   </div>
                 ) : (
                   <div className="w-11 h-11 bg-white rounded-xl p-1.5 flex items-center justify-center shadow-md border border-white/10 overflow-hidden shrink-0">
                     <img
-                      src={branding.logoUrl || procureFlowLogo}
-                      alt={branding.appName ? `${branding.appName} logo` : 'ProcureFlow logo'}
+                      src={procureFlowLogo}
+                      alt="ProcureFlow logo"
                       className="h-full w-full object-contain"
                     />
                   </div>
@@ -492,8 +492,8 @@ const Layout = () => {
                   title={branding.appName || 'ProcureFlow'}
                 >
                   <img
-                    src={branding.logoUrl || procureFlowLogo}
-                    alt={branding.appName ? `${branding.appName} logo` : 'ProcureFlow logo'}
+                    src={procureFlowLogo}
+                    alt="ProcureFlow logo"
                     className="h-full w-auto object-contain"
                   />
                 </Link>
@@ -784,16 +784,16 @@ const Layout = () => {
             {isCollapsed ? (
               <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-sm shrink-0 border border-gray-200 dark:border-white/10 overflow-hidden">
                 <img
-                  src={branding.logoUrl || procureFlowLogo}
-                  alt={branding.appName ? `${branding.appName} logo` : 'ProcureFlow logo'}
+                  src={procureFlowLogo}
+                  alt="ProcureFlow logo"
                   className="h-full w-full object-contain"
                 />
               </div>
             ) : (
               <div className="h-11 px-2.5 py-1 bg-white rounded-xl flex items-center justify-center shadow-sm border border-gray-200 dark:border-white/10 overflow-hidden max-w-[170px]">
                 <img
-                  src={branding.logoUrl || procureFlowLogo}
-                  alt={branding.appName ? `${branding.appName} logo` : 'ProcureFlow logo'}
+                  src={procureFlowLogo}
+                  alt="ProcureFlow logo"
                   className="h-full w-auto object-contain"
                 />
               </div>

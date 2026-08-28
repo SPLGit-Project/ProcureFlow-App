@@ -13,18 +13,17 @@ test.describe('Navigation and feature flag gating', () => {
             'view_completed_requests', 'link_concur', 'receive_goods',
         ]);
         await gotoAndWait(page, '/');
-        await expect(page.getByText('App drawer')).toBeVisible();
-        await expect(page.getByText('MercerFlow Apps')).toBeVisible();
-        await expect(page.getByRole('heading', { level: 1, name: /QA|Welcome back|Good day|MercerFlow|Good to see you|tuned/i })).toBeVisible();
+        await expect(page.getByText('Action Center')).toBeVisible();
+        await expect(page.getByRole('heading', { level: 2, name: /Active Tasks & Operations/i })).toBeVisible();
+        await expect(page.getByRole('heading', { level: 1, name: /QA|Welcome back|Good day|ProcureFlow|Good to see you|tuned/i })).toBeVisible();
         await expect(page.getByText('Laundry Insights')).toBeVisible();
         await expect(page.getByText('MercerFlow Command')).not.toBeVisible();
         await expect(page.getByText('Recommended next')).not.toBeVisible();
         await expect(page.getByText(/Adelaide|All Sites/i).first()).toBeVisible();
         await expect(page.getByRole('link', { name: /Item Management/i })).not.toBeVisible();
         await expect(page.getByRole('link', { name: 'Procurement', exact: true })).not.toBeVisible();
-        await expect(page.getByRole('button', { name: /Show details for CatalogFlow/i })).toBeVisible();
-        await expect(page.getByRole('button', { name: /Show details for ProcureFlow/i })).toBeVisible();
-        await expect(page.getByText('Action Center')).not.toBeVisible();
+        await expect(page.getByText('App drawer')).not.toBeVisible();
+        await expect(page.getByText('MercerFlow Apps')).not.toBeVisible();
         await page.screenshot({ path: 'test-results/nav-admin.png', fullPage: true });
     });
 
@@ -217,17 +216,17 @@ test.describe('Navigation and feature flag gating', () => {
         await page.screenshot({ path: 'test-results/nav-full.png', fullPage: true });
     });
 
-    test('permission-limited home hides unavailable modules', async ({ page }) => {
+    test('permission-limited home displays Action Center with appropriate permissions', async ({ page }) => {
         await injectTestUser(page, ['view_dashboard']);
         await gotoAndWait(page, '/');
         await expect(page.getByAltText('ProcureFlow logo')).toBeVisible();
-        await expect(page.getByAltText('CatalogFlow logo')).toBeVisible();
-        await expect(page.getByAltText('PriceFlow logo')).not.toBeVisible();
+        await expect(page.getByText('Action Center')).toBeVisible();
+        await expect(page.getByText('App drawer')).not.toBeVisible();
         await expect(page.getByText('Quick create')).not.toBeVisible();
         await expect(page.getByText('Recent destinations')).not.toBeVisible();
     });
 
-    test('home supports the light mode app launcher treatment', async ({ page }) => {
+    test('home supports the light mode Action Center treatment', async ({ page }) => {
         await page.addInitScript(() => {
             localStorage.setItem('app-theme', 'light');
         });
@@ -237,26 +236,26 @@ test.describe('Navigation and feature flag gating', () => {
             'view_finance', 'manage_finance',
         ]);
         await gotoAndWait(page, '/');
-        await expect(page.getByText('App drawer')).toBeVisible();
-        await expect(page.getByRole('button', { name: /Show details for CatalogFlow/i })).toBeVisible();
-        await expect(page.getByRole('button', { name: /Show details for ProcureFlow/i })).toBeVisible();
+        await expect(page.getByText('Action Center')).toBeVisible();
+        await expect(page.getByRole('heading', { level: 2, name: /Active Tasks & Operations/i })).toBeVisible();
         await page.screenshot({ path: 'test-results/home-light.png', fullPage: true });
     });
 
-    test('home module app expands and reveals module action', async ({ page }) => {
-        await injectTestUser(page, ['view_dashboard', 'view_items']);
+    test('home displays insights and quick action buttons', async ({ page }) => {
+        await injectTestUser(page, ['view_dashboard', 'view_items', 'create_request']);
         await gotoAndWait(page, '/');
-        await page.getByRole('button', { name: /Show details for CatalogFlow/i }).click();
-        await expect(page.getByText('Govern requests, queues, and catalogue visibility.')).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Open app' })).toBeVisible();
+        await expect(page.getByText('Approved Today')).toBeVisible();
+        await expect(page.getByText('Active Spends')).toBeVisible();
+        await expect(page.getByRole('button', { name: /View All Requests/i })).toBeVisible();
+        await expect(page.getByRole('button', { name: /Create New Request/i })).toBeVisible();
     });
 
     test('home works on mobile viewport', async ({ page }) => {
         await page.setViewportSize({ width: 390, height: 844 });
         await injectTestUser(page);
         await gotoAndWait(page, '/');
-        await expect(page.getByText('App drawer')).toBeVisible();
-        await expect(page.getByRole('heading', { level: 1, name: /QA|Welcome back|Good day|MercerFlow|Good to see you|tuned/i })).toBeVisible();
+        await expect(page.getByText('Action Center')).toBeVisible();
+        await expect(page.getByRole('heading', { level: 1, name: /QA|Welcome back|Good day|ProcureFlow|Good to see you|tuned/i })).toBeVisible();
         await expect(page.locator('header a[title="Home"]')).toBeVisible();
         await expect(page.locator('header button[title="Light mode"], header button[title="Dark mode"]')).toBeVisible();
         await page.screenshot({ path: 'test-results/home-mobile.png', fullPage: true });

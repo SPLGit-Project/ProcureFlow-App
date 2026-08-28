@@ -1,6 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Info } from 'lucide-react';
+import { 
+  ArrowRight, CheckCircle2, Package, 
+  Link as LinkIcon, ClipboardList, 
+  ChevronRight, Sparkles, Layers,
+  DollarSign
+} from 'lucide-react';
 import { ItemRequest } from '../types';
 import { useApp } from '../context/AppContext';
 import PageHeader from './PageHeader';
@@ -9,31 +14,7 @@ import {
   getRequestsForMasterData,
   getRequestsForPricing,
 } from '../services/itemRequestService';
-
-import catalogFlowLogo from '../docs/Logo Branding/APP-LOGOS/CatalogFlow-Logo.png';
-import priceFlowLogo from '../docs/Logo Branding/APP-LOGOS/PriceFlow-Logo.png';
-import procureFlowLogo from '../docs/Logo Branding/APP-LOGOS/ProcureFlow-Logo.png';
 import { getSessionLaundryInsight } from '../constants/linenFacts';
-
-interface CommandApp {
-  id: string;
-  title: string;
-  brandName: string;
-  label: string;
-  description: string;
-  path: string;
-  logo: string;
-  logoPosition?: string;
-  visible: boolean;
-  metric: number | string;
-  metricLabel: string;
-  metricLabelShort: string;
-  detail: string;
-  signals: string[];
-  brandColor: string;
-  brandRgb: string;
-  brandGlow: string;
-}
 
 interface HomeInsightState {
   isLoading: boolean;
@@ -41,6 +22,20 @@ interface HomeInsightState {
   myItemRequests: ItemRequest[];
   masterDataRequests: ItemRequest[];
   pricingRequests: ItemRequest[];
+}
+
+interface ActionTask {
+  id: string;
+  title: string;
+  count: number;
+  desc: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  color: string;
+  path: string;
+  bgClass: string;
+  textClass: string;
+  badgeClass: string;
+  borderHoverClass: string;
 }
 
 const greetingOptions = [
@@ -127,116 +122,166 @@ export default function Home() {
   } = useApp();
   const navigate = useNavigate();
   const insights = useHomeInsights();
-  const [activeAppId, setActiveAppId] = React.useState<string | null>(null);
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
 
-  const procurementSignals = React.useMemo(() => {
-    const pendingApprovals = hasPermission('approve_requests')
-      ? pos.filter(po => po.status === 'PENDING_APPROVAL').length
-      : 0;
-    const pendingConcur = hasPermission('link_concur')
-      ? pos.filter(po => po.status === 'APPROVED_PENDING_CONCUR' || po.status === 'APPROVED_PENDING_CONCUR_REQUEST').length
-      : 0;
-    const openDeliveries = pos.filter(po => {
-      if (po.status !== 'ACTIVE' && po.status !== 'RECEIVED') return false;
-      if (!isAdmin && po.requesterId !== currentUser?.id) return false;
-      return po.lines.some(line => (line.quantityOrdered - (line.quantityReceived || 0)) > 0 && !line.isForceClosed);
+  const pendingApprovals = React.useMemo(() => 
+    pos.filter(p => p.status === 'PENDING_APPROVAL' && (activeSiteIds.length === 0 || activeSiteIds.includes(p.siteId))),
+    [pos, activeSiteIds]
+  );
+
+  const pendingConcur = React.useMemo(() => 
+    pos.filter(p => (p.status === 'APPROVED_PENDING_CONCUR' || p.status === 'APPROVED_PENDING_CONCUR_REQUEST') && (activeSiteIds.length === 0 || activeSiteIds.includes(p.siteId))),
+    [pos, activeSiteIds]
+  );
+
+  const activeOrders = React.useMemo(() => 
+    pos.filter(p => (p.status === 'ACTIVE' || p.status === 'RECEIVED') && (activeSiteIds.length === 0 || activeSiteIds.includes(p.siteId))),
+    [pos, activeSiteIds]
+  );
+
+  const myPendingApprovals = React.useMemo(() => 
+    (currentUser?.role === 'APPROVER' || currentUser?.roleIds?.includes('APPROVER') || isAdmin || hasPermission('approve_requests')) 
+      ? pendingApprovals 
+      : [], 
+    [currentUser, isAdmin, hasPermission, pendingApprovals]
+  );
+
+  const globalPendingConcur = React.useMemo(() => 
+    hasPermission('link_concur') ? pendingConcur : [], 
+    [hasPermission, pendingConcur]
+  );
+
+  const myPendingConcurSync = React.useMemo(() => 
+    pendingConcur.filter(p => p.requesterId === currentUser?.id && !hasPermission('link_concur')), 
+    [pendingConcur, currentUser, hasPermission]
+  );
+
+  const actionConcur = React.useMemo(() => 
+    globalPendingConcur.length > 0 ? globalPendingConcur : myPendingConcurSync, 
+    [globalPendingConcur, myPendingConcurSync]
+  );
+
+  const myPendingDeliveries = React.useMemo(() => activeOrders.filter(p => {
+    if (isAdmin) return true;
+    if (p.requesterId !== currentUser?.id) return false;
+    const remaining = p.lines.reduce((acc, line) => acc + (line.quantityOrdered - (line.quantityReceived || 0)), 0);
+    return remaining > 0;
+  }), [currentUser, isAdmin, activeOrders]);
+
+  const masterDataQueueCount = React.useMemo(() => 
+    hasPermission('manage_item_definition') 
+      ? insights.masterDataRequests.filter(r => ['SUBMITTED', 'DUPLICATE_REVIEW', 'PROCUREMENT_REVIEW', 'DATA_REVIEW'].includes(r.status)).length 
+      : 0,
+    [hasPermission, insights.masterDataRequests]
+  );
+
+  const pricingQueueCount = React.useMemo(() => 
+    (hasPermission('manage_sell_pricing') || hasPermission('manage_purchase_pricing')) 
+      ? insights.pricingRequests.length 
+      : 0,
+    [hasPermission, insights.pricingRequests]
+  );
+
+  const tasks = React.useMemo<ActionTask[]>(() => {
+    const t: ActionTask[] = [];
+    
+    if (myPendingApprovals.length > 0) {
+      t.push({
+        id: 'approvals',
+        title: 'Pending Approvals',
+        count: myPendingApprovals.length,
+        desc: 'Review and approve or reject purchase requests.',
+        icon: CheckCircle2,
+        color: 'amber',
+        path: '/approvals',
+        bgClass: 'bg-amber-500/10 dark:bg-amber-500/15',
+        textClass: 'text-amber-600 dark:text-amber-400',
+        badgeClass: 'bg-amber-500',
+        borderHoverClass: 'hover:border-amber-500/40',
+      });
+    }
+
+    if (actionConcur.length > 0) {
+      t.push({
+        id: 'concur',
+        title: 'Concur Linkage',
+        count: actionConcur.length,
+        desc: 'Link approved requests to Concur PO numbers.',
+        icon: LinkIcon,
+        color: 'blue',
+        path: '/requests',
+        bgClass: 'bg-blue-500/10 dark:bg-blue-500/15',
+        textClass: 'text-blue-600 dark:text-blue-400',
+        badgeClass: 'bg-blue-500',
+        borderHoverClass: 'hover:border-blue-500/40',
+      });
+    }
+
+    if (myPendingDeliveries.length > 0) {
+      t.push({
+        id: 'deliveries',
+        title: 'Pending Deliveries',
+        count: myPendingDeliveries.length,
+        desc: 'Confirm receipt of goods for active purchase orders.',
+        icon: Package,
+        color: 'emerald',
+        path: '/requests',
+        bgClass: 'bg-emerald-500/10 dark:bg-emerald-500/15',
+        textClass: 'text-emerald-600 dark:text-emerald-400',
+        badgeClass: 'bg-emerald-500',
+        borderHoverClass: 'hover:border-emerald-500/40',
+      });
+    }
+
+    if (masterDataQueueCount > 0) {
+      t.push({
+        id: 'master-data',
+        title: 'Master Data Setup',
+        count: masterDataQueueCount,
+        desc: 'Catalog lifecycle items pending master data review.',
+        icon: Layers,
+        color: 'purple',
+        path: '/items/master-data-queue',
+        bgClass: 'bg-purple-500/10 dark:bg-purple-500/15',
+        textClass: 'text-purple-600 dark:text-purple-400',
+        badgeClass: 'bg-purple-500',
+        borderHoverClass: 'hover:border-purple-500/40',
+      });
+    }
+
+    if (pricingQueueCount > 0) {
+      t.push({
+        id: 'pricing-queue',
+        title: 'Pricing Review Queue',
+        count: pricingQueueCount,
+        desc: 'Item requests awaiting pricing configuration and review.',
+        icon: DollarSign,
+        color: 'green',
+        path: '/items/pricing-queue',
+        bgClass: 'bg-green-500/10 dark:bg-green-500/15',
+        textClass: 'text-green-600 dark:text-green-400',
+        badgeClass: 'bg-green-500',
+        borderHoverClass: 'hover:border-green-500/40',
+      });
+    }
+
+    return t;
+  }, [myPendingApprovals, actionConcur, myPendingDeliveries, masterDataQueueCount, pricingQueueCount]);
+
+  const approvedTodayCount = React.useMemo(() => {
+    return pos.filter(p => {
+      if (activeSiteIds.length > 0 && !activeSiteIds.includes(p.siteId)) return false;
+      const h = p.approvalHistory.find(hist => hist.action === 'APPROVED');
+      return h && new Date(h.date).toDateString() === new Date().toDateString();
     }).length;
-    return { pendingApprovals, pendingConcur, openDeliveries };
-  }, [currentUser?.id, isAdmin, hasPermission, pos]);
+  }, [pos, activeSiteIds]);
 
-  const itemSignals = React.useMemo(() => {
-    const masterDataQueue = insights.masterDataRequests.filter(request =>
-      ['SUBMITTED', 'DUPLICATE_REVIEW', 'PROCUREMENT_REVIEW', 'DATA_REVIEW'].includes(request.status)
-    ).length;
-    const myRevisionRequired = insights.myItemRequests.filter(request => request.status === 'REVISION_REQUIRED').length;
-    const activeMyItems = insights.myItemRequests.filter(request =>
-      !['ACTIVE', 'REJECTED', 'REPLACED', 'RETIRED'].includes(request.status)
-    ).length;
-
-    return {
-      activeMyItems,
-      masterDataQueue,
-      myRevisionRequired,
-      pricingQueue: insights.pricingRequests.length,
-    };
-  }, [insights.masterDataRequests, insights.myItemRequests, insights.pricingRequests.length]);
-
-  const commandApps = React.useMemo<CommandApp[]>(() => {
-    const apps: CommandApp[] = [
-      {
-        id: 'items',
-        title: 'Item Management',
-        brandName: 'CatalogFlow',
-        label: 'Catalogue lifecycle',
-        description: 'Govern requests, queues, and catalogue visibility.',
-        path: hasPermission('manage_item_definition') ? '/items/master-data-queue' : '/items/my-requests',
-        logo: catalogFlowLogo,
-        logoPosition: 'center 66%',
-        visible: hasPermission('view_dashboard') || hasPermission('view_items') || hasPermission('manage_item_definition'),
-        metric: itemSignals.activeMyItems + itemSignals.masterDataQueue + itemSignals.myRevisionRequired,
-        metricLabel: 'item signals',
-        metricLabelShort: 'signals',
-        detail: 'Create item requests, respond to revisions, complete master-data review, and inspect catalogue readiness.',
-        signals: [
-          `${itemSignals.masterDataQueue} setup queue`,
-          `${itemSignals.myRevisionRequired} revisions`,
-          `${itemSignals.activeMyItems} in your flow`,
-        ],
-        brandColor: '#9d4edd',
-        brandRgb: '157,78,221',
-        brandGlow: 'rgba(157,78,221,0.24)',
-      },
-      {
-        id: 'procurement',
-        title: 'Procurement',
-        brandName: 'ProcureFlow',
-        label: 'Request operations',
-        description: 'Move purchase activity from request to receiving.',
-        path: '/procurement/dashboard',
-        logo: procureFlowLogo,
-        logoPosition: 'center 66%',
-        visible: hasPermission('view_dashboard'),
-        metric: procurementSignals.pendingApprovals + procurementSignals.pendingConcur + procurementSignals.openDeliveries,
-        metricLabel: 'procurement signals',
-        metricLabelShort: 'signals',
-        detail: 'Review the request pipeline, resolve approvals, link Concur references, and monitor active delivery work.',
-        signals: [
-          `${procurementSignals.pendingApprovals} approvals`,
-          `${procurementSignals.pendingConcur} Concur links`,
-          `${procurementSignals.openDeliveries} receiving actions`,
-        ],
-        brandColor: '#ff8a00',
-        brandRgb: '255,138,0',
-        brandGlow: 'rgba(255,138,0,0.24)',
-      },
-      {
-        id: 'pricing',
-        title: 'Pricing',
-        brandName: 'PriceFlow',
-        label: 'Price governance',
-        description: 'Resolve price reviews and future schedules.',
-        path: hasPermission('manage_sell_pricing') ? '/pricing/dashboard' : '/items/pricing-queue',
-        logo: priceFlowLogo,
-        logoPosition: 'center 66%',
-        visible: hasPermission('manage_sell_pricing') || hasPermission('manage_purchase_pricing') || hasPermission('manage_pricing_schedules'),
-        metric: itemSignals.pricingQueue,
-        metricLabel: 'pricing reviews',
-        metricLabelShort: 'reviews',
-        detail: 'Resolve pricing queues, maintain price records, and prepare schedule activity before catalogue approval.',
-        signals: [
-          `${itemSignals.pricingQueue} open reviews`,
-          hasPermission('manage_pricing_schedules') ? 'Schedules enabled' : 'Queue access',
-          'Margin-aware review',
-        ],
-        brandColor: '#58bf43',
-        brandRgb: '88,191,67',
-        brandGlow: 'rgba(88,191,67,0.24)',
-      },
-    ];
-
-    return apps.filter(app => app.visible);
-  }, [hasPermission, itemSignals, procurementSignals]);
+  const activeSpendsK = React.useMemo(() => {
+    const total = pos
+      .filter(p => p.status === 'ACTIVE' && (activeSiteIds.length === 0 || activeSiteIds.includes(p.siteId)))
+      .reduce((sum, p) => sum + p.totalAmount, 0);
+    return Math.round(total / 1000);
+  }, [pos, activeSiteIds]);
 
   const firstName = currentUser?.name?.split(' ')[0] || 'there';
   const fullName = currentUser?.name || firstName;
@@ -265,11 +310,7 @@ export default function Home() {
   const dailyMessage = applyTemplate(customMessage, templateValues);
   const dailyMessageLabel = messageType === 'announcement' ? 'Announcement' : 'Laundry Insights';
 
-  React.useEffect(() => {
-    if (activeAppId && !commandApps.some(app => app.id === activeAppId)) {
-      setActiveAppId(null);
-    }
-  }, [activeAppId, commandApps]);
+  const totalActionItemCount = tasks.reduce((sum, t) => sum + t.count, 0);
 
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-7.25rem)] max-w-7xl flex-col gap-4 overflow-hidden animate-page-entry">
@@ -277,6 +318,7 @@ export default function Home() {
 
       <section className="relative flex-1 overflow-hidden rounded-[1.75rem] border border-transparent bg-transparent text-gray-950 shadow-none dark:border-white/10 dark:bg-nocturne dark:text-white dark:shadow-2xl">
         <div className="relative flex min-h-[520px] flex-col gap-6 p-4 sm:p-5 lg:p-6">
+          
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <h1 className="text-3xl font-black leading-tight text-gray-950 md:text-4xl xl:text-[2.85rem] dark:text-white">
@@ -285,7 +327,10 @@ export default function Home() {
             </div>
 
             <div className="rounded-2xl border border-gray-200/80 bg-white/85 px-4 py-3 shadow-[0_14px_35px_rgba(15,23,42,0.08)] lg:w-[360px] dark:border-white/10 dark:bg-[#15171e] dark:shadow-none">
-              <p className="text-[10px] font-black uppercase tracking-widest text-tranquil">{dailyMessageLabel}</p>
+              <div className="flex items-center gap-1.5">
+                <Sparkles size={13} className="text-tranquil" />
+                <p className="text-[10px] font-black uppercase tracking-widest text-tranquil">{dailyMessageLabel}</p>
+              </div>
               {isCustomOrAnnouncement ? (
                 <p className="mt-2 text-sm font-semibold leading-6 text-gray-700 dark:text-white/70">{dailyMessage}</p>
               ) : (
@@ -304,202 +349,119 @@ export default function Home() {
           </div>
 
           <div className="min-h-0 flex-1 border-t border-gray-200/70 pt-5 dark:border-white/10">
-            <div className="mb-4 flex items-end justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-tranquil">App drawer</p>
-                <h2 className="mt-1 text-lg font-black leading-tight text-gray-950 sm:text-xl dark:text-white">MercerFlow Apps</h2>
+            <div className="mb-5 flex items-end justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-tranquil/10 flex items-center justify-center text-tranquil border border-tranquil/20 shadow-sm">
+                  <ClipboardList size={22} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-tranquil">Action Center</p>
+                  <h2 className="text-lg font-black leading-tight text-gray-950 sm:text-xl dark:text-white">Active Tasks & Operations</h2>
+                </div>
               </div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-white/30">{commandApps.length} available</p>
+              <span className={`text-xs font-black px-3 py-1 rounded-full shadow-sm ${
+                totalActionItemCount > 0 
+                  ? 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-500/20' 
+                  : 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-500/20'
+              }`}>
+                {totalActionItemCount > 0 ? `${totalActionItemCount} Action Items` : 'All Clear'}
+              </span>
             </div>
 
-            {commandApps.length > 0 ? (
-              <div className="grid grid-cols-2 items-start gap-3 sm:gap-4 xl:grid-cols-3">
-                {commandApps.map(app => {
-                  const isActive = activeAppId === app.id;
-                  const appTileStyle = {
-                    '--app-color': app.brandColor,
-                    '--app-rgb': app.brandRgb,
-                    boxShadow: isActive
-                      ? `0 26px 56px ${app.brandGlow}, 0 10px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.95)`
-                      : '0 18px 42px rgba(15,23,42,0.13), 0 7px 16px rgba(15,23,42,0.06), inset 0 2px 0 rgba(255,255,255,0.95)',
-                  } as React.CSSProperties;
-                  return (
-                    <article
-                      key={app.id}
-                      style={appTileStyle}
-                      onClick={() => {
-                        if (!isActive) {
-                          navigate(app.path);
-                        }
-                      }}
-                      className={`group relative transform-gpu overflow-hidden rounded-[1.25rem] border text-left transition-all duration-300 sm:rounded-[1.35rem] cursor-pointer ${
-                        isActive
-                          ? 'border-[color:var(--app-color)] bg-white dark:bg-[#1d2029]'
-                          : 'border-gray-200/85 bg-white hover:-translate-y-1 hover:border-[color:var(--app-color)] active:translate-y-0 dark:border-white/10 dark:bg-[#15171e] dark:hover:border-[color:var(--app-color)] dark:hover:bg-[#1d2029]'
-                      }`}
-                    >
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+              
+              <div className="lg:col-span-2 space-y-3.5">
+                {tasks.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {tasks.map((task) => (
                       <div
-                        className={`absolute inset-x-0 top-0 opacity-90 transition-opacity group-hover:opacity-100 ${isActive ? 'h-[170px] sm:h-[210px]' : 'h-full'}`}
-                        style={{
-                          background: `linear-gradient(135deg, rgba(${app.brandRgb},0.16), rgba(${app.brandRgb},0.04) 46%, rgba(255,255,255,0) 100%)`,
-                        }}
-                      />
-                      <div className="relative flex h-full flex-col">
-                        <div
-                          onClick={(e) => {
-                            if (isActive) {
-                              e.stopPropagation();
-                              navigate(app.path);
-                            }
-                          }}
-                          className="relative block w-full text-left"
-                        >
-                          <div className="relative m-2 overflow-hidden rounded-[1rem] border border-white/15 bg-[#100d0f] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:m-3 sm:rounded-[1.1rem]">
-                            <div className="relative overflow-hidden">
-                              <div
-                                className="absolute inset-0"
-                                style={{
-                                  background: `radial-gradient(circle at 80% 35%, rgba(${app.brandRgb},0.26), transparent 36%), linear-gradient(135deg, #1a1416 0%, #080809 100%)`,
-                                }}
-                              />
-                              <img
-                                src={app.logo}
-                                alt={`${app.brandName} logo`}
-                                className="relative h-[128px] w-full object-cover opacity-95 transition duration-300 group-hover:scale-[1.03] group-hover:opacity-100 sm:h-[176px]"
-                                style={{ objectPosition: app.logoPosition || 'center' }}
-                              />
-                              <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/55 to-transparent" />
-                              <span
-                                className="absolute bottom-2 right-2 h-2.5 w-8 rounded-full shadow-[0_0_18px_rgba(var(--app-rgb),0.72)] sm:w-10"
-                                style={{ backgroundColor: app.brandColor }}
-                                aria-hidden="true"
-                              />
-
-                              {/* Notification Badge (Top-Right) */}
-                              {app.metric !== undefined && app.metric !== '' && (
-                                <div 
-                                  className="absolute top-2.5 right-2.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-[#ef4444] px-1.5 text-[10px] font-black text-white shadow-[0_2px_8px_rgba(239,68,68,0.5)]"
-                                >
-                                  {app.metric}
-                                </div>
-                              )}
-
-                              {/* Info Button (Bottom-Left) */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveAppId(isActive ? null : app.id);
-                                }}
-                                aria-expanded={isActive}
-                                aria-label={`${isActive ? 'Hide details' : 'Show details'} for ${app.brandName}`}
-                                className={`absolute bottom-2.5 left-2.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg border transition-all sm:h-8 sm:w-8 sm:rounded-xl backdrop-blur-md ${
-                                  isActive
-                                    ? 'border-transparent bg-[color:var(--app-color)] text-white shadow-[0_0_12px_rgba(var(--app-rgb),0.5)]'
-                                    : 'border-white/10 bg-black/40 text-white/80 hover:bg-black/60 hover:text-white'
-                                }`}
-                              >
-                                <Info size={14} className="sm:size-4" />
-                              </button>
+                        key={task.id}
+                        onClick={() => navigate(task.path)}
+                        className={`group p-4 rounded-2xl border border-gray-200/80 bg-white hover:shadow-lg ${task.borderHoverClass} transition-all duration-200 cursor-pointer relative overflow-hidden dark:border-white/10 dark:bg-[#15171e]`}
+                      >
+                        <div className="flex items-start gap-3.5">
+                          <div className={`p-3 rounded-xl ${task.bgClass} ${task.textClass} shrink-0 border border-current/10`}>
+                            <task.icon size={22} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <h3 className="font-bold text-sm text-gray-900 dark:text-white truncate">{task.title}</h3>
+                              <span className={`px-2.5 py-0.5 rounded-full ${task.badgeClass} text-white text-[11px] font-black shrink-0 shadow-sm`}>
+                                {task.count}
+                              </span>
                             </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed line-clamp-2">
+                              {task.desc}
+                            </p>
+                          </div>
+                          <div className="self-center text-gray-300 dark:text-white/20 group-hover:translate-x-1 group-hover:text-[var(--color-brand)] transition-all">
+                            <ChevronRight size={18} />
                           </div>
                         </div>
-
-
-
-                        {/* Expanded detail section */}
-                        {isActive && (
-                          <div 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                            }}
-                            className="flex min-h-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4 gap-4 pt-1 sm:gap-4"
-                          >
-                            <div>
-                              <div className="mb-1 flex items-start justify-between gap-2">
-                                <div 
-                                  className="min-w-0 flex-1 cursor-pointer"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate(app.path);
-                                  }}
-                                >
-                                  <p className="text-[8px] font-black uppercase tracking-[0.18em] text-gray-500 sm:text-[10px] sm:tracking-widest dark:text-white/50">{app.label}</p>
-                                  <h2 className="mt-2 text-lg font-black leading-tight text-gray-950 sm:text-2xl dark:text-white">{app.brandName}</h2>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      navigate(app.path);
-                                    }}
-                                    aria-label={`Open ${app.brandName}`}
-                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white/80 text-gray-500 hover:bg-[color:var(--app-color)] hover:text-white dark:border-white/10 dark:bg-nocturne/40 dark:text-white/55 transition-all sm:h-9 sm:w-9 sm:rounded-2xl"
-                                  >
-                                    <ArrowRight size={14} className="sm:size-4" />
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="mt-3 space-y-3">
-                                <p className="text-xs font-semibold leading-5 text-gray-600 sm:text-sm sm:leading-6 dark:text-white/72">{app.description}</p>
-                                <p className="text-xs font-medium leading-5 text-gray-600 sm:text-sm sm:leading-6 dark:text-white/60">{app.detail}</p>
-                              </div>
-                            </div>
-
-                            <div className="grid gap-2">
-                              {app.signals.map(signal => (
-                                <div
-                                  key={signal}
-                                  className="rounded-xl border border-gray-200 bg-white/75 px-3 py-2 text-[11px] font-bold leading-4 text-gray-600 sm:text-xs dark:border-white/10 dark:bg-[#11141b] dark:text-white/70"
-                                >
-                                  {signal}
-                                </div>
-                              ))}
-                            </div>
-
-                            <div className="flex gap-3 mt-auto flex-col items-stretch border-t border-gray-200/80 pt-4 dark:border-white/10 sm:gap-4">
-                              <div>
-                                <p className="font-black text-gray-950 dark:text-white text-2xl sm:text-4xl">{app.metric}</p>
-                                <p className="max-w-[96px] truncate text-[8px] font-black uppercase tracking-widest text-gray-500 sm:max-w-none sm:text-[9px] dark:text-white/50">
-                                  <span className="sm:hidden">{app.metricLabelShort}</span>
-                                  <span className="hidden sm:inline">{app.metricLabel}</span>
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => navigate(app.path)}
-                                className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-black text-white shadow-lg transition hover:brightness-105 active:scale-[0.98] sm:px-5 sm:text-sm"
-                                style={{
-                                  backgroundColor: app.brandColor,
-                                  boxShadow: `0 14px 28px ${app.brandGlow}`,
-                                }}
-                              >
-                                Open app
-                                <ArrowRight size={15} />
-                              </button>
-                            </div>
-                          </div>
-                        )}
                       </div>
-                    </article>
-                  );
-                })}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-12 px-6 flex flex-col items-center justify-center text-center bg-white dark:bg-[#15171e] rounded-2xl border border-dashed border-gray-200 dark:border-white/10 shadow-sm">
+                    <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-3 shadow-inner">
+                      <CheckCircle2 size={28} />
+                    </div>
+                    <h3 className="font-bold text-base text-gray-900 dark:text-white">All Caught Up!</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">No pending tasks require your immediate attention.</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="rounded-2xl border border-gray-200 bg-white/80 p-6 text-sm font-semibold text-gray-600 dark:border-white/10 dark:bg-[#15171e] dark:text-white/70">
-                No module apps are available for your current access. Contact an administrator if this looks incorrect.
+
+              <div className="space-y-3.5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-4 rounded-2xl bg-white border border-gray-200/80 dark:bg-[#15171e] dark:border-white/10 shadow-sm">
+                    <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Approved Today</p>
+                    <p className="text-2xl font-black text-gray-950 dark:text-white">{approvedTodayCount}</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 font-medium">Orders cleared</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-white border border-gray-200/80 dark:bg-[#15171e] dark:border-white/10 shadow-sm">
+                    <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Active Spends</p>
+                    <p className="text-2xl font-black text-gray-950 dark:text-white">${activeSpendsK}k</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 font-medium">In procurement</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-white to-gray-50/80 dark:from-[#15171e] dark:to-[#1a1d27] border border-gray-200/80 dark:border-white/10 shadow-sm space-y-3">
+                  <div>
+                    <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">Quick Actions</h3>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Jump directly to operations</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate('/requests')}
+                      className="w-full flex items-center justify-between p-3 rounded-xl bg-surface border border-default hover:border-[var(--color-brand)]/40 hover:shadow-sm transition-all group text-left"
+                    >
+                      <span className="text-xs font-bold text-gray-900 dark:text-white">View All Requests</span>
+                      <ArrowRight size={14} className="text-gray-400 group-hover:translate-x-1 group-hover:text-[var(--color-brand)] transition-all" />
+                    </button>
+
+                    {hasPermission('create_request') && (
+                      <button
+                        type="button"
+                        onClick={() => navigate('/create-request')}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-[var(--color-brand)] text-white rounded-xl font-bold shadow-md shadow-[var(--color-brand)]/20 hover:opacity-95 active:scale-98 transition-all text-xs"
+                      >
+                        Create New Request <ArrowRight size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
               </div>
-            )}
+
+            </div>
+
           </div>
+
         </div>
       </section>
-
-      {insights.hasPartialError && (
-        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs font-semibold text-amber-700 dark:text-amber-100">
-          Some live item signals are unavailable. Module routing remains available.
-        </div>
-      )}
     </div>
   );
 }
