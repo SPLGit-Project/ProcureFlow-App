@@ -168,7 +168,7 @@ const AccountDrawer = ({ isOpen, onClose }: AccountDrawerProps) => {
                         SIGN OUT
                     </button>
                     <p className="text-[10px] text-center text-tertiary dark:text-gray-500 font-bold mt-4 uppercase tracking-[0.2em] opacity-50">
-                        MercerFlow Enterprise v5.0.1
+                        ProcureFlow Enterprise v5.0.1
                     </p>
                 </div>
             </div>

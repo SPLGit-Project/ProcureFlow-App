@@ -1,6 +1,6 @@
 {
-  "name": "MercerFlow - Procurement Management",
-  "short_name": "MercerFlow",
+  "name": "ProcureFlow - Procurement Management",
+  "short_name": "ProcureFlow",
   "description": "Modern procurement and inventory management system for healthcare and hospitality",
   "start_url": "/",
   "scope": "/",

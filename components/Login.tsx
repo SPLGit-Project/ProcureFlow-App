@@ -26,7 +26,7 @@ const Login = () => {
                    <img
                        src={procureFlowTransitionGif}
                        alt="ProcureFlow logo"
-                       className="w-full max-w-[260px] rounded-xl border border-white/5 object-contain shadow-[0_18px_50px_rgba(0,0,0,0.22)] dark:border-transparent dark:shadow-none sm:max-w-[300px]"
+                       className="w-full max-w-[260px] rounded-xl border-2 border-black object-contain shadow-md sm:max-w-[300px]"
                    />
                </div>
                <p className="text-gray-500 dark:text-gray-400 mt-2 text-center">Sign in to access your dashboard</p>

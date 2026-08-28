@@ -88,7 +88,7 @@ const OnboardingWizard = () => {
                     </div>
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Invitation Expired</h2>
                     <p className="text-gray-600 dark:text-gray-400 mb-8">
-                        Your invitation to join MercerFlow has expired (48h limit). Please contact your administrator to re-send your welcome email.
+                        Your invitation to join ProcureFlow has expired (48h limit). Please contact your administrator to re-send your welcome email.
                     </p>
                     <button type="button" onClick={() => logout()} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium flex items-center justify-center gap-2 w-full">
                         <LogOut size={16} /> Sign Out
@@ -123,7 +123,7 @@ const OnboardingWizard = () => {
                 
                 {/* Header */}
                 <div className="bg-[var(--color-brand)] p-6 text-white text-center">
-                    <h1 className="text-2xl font-bold">Welcome to MercerFlow</h1>
+                    <h1 className="text-2xl font-bold">Welcome to ProcureFlow</h1>
                     <p className="text-blue-100 mt-1">Let's get you set up, {currentUser?.name.split(' ')[0]}</p>
                 </div>
 

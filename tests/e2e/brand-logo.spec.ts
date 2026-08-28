@@ -2,12 +2,14 @@ import { test, expect } from '@playwright/test';
 import { injectTestUser, gotoAndWait } from './helpers/auth';
 
 test.describe('Brand assets and logo verification', () => {
-    test('sign in screen renders ProcureFlow transition GIF', async ({ page }) => {
+    test('sign in screen renders ProcureFlow transition GIF with black border and ProcureFlow title', async ({ page }) => {
         await page.goto('/login');
         await page.waitForLoadState('networkidle');
         
+        await expect(page).toHaveTitle(/ProcureFlow/i);
         const logoImg = page.getByAltText(/ProcureFlow logo/i);
         await expect(logoImg).toBeVisible();
+        await expect(logoImg).toHaveClass(/border-2/);
         
         await page.screenshot({ path: 'test-results/login-screen-new-logo.png' });
     });

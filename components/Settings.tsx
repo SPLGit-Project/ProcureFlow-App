@@ -4480,7 +4480,7 @@ if __name__ == "__main__":
                             <div>
                                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">Home Experience</h3>
                                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 leading-5">
-                                    Control the greeting and daily message shown on the MercerFlow home screen.
+                                    Control the greeting and daily message shown on the ProcureFlow home screen.
                                 </p>
                             </div>
                             <Sparkles size={20} className="text-[var(--color-brand)]" />
@@ -5983,7 +5983,7 @@ if __name__ == "__main__":
                                   className="input-field w-full font-medium"
                                   value={emailSubject}
                                   onChange={(e) => setEmailSubject(e.target.value)}
-                                  placeholder="Welcome to MercerFlow"
+                                  placeholder="Welcome to ProcureFlow"
                                />
                            </div>
 

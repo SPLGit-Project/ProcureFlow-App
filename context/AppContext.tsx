@@ -37,7 +37,7 @@ const DEFAULT_HOME_EXPERIENCE = {
 };
 
 const DEFAULT_BRANDING: AppBranding = {
-    appName: 'MercerFlow',
+    appName: 'ProcureFlow',
     logoUrl: '',
     primaryColor: '#2563eb',
     secondaryColor: '#1e2029',
@@ -1444,6 +1444,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       root.style.setProperty('--color-secondary-rgb', hexToRgb(branding.secondaryColor));
 
       localStorage.setItem('app-branding', JSON.stringify(branding));
+      document.title = branding.appName || 'ProcureFlow';
 
       // --- Dynamic Manifest & Favicon Injection ---
       // 1. Favicon
@@ -2111,7 +2112,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         // Teams (Global Check)
         const sendTeams = Array.from(targets.values()).some(t => t.teams);
         if (sendTeams && teamsWebhookUrl) {
-             const message = `**MercerFlow Notification**\n\nEvent: ${event}\nData: ${JSON.stringify(data, null, 2)}`;
+             const message = `**ProcureFlow Notification**\n\nEvent: ${event}\nData: ${JSON.stringify(data, null, 2)}`;
              try {
                 await fetch(teamsWebhookUrl, { method: 'POST', body: JSON.stringify({ text: message }) });
                 logAction('NOTIFICATION_SENT_TEAMS', { event, data });
@@ -2147,7 +2148,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                      await svc.sendMail({
                          to: target.emailAddress,
                          from: currentUser?.email || '',
-                         subject: `MercerFlow Notification: ${event}`,
+                         subject: `ProcureFlow Notification: ${event}`,
                          html: `<p>Event: ${event}</p><p>Details:</p><pre>${JSON.stringify(data, null, 2)}</pre>`,
                          siteId,
                          invitedByName: 'System Notification'

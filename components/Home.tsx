@@ -46,7 +46,7 @@ interface HomeInsightState {
 const greetingOptions = [
   'Good day, {first_name}. Your workspace is focused.',
   'Welcome back, {first_name}. Your next move is ready.',
-  '{first_name}, MercerFlow has prioritised the work that matters.',
+  '{first_name}, ProcureFlow has prioritised the work that matters.',
   'Good to see you, {first_name}. Start with the signal that creates flow.',
   '{first_name}, your command view is tuned for {site_label}.',
 ];
@@ -250,7 +250,7 @@ export default function Home() {
     first_name: firstName,
     name: fullName,
     site_label: siteLabel,
-    app_name: branding.appName || 'MercerFlow',
+    app_name: branding.appName || 'ProcureFlow',
   };
   const greetingTemplate = homeExperience?.greetingMode === 'custom' && homeExperience.greetingText?.trim()
     ? homeExperience.greetingText
