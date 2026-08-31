@@ -607,21 +607,23 @@ export const WorkflowNotificationHub: React.FC = () => {
                                                     <span className="font-bold text-gray-700 dark:text-gray-300">Subject:</span>
                                                     <span className="font-semibold text-gray-900 dark:text-white">{interpolateTemplate(activeTemplate.channels.email.subject, sampleVariables)}</span>
                                                 </div>
-                                                {/* Branded Header */}
-                                                <div className="bg-[#0f172a] p-4 text-center border-b-2 border-[#0284c7]">
-                                                    <img 
-                                                        src="/Procureflow_Logo.png" 
-                                                        alt="ProcureFlow Logo" 
-                                                        className="h-8 mx-auto max-w-[200px] object-contain"
-                                                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = PROCUREFLOW_LOGO_URL; }}
+                                                <div className="p-6">
+                                                    {/* In-Body Logo Header */}
+                                                    <div className="mb-5 pb-4 border-b border-gray-100 dark:border-white/10">
+                                                        <img 
+                                                            src="/Procureflow_Logo.png" 
+                                                            alt="ProcureFlow Logo" 
+                                                            className="h-8 max-w-[190px] object-contain"
+                                                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = PROCUREFLOW_LOGO_URL; }}
+                                                        />
+                                                    </div>
+                                                    <div 
+                                                        className="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200"
+                                                        dangerouslySetInnerHTML={{
+                                                            __html: interpolateTemplate(activeTemplate.channels.email.html_body, sampleVariables)
+                                                        }}
                                                     />
                                                 </div>
-                                                <div 
-                                                    className="p-6 prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200"
-                                                    dangerouslySetInnerHTML={{
-                                                        __html: interpolateTemplate(activeTemplate.channels.email.html_body, sampleVariables)
-                                                    }}
-                                                />
                                                 <div className="p-4 bg-gray-50 dark:bg-white/[0.02] border-t border-gray-100 dark:border-white/5 text-center">
                                                     <a 
                                                         href={`${window.location.origin}/requests`}

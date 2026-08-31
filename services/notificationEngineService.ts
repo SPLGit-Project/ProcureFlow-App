@@ -178,15 +178,13 @@ export function buildEmailHtml(params: {
         <tr>
             <td align="center">
                 <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;">
-                    <!-- Brand Header -->
+                    <!-- Main Body Content with Logo at the Top -->
                     <tr>
-                        <td style="background-color: #0f172a; padding: 24px 32px; text-align: center; border-bottom: 3px solid #0284c7;">
-                            <img src="${logo}" alt="ProcureFlow" style="max-height: 38px; width: auto; max-width: 220px; display: inline-block;" />
-                        </td>
-                    </tr>
-                    <!-- Main Content -->
-                    <tr>
-                        <td style="padding: 32px 32px 24px 32px;">
+                        <td style="padding: 36px 36px 28px 36px;">
+                            <!-- ProcureFlow Logo at top of body -->
+                            <div style="margin-bottom: 24px; padding-bottom: 18px; border-bottom: 1px solid #f1f5f9;">
+                                <img src="${logo}" alt="ProcureFlow" style="max-height: 34px; width: auto; max-width: 200px; display: block;" />
+                            </div>
                             <h1 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 800; color: #0f172a; line-height: 1.3;">
                                 ${params.title}
                             </h1>
