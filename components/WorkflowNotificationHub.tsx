@@ -14,7 +14,7 @@ import {
     User
 } from '../types';
 import { workflowEngineService } from '../services/workflowEngineService';
-import { notificationEngineService, interpolateTemplate } from '../services/notificationEngineService';
+import { notificationEngineService, interpolateTemplate, PROCUREFLOW_LOGO_URL, PROCUREFLOW_ICON_URL } from '../services/notificationEngineService';
 import { useApp } from '../context/AppContext';
 import { useToast } from './ToastNotification';
 import PageHeader from './PageHeader';
@@ -211,7 +211,7 @@ export const WorkflowNotificationHub: React.FC = () => {
                 entityType: 'SYSTEM',
                 actionUrl: `${window.location.origin}/requests`
             });
-            success(`Test dispatched! (${res.inAppSent} In-App, ${res.teamsSent} Teams)`);
+            success(`Test dispatched! (${res.inAppSent} In-App, ${res.emailsSent} Email, ${res.teamsSent} Teams)`);
         } catch (err) {
             console.error('Failed to send test notification:', err);
             error('Failed to send test notification');
@@ -605,24 +605,51 @@ export const WorkflowNotificationHub: React.FC = () => {
                                             <div className="w-full bg-white dark:bg-[#15171e] rounded-2xl shadow-sm border border-gray-200 dark:border-white/10 overflow-hidden">
                                                 <div className="p-3 bg-gray-100 dark:bg-white/5 border-b border-gray-200 dark:border-white/10 text-xs text-gray-500 flex items-center gap-2">
                                                     <span className="font-bold text-gray-700 dark:text-gray-300">Subject:</span>
-                                                    <span>{interpolateTemplate(activeTemplate.channels.email.subject, sampleVariables)}</span>
+                                                    <span className="font-semibold text-gray-900 dark:text-white">{interpolateTemplate(activeTemplate.channels.email.subject, sampleVariables)}</span>
+                                                </div>
+                                                {/* Branded Header */}
+                                                <div className="bg-[#0f172a] p-4 text-center border-b-2 border-[#0284c7]">
+                                                    <img 
+                                                        src="/Procureflow_Logo.png" 
+                                                        alt="ProcureFlow Logo" 
+                                                        className="h-8 mx-auto max-w-[200px] object-contain"
+                                                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = PROCUREFLOW_LOGO_URL; }}
+                                                    />
                                                 </div>
                                                 <div 
-                                                    className="p-6 prose prose-sm dark:prose-invert max-w-none"
+                                                    className="p-6 prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200"
                                                     dangerouslySetInnerHTML={{
                                                         __html: interpolateTemplate(activeTemplate.channels.email.html_body, sampleVariables)
                                                     }}
                                                 />
+                                                <div className="p-4 bg-gray-50 dark:bg-white/[0.02] border-t border-gray-100 dark:border-white/5 text-center">
+                                                    <a 
+                                                        href={`${window.location.origin}/requests`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-1.5 px-6 py-2.5 bg-[#0284c7] text-white text-xs font-bold rounded-xl shadow-md hover:bg-[#0369a1] transition-colors"
+                                                    >
+                                                        Open in ProcureFlow &rarr;
+                                                    </a>
+                                                </div>
                                             </div>
                                         )}
 
                                         {previewChannel === 'TEAMS' && activeTemplate.channels.teams && (
                                             <div className="w-full max-w-lg mx-auto bg-white dark:bg-[#1f2430] rounded-2xl shadow-xl border-l-4 border-l-[#0284C7] border-y border-r border-gray-200 dark:border-white/10 p-5 space-y-4">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-6 h-6 rounded-md bg-[#0284C7] text-white flex items-center justify-center text-[10px] font-black">
-                                                        PF
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200/50 flex items-center justify-center overflow-hidden shrink-0">
+                                                        <img 
+                                                            src="/Procureflow_Icon.png" 
+                                                            alt="ProcureFlow Icon" 
+                                                            className="w-7 h-7 object-contain" 
+                                                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = PROCUREFLOW_ICON_URL; }}
+                                                        />
                                                     </div>
-                                                    <span className="text-xs font-bold text-gray-500">ProcureFlow Bot</span>
+                                                    <div>
+                                                        <span className="text-xs font-bold text-gray-900 dark:text-white block">ProcureFlow</span>
+                                                        <span className="text-[10px] text-gray-400">Adaptive Card v1.4 • Automated Notification</span>
+                                                    </div>
                                                 </div>
 
                                                 <div>
@@ -645,11 +672,19 @@ export const WorkflowNotificationHub: React.FC = () => {
                                                         <span className="text-gray-400 block text-[10px] uppercase font-bold">Total Amount</span>
                                                         <span className="font-bold text-blue-600 dark:text-blue-400">{sampleVariables.total_amount}</span>
                                                     </div>
+                                                    <div>
+                                                        <span className="text-gray-400 block text-[10px] uppercase font-bold">Requester</span>
+                                                        <span className="font-bold text-gray-800 dark:text-gray-200">{sampleVariables.requester_name}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-400 block text-[10px] uppercase font-bold">Site</span>
+                                                        <span className="font-bold text-gray-800 dark:text-gray-200">{sampleVariables.site_name}</span>
+                                                    </div>
                                                 </div>
 
                                                 <button
                                                     type="button"
-                                                    className="w-full py-2.5 bg-[#0284C7] text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+                                                    className="w-full py-2.5 bg-[#0284C7] text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
                                                 >
                                                     {activeTemplate.channels.teams.cta_label || 'Open in ProcureFlow'}
                                                     <ExternalLink size={12} />

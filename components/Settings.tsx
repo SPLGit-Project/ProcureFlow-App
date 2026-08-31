@@ -2577,10 +2577,9 @@ const Settings = () => {
       { id: 'MAPPING', label: 'Mapping', icon: GitMerge, permission: 'view_mapping' },
       { id: 'SUPPLIERS', label: 'Suppliers', icon: Truck, permission: 'view_suppliers' },
       { id: 'SITES', label: 'Sites', icon: MapPin, permission: 'view_sites' },
-      { id: 'WORKFLOW', label: 'Workflow', icon: GitMerge, permission: 'view_workflow' },
+      { id: 'WORKFLOW', label: 'Workflows & Notifications', icon: GitMerge, permission: 'view_workflow' },
       { id: 'USERS', label: 'User Directory', icon: User, permission: 'view_security' },
       { id: 'SECURITY', label: 'Security Roles', icon: Shield, permission: 'view_security' },
-      { id: 'NOTIFICATIONS', label: 'Notifications', icon: Bell, permission: 'view_notifications' },
       { id: 'BRANDING', label: 'Branding', icon: Palette, permission: 'view_branding' },
       { id: 'MENU', label: 'Menu Config', icon: ListFilter, permission: 'manage_settings' },
       { id: 'MIGRATION', label: 'Data Migration', icon: Upload, permission: 'manage_settings' },
@@ -5082,10 +5081,6 @@ if __name__ == "__main__":
                   </div>
               </div>
           </div>
-      )}
-
-      {activeTab === 'NOTIFICATIONS' && (
-          <WorkflowNotificationHub />
       )}
       {activeTab === 'MIGRATION' && (
           <div className="animate-fade-in max-w-4xl mx-auto">

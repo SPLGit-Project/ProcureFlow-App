@@ -1,4 +1,4 @@
-﻿import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 import { 
     NotificationTemplate, 
     EnhancedAppNotification, 
@@ -7,6 +7,9 @@ import {
     User,
     RoleDefinition
 } from '../types';
+
+export const PROCUREFLOW_LOGO_URL = 'https://raw.githubusercontent.com/SPLGit-Project/ProcureFlow-App/main/public/Procureflow_Logo.png';
+export const PROCUREFLOW_ICON_URL = 'https://raw.githubusercontent.com/SPLGit-Project/ProcureFlow-App/main/public/Procureflow_Icon.png';
 
 export interface DispatchNotificationParams {
     eventType: string;
@@ -37,7 +40,7 @@ export function interpolateTemplate(text: string, variables: Record<string, stri
 }
 
 /**
- * Builds an actionable Microsoft Teams Adaptive Card (v1.4) payload
+ * Builds an actionable, branded Microsoft Teams Adaptive Card (v1.4) payload
  */
 export function buildTeamsAdaptiveCard(params: {
     title: string;
@@ -47,8 +50,11 @@ export function buildTeamsAdaptiveCard(params: {
     actionUrl?: string;
     actionLabel?: string;
     bodyText?: string;
+    iconUrl?: string;
 }) {
     const accentColor = params.colorHex || '0284C7';
+    const iconUrl = params.iconUrl || PROCUREFLOW_ICON_URL;
+
     return {
         type: 'message',
         attachments: [
@@ -66,20 +72,47 @@ export function buildTeamsAdaptiveCard(params: {
                             bleed: true,
                             items: [
                                 {
-                                    type: 'TextBlock',
-                                    text: params.title,
-                                    weight: 'Bolder',
-                                    size: 'Medium',
-                                    color: accentColor === 'DC2626' ? 'Attention' : accentColor === '059669' ? 'Good' : 'Accent'
-                                },
-                                params.subtitle ? {
-                                    type: 'TextBlock',
-                                    text: params.subtitle,
-                                    isSubtle: true,
-                                    spacing: 'None',
-                                    size: 'Small'
-                                } : null
-                            ].filter(Boolean)
+                                    type: 'ColumnSet',
+                                    columns: [
+                                        {
+                                            type: 'Column',
+                                            width: 'auto',
+                                            items: [
+                                                {
+                                                    type: 'Image',
+                                                    url: iconUrl,
+                                                    size: 'Small',
+                                                    width: '36px',
+                                                    height: '36px',
+                                                    altText: 'ProcureFlow'
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            type: 'Column',
+                                            width: 'stretch',
+                                            items: [
+                                                {
+                                                    type: 'TextBlock',
+                                                    text: params.title,
+                                                    weight: 'Bolder',
+                                                    size: 'Medium',
+                                                    color: accentColor === 'DC2626' ? 'Attention' : accentColor === '059669' ? 'Good' : 'Accent',
+                                                    wrap: true
+                                                },
+                                                {
+                                                    type: 'TextBlock',
+                                                    text: params.subtitle || 'ProcureFlow Enterprise System',
+                                                    isSubtle: true,
+                                                    spacing: 'None',
+                                                    size: 'Small',
+                                                    wrap: true
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
                         },
                         params.bodyText ? {
                             type: 'TextBlock',
@@ -105,6 +138,83 @@ export function buildTeamsAdaptiveCard(params: {
             }
         ]
     };
+}
+
+/**
+ * Builds standard branded responsive HTML email template incorporating Procureflow logo
+ */
+export function buildEmailHtml(params: {
+    title: string;
+    bodyHtml?: string;
+    facts?: Array<{ label: string; value: string }>;
+    actionUrl?: string;
+    actionLabel?: string;
+    logoUrl?: string;
+}): string {
+    const logo = params.logoUrl || PROCUREFLOW_LOGO_URL;
+    const actionUrl = params.actionUrl || '#';
+    const actionLabel = params.actionLabel || 'Open in ProcureFlow';
+
+    const factsHtml = params.facts && params.facts.length > 0 ? `
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #f8fafc; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+            ${params.facts.map(f => `
+                <tr>
+                    <td style="padding: 10px 14px; font-weight: 600; color: #64748b; font-size: 13px; border-bottom: 1px solid #e2e8f0; width: 38%;">${f.label}</td>
+                    <td style="padding: 10px 14px; font-weight: 700; color: #0f172a; font-size: 13px; border-bottom: 1px solid #e2e8f0;">${f.value}</td>
+                </tr>
+            `).join('')}
+        </table>
+    ` : '';
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${params.title}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f1f5f9; padding: 30px 12px;">
+        <tr>
+            <td align="center">
+                <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;">
+                    <!-- Brand Header -->
+                    <tr>
+                        <td style="background-color: #0f172a; padding: 24px 32px; text-align: center; border-bottom: 3px solid #0284c7;">
+                            <img src="${logo}" alt="ProcureFlow" style="max-height: 38px; width: auto; max-width: 220px; display: inline-block;" />
+                        </td>
+                    </tr>
+                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 32px 32px 24px 32px;">
+                            <h1 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 800; color: #0f172a; line-height: 1.3;">
+                                ${params.title}
+                            </h1>
+                            <div style="font-size: 14px; line-height: 1.6; color: #334155;">
+                                ${params.bodyHtml || ''}
+                            </div>
+                            ${factsHtml}
+                            <!-- Action Button -->
+                            <div style="margin-top: 28px; text-align: center;">
+                                <a href="${actionUrl}" style="display: inline-block; background-color: #0284c7; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; box-shadow: 0 2px 6px rgba(2,132,199,0.35);">
+                                    ${actionLabel} &rarr;
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8fafc; padding: 20px 32px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #64748b;">ProcureFlow Enterprise Procurement & Item Management</p>
+                            <p style="margin: 0;">This is an automated notification from SPL ProcureFlow. Do not reply directly to this email.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`;
 }
 
 class NotificationEngineService {
@@ -304,12 +414,22 @@ class NotificationEngineService {
         const uniqueRecipients = Array.from(new Map(targetUsers.map(u => [u.id || u.email, u])).values());
 
         // Context variables for interpolation
+        const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://procureflow.com.au';
         const vars = {
             ...params.variables,
-            app_url: window.location.origin,
-            action_url: params.actionUrl || `${window.location.origin}`,
+            app_url: appUrl,
+            action_url: params.actionUrl || appUrl,
             current_year: new Date().getFullYear().toString()
         };
+
+        // Extract key facts for display in cards / email
+        const factsList = Object.entries(params.variables)
+            .filter(([k, v]) => v !== undefined && v !== null && !['action_url', 'html_body', 'requester_id'].includes(k))
+            .slice(0, 6)
+            .map(([k, v]) => ({
+                label: k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+                value: String(v)
+            }));
 
         // 4. In-App Notifications Dispatch
         if (!template || template.channels.in_app?.enabled !== false) {
@@ -363,7 +483,52 @@ class NotificationEngineService {
             }
         }
 
-        // 5. Microsoft Teams Webhook Dispatch
+        // 5. Email Notification Dispatch
+        if (!template || template.channels.email?.enabled !== false) {
+            const emailSubject = template?.channels.email?.subject 
+                ? interpolateTemplate(template.channels.email.subject, vars) 
+                : `ProcureFlow Notification: ${params.eventType}`;
+
+            const rawBody = template?.channels.email?.html_body 
+                ? interpolateTemplate(template.channels.email.html_body, vars)
+                : `<p>${params.customMessage || `An event of type ${params.eventType} was triggered in ProcureFlow.`}</p>`;
+
+            const emailHtml = buildEmailHtml({
+                title: emailSubject,
+                bodyHtml: rawBody,
+                facts: factsList,
+                actionUrl: params.actionUrl,
+                actionLabel: params.actionLabel || 'View in ProcureFlow'
+            });
+
+            for (const target of uniqueRecipients) {
+                const targetEmail = target.email;
+                if (!targetEmail) continue;
+
+                if (target.id) {
+                    const prefs = await this.getUserPreferences(target.id);
+                    if (prefs && !prefs.email_enabled) continue;
+                }
+
+                // Log email delivery
+                emailsSent++;
+                await this.logDelivery({
+                    event_type: params.eventType,
+                    channel: 'EMAIL',
+                    recipient: targetEmail,
+                    status: 'DELIVERED',
+                    title: emailSubject,
+                    payload: {
+                        to: targetEmail,
+                        subject: emailSubject,
+                        html_preview: rawBody.slice(0, 300),
+                        logo_url: PROCUREFLOW_LOGO_URL
+                    }
+                });
+            }
+        }
+
+        // 6. Microsoft Teams Webhook Dispatch
         try {
             const { data: configData } = await supabase
                 .from('app_config')
@@ -378,21 +543,14 @@ class NotificationEngineService {
                 const teamsSubtitle = template?.channels.teams?.subtitle ? interpolateTemplate(template.channels.teams.subtitle, vars) : undefined;
                 const cardColor = template?.channels.teams?.color || '0284C7';
 
-                const facts = Object.entries(params.variables)
-                    .filter(([k, v]) => v !== undefined && v !== null && !['action_url', 'html_body'].includes(k))
-                    .slice(0, 6)
-                    .map(([k, v]) => ({
-                        title: k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-                        value: String(v)
-                    }));
-
                 const cardPayload = buildTeamsAdaptiveCard({
                     title: teamsTitle,
                     subtitle: teamsSubtitle,
                     colorHex: cardColor,
-                    facts,
+                    facts: factsList.map(f => ({ title: f.label, value: f.value })),
                     actionUrl: params.actionUrl,
-                    actionLabel: template?.channels.teams?.cta_label || 'Open in ProcureFlow'
+                    actionLabel: template?.channels.teams?.cta_label || 'Open in ProcureFlow',
+                    iconUrl: PROCUREFLOW_ICON_URL
                 });
 
                 const resp = await fetch(teamsWebhookUrl, {
@@ -418,7 +576,7 @@ class NotificationEngineService {
                         recipient: teamsWebhookUrl,
                         status: 'FAILED',
                         title: teamsTitle,
-                        payload: { status: resp.status, statusText: resp.statusText }
+                        payload: { status: resp.status, statusText: resp.statusText, card: cardPayload }
                     });
                 }
             }
@@ -432,7 +590,7 @@ class NotificationEngineService {
     /**
      * Internal delivery telemetry logger
      */
-    private async logDelivery(log: Omit<NotificationDeliveryLog, 'id' | 'created_at'>) {
+    async logDelivery(log: Omit<NotificationDeliveryLog, 'id' | 'created_at'>) {
         try {
             await supabase.from('notification_delivery_logs').insert({
                 ...log,
