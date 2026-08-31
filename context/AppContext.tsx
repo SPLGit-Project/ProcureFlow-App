@@ -69,18 +69,24 @@ const loadDevelopmentFixtures = async (): Promise<DevelopmentFixtures | null> =>
     return null;
 };
 
-const normalizeBranding = (value?: Partial<AppBranding> | null): AppBranding => ({
-    appName: value?.appName || DEFAULT_BRANDING.appName,
-    logoUrl: value?.logoUrl || DEFAULT_BRANDING.logoUrl,
-    primaryColor: value?.primaryColor || DEFAULT_BRANDING.primaryColor,
-    secondaryColor: value?.secondaryColor || DEFAULT_BRANDING.secondaryColor,
-    fontFamily: value?.fontFamily || DEFAULT_BRANDING.fontFamily,
-    sidebarTheme: value?.sidebarTheme || DEFAULT_BRANDING.sidebarTheme,
-    homeExperience: {
-        ...DEFAULT_HOME_EXPERIENCE,
-        ...(value?.homeExperience || {}),
-    },
-});
+const normalizeBranding = (value?: Partial<AppBranding> | null): AppBranding => {
+    const rawAppName = value?.appName?.trim();
+    const appName = (!rawAppName || rawAppName.toLowerCase() === 'mercerflow') ? 'ProcureFlow' : rawAppName;
+    const rawLogoUrl = value?.logoUrl?.trim();
+    const logoUrl = (rawLogoUrl && !rawLogoUrl.toLowerCase().includes('spl') && !rawLogoUrl.toLowerCase().includes('mercer')) ? rawLogoUrl : '';
+    return {
+        appName,
+        logoUrl,
+        primaryColor: value?.primaryColor || DEFAULT_BRANDING.primaryColor,
+        secondaryColor: value?.secondaryColor || DEFAULT_BRANDING.secondaryColor,
+        fontFamily: value?.fontFamily || DEFAULT_BRANDING.fontFamily,
+        sidebarTheme: value?.sidebarTheme || DEFAULT_BRANDING.sidebarTheme,
+        homeExperience: {
+            ...DEFAULT_HOME_EXPERIENCE,
+            ...(value?.homeExperience || {}),
+        },
+    };
+};
 
 type DbUserAuthRow = {
   id: string;
@@ -1444,20 +1450,21 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       root.style.setProperty('--color-secondary-rgb', hexToRgb(branding.secondaryColor));
 
       localStorage.setItem('app-branding', JSON.stringify(branding));
-      document.title = branding.appName || 'ProcureFlow';
+      const effectiveAppName = (branding.appName && branding.appName.toLowerCase() !== 'mercerflow') ? branding.appName : 'ProcureFlow';
+      document.title = effectiveAppName;
 
       // --- Dynamic Manifest & Favicon Injection ---
       // 1. Favicon
       const linkFavicon = document.querySelector("link[rel*='icon']") as HTMLLinkElement || document.createElement('link');
       linkFavicon.type = 'image/x-icon';
       linkFavicon.rel = 'icon';
-      linkFavicon.href = branding.logoUrl;
+      linkFavicon.href = branding.logoUrl || '/favicon.ico';
       document.getElementsByTagName('head')[0].appendChild(linkFavicon);
 
       // 2. Apple Touch Icon
       const linkApple = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement || document.createElement('link');
       linkApple.rel = 'apple-touch-icon';
-      linkApple.href = '/mercer-m-logo.png';
+      linkApple.href = '/icons/apple-touch-icon.png';
       document.getElementsByTagName('head')[0].appendChild(linkApple);
 
       // 3. Meta Theme Color
@@ -1468,8 +1475,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       // 4. Dynamic Manifest
       const manifest = {
-          name: branding.appName,
-          short_name: branding.appName.length > 12 ? branding.appName.substring(0, 12) : branding.appName,
+          name: effectiveAppName,
+          short_name: effectiveAppName.length > 12 ? effectiveAppName.substring(0, 12) : effectiveAppName,
           start_url: ".",
           display: "standalone",
           background_color: "#ffffff",
@@ -1477,25 +1484,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           orientation: "portrait",
           icons: [
               {
-                  src: "/mercer-m-logo.png",
+                  src: "/icons/icon-192x192.png",
                   sizes: "192x192",
                   type: "image/png",
                   purpose: "any"
               },
               {
-                  src: "/mercer-m-logo.png",
+                  src: "/icons/icon-512x512.png",
                   sizes: "512x512",
                   type: "image/png",
                   purpose: "any"
               },
               {
-                  src: "/mercer-m-logo.png",
+                  src: "/icons/icon-maskable-192x192.png",
                   sizes: "192x192",
                   type: "image/png",
                   purpose: "maskable"
               },
               {
-                  src: "/mercer-m-logo.png",
+                  src: "/icons/icon-maskable-512x512.png",
                   sizes: "512x512",
                   type: "image/png",
                   purpose: "maskable"

@@ -8,7 +8,7 @@ const AboutPage: React.FC = () => {
       <div className="mb-12">
         <PageHeader
           title="About"
-          subtitle="The story, structure, and design philosophy behind MercerFlow."
+          subtitle="The story, structure, and design philosophy behind ProcureFlow."
         />
       </div>
       <AboutMercerFlow />
