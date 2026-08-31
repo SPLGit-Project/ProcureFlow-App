@@ -29,6 +29,7 @@ import {
   MapPin,
   Menu,
   Moon,
+  Plus,
   PlusCircle,
   Save,
   Settings,
@@ -686,10 +687,11 @@ const Layout = () => {
                     {['/', '/dashboard', '/procurement', '/procurement/dashboard', '/smart-buying', '/requests', '/active-requests'].includes(location.pathname) && hasPermission('create_request') && (
                       <Link
                         to="/create"
-                        className="bg-tranquil text-white h-8 px-3 sm:px-4 rounded-xl text-[11px] font-black uppercase tracking-widest hover:opacity-90 active:scale-95 shadow-sm shadow-tranquil/30 transition-all flex items-center gap-1.5 shrink-0 mr-1 whitespace-nowrap"
+                        className="bg-tranquil text-white p-2 md:p-2.5 sm:px-3 sm:py-2 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95 flex items-center justify-center gap-1.5 shrink-0"
                         title="Create New Request"
                       >
-                        + New Request
+                        <Plus size={18} />
+                        <span className="hidden lg:inline text-[11px] font-black uppercase tracking-widest">New Request</span>
                       </Link>
                     )}
                     <NavLink
@@ -1010,9 +1012,11 @@ const Layout = () => {
             {['/', '/dashboard', '/procurement', '/procurement/dashboard', '/smart-buying', '/requests', '/active-requests'].includes(location.pathname) && hasPermission('create_request') && (
               <Link
                 to="/create"
-                className="bg-[var(--color-brand)] text-white h-9 px-4 rounded-xl text-xs font-bold hover:opacity-90 active:scale-95 shadow-sm shadow-[var(--color-brand)]/20 transition-all flex items-center gap-1.5 shrink-0 mr-2"
+                className="bg-[var(--color-brand)] text-white p-2 md:p-2.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold hover:opacity-90 active:scale-95 shadow-sm shadow-[var(--color-brand)]/20 transition-all flex items-center justify-center gap-1.5 shrink-0"
+                title="Create New Request"
               >
-                + New Request
+                <Plus size={18} />
+                <span className="hidden lg:inline">New Request</span>
               </Link>
             )}
             <NavLink

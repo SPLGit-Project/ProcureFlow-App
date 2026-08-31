@@ -118,62 +118,54 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                 </span>
             </button>
 
-            {/* Dropdown — positioned to break out of sidebar constraints */}
+            {/* Dropdown Popup */}
             {isOpen && (
                 <>
-                    {/* Dim backdrop overlay for mobile */}
-                    <div className="fixed inset-0 bg-black/55 backdrop-blur-sm z-40 md:hidden animate-fade-in" onClick={() => setIsOpen(false)} />
+                    {/* Dim backdrop overlay for mobile / tablet */}
+                    <div 
+                        className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 animate-fade-in" 
+                        onClick={() => setIsOpen(false)} 
+                    />
                     
-                    <div className={`
-                        z-50 bg-white dark:bg-nocturne shadow-2xl border border-gray-200 dark:border-white/10 overflow-hidden
-                        animate-in fade-in slide-in-from-bottom-4 md:zoom-in-95 duration-200
-                        fixed left-0 right-0 bottom-0 top-auto rounded-t-2xl rounded-b-none max-h-[85vh]
-                        md:absolute md:top-full md:left-0 md:right-auto md:bottom-auto md:mt-2 md:min-w-[300px] md:max-h-[450px] md:w-max md:rounded-xl md:slide-in-from-top-2
-                        flex flex-col
-                    `}>
-                        {/* Mobile Drag Handle */}
-                        <div className="md:hidden pt-3 pb-1 flex justify-center bg-white dark:bg-nocturne">
-                            <div className="w-10 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full" />
-                        </div>
-
+                    <div className="absolute top-full left-0 mt-2 w-full min-w-[260px] sm:min-w-[300px] max-w-[92vw] sm:max-w-sm bg-white dark:bg-nocturne shadow-2xl border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden z-50 flex flex-col max-h-[75vh] sm:max-h-[420px] animate-slide-up">
                         {/* Header */}
-                        <div className="px-4 py-3 md:py-3 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-white/95 dark:bg-nocturne/95 backdrop-blur-sm sticky top-0 z-10 shrink-0">
+                        <div className="px-4 py-3 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gray-50/80 dark:bg-white/5 backdrop-blur-sm sticky top-0 z-10 shrink-0">
                             <div className="flex items-center gap-2">
-                                <MapPin size={14} className="text-tranquil dark:text-tranquil/80" />
+                                <MapPin size={14} className="text-tranquil dark:text-tranquil/80 shrink-0" />
                                 <span className="text-xs font-bold tracking-wide text-gray-900 dark:text-white">Site Access</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-white/5 p-1 rounded-lg">
+                                <div className="flex items-center gap-1.5 bg-gray-200/70 dark:bg-white/10 p-1 rounded-lg">
                                     <button type="button"
                                         onClick={() => onChange(sites.map(s => s.id))}
-                                        className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-md text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-white/10 shadow-sm transition-all"
+                                        className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-white/20 shadow-xs transition-all cursor-pointer"
                                     >
                                         All
                                     </button>
                                     <button type="button"
                                         onClick={() => onChange([])}
-                                        className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-md text-gray-500 dark:text-gray-400 hover:text-red-600 hover:bg-white dark:hover:bg-white/10 dark:hover:text-red-400 shadow-sm transition-all"
+                                        className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md text-gray-500 dark:text-gray-400 hover:text-red-600 hover:bg-white dark:hover:bg-white/20 dark:hover:text-red-400 shadow-xs transition-all cursor-pointer"
                                     >
                                         None
                                     </button>
                                 </div>
-                                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 ml-1">
+                                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">
                                     {selectedSiteIds.length}/{sites.length}
                                 </span>
-                                {/* Close button for mobile */}
                                 <button type="button"
                                     onClick={() => setIsOpen(false)}
-                                    className="md:hidden ml-2 p-2 bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/20 rounded-full text-gray-500 dark:text-gray-300 transition-colors flex items-center justify-center"
+                                    className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors cursor-pointer"
+                                    title="Close"
                                 >
-                                    <X size={16} />
+                                    <X size={15} />
                                 </button>
                             </div>
                         </div>
 
                         {/* Site List */}
-                        <div className="overflow-y-auto p-2 md:p-3 flex-1 min-h-0 scrollbar-hide">
+                        <div className="overflow-y-auto p-2 flex-1 min-h-0 divide-y divide-gray-50 dark:divide-white/5">
                             {sites.length === 0 ? (
-                                <div className="p-8 text-center text-sm text-gray-400 italic">
+                                <div className="p-8 text-center text-xs text-gray-400 italic">
                                     No sites assigned to your account.
                                 </div>
                             ) : (
@@ -185,11 +177,11 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                                                 key={site.id}
                                                 onClick={() => handleToggle(site.id)}
                                                 className={`
-                                                    group flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200
-                                                    active:scale-[0.98] select-none
+                                                    group flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150
+                                                    active:scale-[0.99] select-none
                                                     ${isSelected 
-                                                        ? 'bg-tranquil/5 dark:bg-tranquil/10 text-tranquil dark:text-white' 
-                                                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
+                                                        ? 'bg-tranquil/10 dark:bg-tranquil/20 text-tranquil dark:text-white' 
+                                                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100/70 dark:hover:bg-white/5'
                                                     }
                                                 `}
                                             >
@@ -205,13 +197,13 @@ export const MultiSiteSelector: React.FC<MultiSiteSelectorProps> = ({
                                                 </div>
 
                                                 {/* Site Avatar */}
-                                                <div className={`w-7 h-7 ${getColor(index)} rounded-lg flex items-center justify-center shrink-0 shadow-sm opacity-90 group-hover:opacity-100 transition-opacity`}>
+                                                <div className={`w-6 h-6 ${getColor(index)} rounded-lg flex items-center justify-center shrink-0 shadow-xs opacity-90 group-hover:opacity-100 transition-opacity`}>
                                                     <span className="text-white text-[9px] font-bold tracking-wide">{getInitials(site.name)}</span>
                                                 </div>
 
                                                 {/* Site Name */}
                                                 <div className="flex-1 min-w-0">
-                                                    <div className={`truncate text-sm ${isSelected ? 'font-semibold' : 'font-medium'}`}>
+                                                    <div className={`truncate text-xs ${isSelected ? 'font-bold' : 'font-medium'}`}>
                                                         {site.name}
                                                     </div>
                                                 </div>
