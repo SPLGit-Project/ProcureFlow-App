@@ -8,114 +8,249 @@ import {
   Link2, ShoppingCart, Truck, CheckCheck,
   Search, Filter, X, Eye, AlertCircle,
   Building2, Calendar, User, Check,
-  Clock, ExternalLink, AlertTriangle, RefreshCw
+  Clock, ExternalLink, AlertTriangle, RefreshCw,
+  Info, RotateCcw, HelpCircle, ChevronDown
 } from 'lucide-react';
-import { ItemRequest, PORequest, POLineItem, POStatus, ApprovalEvent, DeliveryHeader } from '../types';
+import { ItemRequest, PORequest, POLineItem, POStatus, ApprovalEvent, DeliveryHeader, PermissionId } from '../types';
 import { useApp } from '../context/AppContext';
 import PageHeader from './PageHeader';
 import DeliveryModal from './DeliveryModal';
-import {
-  getMyItemRequests,
-  getRequestsForMasterData,
-  getRequestsForPricing,
-} from '../services/itemRequestService';
-import { getSessionLaundryInsight } from '../constants/linenFacts';
 import { formatCurrency } from '../utils/taxCalculations';
 
-// ── Lifecycle Stage Configuration ─────────────────────────────────────────────
+// ── ProcureFlow Role-Tailored Insights Engine ─────────────────────────────────
+
+interface ProcureFlowTip {
+  id: string;
+  category: 'REQUESTER' | 'APPROVER' | 'PROCUREMENT' | 'RECEIVING' | 'GENERAL';
+  badgeLabel: string;
+  title: string;
+  tip: string;
+  permissionRequired?: PermissionId;
+  roleRequired?: string[];
+}
+
+const PROCUREFLOW_TIPS: ProcureFlowTip[] = [
+  // General & Requester
+  {
+    id: 'req-need-by',
+    category: 'REQUESTER',
+    badgeLabel: 'Ordering Tip',
+    title: 'Need-By Date Tracking',
+    tip: 'Specify "Need-By" dates on your order lines so suppliers and logistics teams can prioritize urgent shipments.'
+  },
+  {
+    id: 'req-concur-id',
+    category: 'REQUESTER',
+    badgeLabel: 'ERP Tracking',
+    title: 'Concur Request Linkage',
+    tip: 'Once your order is approved, click "Log Concur Req #" directly on your Stage 2 cards to attach the reference ID.'
+  },
+  {
+    id: 'req-reasons',
+    category: 'REQUESTER',
+    badgeLabel: 'Best Practice',
+    title: 'Request Reason Clarity',
+    tip: 'Selecting the correct reason (Depletion vs New Customer) accelerates management approval turnaround times.'
+  },
+  {
+    id: 'req-quick-view',
+    category: 'GENERAL',
+    badgeLabel: 'Navigation',
+    title: 'Instant Line Inspection',
+    tip: 'Use the "Quick View" button on any card to view line items, quantities, and pricing without leaving this dashboard.'
+  },
+  {
+    id: 'req-site-scope',
+    category: 'GENERAL',
+    badgeLabel: 'Multi-Site Scope',
+    title: 'Filter by Location',
+    tip: 'Switch active laundry sites using the site selector in the top header to focus your workspace on specific branches.'
+  },
+
+  // Approver
+  {
+    id: 'appr-quick-decision',
+    category: 'APPROVER',
+    badgeLabel: 'Approver Hint',
+    title: 'One-Click Approvals',
+    tip: 'Review financial totals and approve or reject purchase requests directly from the Stage 1 view in seconds.',
+    permissionRequired: 'approve_requests'
+  },
+  {
+    id: 'appr-audit-trail',
+    category: 'APPROVER',
+    badgeLabel: 'Audit Compliance',
+    title: 'Decision Remarks',
+    tip: 'Add concise decision comments when approving or rejecting requests to maintain transparent compliance audit logs.',
+    permissionRequired: 'approve_requests'
+  },
+  {
+    id: 'appr-spend-kpi',
+    category: 'APPROVER',
+    badgeLabel: 'Spend Control',
+    title: 'GST-Inclusive Pricing',
+    tip: 'Total spend including GST is calculated live on every request card for accurate budget threshold verification.',
+    permissionRequired: 'approve_requests'
+  },
+
+  // Procurement & Admin
+  {
+    id: 'proc-link-po',
+    category: 'PROCUREMENT',
+    badgeLabel: 'Procurement Step',
+    title: 'Concur PO Linkage',
+    tip: 'Entering the finalized Concur PO number in Stage 3 immediately activates the order for physical warehouse receiving.',
+    permissionRequired: 'link_concur'
+  },
+  {
+    id: 'proc-stage-flow',
+    category: 'PROCUREMENT',
+    badgeLabel: 'Workflow Guide',
+    title: '6-Stage Lifecycle',
+    tip: 'Orders advance cleanly through 6 distinct stages—from requisition and approval to Concur sync, delivery, and closure.',
+    permissionRequired: 'link_concur'
+  },
+  {
+    id: 'proc-catalog',
+    category: 'PROCUREMENT',
+    badgeLabel: 'Master Data',
+    title: 'Contract Pricing',
+    tip: 'Keep master item definitions and contract prices updated to eliminate price variance discrepancies on delivery.',
+    permissionRequired: 'manage_item_definition'
+  },
+
+  // Receiving & Warehouse
+  {
+    id: 'rec-docket-entry',
+    category: 'RECEIVING',
+    badgeLabel: 'Receiving Guide',
+    title: 'Supplier Docket Numbers',
+    tip: 'Always enter the supplier delivery docket number and date received to enable seamless 3-way matching in Concur.'
+  },
+  {
+    id: 'rec-partial-shipments',
+    category: 'RECEIVING',
+    badgeLabel: 'Receiving Guide',
+    title: 'Partial Deliveries',
+    tip: 'Log partial deliveries as shipments arrive. The order remains active in Stage 5 until all items are received.'
+  },
+  {
+    id: 'rec-force-close',
+    category: 'RECEIVING',
+    badgeLabel: 'Reconciliation',
+    title: 'Closing Balance Lines',
+    tip: 'When a supplier cannot fulfill remaining backorders, force-close remaining lines during receipting to finalize Stage 6.'
+  }
+];
+
+// ── 6-Stage Lifecycle Configuration ───────────────────────────────────────────
 
 export interface LifecycleStageConfig {
   num: number;
+  id: 'REQUESTED' | 'APPROVED' | 'REQ_LOGGED' | 'IN_CONCUR' | 'DELIVERY' | 'CLOSED';
   label: string;
+  stageTitle: string;
   shortLabel: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   color: string;
   badgeClass: string;
   bgLightClass: string;
-  textClass: string;
   borderClass: string;
-  ringClass: string;
-  description: string;
+  activeRing: string;
+  textClass: string;
+  descriptor: string;
 }
 
 export const LIFECYCLE_STAGES: LifecycleStageConfig[] = [
   {
     num: 1,
+    id: 'REQUESTED',
     label: 'Requested',
+    stageTitle: 'Stage 1 - Requested',
     shortLabel: 'Req',
     icon: FileText,
     color: 'amber',
     badgeClass: 'bg-amber-500 text-white',
-    bgLightClass: 'bg-amber-50 dark:bg-amber-950/30',
-    textClass: 'text-amber-700 dark:text-amber-300',
+    bgLightClass: 'bg-amber-50 dark:bg-amber-950/20',
     borderClass: 'border-amber-200 dark:border-amber-800/40',
-    ringClass: 'ring-amber-500/20',
-    description: 'Request submitted & awaiting financial approval decision.'
+    activeRing: 'ring-2 ring-amber-500 border-amber-500 shadow-md',
+    textClass: 'text-amber-700 dark:text-amber-300',
+    descriptor: 'Requisition submitted and awaiting financial management approval decision.'
   },
   {
     num: 2,
+    id: 'APPROVED',
     label: 'Approved',
+    stageTitle: 'Stage 2 - Approved',
     shortLabel: 'Appr',
     icon: ShieldCheck,
     color: 'sky',
     badgeClass: 'bg-sky-500 text-white',
-    bgLightClass: 'bg-sky-50 dark:bg-sky-950/30',
-    textClass: 'text-sky-700 dark:text-sky-300',
+    bgLightClass: 'bg-sky-50 dark:bg-sky-950/20',
     borderClass: 'border-sky-200 dark:border-sky-800/40',
-    ringClass: 'ring-sky-500/20',
-    description: 'Financial approval granted. Next step: Log Concur Request #.'
+    activeRing: 'ring-2 ring-sky-500 border-sky-500 shadow-md',
+    textClass: 'text-sky-700 dark:text-sky-300',
+    descriptor: 'Financial approval granted; awaiting Concur Request ID reference logging.'
   },
   {
     num: 3,
-    label: 'Req. Logged',
+    id: 'REQ_LOGGED',
+    label: 'Requested Logged',
+    stageTitle: 'Stage 3 - Requested Logged',
     shortLabel: 'Logged',
     icon: Link2,
     color: 'indigo',
     badgeClass: 'bg-indigo-500 text-white',
-    bgLightClass: 'bg-indigo-50 dark:bg-indigo-950/30',
-    textClass: 'text-indigo-700 dark:text-indigo-300',
+    bgLightClass: 'bg-indigo-50 dark:bg-indigo-950/20',
     borderClass: 'border-indigo-200 dark:border-indigo-800/40',
-    ringClass: 'ring-indigo-500/20',
-    description: 'Concur Request logged. Next step: Link Concur PO #.'
+    activeRing: 'ring-2 ring-indigo-500 border-indigo-500 shadow-md',
+    textClass: 'text-indigo-700 dark:text-indigo-300',
+    descriptor: 'Concur Request logged; awaiting finalized Concur PO number from procurement.'
   },
   {
     num: 4,
+    id: 'IN_CONCUR',
     label: 'In Concur',
+    stageTitle: 'Stage 4 - In Concur',
     shortLabel: 'Concur',
     icon: ShoppingCart,
     color: 'blue',
     badgeClass: 'bg-blue-600 text-white',
-    bgLightClass: 'bg-blue-50 dark:bg-blue-950/30',
-    textClass: 'text-blue-700 dark:text-blue-300',
+    bgLightClass: 'bg-blue-50 dark:bg-blue-950/20',
     borderClass: 'border-blue-200 dark:border-blue-800/40',
-    ringClass: 'ring-blue-500/20',
-    description: 'PO generated in Concur & active. Next step: Initial delivery receipting.'
+    activeRing: 'ring-2 ring-blue-500 border-blue-500 shadow-md',
+    textClass: 'text-blue-700 dark:text-blue-300',
+    descriptor: 'Concur PO generated & order is active with supplier awaiting shipment.'
   },
   {
     num: 5,
+    id: 'DELIVERY',
     label: 'Delivery',
+    stageTitle: 'Stage 5 - Delivery',
     shortLabel: 'Delivery',
     icon: Truck,
     color: 'emerald',
     badgeClass: 'bg-emerald-500 text-white',
-    bgLightClass: 'bg-emerald-50 dark:bg-emerald-950/30',
-    textClass: 'text-emerald-700 dark:text-emerald-300',
+    bgLightClass: 'bg-emerald-50 dark:bg-emerald-950/20',
     borderClass: 'border-emerald-200 dark:border-emerald-800/40',
-    ringClass: 'ring-emerald-500/20',
-    description: 'Partially delivered or active. Next step: Receive remaining goods or close PO.'
+    activeRing: 'ring-2 ring-emerald-500 border-emerald-500 shadow-md',
+    textClass: 'text-emerald-700 dark:text-emerald-300',
+    descriptor: 'Goods arriving on site; active physical delivery receipting and docket logging.'
   },
   {
     num: 6,
-    label: 'Complete',
+    id: 'CLOSED',
+    label: 'Order Closed',
+    stageTitle: 'Stage 6 - Order Closed',
     shortLabel: 'Closed',
     icon: CheckCheck,
     color: 'slate',
     badgeClass: 'bg-slate-600 text-white',
-    bgLightClass: 'bg-slate-50 dark:bg-slate-900/30',
-    textClass: 'text-slate-700 dark:text-slate-300',
+    bgLightClass: 'bg-slate-50 dark:bg-slate-900/20',
     borderClass: 'border-slate-200 dark:border-slate-800/40',
-    ringClass: 'ring-slate-500/20',
-    description: 'All goods fully received and order archived.'
+    activeRing: 'ring-2 ring-slate-500 border-slate-500 shadow-md',
+    textClass: 'text-slate-700 dark:text-slate-300',
+    descriptor: 'All goods fully received and reconciled; purchase order complete and archived.'
   },
 ];
 
@@ -123,7 +258,6 @@ export const LIFECYCLE_STAGES: LifecycleStageConfig[] = [
 export function getPOStageInfo(po: PORequest, currentUser: any, hasPermission: (perm: string) => boolean) {
   let stageNum = 1;
   let nextActionTitle = 'Review & Approve';
-  let nextActionDesc = 'Financial approval required to proceed.';
   let actionType: 'APPROVE' | 'CONCUR_REQ' | 'CONCUR_PO' | 'DELIVERY' | 'QUICK_VIEW' = 'APPROVE';
   let canAction = false;
 
@@ -134,45 +268,38 @@ export function getPOStageInfo(po: PORequest, currentUser: any, hasPermission: (
 
   if (po.status === 'PENDING_APPROVAL' || po.status === 'DRAFT') {
     stageNum = 1;
-    nextActionTitle = 'Approve / Reject Request';
-    nextActionDesc = 'Awaiting financial approver review & decision.';
+    nextActionTitle = 'Review & Approve';
     actionType = 'APPROVE';
     canAction = isApprover || isAdmin;
   } else if (po.status === 'APPROVED_PENDING_CONCUR_REQUEST') {
     stageNum = 2;
-    nextActionTitle = 'Log Concur Request #';
-    nextActionDesc = 'Enter Concur Request ID to track in ERP.';
+    nextActionTitle = 'Log Concur Req #';
     actionType = 'CONCUR_REQ';
     canAction = isRequester || canLinkConcur || isAdmin;
   } else if (po.status === 'APPROVED_PENDING_CONCUR') {
     stageNum = 3;
     nextActionTitle = 'Link Concur PO #';
-    nextActionDesc = 'Attach finalized Concur PO number to activate order.';
     actionType = 'CONCUR_PO';
     canAction = canLinkConcur || isAdmin;
   } else if (po.status === 'ACTIVE') {
     stageNum = 4;
     nextActionTitle = 'Record Goods Receipt';
-    nextActionDesc = 'Log supplier delivery docket & received quantities.';
     actionType = 'DELIVERY';
     canAction = true;
   } else if (po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') {
     stageNum = 5;
     const remaining = po.lines.reduce((acc, line) => acc + Math.max(0, line.quantityOrdered - (line.quantityReceived || 0)), 0);
-    nextActionTitle = remaining > 0 ? 'Receive Remaining Goods' : 'Reconcile & Close';
-    nextActionDesc = remaining > 0 ? `${remaining.toLocaleString()} units remaining across order lines.` : 'All lines delivered.';
+    nextActionTitle = remaining > 0 ? 'Receive Goods' : 'Reconcile Order';
     actionType = 'DELIVERY';
     canAction = true;
   } else if (po.status === 'CLOSED') {
     stageNum = 6;
-    nextActionTitle = 'Order Completed';
-    nextActionDesc = 'Fully receipted & reconciled.';
+    nextActionTitle = 'View Order';
     actionType = 'QUICK_VIEW';
     canAction = false;
   } else if (po.status === 'REJECTED') {
     stageNum = 1;
-    nextActionTitle = 'Request Rejected';
-    nextActionDesc = 'Rejected during approval review.';
+    nextActionTitle = 'View Rejected Order';
     actionType = 'QUICK_VIEW';
     canAction = false;
   }
@@ -183,106 +310,9 @@ export function getPOStageInfo(po: PORequest, currentUser: any, hasPermission: (
     stageNum,
     stageConfig,
     nextActionTitle,
-    nextActionDesc,
     actionType,
     canAction
   };
-}
-
-interface HomeInsightState {
-  isLoading: boolean;
-  hasPartialError: boolean;
-  myItemRequests: ItemRequest[];
-  masterDataRequests: ItemRequest[];
-  pricingRequests: ItemRequest[];
-}
-
-interface ActionTask {
-  id: string;
-  title: string;
-  count: number;
-  desc: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  color: string;
-  path?: string;
-  tabKey?: string;
-  bgClass: string;
-  textClass: string;
-  badgeClass: string;
-  borderHoverClass: string;
-}
-
-const greetingOptions = [
-  'Good day, {first_name}. Your workspace is focused.',
-  'Welcome back, {first_name}. Your next move is ready.',
-  '{first_name}, ProcureFlow has prioritised the work that matters.',
-  'Good to see you, {first_name}. Start with the signal that creates flow.',
-  '{first_name}, your command view is tuned for {site_label}.',
-];
-
-const getDayIndex = (seed: string, length: number) => {
-  if (length <= 0) return 0;
-  const today = new Date();
-  const daySeed = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}-${seed}`;
-  let hash = 0;
-  for (let index = 0; index < daySeed.length; index += 1) {
-    hash = (hash * 31 + daySeed.charCodeAt(index)) % 2147483647;
-  }
-  return hash % length;
-};
-
-const applyTemplate = (
-  value: string,
-  replacements: Record<string, string>
-) => Object.entries(replacements).reduce(
-  (text, [token, replacement]) => text.replace(new RegExp(`{${token}}`, 'g'), replacement),
-  value
-);
-
-function useHomeInsights() {
-  const { currentUser, hasPermission } = useApp();
-  const [state, setState] = useState<HomeInsightState>({
-    isLoading: true,
-    hasPartialError: false,
-    myItemRequests: [],
-    masterDataRequests: [],
-    pricingRequests: [],
-  });
-
-  React.useEffect(() => {
-    let isMounted = true;
-
-    const load = async () => {
-      if (!currentUser) return;
-      setState(prev => ({ ...prev, isLoading: true, hasPartialError: false }));
-
-      const [myItems, masterData, pricing] = await Promise.allSettled([
-        getMyItemRequests(currentUser.id),
-        hasPermission('manage_item_definition') ? getRequestsForMasterData() : Promise.resolve([] as ItemRequest[]),
-        hasPermission('manage_sell_pricing') || hasPermission('manage_purchase_pricing')
-          ? getRequestsForPricing()
-          : Promise.resolve([] as ItemRequest[]),
-      ]);
-
-      if (!isMounted) return;
-
-      setState({
-        isLoading: false,
-        hasPartialError: [myItems, masterData, pricing].some(result => result.status === 'rejected'),
-        myItemRequests: myItems.status === 'fulfilled' ? myItems.value : [],
-        masterDataRequests: masterData.status === 'fulfilled' ? masterData.value : [],
-        pricingRequests: pricing.status === 'fulfilled' ? pricing.value : [],
-      });
-    };
-
-    load();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [currentUser, hasPermission]);
-
-  return state;
 }
 
 export default function Home() {
@@ -299,205 +329,130 @@ export default function Home() {
     addDelivery
   } = useApp();
   const navigate = useNavigate();
-  const insights = useHomeInsights();
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
   const isApprover = currentUser?.role === 'APPROVER' || currentUser?.roleIds?.includes('APPROVER') || hasPermission('approve_requests');
   const canLinkConcur = hasPermission('link_concur');
 
-  // Next-Action Command Center state
-  const [actionTab, setActionTab] = useState<'ALL' | 'APPROVALS' | 'CONCUR' | 'DELIVERIES' | 'MY_REQUESTS'>('ALL');
+  // Selected stage filter ('ALL' | 1 | 2 | 3 | 4 | 5 | 6)
+  const [selectedStage, setSelectedStage] = useState<number | 'ALL'>('ALL');
+  const [activeInfoStage, setActiveInfoStage] = useState<number | null>(null);
   const [actionSearch, setActionSearch] = useState('');
+
+  // Modals state
   const [activeModal, setActiveModal] = useState<{
     type: 'APPROVE' | 'CONCUR_REQ' | 'CONCUR_PO' | 'DELIVERY' | 'QUICK_VIEW';
     po: PORequest;
   } | null>(null);
 
-  // Approval modal state
+  // Modal form states
   const [approvalComment, setApprovalComment] = useState('');
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
-
-  // Concur request modal state
   const [concurReqInput, setConcurReqInput] = useState('');
-
-  // Concur PO modal state
   const [concurPoInput, setConcurPoInput] = useState('');
 
-  // Summary groupings
-  const pendingApprovals = useMemo(() => 
-    pos.filter(p => p.status === 'PENDING_APPROVAL' && (activeSiteIds.length === 0 || activeSiteIds.includes(p.siteId))),
-    [pos, activeSiteIds]
-  );
+  // ── Role-Tailored ProcureFlow Insights ──────────────────────────────────────
+  const userEligibleTips = useMemo(() => {
+    return PROCUREFLOW_TIPS.filter(tip => {
+      if (tip.permissionRequired && !hasPermission(tip.permissionRequired)) {
+        return false;
+      }
+      if (tip.roleRequired && !tip.roleRequired.includes(currentUser?.role || '')) {
+        return false;
+      }
+      return true;
+    });
+  }, [currentUser, hasPermission]);
 
-  const pendingConcur = useMemo(() => 
-    pos.filter(p => (p.status === 'APPROVED_PENDING_CONCUR' || p.status === 'APPROVED_PENDING_CONCUR_REQUEST') && (activeSiteIds.length === 0 || activeSiteIds.includes(p.siteId))),
-    [pos, activeSiteIds]
-  );
+  const [tipIndex, setTipIndex] = useState(0);
+  const currentTip = userEligibleTips[tipIndex % Math.max(1, userEligibleTips.length)] || PROCUREFLOW_TIPS[0];
 
-  const activeOrders = useMemo(() => 
-    pos.filter(p => (p.status === 'ACTIVE' || p.status === 'RECEIVED') && (activeSiteIds.length === 0 || activeSiteIds.includes(p.siteId))),
-    [pos, activeSiteIds]
-  );
+  const handleNextTip = () => {
+    setTipIndex(prev => (prev + 1) % userEligibleTips.length);
+  };
 
-  const myPendingApprovals = useMemo(() => 
-    isApprover || isAdmin ? pendingApprovals : [], 
-    [isAdmin, isApprover, pendingApprovals]
-  );
+  // ── Filtered POs by Active Sites ────────────────────────────────────────────
+  const siteFilteredPOs = useMemo(() => {
+    return pos.filter(p => activeSiteIds.length === 0 || activeSiteIds.includes(p.siteId));
+  }, [pos, activeSiteIds]);
 
-  const globalPendingConcur = useMemo(() => 
-    canLinkConcur || isAdmin ? pendingConcur : [], 
-    [canLinkConcur, isAdmin, pendingConcur]
-  );
+  // Counts per stage
+  const stageCounts = useMemo(() => {
+    const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    siteFilteredPOs.forEach(p => {
+      if (p.status === 'PENDING_APPROVAL' || p.status === 'DRAFT') counts[1] += 1;
+      else if (p.status === 'APPROVED_PENDING_CONCUR_REQUEST') counts[2] += 1;
+      else if (p.status === 'APPROVED_PENDING_CONCUR') counts[3] += 1;
+      else if (p.status === 'ACTIVE') counts[4] += 1;
+      else if (p.status === 'RECEIVED' || p.status === 'VARIANCE_PENDING') counts[5] += 1;
+      else if (p.status === 'CLOSED') counts[6] += 1;
+    });
+    return counts;
+  }, [siteFilteredPOs]);
 
-  const myPendingConcurSync = useMemo(() => 
-    pendingConcur.filter(p => p.requesterId === currentUser?.id && !canLinkConcur && !isAdmin), 
-    [pendingConcur, currentUser, canLinkConcur, isAdmin]
-  );
+  const totalOpenRequests = useMemo(() => {
+    return siteFilteredPOs.filter(p => p.status !== 'CLOSED' && p.status !== 'REJECTED').length;
+  }, [siteFilteredPOs]);
 
-  const actionConcur = useMemo(() => 
-    globalPendingConcur.length > 0 ? globalPendingConcur : myPendingConcurSync, 
-    [globalPendingConcur, myPendingConcurSync]
-  );
+  // ── Dynamic Welcome & Action Focus Generator ────────────────────────────────
+  const firstName = currentUser?.name?.split(' ')[0] || 'there';
+  const siteLabel = activeSiteIds.length === 0
+    ? 'All Laundry Sites'
+    : activeSiteIds.length === 1
+      ? siteName(activeSiteIds[0])
+      : `${activeSiteIds.length} Active Sites`;
 
-  const myPendingDeliveries = useMemo(() => activeOrders.filter(p => {
-    if (isAdmin) return true;
-    if (p.requesterId !== currentUser?.id) return false;
-    const remaining = p.lines.reduce((acc, line) => acc + (line.quantityOrdered - (line.quantityReceived || 0)), 0);
-    return remaining > 0;
-  }), [currentUser, isAdmin, activeOrders]);
-
-  const masterDataQueueCount = useMemo(() => 
-    hasPermission('manage_item_definition') 
-      ? insights.masterDataRequests.filter(r => ['SUBMITTED', 'DUPLICATE_REVIEW', 'PROCUREMENT_REVIEW', 'DATA_REVIEW'].includes(r.status)).length 
-      : 0,
-    [hasPermission, insights.masterDataRequests]
-  );
-
-  const pricingQueueCount = useMemo(() => 
-    (hasPermission('manage_sell_pricing') || hasPermission('manage_purchase_pricing')) 
-      ? insights.pricingRequests.length 
-      : 0,
-    [hasPermission, insights.pricingRequests]
-  );
-
-  const tasks = useMemo<ActionTask[]>(() => {
-    const t: ActionTask[] = [];
-    
-    if (myPendingApprovals.length > 0) {
-      t.push({
-        id: 'approvals',
-        title: 'Pending Approvals',
-        count: myPendingApprovals.length,
-        desc: 'Review and approve or reject purchase requests.',
-        icon: CheckCircle2,
-        color: 'amber',
-        tabKey: 'APPROVALS',
-        bgClass: 'bg-amber-500/10 dark:bg-amber-500/15',
-        textClass: 'text-amber-600 dark:text-amber-400',
-        badgeClass: 'bg-amber-500',
-        borderHoverClass: 'hover:border-amber-500/40',
-      });
+  const dynamicFocusInsight = useMemo(() => {
+    if (stageCounts[1] > 0 && (isApprover || isAdmin)) {
+      return (
+        <span>
+          You have <strong className="text-amber-600 dark:text-amber-400 font-black">{stageCounts[1]} purchase request{stageCounts[1] === 1 ? '' : 's'}</strong> awaiting your financial approval for {siteLabel}.
+        </span>
+      );
     }
-
-    if (actionConcur.length > 0) {
-      t.push({
-        id: 'concur',
-        title: 'Concur Linkage',
-        count: actionConcur.length,
-        desc: 'Link approved requests to Concur PO numbers.',
-        icon: LinkIcon,
-        color: 'blue',
-        tabKey: 'CONCUR',
-        bgClass: 'bg-blue-500/10 dark:bg-blue-500/15',
-        textClass: 'text-blue-600 dark:text-blue-400',
-        badgeClass: 'bg-blue-500',
-        borderHoverClass: 'hover:border-blue-500/40',
-      });
+    if (stageCounts[3] > 0 && (canLinkConcur || isAdmin)) {
+      return (
+        <span>
+          You have <strong className="text-indigo-600 dark:text-indigo-400 font-black">{stageCounts[3]} approved order{stageCounts[3] === 1 ? '' : 's'}</strong> ready for Concur PO linkage to unlock deliveries.
+        </span>
+      );
     }
-
-    if (myPendingDeliveries.length > 0) {
-      t.push({
-        id: 'deliveries',
-        title: 'Pending Deliveries',
-        count: myPendingDeliveries.length,
-        desc: 'Confirm receipt of goods for active purchase orders.',
-        icon: Package,
-        color: 'emerald',
-        tabKey: 'DELIVERIES',
-        bgClass: 'bg-emerald-500/10 dark:bg-emerald-500/15',
-        textClass: 'text-emerald-600 dark:text-emerald-400',
-        badgeClass: 'bg-emerald-500',
-        borderHoverClass: 'hover:border-emerald-500/40',
-      });
+    if (stageCounts[2] > 0) {
+      return (
+        <span>
+          <strong className="text-sky-600 dark:text-sky-400 font-black">{stageCounts[2]} request{stageCounts[2] === 1 ? '' : 's'}</strong> are approved and ready to log Concur Request reference numbers.
+        </span>
+      );
     }
-
-    if (masterDataQueueCount > 0) {
-      t.push({
-        id: 'master-data',
-        title: 'Master Data Setup',
-        count: masterDataQueueCount,
-        desc: 'Catalog lifecycle items pending master data review.',
-        icon: Layers,
-        color: 'purple',
-        path: '/items/master-data-queue',
-        bgClass: 'bg-purple-500/10 dark:bg-purple-500/15',
-        textClass: 'text-purple-600 dark:text-purple-400',
-        badgeClass: 'bg-purple-500',
-        borderHoverClass: 'hover:border-purple-500/40',
-      });
+    if (stageCounts[4] > 0 || stageCounts[5] > 0) {
+      const activeDeliveryCount = stageCounts[4] + stageCounts[5];
+      return (
+        <span>
+          <strong className="text-emerald-600 dark:text-emerald-400 font-black">{activeDeliveryCount} order{activeDeliveryCount === 1 ? '' : 's'}</strong> are active with deliveries expected or in progress.
+        </span>
+      );
     }
+    return <span>All clear! No urgent procurement operations require your attention right now for {siteLabel}.</span>;
+  }, [stageCounts, isApprover, isAdmin, canLinkConcur, siteLabel]);
 
-    if (pricingQueueCount > 0) {
-      t.push({
-        id: 'pricing-queue',
-        title: 'Pricing Review Queue',
-        count: pricingQueueCount,
-        desc: 'Item requests awaiting pricing configuration and review.',
-        icon: DollarSign,
-        color: 'green',
-        path: '/items/pricing-queue',
-        bgClass: 'bg-green-500/10 dark:bg-green-500/15',
-        textClass: 'text-green-600 dark:text-green-400',
-        badgeClass: 'bg-green-500',
-        borderHoverClass: 'hover:border-green-500/40',
-      });
-    }
-
-    return t;
-  }, [myPendingApprovals, actionConcur, myPendingDeliveries, masterDataQueueCount, pricingQueueCount]);
-
-  // Actionable Requests Worklist
-  const actionablePOs = useMemo(() => {
-    return pos
-      .filter((p) => {
-        // Site filter
-        if (activeSiteIds.length > 0 && !activeSiteIds.includes(p.siteId)) return false;
-
-        // Exclude closed or rejected unless explicitly viewing
-        if (p.status === 'CLOSED' || p.status === 'REJECTED') return false;
-
-        // Tab filtering
-        if (actionTab === 'APPROVALS') {
-          return p.status === 'PENDING_APPROVAL';
+  // ── Stage-Expanded Filtered Requests ────────────────────────────────────────
+  const visiblePOs = useMemo(() => {
+    return siteFilteredPOs
+      .filter(p => {
+        // Stage filter
+        if (selectedStage !== 'ALL') {
+          if (selectedStage === 1) return p.status === 'PENDING_APPROVAL' || p.status === 'DRAFT';
+          if (selectedStage === 2) return p.status === 'APPROVED_PENDING_CONCUR_REQUEST';
+          if (selectedStage === 3) return p.status === 'APPROVED_PENDING_CONCUR';
+          if (selectedStage === 4) return p.status === 'ACTIVE';
+          if (selectedStage === 5) return p.status === 'RECEIVED' || p.status === 'VARIANCE_PENDING';
+          if (selectedStage === 6) return p.status === 'CLOSED';
+        } else {
+          // 'ALL': by default show open/active requests
+          return p.status !== 'CLOSED' && p.status !== 'REJECTED';
         }
-        if (actionTab === 'CONCUR') {
-          return p.status === 'APPROVED_PENDING_CONCUR_REQUEST' || p.status === 'APPROVED_PENDING_CONCUR';
-        }
-        if (actionTab === 'DELIVERIES') {
-          return p.status === 'ACTIVE' || p.status === 'RECEIVED' || p.status === 'VARIANCE_PENDING';
-        }
-        if (actionTab === 'MY_REQUESTS') {
-          return p.requesterId === currentUser?.id;
-        }
-
-        // 'ALL' tab: show requests relevant to current user role / permissions
-        if (isAdmin) return true;
-        if (p.requesterId === currentUser?.id) return true;
-        if (isApprover && p.status === 'PENDING_APPROVAL') return true;
-        if (canLinkConcur && (p.status === 'APPROVED_PENDING_CONCUR' || p.status === 'APPROVED_PENDING_CONCUR_REQUEST')) return true;
-
-        return p.status === 'ACTIVE' || p.status === 'RECEIVED';
+        return true;
       })
-      .filter((p) => {
+      .filter(p => {
         if (!actionSearch.trim()) return true;
         const q = actionSearch.toLowerCase();
         return (
@@ -508,58 +463,13 @@ export default function Home() {
           (p.site || '').toLowerCase().includes(q) ||
           (p.customerName || '').toLowerCase().includes(q) ||
           (p.requesterName || '').toLowerCase().includes(q) ||
-          p.lines.some((l) => (l.itemName || '').toLowerCase().includes(q) || (l.sku || '').toLowerCase().includes(q))
+          p.lines.some(l => (l.itemName || '').toLowerCase().includes(q) || (l.sku || '').toLowerCase().includes(q))
         );
       })
       .sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
-  }, [pos, activeSiteIds, actionTab, actionSearch, isAdmin, isApprover, canLinkConcur, currentUser]);
-
-  const approvedTodayCount = useMemo(() => {
-    return pos.filter(p => {
-      if (activeSiteIds.length > 0 && !activeSiteIds.includes(p.siteId)) return false;
-      const h = p.approvalHistory.find(hist => hist.action === 'APPROVED');
-      return h && new Date(h.date).toDateString() === new Date().toDateString();
-    }).length;
-  }, [pos, activeSiteIds]);
-
-  const activeSpendsK = useMemo(() => {
-    const total = pos
-      .filter(p => p.status === 'ACTIVE' && (activeSiteIds.length === 0 || activeSiteIds.includes(p.siteId)))
-      .reduce((sum, p) => sum + p.totalAmount, 0);
-    return Math.round(total / 1000);
-  }, [pos, activeSiteIds]);
-
-  const firstName = currentUser?.name?.split(' ')[0] || 'there';
-  const fullName = currentUser?.name || firstName;
-  const siteLabel = activeSiteIds.length === 0
-    ? 'no active site selected'
-    : activeSiteIds.length === 1
-      ? siteName(activeSiteIds[0])
-      : `${activeSiteIds.length} active sites`;
-  const homeExperience = branding.homeExperience;
-  const templateValues = {
-    first_name: firstName,
-    name: fullName,
-    site_label: siteLabel,
-    app_name: branding.appName || 'ProcureFlow',
-  };
-  const greetingTemplate = homeExperience?.greetingMode === 'custom' && homeExperience.greetingText?.trim()
-    ? homeExperience.greetingText
-    : greetingOptions[getDayIndex(currentUser?.id || firstName, greetingOptions.length)];
-  const messageType = homeExperience?.messageType || 'quote';
-  const laundryInsight = useMemo(() => getSessionLaundryInsight(), [currentUser?.id]);
-  const isCustomOrAnnouncement = messageType === 'announcement' || (homeExperience?.quoteMode === 'custom' && Boolean(homeExperience.quoteText?.trim()));
-  const customMessage = messageType === 'announcement'
-    ? (homeExperience?.quoteText?.trim() || 'No announcement is currently active.')
-    : (homeExperience?.quoteText?.trim() || '');
-  const greeting = applyTemplate(greetingTemplate, templateValues);
-  const dailyMessage = applyTemplate(customMessage, templateValues);
-  const dailyMessageLabel = messageType === 'announcement' ? 'Announcement' : 'Laundry Insights';
-
-  const totalActionItemCount = tasks.reduce((sum, t) => sum + t.count, 0);
+  }, [siteFilteredPOs, selectedStage, actionSearch]);
 
   // ── Inline Action Handlers ──────────────────────────────────────────────────
-
   const handleOpenActionModal = (po: PORequest) => {
     const stageInfo = getPOStageInfo(po, currentUser, hasPermission);
     setApprovalComment('');
@@ -635,273 +545,213 @@ export default function Home() {
   };
 
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-7.25rem)] max-w-7xl flex-col gap-6 overflow-hidden animate-page-entry pb-12">
+    <div className="mx-auto flex min-h-[calc(100dvh-7.25rem)] max-w-7xl flex-col gap-5 overflow-hidden animate-page-entry pb-12">
       <PageHeader title="Home" subtitle="Workspace" />
 
-      {/* Top Welcome Header & Insight Banner */}
+      {/* Top Welcome Header & ProcureFlow Insights */}
       <section className="relative flex-1 overflow-hidden rounded-[1.75rem] border border-transparent bg-transparent text-gray-950 shadow-none dark:border-white/10 dark:bg-nocturne dark:text-white dark:shadow-2xl">
         <div className="relative flex flex-col gap-6 p-4 sm:p-5 lg:p-6">
           
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
-              <h1 className="text-3xl font-black leading-tight text-gray-950 md:text-4xl xl:text-[2.85rem] dark:text-white">
-                {greeting}
+          {/* Header Row: Greeting & Dynamic Focus + ProcureFlow Insights */}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-2xl space-y-2">
+              <h1 className="text-3xl font-black leading-tight text-gray-950 md:text-4xl dark:text-white">
+                Good to see you, {firstName}.
               </h1>
-              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium">
-                Track open procurement requests across all 6 lifecycle stages and take direct action without leaving your dashboard.
+              <p className="text-sm sm:text-base font-medium text-gray-600 dark:text-gray-300 leading-relaxed">
+                {dynamicFocusInsight}
               </p>
             </div>
 
-            <div className="rounded-2xl border border-gray-200/80 bg-white/85 px-4 py-3 shadow-[0_14px_35px_rgba(15,23,42,0.08)] lg:w-[360px] dark:border-white/10 dark:bg-[#15171e] dark:shadow-none shrink-0">
-              <div className="flex items-center gap-1.5">
-                <Sparkles size={13} className="text-tranquil" />
-                <p className="text-[10px] font-black uppercase tracking-widest text-tranquil">{dailyMessageLabel}</p>
-              </div>
-              {isCustomOrAnnouncement ? (
-                <p className="mt-2 text-sm font-semibold leading-6 text-gray-700 dark:text-white/70">{dailyMessage}</p>
-              ) : (
-                <div className="mt-2 space-y-1.5 text-xs">
-                  <p className="font-bold leading-snug text-gray-900 dark:text-white">
-                    <span className="mr-1.5 font-black text-tranquil">Q:</span>
-                    {laundryInsight.question}
-                  </p>
-                  <p className="font-medium leading-relaxed text-gray-600 dark:text-white/70">
-                    <span className="mr-1.5 font-black text-tranquil">A:</span>
-                    {laundryInsight.answer}
-                  </p>
+            {/* ProcureFlow Insights Card (Role-Tailored Tips) */}
+            <div className="rounded-2xl border border-gray-200/80 bg-white/90 px-4 py-3.5 shadow-sm lg:w-[380px] dark:border-white/10 dark:bg-[#15171e] shrink-0 transition-all">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-[var(--color-brand)]" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-brand)]">
+                    ProcureFlow Insights
+                  </span>
                 </div>
-              )}
+                <div className="flex items-center gap-1">
+                  <span className="px-2 py-0.2 rounded-full text-[9px] font-bold bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+                    {currentTip.badgeLabel}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleNextTip}
+                    className="p-1 text-gray-400 hover:text-[var(--color-brand)] dark:hover:text-white rounded-md transition-colors"
+                    title="Next tip"
+                  >
+                    <RotateCcw size={12} />
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-gray-900 dark:text-white">
+                  {currentTip.title}
+                </p>
+                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed font-medium">
+                  {currentTip.tip}
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* 6 Dedicated Stage Legend Bar */}
-          <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white/70 dark:bg-[#15171e]/70 p-3.5 shadow-2xs">
-            <div className="flex items-center justify-between gap-2 mb-2.5">
-              <span className="text-[11px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
-                <Layers size={13} className="text-tranquil" />
-                6-Stage Procurement Flow
-              </span>
-              <span className="text-[11px] text-gray-500 dark:text-gray-400 hidden sm:inline">
-                Hover or click any stage to understand required operations
-              </span>
+          {/* ── HERO 6-STAGE INTERACTIVE WORKSPACE SELECTOR ──────────────────────── */}
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2">
+                <Layers size={15} className="text-[var(--color-brand)]" />
+                <h2 className="text-xs font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                  Procurement Lifecycle Stages
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStage('ALL')}
+                  className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all ${
+                    selectedStage === 'ALL'
+                      ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                      : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  All Open ({totalOpenRequests})
+                </button>
+              </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+
+            {/* Large 6-Stage Cards Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {LIFECYCLE_STAGES.map((stage) => {
                 const IconComp = stage.icon;
+                const count = stageCounts[stage.num] || 0;
+                const isSelected = selectedStage === stage.num;
+                const isInfoActive = activeInfoStage === stage.num;
+
                 return (
                   <div
                     key={stage.num}
-                    className={`flex items-center gap-2 p-2 rounded-xl border ${stage.borderClass} ${stage.bgLightClass} transition-all`}
-                    title={`Stage ${stage.num} - ${stage.label}: ${stage.description}`}
+                    onClick={() => setSelectedStage(stage.num)}
+                    className={`relative p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col items-center text-center justify-between gap-3 group ${
+                      isSelected
+                        ? `${stage.bgLightClass} ${stage.activeRing}`
+                        : 'bg-white dark:bg-[#15171e] border-gray-200/80 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-2xs hover:shadow-md'
+                    }`}
                   >
-                    <div className={`w-6 h-6 rounded-lg ${stage.badgeClass} flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs`}>
-                      <IconComp size={13} />
+                    {/* Top Row: Info Icon & Live Count Badge */}
+                    <div className="w-full flex items-center justify-between">
+                      {/* Info Tooltip Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveInfoStage(isInfoActive ? null : stage.num);
+                        }}
+                        className="p-1 text-gray-400 hover:text-[var(--color-brand)] dark:hover:text-white rounded-md transition-colors"
+                        title="What is this stage?"
+                      >
+                        <Info size={13} />
+                      </button>
+
+                      {/* Live Count Badge */}
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
+                        count > 0 ? stage.badgeClass : 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                      }`}>
+                        {count}
+                      </span>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-bold text-gray-900 dark:text-white truncate">
-                        {stage.num}. {stage.label}
+
+                    {/* Centered Large Stage Icon */}
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition-all shadow-xs ${
+                      isSelected
+                        ? `${stage.badgeClass} scale-105 shadow-md`
+                        : `${stage.bgLightClass} ${stage.textClass} group-hover:scale-105`
+                    }`}>
+                      <IconComp size={22} />
+                    </div>
+
+                    {/* Stage Label & Title Underneath */}
+                    <div>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                        Stage {stage.num}
                       </p>
-                      <p className="text-[9px] text-gray-500 dark:text-gray-400 truncate">
-                        {stage.shortLabel}
+                      <p className="text-xs font-bold text-gray-900 dark:text-white mt-0.5">
+                        {stage.label}
                       </p>
                     </div>
+
+                    {/* Interactive Info Popover */}
+                    {isInfoActive && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute -bottom-24 left-1/2 -translate-x-1/2 w-48 p-2.5 rounded-xl bg-gray-900 text-white text-[11px] font-medium z-30 shadow-xl border border-gray-700 animate-slide-up text-left leading-snug"
+                      >
+                        <div className="flex justify-between items-start gap-1 mb-1">
+                          <span className="font-bold text-[var(--color-brand)]">{stage.stageTitle}</span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveInfoStage(null)}
+                            className="text-gray-400 hover:text-white"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                        <p>{stage.descriptor}</p>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
 
-          {/* Action Center Overview Summary Cards */}
+          {/* ── SLEEK STAGE-EXPANDED REQUESTS WORKLIST ───────────────────────────── */}
           <div className="border-t border-gray-200/70 pt-5 dark:border-white/10">
-            <div className="mb-4 flex items-end justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-tranquil/10 flex items-center justify-center text-tranquil border border-tranquil/20 shadow-sm">
-                  <ClipboardList size={22} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-tranquil">Action Center</p>
-                  <h2 className="text-lg font-black leading-tight text-gray-950 sm:text-xl dark:text-white">Active Tasks &amp; Operations</h2>
-                </div>
-              </div>
-              <span className={`text-xs font-black px-3 py-1 rounded-full shadow-sm ${
-                totalActionItemCount > 0 
-                  ? 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-500/20' 
-                  : 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-500/20'
-              }`}>
-                {totalActionItemCount > 0 ? `${totalActionItemCount} Action Items` : 'All Clear'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-              {/* Task Counters */}
-              <div className="lg:col-span-2 space-y-3.5">
-                {tasks.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    {tasks.map((task) => (
-                      <div
-                        key={task.id}
-                        onClick={() => {
-                          if (task.tabKey) setActionTab(task.tabKey as any);
-                          else if (task.path) navigate(task.path);
-                        }}
-                        className={`group p-4 rounded-2xl border border-gray-200/80 bg-white hover:shadow-lg ${task.borderHoverClass} transition-all duration-200 cursor-pointer relative overflow-hidden dark:border-white/10 dark:bg-[#15171e]`}
-                      >
-                        <div className="flex items-start gap-3.5">
-                          <div className={`p-3 rounded-xl ${task.bgClass} ${task.textClass} shrink-0 border border-current/10`}>
-                            <task.icon size={22} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <h3 className="font-bold text-sm text-gray-900 dark:text-white truncate">{task.title}</h3>
-                              <span className={`px-2.5 py-0.5 rounded-full ${task.badgeClass} text-white text-[11px] font-black shrink-0 shadow-sm`}>
-                                {task.count}
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed line-clamp-2">
-                              {task.desc}
-                            </p>
-                          </div>
-                          <div className="self-center text-gray-300 dark:text-white/20 group-hover:translate-x-1 group-hover:text-[var(--color-brand)] transition-all">
-                            <ChevronRight size={18} />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-10 px-6 flex flex-col items-center justify-center text-center bg-white dark:bg-[#15171e] rounded-2xl border border-dashed border-gray-200 dark:border-white/10 shadow-sm">
-                    <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-2 shadow-inner">
-                      <CheckCircle2 size={24} />
-                    </div>
-                    <h3 className="font-bold text-sm text-gray-900 dark:text-white">All Caught Up!</h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">No pending tasks require your immediate action.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Summary KPIs & Quick Links */}
-              <div className="space-y-3.5">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-4 rounded-2xl bg-white border border-gray-200/80 dark:bg-[#15171e] dark:border-white/10 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Approved Today</p>
-                    <p className="text-2xl font-black text-gray-950 dark:text-white">{approvedTodayCount}</p>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 font-medium">Orders cleared</p>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-white border border-gray-200/80 dark:bg-[#15171e] dark:border-white/10 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Active Spends</p>
-                    <p className="text-2xl font-black text-gray-950 dark:text-white">${activeSpendsK}k</p>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 font-medium">In procurement</p>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-white to-gray-50/80 dark:from-[#15171e] dark:to-[#1a1d27] border border-gray-200/80 dark:border-white/10 shadow-sm space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">Quick Actions</h3>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400">Direct navigation</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate('/requests')}
-                      className="w-full flex items-center justify-between p-2.5 rounded-xl bg-surface border border-default hover:border-[var(--color-brand)]/40 hover:shadow-xs transition-all group text-left"
-                    >
-                      <span className="text-xs font-bold text-gray-900 dark:text-white">View All Requests</span>
-                      <ArrowRight size={14} className="text-gray-400 group-hover:translate-x-1 group-hover:text-[var(--color-brand)] transition-all" />
-                    </button>
-
-                    {hasPermission('create_request') && (
-                      <button
-                        type="button"
-                        onClick={() => navigate('/create-request')}
-                        className="w-full flex items-center justify-center gap-2 py-2 bg-[var(--color-brand)] text-white rounded-xl font-bold shadow-sm hover:opacity-95 active:scale-98 transition-all text-xs"
-                      >
-                        Create New Request <ArrowRight size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── NEXT STEP ACTION COMMAND CENTER ────────────────────────────────────── */}
-          <div className="border-t border-gray-200/70 pt-6 dark:border-white/10">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+            {/* Header & Stage Tabs Filter */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-brand)] animate-pulse" />
-                  <h2 className="text-base font-black text-gray-950 dark:text-white uppercase tracking-wider">
-                    Next-Step Action Worklist
-                  </h2>
+                  <span className="w-2 h-2 rounded-full bg-[var(--color-brand)] animate-pulse" />
+                  <h3 className="text-sm font-black text-gray-950 dark:text-white uppercase tracking-wider">
+                    {selectedStage === 'ALL'
+                      ? 'All Open Requests'
+                      : LIFECYCLE_STAGES[selectedStage - 1].stageTitle}
+                  </h3>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  See what action is required for each open request and execute it directly without navigating away.
+                  {selectedStage === 'ALL'
+                    ? 'Showing all active requests across stages.'
+                    : LIFECYCLE_STAGES[selectedStage - 1].descriptor}
                 </p>
               </div>
 
-              {/* Action Tabs */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-                {[
-                  { id: 'ALL', label: 'All Actionable', count: actionablePOs.length },
-                  { id: 'APPROVALS', label: 'Pending Approvals', count: myPendingApprovals.length },
-                  { id: 'CONCUR', label: 'Concur Linkage', count: actionConcur.length },
-                  { id: 'DELIVERIES', label: 'Deliveries', count: myPendingDeliveries.length },
-                  { id: 'MY_REQUESTS', label: 'My Requests', count: pos.filter(p => p.requesterId === currentUser?.id && p.status !== 'CLOSED').length }
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActionTab(tab.id as any)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                      actionTab === tab.id
-                        ? 'bg-[var(--color-brand)] text-white shadow-xs'
-                        : 'bg-white dark:bg-[#15171e] text-gray-600 dark:text-gray-400 border border-gray-200/80 dark:border-gray-800 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                  >
-                    <span>{tab.label}</span>
-                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                      actionTab === tab.id ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                    }`}>
-                      {tab.count}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Filter / Search Bar */}
-            <div className="flex flex-col sm:flex-row items-center gap-3 mb-4">
-              <div className="relative flex-1 w-full">
-                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-72">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search by Request #, Concur PO, Supplier, Site, Item name, or SKU..."
+                  placeholder="Search Request #, Supplier, SKU..."
                   value={actionSearch}
                   onChange={(e) => setActionSearch(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 rounded-xl bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 text-xs font-medium text-gray-900 dark:text-white focus:border-[var(--color-brand)] outline-none transition-colors"
+                  className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 text-xs font-medium text-gray-900 dark:text-white focus:border-[var(--color-brand)] outline-none"
                 />
                 {actionSearch && (
                   <button
                     type="button"
                     onClick={() => setActionSearch('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    <X size={14} />
+                    <X size={13} />
                   </button>
                 )}
               </div>
-              <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 font-medium">
-                Showing {actionablePOs.length} request{actionablePOs.length === 1 ? '' : 's'}
-              </span>
             </div>
 
-            {/* Actionable Request Cards Grid */}
-            {actionablePOs.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {actionablePOs.map((po) => {
+            {/* Sleek Request Cards Grid */}
+            {visiblePOs.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {visiblePOs.map((po) => {
                   const stageInfo = getPOStageInfo(po, currentUser, hasPermission);
                   const StageIcon = stageInfo.stageConfig.icon;
                   const totalItems = po.lines.reduce((sum, l) => sum + (l.quantityOrdered || 0), 0);
@@ -910,32 +760,33 @@ export default function Home() {
                   return (
                     <div
                       key={po.id}
-                      className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between gap-3.5 group"
+                      className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between gap-3 group"
                     >
-                      {/* Top Header: Stage Badge, Request Display ID, Site, Date */}
+                      {/* Top Header: Request Display ID, Site Badge, Date */}
                       <div>
-                        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                        <div className="flex items-center justify-between gap-2 mb-2">
                           <div className="flex items-center gap-2">
-                            {/* Dedicated Stage Badge */}
-                            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-bold text-xs ${stageInfo.stageConfig.bgLightClass} ${stageInfo.stageConfig.borderClass} ${stageInfo.stageConfig.textClass}`}>
+                            {/* Small Stage Indicator */}
+                            <div className={`p-1.5 rounded-lg ${stageInfo.stageConfig.bgLightClass} ${stageInfo.stageConfig.textClass} shrink-0`}>
                               <StageIcon size={14} />
-                              <span>Stage {stageInfo.stageNum}: {stageInfo.stageConfig.label}</span>
                             </div>
-                            <span className="font-mono font-bold text-sm text-gray-900 dark:text-white">
+                            <span className="font-mono font-bold text-sm text-gray-950 dark:text-white">
                               {po.displayId || po.id}
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                            <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-semibold text-gray-700 dark:text-gray-300">
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <span className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 font-semibold text-gray-700 dark:text-gray-300">
                               {po.site || 'Site'}
                             </span>
-                            <span>{new Date(po.requestDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}</span>
+                            <span className="text-gray-400 font-medium">
+                              {new Date(po.requestDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
+                            </span>
                           </div>
                         </div>
 
-                        {/* Supplier, Customer / Reason, & Amount */}
-                        <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                        {/* Supplier, Amount & Customer / Project */}
+                        <div className="grid grid-cols-2 gap-2 text-xs mb-2">
                           <div>
                             <p className="text-[10px] uppercase font-bold text-gray-400">Supplier</p>
                             <p className="font-bold text-gray-900 dark:text-white truncate" title={po.supplierName}>
@@ -956,57 +807,14 @@ export default function Home() {
                           )}
                         </div>
 
-                        {/* 6-Stage Dedicated Lifecycle Progress Indicator */}
-                        <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-2.5 border border-gray-100 dark:border-gray-800/80 mb-3">
-                          <div className="flex items-center justify-between relative">
-                            <div className="absolute top-[11px] left-2 right-2 h-[2px] bg-gray-200 dark:bg-gray-800 -z-0" />
-                            {LIFECYCLE_STAGES.map((st) => {
-                              const isCompleted = st.num < stageInfo.stageNum;
-                              const isCurrent = st.num === stageInfo.stageNum;
-                              const StepIconComp = st.icon;
-
-                              return (
-                                <div key={st.num} className="flex flex-col items-center relative z-10" title={`Stage ${st.num}: ${st.label}`}>
-                                  <div
-                                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${
-                                      isCompleted
-                                        ? 'bg-emerald-500 text-white shadow-xs'
-                                        : isCurrent
-                                          ? `${st.badgeClass} ring-2 ${st.ringClass} scale-110 shadow-xs`
-                                          : 'bg-white dark:bg-[#15171e] text-gray-400 border border-gray-200 dark:border-gray-700'
-                                    }`}
-                                  >
-                                    {isCompleted ? <Check size={12} /> : <StepIconComp size={11} />}
-                                  </div>
-                                  <span className={`text-[9px] mt-1 font-medium ${isCurrent ? 'text-gray-900 dark:text-white font-bold' : 'text-gray-400 dark:text-gray-600'}`}>
-                                    {st.shortLabel}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Next Action Required Callout Banner */}
-                        <div className={`p-2.5 rounded-xl border flex items-start gap-2.5 ${stageInfo.stageConfig.bgLightClass} ${stageInfo.stageConfig.borderClass}`}>
-                          <div className={`p-1.5 rounded-lg ${stageInfo.stageConfig.badgeClass} shrink-0 shadow-2xs`}>
-                            <StageIcon size={14} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-[11px] font-bold text-gray-900 dark:text-white uppercase tracking-wider">
-                                Next Action: {stageInfo.nextActionTitle}
-                              </span>
-                              {po.status === 'ACTIVE' || po.status === 'RECEIVED' ? (
-                                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                                  {receivedItems} / {totalItems} units
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5">
-                              {stageInfo.nextActionDesc}
-                            </p>
-                          </div>
+                        {/* Line items summary / delivery progress */}
+                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
+                          <span>{po.lines.length} Line Item{po.lines.length === 1 ? '' : 's'} ({totalItems} units)</span>
+                          {(po.status === 'ACTIVE' || po.status === 'RECEIVED') && (
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                              {receivedItems} / {totalItems} units received
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -1084,9 +892,13 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-2.5">
                   <CheckCircle2 size={24} />
                 </div>
-                <h3 className="font-bold text-sm text-gray-900 dark:text-white">No Action Items Found</h3>
+                <h3 className="font-bold text-sm text-gray-900 dark:text-white">No Requests Found</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-sm">
-                  {actionSearch ? 'No open requests matched your search query.' : 'There are currently no open requests requiring action in this category.'}
+                  {actionSearch
+                    ? 'No requests matched your search criteria.'
+                    : selectedStage === 'ALL'
+                      ? 'No open purchase requests require action.'
+                      : `No requests are currently in ${LIFECYCLE_STAGES[selectedStage - 1].stageTitle}.`}
                 </p>
               </div>
             )}
