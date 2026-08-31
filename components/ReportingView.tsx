@@ -72,6 +72,9 @@ interface LinenInjectionReportRow extends ReportRow {
     orderedValueIncGst?: number;
     requester: string;
     status: POStatus;
+    reasonForRequest?: 'Depletion' | 'New Customer' | 'Other' | string;
+    customerName?: string;
+    comments?: string;
 }
 
 interface MonthlySummaryReportRow extends ReportRow {
@@ -117,7 +120,7 @@ interface MonthlySummaryAggregatedRow extends ReportRow {
     openPoAmountIncGst?: number;
 }
 type ViewMode = 'CHART' | 'RAW_DATA';
-type ChartMetric = 'DATE' | 'SUPPLIER' | 'SITE' | 'ITEM';
+type ChartMetric = 'DATE' | 'SUPPLIER' | 'SITE' | 'ITEM' | 'REASON';
 type VarianceType = 'Pending' | 'Over delivered' | 'Short closed';
 
 interface OutstandingDeliveryReportRow extends ReportRow {
@@ -680,7 +683,10 @@ const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInje
                 injectedValueIncGst,
                 orderedValueIncGst,
                 requester: po.requesterName || 'Unknown',
-                status: po.status
+                status: po.status,
+                reasonForRequest: po.reasonForRequest || 'Depletion',
+                customerName: po.customerName || '',
+                comments: po.comments || ''
             });
         });
     });
@@ -990,6 +996,8 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'deliveryDates', label: 'Delivery Dates' },
             { key: 'dockets', label: 'Delivery Dockets' },
             { key: 'invoices', label: 'Invoice Numbers' },
+            { key: 'reasonForRequest', label: 'Reason for Request' },
+            { key: 'customerName', label: 'Customer / Project' },
             { key: 'requester', label: 'Requester' },
             { key: 'status', label: 'Status' }
         ];
@@ -1291,6 +1299,7 @@ const ReportingView = () => {
     const [selectedSites, setSelectedSites] = useState<string[]>(['ALL']);
     const [selectedSupplier, setSelectedSupplier] = useState('ALL');
     const [selectedItemId, setSelectedItemId] = useState('ALL');
+    const [selectedReason, setSelectedReason] = useState<string>('ALL');
     const [dateRangeType, setDateRangeType] = useState<'RECENT' | 'HISTORICAL' | 'ALL' | 'CUSTOM' | 'MONTH'>(() => {
         const saved = sessionStorage.getItem('pf_active_report');
         return saved === 'LINEN_INJECTION' ? 'ALL' : 'RECENT';
@@ -1385,12 +1394,16 @@ const ReportingView = () => {
                 row.requester,
                 row.status,
                 row.exceptionType,
-                row.month
+                row.month,
+                row.reasonForRequest,
+                row.customerName,
+                row.comments
             ].some((value) => String(value || '').toLowerCase().includes(query));
 
             const matchesSite = isAllSites || selectedSites.includes(String(row.site || ''));
             const matchesSupplier = selectedSupplier === 'ALL' || row.supplier === selectedSupplier;
             const matchesItem = selectedItemId === 'ALL' || row.itemId === selectedItemId || row.item === selectedItemId;
+            const matchesReason = selectedReason === 'ALL' || (row.reasonForRequest || 'Depletion') === selectedReason;
 
             let matchesDate = true;
             if (isDateFilterableReport) {
@@ -1435,9 +1448,9 @@ const ReportingView = () => {
                 }
             }
 
-            return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate;
+            return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate && matchesReason;
         });
-    }, [isFilterableReport, isDateFilterableReport, activeReport, reportData, searchTerm, selectedItemId, selectedSites, selectedSupplier, dateRangeType, selectedMonth, customStartDate, customEndDate]);
+    }, [isFilterableReport, isDateFilterableReport, activeReport, reportData, searchTerm, selectedItemId, selectedSites, selectedSupplier, selectedReason, dateRangeType, selectedMonth, customStartDate, customEndDate]);
 
     const outstandingRows = visibleReportData as OutstandingDeliveryReportRow[];
     const varianceRows = visibleReportData as DeliveryVarianceReportRow[];
@@ -1717,6 +1730,8 @@ const ReportingView = () => {
                 } else {
                     key = targetDate || 'Unknown';
                 }
+            } else if (chartMetric === 'REASON') {
+                key = (row.reasonForRequest as string) || 'Depletion';
             }
 
             grouped[key] ||= { name: key, injectedValue: 0, orderedValue: 0, injectedQty: 0, orderedQty: 0, lineCount: 0 };
@@ -1726,6 +1741,16 @@ const ReportingView = () => {
             grouped[key].orderedQty += row.orderedQty;
             grouped[key].lineCount += 1;
         });
+
+        if (chartMetric === 'REASON') {
+            const order = ['Depletion', 'New Customer', 'Other'];
+            return Object.values(grouped).sort((a, b) => {
+                const ai = order.indexOf(a.name);
+                const bi = order.indexOf(b.name);
+                if (ai !== -1 && bi !== -1) return ai - bi;
+                return b.injectedValue - a.injectedValue;
+            });
+        }
 
         return Object.values(grouped).sort((a, b) => b.injectedValue - a.injectedValue).slice(0, 12);
     }, [linenInjectionRows, chartMetric]);
@@ -1743,6 +1768,7 @@ const ReportingView = () => {
         !isAllSitesSelected ||
         selectedSupplier !== 'ALL' ||
         selectedItemId !== 'ALL' ||
+        selectedReason !== 'ALL' ||
         (activeReport === 'MONTHLY_SUMMARY' && (
             monthlyStartDate !== '2025-07-01' ||
             monthlyEndDate !== new Date().toISOString().split('T')[0]
@@ -1910,6 +1936,7 @@ const ReportingView = () => {
                                                         {activeReport === 'ALL_DELIVERIES' && <option value="DATE">Delivery Date</option>}
                                                         {(activeReport === 'ITEM_REQUEST_HISTORY' || activeReport === 'LINEN_INJECTION') && <option value="ITEM">Item</option>}
                                                         {activeReport === 'LINEN_INJECTION' && <option value="DATE">Month / Date</option>}
+                                                        {activeReport === 'LINEN_INJECTION' && <option value="REASON">Reason for Request</option>}
                                                         <option value="SUPPLIER">Supplier</option>
                                                         <option value="SITE">Site</option>
                                                     </select>
@@ -1989,6 +2016,7 @@ const ReportingView = () => {
                                                     setSelectedSites(['ALL']);
                                                     setSelectedSupplier('ALL');
                                                     setSelectedItemId('ALL');
+                                                    setSelectedReason('ALL');
                                                     setDateRangeType(activeReport === 'LINEN_INJECTION' ? 'ALL' : 'RECENT');
                                                     setSelectedMonth('ALL');
                                                     setCustomStartDate('');
@@ -2005,57 +2033,86 @@ const ReportingView = () => {
                                         </div>
 
                                         {isDateFilterableReport && (
-                                            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-                                                <span className="text-xs font-semibold text-secondary dark:text-gray-400">Date Range:</span>
-                                                <select
-                                                    value={dateRangeType}
-                                                    onChange={(event) => setDateRangeType(event.target.value as any)}
-                                                    className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                >
-                                                    <option value="ALL">All Time (Closed POs)</option>
-                                                    <option value="MONTH">Specific Month...</option>
-                                                    <option value="RECENT">Last 30 Days</option>
-                                                    <option value="HISTORICAL">Since July 2025</option>
-                                                    <option value="CUSTOM">Custom Range...</option>
-                                                </select>
+                                            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <span className="text-xs font-semibold text-secondary dark:text-gray-400">Date Range:</span>
+                                                    <select
+                                                        value={dateRangeType}
+                                                        onChange={(event) => setDateRangeType(event.target.value as any)}
+                                                        className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                    >
+                                                        <option value="ALL">All Time (Closed POs)</option>
+                                                        <option value="MONTH">Specific Month...</option>
+                                                        <option value="RECENT">Last 30 Days</option>
+                                                        <option value="HISTORICAL">Since July 2025</option>
+                                                        <option value="CUSTOM">Custom Range...</option>
+                                                    </select>
 
-                                                {dateRangeType === 'MONTH' && (
-                                                    <div className="flex items-center gap-2 animate-fade-in">
-                                                        <select
-                                                            value={selectedMonth}
-                                                            onChange={(e) => setSelectedMonth(e.target.value)}
-                                                            className="text-xs bg-white dark:bg-nocturne border border-emerald-500 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-emerald-500 outline-none font-bold"
-                                                        >
-                                                            <option value="ALL">All Recorded Months</option>
-                                                            {availableMonths.map((m) => (
-                                                                <option key={m.key} value={m.key}>{m.label}</option>
+                                                    {dateRangeType === 'MONTH' && (
+                                                        <div className="flex items-center gap-2 animate-fade-in">
+                                                            <select
+                                                                value={selectedMonth}
+                                                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                                                className="text-xs bg-white dark:bg-nocturne border border-emerald-500 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-emerald-500 outline-none font-bold"
+                                                            >
+                                                                <option value="ALL">All Recorded Months</option>
+                                                                {availableMonths.map((m) => (
+                                                                    <option key={m.key} value={m.key}>{m.label}</option>
+                                                                ))}
+                                                            </select>
+                                                            <input
+                                                                type="month"
+                                                                value={selectedMonth !== 'ALL' ? selectedMonth : ''}
+                                                                onChange={(e) => setSelectedMonth(e.target.value || 'ALL')}
+                                                                className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-emerald-500 outline-none"
+                                                                title="Pick any calendar month"
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {dateRangeType === 'CUSTOM' && (
+                                                        <div className="flex items-center gap-2 animate-fade-in">
+                                                            <input
+                                                                type="date"
+                                                                value={customStartDate}
+                                                                onChange={(event) => setCustomStartDate(event.target.value)}
+                                                                className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                            />
+                                                            <span className="text-xs text-tertiary dark:text-gray-500">to</span>
+                                                            <input
+                                                                type="date"
+                                                                value={customEndDate}
+                                                                onChange={(event) => setCustomEndDate(event.target.value)}
+                                                                className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {activeReport === 'LINEN_INJECTION' && (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Reason for Request:</span>
+                                                        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-0.5 shadow-2xs">
+                                                            {[
+                                                                { id: 'ALL', label: 'All' },
+                                                                { id: 'Depletion', label: 'Depletion' },
+                                                                { id: 'New Customer', label: 'New Customer' },
+                                                                { id: 'Other', label: 'Other' }
+                                                            ].map((opt) => (
+                                                                <button
+                                                                    key={opt.id}
+                                                                    type="button"
+                                                                    onClick={() => setSelectedReason(opt.id)}
+                                                                    className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${
+                                                                        selectedReason === opt.id
+                                                                            ? 'bg-[var(--color-brand)] text-white shadow-xs'
+                                                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                                                    }`}
+                                                                >
+                                                                    {opt.label}
+                                                                </button>
                                                             ))}
-                                                        </select>
-                                                        <input
-                                                            type="month"
-                                                            value={selectedMonth !== 'ALL' ? selectedMonth : ''}
-                                                            onChange={(e) => setSelectedMonth(e.target.value || 'ALL')}
-                                                            className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-emerald-500 outline-none"
-                                                            title="Pick any calendar month"
-                                                        />
-                                                    </div>
-                                                )}
-
-                                                {dateRangeType === 'CUSTOM' && (
-                                                    <div className="flex items-center gap-2 animate-fade-in">
-                                                        <input
-                                                            type="date"
-                                                            value={customStartDate}
-                                                            onChange={(event) => setCustomStartDate(event.target.value)}
-                                                            className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                        />
-                                                        <span className="text-xs text-tertiary dark:text-gray-500">to</span>
-                                                        <input
-                                                            type="date"
-                                                            value={customEndDate}
-                                                            onChange={(event) => setCustomEndDate(event.target.value)}
-                                                            className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                        />
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
@@ -2103,6 +2160,8 @@ const ReportingView = () => {
                                     siteOptions={siteOptions}
                                     selectedMonth={selectedMonth}
                                     dateRangeType={dateRangeType}
+                                    selectedReason={selectedReason}
+                                    onSelectReason={setSelectedReason}
                                 />
                             ) : activeReport === 'MONTHLY_SUMMARY' && viewMode === 'CHART' ? (
                                 <MonthlySummaryVisual rows={getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])} />
@@ -2479,7 +2538,9 @@ const LinenInjectionVisual = ({
     availableSites,
     siteOptions,
     selectedMonth,
-    dateRangeType
+    dateRangeType,
+    selectedReason = 'ALL',
+    onSelectReason
 }: {
     rows: LinenInjectionReportRow[];
     summary: {
@@ -2503,6 +2564,8 @@ const LinenInjectionVisual = ({
     siteOptions?: string[];
     selectedMonth?: string;
     dateRangeType?: string;
+    selectedReason?: string;
+    onSelectReason?: (reason: string) => void;
 }) => {
     const allSiteNames = useMemo(() => {
         if (siteOptions && siteOptions.length > 0) return siteOptions;
@@ -2514,9 +2577,38 @@ const LinenInjectionVisual = ({
     const singleSiteName = isSingleSite ? selectedSites[0] : '';
     const isMultiSiteSubset = !isAllSelected && selectedSites.length > 1;
 
-    const metricLabel = chartMetric === 'ITEM' ? 'Item' : chartMetric === 'SUPPLIER' ? 'Supplier' : chartMetric === 'DATE' ? 'Month / Date' : 'Site';
+    const metricLabel = chartMetric === 'ITEM' ? 'Item' : chartMetric === 'SUPPLIER' ? 'Supplier' : chartMetric === 'DATE' ? 'Month / Date' : chartMetric === 'REASON' ? 'Reason for Request' : 'Site';
     const [chartViewType, setChartViewType] = useState<'VALUE' | 'QTY'>('VALUE');
     const [chartOrientation, setChartOrientation] = useState<'HORIZONTAL_BAR' | 'VERTICAL_CLUSTERED'>('HORIZONTAL_BAR');
+    const [rightCardTab, setRightCardTab] = useState<'REASONS' | 'SUPPLIERS' | 'ITEMS'>('REASONS');
+
+    // Reason for Request breakdown
+    const reasonBreakdown = useMemo(() => {
+        const reasonMap = new Map<string, { reason: string; injectedValue: number; injectedQty: number; orderCount: Set<string>; lineCount: number }>();
+        ['Depletion', 'New Customer', 'Other'].forEach((reason) => {
+            reasonMap.set(reason, { reason, injectedValue: 0, injectedQty: 0, orderCount: new Set(), lineCount: 0 });
+        });
+
+        rows.forEach((r) => {
+            const reason = (r.reasonForRequest as string) || 'Depletion';
+            if (!reasonMap.has(reason)) {
+                reasonMap.set(reason, { reason, injectedValue: 0, injectedQty: 0, orderCount: new Set(), lineCount: 0 });
+            }
+            const entry = reasonMap.get(reason)!;
+            entry.injectedValue += r.injectedValue;
+            entry.injectedQty += r.injectedQty;
+            entry.lineCount += 1;
+            entry.orderCount.add(r.poNumber || r.requestNumber);
+        });
+
+        return Array.from(reasonMap.values())
+            .map((item) => ({
+                ...item,
+                orderCount: item.orderCount.size,
+                spendPct: summary.totalInjectedValue > 0 ? (item.injectedValue / summary.totalInjectedValue) * 100 : 0
+            }))
+            .sort((a, b) => b.injectedValue - a.injectedValue);
+    }, [rows, summary.totalInjectedValue]);
 
     // Multi-site comparison metrics
     const siteComparison = useMemo(() => {
@@ -2749,6 +2841,80 @@ const LinenInjectionVisual = ({
                 </div>
             )}
 
+            {/* Reason for Request Quick Toggle Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Reason for Request:</span>
+                    <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-0.5 shadow-2xs">
+                        {[
+                            { id: 'ALL', label: 'All Reasons' },
+                            { id: 'Depletion', label: 'Depletion' },
+                            { id: 'New Customer', label: 'New Customer' },
+                            { id: 'Other', label: 'Other' }
+                        ].map((opt) => (
+                            <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => onSelectReason && onSelectReason(opt.id)}
+                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                                    selectedReason === opt.id
+                                        ? 'bg-[var(--color-brand)] text-white shadow-xs'
+                                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                }`}
+                            >
+                                <span>{opt.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap text-xs text-secondary dark:text-gray-400">
+                    <button
+                        type="button"
+                        onClick={() => onSelectReason && onSelectReason('Depletion')}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-colors ${
+                            selectedReason === 'Depletion'
+                                ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-300 dark:border-teal-700 text-teal-800 dark:text-teal-200 font-bold'
+                                : 'bg-transparent border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                        }`}
+                        title="Filter report to Depletion requests only"
+                    >
+                        <span className="w-2 h-2 rounded-full bg-teal-500 inline-block" />
+                        <span>Depletion:</span>
+                        <strong className="text-gray-900 dark:text-white">{currency(reasonBreakdown.find(r => r.reason === 'Depletion')?.injectedValue || 0)}</strong>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onSelectReason && onSelectReason('New Customer')}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-colors ${
+                            selectedReason === 'New Customer'
+                                ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-300 dark:border-purple-700 text-purple-800 dark:text-purple-200 font-bold'
+                                : 'bg-transparent border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                        }`}
+                        title="Filter report to New Customer requests only"
+                    >
+                        <span className="w-2 h-2 rounded-full bg-purple-500 inline-block" />
+                        <span>New Customer:</span>
+                        <strong className="text-gray-900 dark:text-white">{currency(reasonBreakdown.find(r => r.reason === 'New Customer')?.injectedValue || 0)}</strong>
+                    </button>
+                    {((reasonBreakdown.find(r => r.reason === 'Other')?.injectedValue || 0) > 0) && (
+                        <button
+                            type="button"
+                            onClick={() => onSelectReason && onSelectReason('Other')}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-colors ${
+                                selectedReason === 'Other'
+                                    ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-bold'
+                                    : 'bg-transparent border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                            }`}
+                            title="Filter report to Other requests only"
+                        >
+                            <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                            <span>Other:</span>
+                            <strong className="text-gray-900 dark:text-white">{currency(reasonBreakdown.find(r => r.reason === 'Other')?.injectedValue || 0)}</strong>
+                        </button>
+                    )}
+                </div>
+            </div>
+
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                 <MetricCard
@@ -2782,7 +2948,7 @@ const LinenInjectionVisual = ({
             </div>
 
             {/* Upper Chart & Breakdown Cards */}
-            <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
+            <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
                 {/* Left Bar Chart Card */}
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
@@ -2791,7 +2957,9 @@ const LinenInjectionVisual = ({
                                 <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                                     {isSingleSite
                                         ? `Item Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} for ${singleSiteName}`
-                                        : `Site Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} Comparison`}
+                                        : chartMetric === 'REASON'
+                                            ? `Reason for Request Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'}`
+                                            : `Site Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} Comparison`}
                                 </h3>
                                 {/* Orientation Toggle */}
                                 <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-0.5 shadow-xs">
@@ -2826,7 +2994,9 @@ const LinenInjectionVisual = ({
                             <p className="text-xs text-tertiary dark:text-gray-500 mt-1">
                                 {isSingleSite
                                     ? `Ranking top injected items by receipted expenditure at this facility`
-                                    : `Comparing closed linen injection investment across operating locations`}
+                                    : chartMetric === 'REASON'
+                                        ? `Comparing closed injection expenditure between Depletion vs New Customer requests`
+                                        : `Comparing closed linen injection investment across operating locations`}
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2928,11 +3098,95 @@ const LinenInjectionVisual = ({
                     </div>
                 </div>
 
-                {/* Right Summary Card */}
-                {isSingleSite ? (
-                    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 flex flex-col justify-between">
-                        <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Supplier Spend for {singleSiteName}</h3>
+                {/* Right Summary Card (Tabbed: Reasons, Suppliers, Top Items) */}
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 dark:border-gray-800 pb-2.5">
+                            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setRightCardTab('REASONS')}
+                                    className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all ${
+                                        rightCardTab === 'REASONS'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-xs'
+                                            : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    Request Reason
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setRightCardTab('SUPPLIERS')}
+                                    className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all ${
+                                        rightCardTab === 'SUPPLIERS'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-xs'
+                                            : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    Suppliers
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setRightCardTab('ITEMS')}
+                                    className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all ${
+                                        rightCardTab === 'ITEMS'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-xs'
+                                            : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    Top Items
+                                </button>
+                            </div>
+                        </div>
+
+                        {rightCardTab === 'REASONS' && (
+                            <div className="space-y-3">
+                                {reasonBreakdown.map((item) => {
+                                    const isSelected = selectedReason === item.reason;
+                                    const badgeColor = item.reason === 'New Customer'
+                                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                                        : item.reason === 'Other'
+                                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                                            : 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300';
+                                    const barColor = item.reason === 'New Customer'
+                                        ? 'bg-purple-500'
+                                        : item.reason === 'Other'
+                                            ? 'bg-amber-500'
+                                            : 'bg-teal-500';
+
+                                    return (
+                                        <div
+                                            key={item.reason}
+                                            onClick={() => onSelectReason && onSelectReason(selectedReason === item.reason ? 'ALL' : item.reason)}
+                                            className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
+                                                isSelected
+                                                    ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 ring-1 ring-emerald-500/20'
+                                                    : 'border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/5'
+                                            }`}
+                                            title={`Click to filter by ${item.reason}`}
+                                        >
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${badgeColor}`}>
+                                                    {item.reason}
+                                                </span>
+                                                <span className="font-bold text-xs text-gray-900 dark:text-white">
+                                                    {currency(item.injectedValue)}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[10px] text-tertiary dark:text-gray-500 mt-1">
+                                                <span>{numberValue(item.injectedQty)} units · {item.orderCount} PO{item.orderCount === 1 ? '' : 's'}</span>
+                                                <span className="font-bold text-gray-700 dark:text-gray-300">{percentValue(item.spendPct)}</span>
+                                            </div>
+                                            <div className="w-full bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden mt-1.5">
+                                                <div className={`${barColor} h-full rounded-full`} style={{ width: `${Math.min(100, item.spendPct)}%` }} />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {rightCardTab === 'SUPPLIERS' && (
                             <div className="space-y-3">
                                 {siteSupplierBreakdown.map((supp, idx) => (
                                     <div key={`${supp.supplier}-${idx}`} className="text-xs border-b border-gray-100 dark:border-gray-800 pb-2.5">
@@ -2942,7 +3196,7 @@ const LinenInjectionVisual = ({
                                         </div>
                                         <div className="flex items-center justify-between text-[10px] text-tertiary dark:text-gray-500">
                                             <span>{numberValue(supp.injectedQty)} units</span>
-                                            <span>{percentValue(supp.spendPct)} of site spend</span>
+                                            <span>{percentValue(supp.spendPct)}</span>
                                         </div>
                                         <div className="w-full bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden mt-1">
                                             <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, supp.spendPct)}%` }} />
@@ -2950,19 +3204,12 @@ const LinenInjectionVisual = ({
                                     </div>
                                 ))}
                                 {siteSupplierBreakdown.length === 0 && (
-                                    <div className="text-center py-8 text-xs text-tertiary">No supplier data for this site.</div>
+                                    <div className="text-center py-8 text-xs text-tertiary">No supplier data.</div>
                                 )}
                             </div>
-                        </div>
-                        <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-secondary dark:text-gray-400 flex items-center justify-between">
-                            <span>Total Site Volume:</span>
-                            <span className="font-bold text-gray-900 dark:text-white">{numberValue(summary.totalInjectedUnits)} units</span>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 flex flex-col justify-between">
-                        <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Top Injected Linen Items</h3>
+                        )}
+
+                        {rightCardTab === 'ITEMS' && (
                             <div className="space-y-3">
                                 {topItems.map((item, idx) => (
                                     <div key={`${item.item}-${idx}`} className="flex justify-between items-center text-xs border-b border-gray-100 dark:border-gray-800 pb-2.5">
@@ -2979,16 +3226,16 @@ const LinenInjectionVisual = ({
                                     </div>
                                 ))}
                                 {topItems.length === 0 && (
-                                    <div className="text-center py-8 text-xs text-tertiary">No closed orders in selected range.</div>
+                                    <div className="text-center py-8 text-xs text-tertiary">No items in selected range.</div>
                                 )}
                             </div>
-                        </div>
-                        <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-secondary dark:text-gray-400 flex items-center justify-between">
-                            <span>Selected Network Volume:</span>
-                            <span className="font-bold text-gray-900 dark:text-white">{numberValue(summary.totalInjectedUnits)} units</span>
-                        </div>
+                        )}
                     </div>
-                )}
+                    <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-secondary dark:text-gray-400 flex items-center justify-between">
+                        <span>Total Volume:</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{numberValue(summary.totalInjectedUnits)} units</span>
+                    </div>
+                </div>
             </div>
 
             {/* Lower Section: Multi-Site Comparative Matrix OR Single-Site Item Cost Table */}
@@ -3428,6 +3675,22 @@ const LinenInjectionRowView = ({ row }: { row: LinenInjectionReportRow }) => (
         <td className="px-5 py-3">
             <div className="font-medium text-gray-900 dark:text-white">{row.site}</div>
             <div className="text-xs text-tertiary dark:text-gray-500">{row.requester}</div>
+            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                    row.reasonForRequest === 'New Customer'
+                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                        : row.reasonForRequest === 'Other'
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                            : 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300'
+                }`}>
+                    {row.reasonForRequest || 'Depletion'}
+                </span>
+                {row.customerName && (
+                    <span className="text-[10px] text-gray-500 truncate max-w-[120px]" title={row.customerName}>
+                        {row.customerName}
+                    </span>
+                )}
+            </div>
         </td>
         <td className="px-5 py-3">
             <div className="font-medium text-gray-900 dark:text-white">{row.supplier}</div>
