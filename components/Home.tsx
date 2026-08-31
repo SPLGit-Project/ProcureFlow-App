@@ -367,7 +367,7 @@ export default function Home() {
   const [actionSearch, setActionSearch] = useState('');
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'SPEND_DESC' | 'SPEND_ASC' | 'SUPPLIER_ASC'>('NEWEST');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('ALL');
-  const [collapsedSites, setCollapsedSites] = useState<Set<string>>(new Set());
+  const [expandedSites, setExpandedSites] = useState<Set<string>>(new Set());
 
   // Modals state
   const [activeModal, setActiveModal] = useState<{
@@ -555,9 +555,9 @@ export default function Home() {
       .sort((a, b) => a.site.localeCompare(b.site));
   }, [visiblePOs]);
 
-  // Accordion toggle helpers
-  const toggleSiteCollapse = (site: string) => {
-    setCollapsedSites(prev => {
+  // Accordion toggle helpers (collapsed by default when multiple sites exist)
+  const toggleSiteExpand = (site: string) => {
+    setExpandedSites(prev => {
       const next = new Set(prev);
       if (next.has(site)) {
         next.delete(site);
@@ -569,11 +569,11 @@ export default function Home() {
   };
 
   const handleExpandAll = () => {
-    setCollapsedSites(new Set());
+    setExpandedSites(new Set(groupedBySite.map(g => g.site)));
   };
 
   const handleCollapseAll = () => {
-    setCollapsedSites(new Set(groupedBySite.map(g => g.site)));
+    setExpandedSites(new Set());
   };
 
   // ── Inline Action Handlers ──────────────────────────────────────────────────
@@ -877,7 +877,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (collapsedSites.size === 0) {
+                      if (expandedSites.size === groupedBySite.length) {
                         handleCollapseAll();
                       } else {
                         handleExpandAll();
@@ -885,7 +885,7 @@ export default function Home() {
                     }}
                     className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs rounded-xl transition-colors whitespace-nowrap"
                   >
-                    {collapsedSites.size === 0 ? 'Collapse All' : 'Expand All'}
+                    {expandedSites.size === groupedBySite.length ? 'Collapse All' : 'Expand All'}
                   </button>
                 )}
               </div>
@@ -896,7 +896,7 @@ export default function Home() {
               groupedBySite.length > 1 ? (
                 <div className="space-y-4">
                   {groupedBySite.map(({ site, requests, siteSpend, count }) => {
-                    const isCollapsed = collapsedSites.has(site);
+                    const isExpanded = expandedSites.has(site);
 
                     return (
                       <div
@@ -906,7 +906,7 @@ export default function Home() {
                         {/* Site Accordion Header */}
                         <button
                           type="button"
-                          onClick={() => toggleSiteCollapse(site)}
+                          onClick={() => toggleSiteExpand(site)}
                           className="w-full p-3.5 flex items-center justify-between bg-gray-50/80 dark:bg-gray-900/50 hover:bg-gray-100/80 dark:hover:bg-gray-800/50 transition-colors text-left"
                         >
                           <div className="flex items-center gap-2.5 flex-wrap">
@@ -925,16 +925,16 @@ export default function Home() {
                           </div>
 
                           <div className="flex items-center gap-1.5 text-xs text-gray-400 font-bold">
-                            <span>{isCollapsed ? 'Expand' : 'Collapse'}</span>
+                            <span>{isExpanded ? 'Collapse' : 'Expand'}</span>
                             <ChevronDown
                               size={16}
-                              className={`transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`}
+                              className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                             />
                           </div>
                         </button>
 
                         {/* Site Orders Grid */}
-                        {!isCollapsed && (
+                        {isExpanded && (
                           <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3.5 border-t border-gray-100 dark:border-gray-800/60">
                             {requests.map((po) => {
                               const stageInfo = getPOStageInfo(po, currentUser, hasPermission);
