@@ -120,9 +120,19 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
 
             if (deliveryLines.length === 0 && closedLines.size === 0) return;
 
+            let deliveryDate = date;
+            if (deliveryDate) {
+                const parts = deliveryDate.split('-');
+                if (parts.length === 3) {
+                    let y = parseInt(parts[0], 10);
+                    if (y < 100) y += 2000;
+                    deliveryDate = `${y}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                }
+            }
+
             const header: DeliveryHeader = {
                 id: uuidv4(),
-                date,
+                date: deliveryDate,
                 docketNumber,
                 receivedBy: currentUser.name,
                 receivedById: currentUser.id,
@@ -178,6 +188,8 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                                 <input 
                                     required
                                     type="date" 
+                                    min="2020-01-01"
+                                    max="2035-12-31"
                                     className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-300 dark:border-gray-700 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-[var(--color-brand)] outline-none"
                                     value={date} 
                                     onChange={e => setDate(e.target.value)} 

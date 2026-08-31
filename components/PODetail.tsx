@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, ShieldCheck, ShoppingCart, CheckCheck, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X } from 'lucide-react';
 import { DeliveryHeader, Item, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
@@ -425,12 +425,12 @@ const PODetail = () => {
   };
 
   const steps = [
-      { num: 1, label: 'Requested' },
-      { num: 2, label: 'Approved' },
-      { num: 3, label: 'Req. Logged' },
-      { num: 4, label: 'In Concur' },
-      { num: 5, label: 'Full' },
-      { num: 6, label: 'Complete' },
+      { num: 1, label: 'Requested', icon: FileText },
+      { num: 2, label: 'Approved', icon: ShieldCheck },
+      { num: 3, label: 'Req. Logged', icon: Link2 },
+      { num: 4, label: 'In Concur', icon: ShoppingCart },
+      { num: 5, label: 'Full', icon: Truck },
+      { num: 6, label: 'Complete', icon: CheckCheck },
   ];
 
 
@@ -1085,18 +1085,21 @@ const PODetail = () => {
                      
                      {steps.map((step) => {
                          const status = getStepStatus(step.num);
+                         const StepIcon = step.icon;
                          return (
                              <div key={step.num} className="flex flex-col items-center px-4 bg-white dark:bg-nocturne">
-                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-300
+                                 <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-300
                                     ${status === 'complete' ? 'bg-green-500 border-green-500 text-white shadow-green-500/30 shadow-md' : 
-                                      status === 'current' ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white shadow-[var(--color-brand)]/30 shadow-md scale-110' : 
-                                      status === 'error' ? 'bg-red-500 border-red-500 text-white' :
+                                      status === 'current' ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white shadow-[var(--color-brand)]/30 shadow-md scale-110 ring-4 ring-[var(--color-brand)]/20' : 
+                                      status === 'error' ? 'bg-red-500 border-red-500 text-white shadow-red-500/30 shadow-md' :
                                       status === 'warning' ? 'bg-amber-500 border-amber-500 text-white shadow-amber-500/30 shadow-md' :
-                                      'bg-white dark:bg-nocturne border-gray-200 dark:border-gray-700 text-gray-400'
-                                    }`}>
-                                     {status === 'complete' ? <CheckCircle size={16}/> : status === 'warning' ? <AlertTriangle size={16}/> : step.num}
+                                      'bg-white dark:bg-nocturne border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
+                                    }`}
+                                    title={`Stage ${step.num}: ${step.label}`}
+                                 >
+                                     {status === 'complete' ? <CheckCircle size={17}/> : status === 'warning' ? <AlertTriangle size={17}/> : <StepIcon size={16}/>}
                                  </div>
-                                 <span className={`text-xs mt-2 font-medium transition-colors ${status === 'pending' ? 'text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white'}`}>{step.label}</span>
+                                 <span className={`text-xs mt-2 font-medium transition-colors ${status === 'pending' ? 'text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white font-semibold'}`}>{step.label}</span>
                              </div>
                          )
                      })}

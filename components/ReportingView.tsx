@@ -530,7 +530,8 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
         if (isNaN(requestTime) || requestTime < startDate || requestTime > endDate) return;
 
         const dateObj = new Date(po.requestDate);
-        const year = dateObj.getFullYear();
+        let year = dateObj.getFullYear();
+        if (year < 100) year += 2000;
         const monthNum = dateObj.getMonth();
         const monthKey = `${year}-${String(monthNum + 1).padStart(2, '0')}`;
         const monthDisplay = `${MONTH_NAMES[monthNum]} ${year}`;
@@ -648,7 +649,8 @@ const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInje
 
             const closedDate = latestDeliveryDate !== '-' ? latestDeliveryDate : poClosedDate;
             const dateObj = new Date(closedDate);
-            const year = !isNaN(dateObj.getTime()) ? dateObj.getFullYear() : new Date(po.requestDate).getFullYear();
+            let year = !isNaN(dateObj.getTime()) ? dateObj.getFullYear() : new Date(po.requestDate).getFullYear();
+            if (year < 100) year += 2000;
             const monthNum = !isNaN(dateObj.getTime()) ? dateObj.getMonth() : new Date(po.requestDate).getMonth();
             const monthKey = `${year}-${String(monthNum + 1).padStart(2, '0')}`;
             const monthDisplay = `${MONTH_NAMES[monthNum]} ${year}`;
@@ -1354,21 +1356,31 @@ const ReportingView = () => {
     }, [reportData]);
 
     const availableMonths = useMemo(() => {
-        const monthsMap = new Map<string, string>();
+        const monthsMap = new Map<string, { year: number; month: number; label: string }>();
         reportData.forEach((row) => {
             const rawDate = (activeReport === 'LINEN_INJECTION' ? (row.closedDate || row.latestDeliveryDate || row.requestDate) : row.requestDate) as string;
             if (rawDate && rawDate !== '-') {
                 const d = new Date(rawDate);
                 if (!isNaN(d.getTime())) {
-                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
-                    monthsMap.set(key, label);
+                    let year = d.getFullYear();
+                    if (year < 100) year += 2000;
+                    if (year >= 2020 && year <= 2100) {
+                        const month = d.getMonth() + 1;
+                        const key = `${year}-${String(month).padStart(2, '0')}`;
+                        const label = `${MONTH_NAMES[month - 1]} ${year}`;
+                        monthsMap.set(key, { year, month, label });
+                    }
                 }
             }
         });
         return Array.from(monthsMap.entries())
-            .sort((a, b) => b[0].localeCompare(a[0]))
-            .map(([key, label]) => ({ key, label }));
+            .sort((a, b) => {
+                const [yA, mA] = a[0].split('-').map(Number);
+                const [yB, mB] = b[0].split('-').map(Number);
+                if (yA !== yB) return yB - yA;
+                return mB - mA;
+            })
+            .map(([key, item]) => ({ key, label: item.label }));
     }, [reportData, activeReport]);
 
     const visibleReportData = useMemo(() => {
