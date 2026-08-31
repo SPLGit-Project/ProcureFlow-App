@@ -46,6 +46,8 @@ import VersionBadge from './VersionBadge.tsx';
 import { MultiSiteSelector } from './MultiSiteSelector.tsx';
 import TaskDrawer from './TaskDrawer.tsx';
 import AccountDrawer from './AccountDrawer.tsx';
+import NotificationDrawer from './NotificationDrawer.tsx';
+import NotificationPreferencesModal from './NotificationPreferencesModal.tsx';
 import { BrandLogo } from './BrandLogo.tsx';
 import procureFlowLogo from '../docs/Logo Branding/LOGO-NEW/Procureflow_Logo.png';
 
@@ -69,7 +71,14 @@ const Layout = () => {
     activeSiteIds,
     setActiveSiteIds,
     userSites,
-    featureFlags
+    featureFlags,
+    notifications,
+    unreadNotificationCount,
+    isNotificationDrawerOpen,
+    setIsNotificationDrawerOpen,
+    isNotificationPrefsOpen,
+    setIsNotificationPrefsOpen,
+    refreshNotifications
   } = useApp();
   const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -714,10 +723,16 @@ const Layout = () => {
                       <span className="absolute top-1 right-1 w-2 h-2 bg-red-400 rounded-full border-2 border-tranquil animate-pulse" />
                     </button>
                     <button type="button"
-                      className="bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
+                      onClick={() => setIsNotificationDrawerOpen(true)}
+                      className="relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
                       title="Notifications"
                     >
                       <Bell size={18} />
+                      {unreadNotificationCount > 0 && (
+                        <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-[18px] text-[10px] font-black rounded-full bg-red-500 text-white flex items-center justify-center animate-pulse border-2 border-tranquil">
+                          {unreadNotificationCount}
+                        </span>
+                      )}
                     </button>
                     <button type="button"
                       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -1040,10 +1055,16 @@ const Layout = () => {
             </button>
 
             <button type="button"
+              onClick={() => setIsNotificationDrawerOpen(true)}
               className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"
               title="Notifications"
             >
               <Bell size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 px-1.5 py-0.2 min-w-[16px] text-[9px] font-black rounded-full bg-red-500 text-white flex items-center justify-center animate-pulse">
+                  {unreadNotificationCount}
+                </span>
+              )}
             </button>
 
             <button type="button"
@@ -1092,6 +1113,22 @@ const Layout = () => {
       <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
 
       <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
+
+      <NotificationDrawer
+        isOpen={isNotificationDrawerOpen}
+        onClose={() => setIsNotificationDrawerOpen(false)}
+        notifications={notifications}
+        onRefresh={refreshNotifications}
+        onOpenPreferences={() => setIsNotificationPrefsOpen(true)}
+      />
+
+      {currentUser?.id && (
+        <NotificationPreferencesModal
+          isOpen={isNotificationPrefsOpen}
+          onClose={() => setIsNotificationPrefsOpen(false)}
+          userId={currentUser.id}
+        />
+      )}
     </div>
     </PageMetaContext.Provider>
   );

@@ -2,7 +2,7 @@
 import React from 'react';
 import { 
   X, LogOut, UserCog, ChevronDown, 
-  Settings, Shield, Globe, ChevronRight
+  Settings, Shield, Globe, ChevronRight, Bell
 } from 'lucide-react';
 import { UserRole } from '../types.ts';
 import { useApp } from '../context/AppContext.tsx';
@@ -14,7 +14,7 @@ interface AccountDrawerProps {
 }
 
 const AccountDrawer = ({ isOpen, onClose }: AccountDrawerProps) => {
-    const { currentUser, roles, switchRole, logout } = useApp();
+    const { currentUser, roles, switchRole, logout, setIsNotificationPrefsOpen } = useApp();
     const navigate = useNavigate();
     const [isRoleSwitcherExpanded, setIsRoleSwitcherExpanded] = React.useState(false);
     const assignedRoleIds = React.useMemo(
@@ -91,6 +91,21 @@ const AccountDrawer = ({ isOpen, onClose }: AccountDrawerProps) => {
                             <div className="flex-1 text-left">
                                 <p className="text-sm font-bold text-primary dark:text-white">Edit Profile</p>
                                 <p className="text-[10px] text-tertiary dark:text-gray-500 mt-0.5">Manage your personal info</p>
+                            </div>
+                            <ChevronRight size={18} className="text-tertiary group-hover:translate-x-0.5 transition-transform" />
+                        </button>
+
+                        <button 
+                            type="button"
+                            onClick={() => { onClose(); setIsNotificationPrefsOpen(true); }}
+                            className="w-full flex items-center gap-4 p-4 rounded-2xl bg-surface border border-default hover:border-[var(--color-brand)]/30 hover:shadow-md transition-all group"
+                        >
+                            <div className="p-3 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 group-hover:bg-amber-500 group-hover:text-white transition-all">
+                                <Bell size={20} />
+                            </div>
+                            <div className="flex-1 text-left">
+                                <p className="text-sm font-bold text-primary dark:text-white">Notification Preferences</p>
+                                <p className="text-[10px] text-tertiary dark:text-gray-500 mt-0.5">Sound, channels & quiet hours</p>
                             </div>
                             <ChevronRight size={18} className="text-tertiary group-hover:translate-x-0.5 transition-transform" />
                         </button>

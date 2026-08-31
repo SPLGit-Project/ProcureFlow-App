@@ -808,6 +808,12 @@ export interface InAppNotification {
     relatedPoId?: string;
     isRead: boolean;
     createdAt: string;
+    category?: NotificationCategory;
+    severity?: NotificationSeverity;
+    action_url?: string;
+    action_label?: string;
+    entity_type?: string;
+    entity_id?: string;
 }
 
 export interface WorkflowPreviewData {
@@ -844,6 +850,158 @@ export interface WorkflowPreviewData {
     
     // Additional context
     reason_for_request: string;
+}
+
+// ── Unified Modern Workflow & Notification System Types ───────────────────────
+
+export type WorkflowCategory = 'PROCUREMENT' | 'ITEM_LIFECYCLE' | 'PRICING' | 'SYSTEM';
+
+export type WorkflowConditionOperator =
+  | 'EQUALS'
+  | 'NOT_EQUALS'
+  | 'GREATER_THAN'
+  | 'GREATER_THAN_OR_EQUAL'
+  | 'LESS_THAN'
+  | 'LESS_THAN_OR_EQUAL'
+  | 'CONTAINS'
+  | 'IN_LIST';
+
+export interface WorkflowCondition {
+  field: string;
+  operator: WorkflowConditionOperator;
+  value: string | number | boolean | string[];
+}
+
+export interface WorkflowStageDefinition {
+  stage_id: string;
+  stage_name: string;
+  description?: string;
+  approver_type: 'ROLE' | 'USER' | 'AUTO' | 'REQUESTER_MANAGER';
+  approver_id: string; // Role name or User UUID
+  sla_hours: number;
+  condition?: WorkflowCondition;
+  escalate_to_role?: string;
+  escalate_after_hours?: number;
+  auto_action?: 'APPROVE' | 'REJECT' | 'ESCALATE';
+}
+
+export interface WorkflowStageNotificationTrigger {
+  trigger: 'ON_STAGE_ENTER' | 'ON_APPROVED' | 'ON_REJECTED' | 'ON_SLA_WARNING' | 'ON_SLA_BREACH';
+  template_key: string;
+  channels: {
+    in_app: boolean;
+    email: boolean;
+    teams: boolean;
+  };
+  custom_recipients?: Array<{
+    type: 'ROLE' | 'USER' | 'REQUESTER' | 'CUSTOM_EMAIL';
+    id: string;
+  }>;
+}
+
+export interface UnifiedWorkflowDefinition {
+  id: string;
+  workflow_key: string;
+  name: string;
+  description?: string;
+  category: WorkflowCategory;
+  trigger_event: string;
+  is_enabled: boolean;
+  conditions: WorkflowCondition[];
+  stages: WorkflowStageDefinition[];
+  notification_rules: WorkflowStageNotificationTrigger[];
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+}
+
+export type NotificationCategory = 'APPROVAL' | 'STATUS_CHANGE' | 'ITEM_LIFECYCLE' | 'PRICING' | 'DELIVERY' | 'ALERT' | 'SYSTEM' | 'GENERAL';
+export type NotificationSeverity = 'INFO' | 'SUCCESS' | 'WARNING' | 'CRITICAL';
+
+export interface NotificationChannelInApp {
+  enabled: boolean;
+  title: string;
+  body: string;
+  severity: NotificationSeverity;
+  action_label?: string;
+}
+
+export interface NotificationChannelEmail {
+  enabled: boolean;
+  subject: string;
+  html_body: string;
+  cta_label?: string;
+}
+
+export interface NotificationChannelTeams {
+  enabled: boolean;
+  title: string;
+  subtitle?: string;
+  color?: string;
+  cta_label?: string;
+}
+
+export interface NotificationTemplate {
+  id: string;
+  template_key: string;
+  name: string;
+  description?: string;
+  event_type: string;
+  category: NotificationCategory;
+  channels: {
+    in_app?: NotificationChannelInApp;
+    email?: NotificationChannelEmail;
+    teams?: NotificationChannelTeams;
+  };
+  variables: string[];
+  is_system: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface UserNotificationPreferences {
+  user_id: string;
+  email_enabled: boolean;
+  in_app_enabled: boolean;
+  teams_enabled: boolean;
+  sound_enabled: boolean;
+  digest_frequency: 'INSTANT' | 'DAILY_DIGEST' | 'WEEKLY';
+  quiet_hours_enabled: boolean;
+  quiet_hours_start?: string; // e.g. "22:00"
+  quiet_hours_end?: string;   // e.g. "07:00"
+  category_overrides: Record<string, { email: boolean; in_app: boolean; teams: boolean }>;
+  updated_at?: string;
+}
+
+export interface EnhancedAppNotification {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: string;
+  category: NotificationCategory;
+  severity: NotificationSeverity;
+  action_url?: string;
+  action_label?: string;
+  entity_type?: 'PO' | 'ITEM_REQUEST' | 'PRICING_SCHEDULE' | 'SYSTEM' | string;
+  entity_id?: string;
+  is_read: boolean;
+  read_at?: string;
+  is_archived?: boolean;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface NotificationDeliveryLog {
+  id: string;
+  event_type: string;
+  channel: 'IN_APP' | 'EMAIL' | 'TEAMS';
+  recipient: string;
+  status: 'DELIVERED' | 'FAILED' | 'SKIPPED' | 'QUEUED';
+  title?: string;
+  payload: Record<string, unknown>;
+  error_message?: string;
+  created_at: string;
 }
 
 

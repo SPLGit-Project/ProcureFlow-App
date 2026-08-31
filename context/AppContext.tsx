@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags, MarginThresholds, EmailIngestionQueueItem } from '../types.ts';
+import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags, MarginThresholds, EmailIngestionQueueItem, EnhancedAppNotification } from '../types.ts';
 import { db } from '../services/db.ts';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
 import { DirectoryService } from '../services/graphService.ts';
+import { notificationEngineService } from '../services/notificationEngineService.ts';
+import { realtimeNotificationService } from '../services/realtimeNotificationService.ts';
 import { canonicalSupplierName, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import {
     getSessionActivityStorageKey,
@@ -267,6 +269,15 @@ interface AppContextType {
   notificationRules: NotificationRule[];
   upsertNotificationRule: (rule: NotificationRule) => Promise<void>;
   deleteNotificationRule: (id: string) => Promise<void>;
+
+  // Real-Time Notification System
+  notifications: EnhancedAppNotification[];
+  unreadNotificationCount: number;
+  isNotificationDrawerOpen: boolean;
+  setIsNotificationDrawerOpen: (open: boolean) => void;
+  isNotificationPrefsOpen: boolean;
+  setIsNotificationPrefsOpen: (open: boolean) => void;
+  refreshNotifications: () => Promise<void>;
   
   // Core Actions
   createPO: (po: PORequest) => Promise<boolean>;
@@ -485,6 +496,42 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
   const [inboundEmailAddress, setInboundEmailAddress] = useState('reports@procureflow.com');
   const [idleSecondsRemaining, setIdleSecondsRemaining] = useState<number | null>(null);
+
+  // Real-Time In-App Notifications State
+  const [notifications, setNotifications] = useState<EnhancedAppNotification[]>([]);
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
+  const [isNotificationPrefsOpen, setIsNotificationPrefsOpen] = useState(false);
+
+  const unreadNotificationCount = React.useMemo(() => {
+    return notifications.filter(n => !n.is_read).length;
+  }, [notifications]);
+
+  const refreshNotifications = useCallback(async () => {
+    if (!currentUser?.id) return;
+    try {
+      const data = await notificationEngineService.getUserNotifications(currentUser.id);
+      setNotifications(data);
+    } catch (e) {
+      console.warn('Failed to refresh user notifications:', e);
+    }
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setNotifications([]);
+      realtimeNotificationService.unsubscribe();
+      return;
+    }
+
+    refreshNotifications();
+    realtimeNotificationService.subscribe(currentUser.id, (newNotif) => {
+      setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
+    });
+
+    return () => {
+      realtimeNotificationService.unsubscribe();
+    };
+  }, [currentUser?.id, refreshNotifications]);
 
   const currentUserRef = React.useRef<User | null>(currentUser);
   const rolesRef = React.useRef<RoleDefinition[]>(roles);
@@ -3060,6 +3107,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     importMasterProducts, generateMappings, updateMapping: upsertMapping, refreshAvailability, runDataBackfill,
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep,
     notificationRules, upsertNotificationRule, deleteNotificationRule,
+    notifications, unreadNotificationCount, isNotificationDrawerOpen, setIsNotificationDrawerOpen, isNotificationPrefsOpen, setIsNotificationPrefsOpen, refreshNotifications,
     theme, setTheme, branding, updateBranding,
     createPO, saveDraftPO, submitDraftPO, updatePendingPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
     updateProfile, switchRole,
@@ -3118,6 +3166,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     users, roles, teamsWebhookUrl, inboundEmailAddress, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
+    notifications, unreadNotificationCount, isNotificationDrawerOpen, isNotificationPrefsOpen, refreshNotifications,
     reloadData, siteName, featureFlags, marginThresholds, cachedReports, cachedRunTimes, setReportCache
   ]);
 
