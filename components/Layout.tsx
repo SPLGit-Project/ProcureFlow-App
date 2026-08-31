@@ -621,7 +621,7 @@ const Layout = () => {
                   <div className="flex-1 flex items-center min-w-0 pr-2 gap-3">
                     {/* Site selector lives outside the overflow container so its dropdown isn't clipped */}
                     {userSites.length > 0 && (
-                      <div className="hidden sm:block w-[230px] md:w-[300px] shrink-0">
+                      <div className="hidden sm:block w-[180px] md:w-[240px] lg:w-[280px] shrink min-w-0">
                         <MultiSiteSelector
                           sites={userSites}
                           selectedSiteIds={activeSiteIds}
@@ -686,7 +686,8 @@ const Layout = () => {
                     {['/', '/dashboard', '/procurement', '/procurement/dashboard', '/smart-buying', '/requests', '/active-requests'].includes(location.pathname) && hasPermission('create_request') && (
                       <Link
                         to="/create"
-                        className="bg-tranquil text-white h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest hover:opacity-90 active:scale-95 shadow-sm shadow-tranquil/30 transition-all flex items-center gap-1.5 shrink-0 mr-1"
+                        className="bg-tranquil text-white h-8 px-3 sm:px-4 rounded-xl text-[11px] font-black uppercase tracking-widest hover:opacity-90 active:scale-95 shadow-sm shadow-tranquil/30 transition-all flex items-center gap-1.5 shrink-0 mr-1 whitespace-nowrap"
+                        title="Create New Request"
                       >
                         + New Request
                       </Link>

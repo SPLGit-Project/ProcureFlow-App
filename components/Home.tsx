@@ -368,6 +368,7 @@ export default function Home() {
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'SPEND_DESC' | 'SPEND_ASC' | 'SUPPLIER_ASC'>('NEWEST');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('ALL');
   const [expandedSites, setExpandedSites] = useState<Set<string>>(new Set());
+  const [isInsightsOpen, setIsInsightsOpen] = useState(false);
 
   // Modals state
   const [activeModal, setActiveModal] = useState<{
@@ -652,55 +653,37 @@ export default function Home() {
   };
 
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-7.25rem)] max-w-7xl flex-col gap-5 overflow-hidden animate-page-entry pb-12">
+    <div className="mx-auto flex min-h-[calc(100dvh-7.25rem)] max-w-7xl flex-col gap-5 overflow-hidden animate-page-entry px-3 sm:px-6 pb-12">
       <PageHeader title="Home" subtitle="Workspace" />
 
       {/* Top Welcome Header & ProcureFlow Insights */}
       <section className="relative flex-1 overflow-hidden rounded-[1.75rem] border border-transparent bg-transparent text-gray-950 shadow-none dark:border-white/10 dark:bg-nocturne dark:text-white dark:shadow-2xl">
-        <div className="relative flex flex-col gap-6 p-4 sm:p-5 lg:p-6">
+        <div className="relative flex flex-col gap-5 sm:gap-6 p-3.5 sm:p-5 lg:p-6">
           
-          {/* Header Row: Greeting & Dynamic Focus + ProcureFlow Insights */}
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-2xl space-y-2">
-              <h1 className="text-3xl font-black leading-tight text-gray-950 md:text-4xl dark:text-white">
-                Good to see you, {firstName}.
-              </h1>
-              <p className="text-sm sm:text-base font-medium text-gray-600 dark:text-gray-300 leading-relaxed">
-                {dynamicFocusInsight}
-              </p>
-            </div>
-
-            {/* ProcureFlow Insights Card (Role-Tailored Tips) */}
-            <div className="rounded-2xl border border-gray-200/80 bg-white/90 px-4 py-3.5 shadow-sm lg:w-[380px] dark:border-white/10 dark:bg-[#15171e] shrink-0 transition-all">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles size={14} className="text-[var(--color-brand)]" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-brand)]">
-                    ProcureFlow Insights
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="px-2 py-0.2 rounded-full text-[9px] font-bold bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+          {/* Header Row: Greeting & Dynamic Focus + Compact Insights Trigger Button */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
+            <div className="space-y-1.5 min-w-0 max-w-3xl">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black leading-tight text-gray-950 dark:text-white">
+                  Good to see you, {firstName}.
+                </h1>
+                {/* ProcureFlow Insights Interactive Icon Trigger */}
+                <button
+                  type="button"
+                  onClick={() => setIsInsightsOpen(true)}
+                  className="px-2.5 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs hover:scale-102 shrink-0 active:scale-95 cursor-pointer"
+                  title="Click to view tailored ProcureFlow Insights"
+                >
+                  <Sparkles size={13} className="text-amber-500 shrink-0 animate-pulse" />
+                  <span className="text-[11px] font-bold">Insights</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-amber-500/20 text-amber-700 dark:text-amber-300">
                     {currentTip.badgeLabel}
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleNextTip}
-                    className="p-1 text-gray-400 hover:text-[var(--color-brand)] dark:hover:text-white rounded-md transition-colors"
-                    title="Next tip"
-                  >
-                    <RotateCcw size={12} />
-                  </button>
-                </div>
+                </button>
               </div>
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-gray-900 dark:text-white">
-                  {currentTip.title}
-                </p>
-                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed font-medium">
-                  {currentTip.tip}
-                </p>
-              </div>
+              <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300 leading-relaxed">
+                {dynamicFocusInsight}
+              </p>
             </div>
           </div>
 
@@ -1358,6 +1341,78 @@ export default function Home() {
           </div>
         );
       })()}
+
+      {/* ── PROCUREFLOW INSIGHTS MODAL ───────────────────────────────────────── */}
+      {isInsightsOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs animate-fade-in"
+          onClick={() => setIsInsightsOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-nocturne rounded-2xl shadow-2xl max-w-md w-full flex flex-col animate-slide-up border border-gray-200 dark:border-gray-800 overflow-hidden"
+          >
+            {/* Header */}
+            <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gradient-to-r from-amber-500/10 via-brand/5 to-transparent">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shadow-xs shrink-0">
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">
+                    ProcureFlow Insight
+                  </span>
+                  <h2 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
+                    {currentTip.title}
+                  </h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsInsightsOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+                  Topic: {currentTip.badgeLabel}
+                </span>
+                <span className="text-[11px] font-medium text-gray-400">
+                  Tip {tipIndex + 1} of {userEligibleTips.length}
+                </span>
+              </div>
+
+              <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-medium bg-gray-50 dark:bg-[#15171e] p-4 rounded-xl border border-gray-100 dark:border-gray-800">
+                {currentTip.tip}
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-[#15171e]/50">
+              <button
+                type="button"
+                onClick={handleNextTip}
+                className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw size={13} />
+                <span>Next Insight</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsInsightsOpen(false)}
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Got It
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── INLINE MODALS EXECUTED DIRECTLY ON HOME SCREEN ───────────────────── */}
 
