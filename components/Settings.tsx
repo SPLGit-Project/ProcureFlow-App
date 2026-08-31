@@ -798,13 +798,7 @@ const Settings = () => {
   const [candidateSearch, setCandidateSearch] = useState('');
 
   // --- Email Ingestion Hub State ---
-  const [isAutoIngestEnabled, setIsAutoIngestEnabled] = useState(() => {
-      const saved = localStorage.getItem('isAutoIngestEnabled');
-      return saved !== null ? saved === 'true' : false;
-  });
-  const [manualIngestSupplierId, setManualIngestSupplierId] = useState(AUTO_DETECT_SUPPLIER_VALUE);
-  const [manualIngestFile, setManualIngestFile] = useState<File | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const isAutoIngestEnabled = true;
   const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
   const [ingestEmailAddress, setIngestEmailAddress] = useState(inboundEmailAddress);
   const [ingestInterval, setIngestInterval] = useState('Hourly');
@@ -1244,71 +1238,9 @@ const Settings = () => {
       throw new Error('The supplier could not be identified from the file contents. Select an existing supplier or add the supplier before uploading.');
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-      setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragging(false);
-      
-      const file = e.dataTransfer.files?.[0];
-      if (file) {
-          const ext = file.name.split('.').pop()?.toLowerCase();
-          if (ext && ['xlsx', 'xls', 'csv'].includes(ext)) {
-              setManualIngestFile(file);
-          } else {
-              error('Invalid file type. Please upload an Excel or CSV file.');
-          }
-      }
-  };
-
-  const handleManualSupplierUpload = async () => {
-      if (!manualIngestFile) {
-          error('Upload an inventory file first.');
-          return;
-      }
-
-      const selectedSupplier = manualIngestSupplierId === AUTO_DETECT_SUPPLIER_VALUE
-          ? undefined
-          : visibleSuppliers.find(s => s.id === manualIngestSupplierId);
-
-      setIsImporting(true);
-      try {
-          const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
-          const parsed = await parseStockFileEnhanced(manualIngestFile);
-          if (!parsed.success) {
-              throw new Error(parsed.errors.join('\n'));
-          }
-
-          const supplier = await resolveSupplierForInventoryImport(parsed, selectedSupplier);
-          const result = await processSupplierInventoryFile(supplier, manualIngestFile, 'Manual Upload', parsed);
-          setManualIngestFile(null);
-          setManualIngestSupplierId(supplier.id);
-          setMappingSupplierId(supplier.id);
-          setStockSupplierId(supplier.id);
-          success(`${supplier.name} inventory replaced from manual upload (${result.recordsImported} records).`);
-      } catch (e: any) {
-          console.error('Manual supplier upload failed:', e);
-          const stale = parseStaleReportError(e?.message);
-          if (stale) {
-              error(`Upload ignored — this report is dated ${stale.incoming}, older than the inventory already on file (${stale.existing}). The newer data was kept.`);
-          } else {
-              error(`Manual upload failed: ${e.message}`);
-          }
-      } finally {
-          setIsImporting(false);
-      }
-  };
-
   // Drain the automated email queue: each PENDING attachment is run through the
-  // SAME parse → supplier detection → import (with stale guard) → auto-mapping
-  // path as a manual upload, then its queue row is marked with the outcome.
+  // parse → supplier detection → import (with stale guard) → auto-mapping
+  // path, then its queue row is marked with the outcome.
   const drainSupplierInbox = async () => {
       const pending = emailIngestionQueue.filter(item => item.status === 'PENDING');
       if (pending.length === 0) {
@@ -1480,16 +1412,21 @@ const Settings = () => {
   };
 
   // Auto-run the inbox drain the moment an admin opens the Mapping workbench, so
-  // emailed supplier files import + auto-map with no manual click. Guarded by a
-  // ref (once per visit) and the per-row claim (so it's safe across tabs).
-  const autoDrainedRef = useRef(false);
+  // emailed supplier files import + auto-map with no manual click. Guarded by
+  // the per-row claim so it is safe across tabs.
   useEffect(() => {
-      if (activeTab !== 'MAPPING') { autoDrainedRef.current = false; return; }
-      if (autoDrainedRef.current || isDrainingInbox) return;
+      if (activeTab !== 'MAPPING') return;
       if (!hasPermission('manage_items')) return;
-      if (!emailIngestionQueue.some(item => item.status === 'PENDING')) return;
-      autoDrainedRef.current = true;
-      drainSupplierInbox();
+      if (emailIngestionQueue.some(item => item.status === 'PENDING') && !isDrainingInbox) {
+          drainSupplierInbox();
+      }
+
+      // Automatically refresh the email ingestion queue every 30 seconds while on the Mapping tab
+      const pollInterval = setInterval(() => {
+          refreshEmailIngestionQueue();
+      }, 30000);
+
+      return () => clearInterval(pollInterval);
   }, [activeTab, emailIngestionQueue, isDrainingInbox]);
 
   // Create a brand-new master item from the manual-map modal and immediately
@@ -2030,11 +1967,6 @@ const Settings = () => {
 
   // --- Email Ingestion Configuration ---
   const renderEmailIngestionHub = () => {
-      const isManualMode = !isAutoIngestEnabled;
-      const selectedManualSupplier = visibleSuppliers.find(supplier => supplier.id === manualIngestSupplierId);
-      const selectedInventoryUpload = manualIngestSupplierId && manualIngestSupplierId !== AUTO_DETECT_SUPPLIER_VALUE
-          ? supplierInventoryUploads.find(({ supplier }) => supplier.id === manualIngestSupplierId)
-          : null;
       return (
           <div className="p-6 space-y-6">
               {/* Header */}
@@ -2045,35 +1977,15 @@ const Settings = () => {
                           Supplier Inventory Ingestion Hub
                       </h3>
                       <p className="text-xs text-secondary dark:text-gray-400 mt-1">
-                          Update supplier inventory from either a manual upload or the automated inbound email pipeline. Both modes replace the supplier inventory and then run the same mapping and availability refresh process.
+                          Automated inbound email pipeline continuously ingests supplier inventory attachments, auto-detects suppliers, replaces stock levels, and refreshes availability in real time.
                       </p>
                   </div>
                   
                   <div className="flex items-center gap-3">
-                      <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-800">
-                          <button
-                              type="button"
-                              onClick={() => {
-                                  setIsAutoIngestEnabled(false);
-                                  localStorage.setItem('isAutoIngestEnabled', 'false');
-                                  success('Manual supplier upload mode enabled.');
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isManualMode ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
-                          >
-                              Manual Upload
-                          </button>
-                          <button
-                              type="button"
-                              onClick={() => {
-                                  setIsAutoIngestEnabled(true);
-                                  localStorage.setItem('isAutoIngestEnabled', 'true');
-                                  success('Automated email ingestion mode enabled.');
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isAutoIngestEnabled ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
-                          >
-                              Automated Email
-                          </button>
-                      </div>
+                      <span className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-bold border border-emerald-200 dark:border-emerald-800/50 shadow-xs">
+                          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                          Automated Pipeline Active
+                      </span>
                   </div>
               </div>
 
@@ -2127,87 +2039,23 @@ const Settings = () => {
               )}
 
               {/* Grid Layout: Config on Left, Status/Inbox on Right */}
-              <div className={`grid grid-cols-1 gap-6 ${isManualMode ? 'lg:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]' : 'lg:grid-cols-3'}`}>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Left Column: Configuration Card */}
                   <div className="lg:col-span-1 space-y-5 bg-white dark:bg-nocturne p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm animate-fade-in">
                       <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
                           <SettingsIcon size={16} className="text-gray-400" />
-                          {isManualMode ? 'Manual Upload' : 'Daemon Configuration'}
+                          Daemon Configuration
                       </h4>
                       
                       <div className="space-y-4 text-xs">
-                          {isManualMode ? (
-                              <div className="space-y-4">
-                                  <div className="space-y-1.5">
-                                      <label className="font-bold text-secondary dark:text-gray-400 uppercase tracking-wider text-[10px]">
-                                          Supplier
-                                      </label>
-                                      <select
-                                          value={manualIngestSupplierId}
-                                          onChange={(e) => {
-                                              setManualIngestSupplierId(e.target.value);
-                                              setMappingSupplierId(e.target.value);
-                                          }}
-                                          className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-850 px-3 py-2 rounded-xl text-primary font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                                      >
-                                          <option value={AUTO_DETECT_SUPPLIER_VALUE}>All Suppliers (Auto-detect)</option>
-                                          {visibleSuppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
-                                      </select>
-                                  </div>
-
-                                  <label
-                                      className={`block p-5 border border-dashed rounded-xl cursor-pointer transition-all ${
-                                          isDragging
-                                              ? 'bg-blue-100/70 border-blue-500 text-blue-700 dark:bg-blue-950/30'
-                                              : 'bg-blue-50/40 dark:bg-blue-950/10 border-blue-300 dark:border-blue-800 hover:border-blue-500'
-                                      }`}
-                                      onDragOver={handleDragOver}
-                                      onDragLeave={handleDragLeave}
-                                      onDrop={handleDrop}
-                                  >
-                                      <input
-                                          type="file"
-                                          accept=".xlsx,.xls,.csv"
-                                          className="hidden"
-                                          onChange={(e) => setManualIngestFile(e.target.files?.[0] || null)}
-                                      />
-                                      <div className="flex items-center gap-3">
-                                          <div className={`p-2 rounded-lg transition-colors ${isDragging ? 'bg-blue-200 text-blue-800 dark:bg-blue-900/40' : 'bg-blue-50 dark:bg-blue-950/20 text-blue-600'}`}>
-                                              <Upload size={18} className={isDragging ? 'animate-bounce' : ''} />
-                                          </div>
-                                          <div className="min-w-0">
-                                              <p className="font-bold text-gray-900 dark:text-white truncate">
-                                                  {manualIngestFile ? manualIngestFile.name : (isDragging ? 'Drop file here...' : 'Upload latest supplier file')}
-                                              </p>
-                                              <p className="text-[10px] text-tertiary dark:text-gray-500">Excel or CSV inventory report</p>
-                                          </div>
-                                      </div>
-                                  </label>
-
-                                  <button
-                                      type="button"
-                                      onClick={handleManualSupplierUpload}
-                                      disabled={isImporting || !manualIngestFile}
-                                      className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-50"
-                                  >
-                                      {isImporting ? <RefreshCw size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                                      Replace Supplier Inventory
-                                  </button>
-
-                                  <div className="p-3 bg-blue-50 dark:bg-blue-900/10 text-blue-800 dark:text-blue-300 rounded-xl border border-blue-100 dark:border-blue-900/20 text-[11px] leading-relaxed">
-                                      The uploaded file replaces the selected supplier inventory, then automatically runs item mapping and availability refresh.
-                                  </div>
-                              </div>
-                          ) : (
-                              <>
                           <div className="flex items-center justify-between p-3 bg-white dark:bg-nocturne rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
                               <div>
                                   <p className="font-bold text-gray-900 dark:text-white">Dedicated Mailbox Pipeline</p>
                                   <p className="text-[10px] text-tertiary">Ready for Microsoft Graph mailbox ingestion</p>
                               </div>
-                              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-full text-[10px] font-bold border border-blue-100 dark:border-blue-900/30">
-                                  <span className="w-2 h-2 bg-blue-500 rounded-full" />
-                                  Awaiting mailbox
+                              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 rounded-full text-[10px] font-bold border border-emerald-100 dark:border-emerald-900/30">
+                                  <span className="w-2 h-2 bg-emerald-500 rounded-full" />
+                                  Active Mailbox
                               </span>
                           </div>
                           <div className="space-y-1.5 relative">
@@ -2290,437 +2138,255 @@ const Settings = () => {
 
                           {/* Info panel */}
                           <div className="p-3 bg-blue-50 dark:bg-blue-900/10 text-blue-800 dark:text-blue-300 rounded-xl border border-blue-100 dark:border-blue-900/20 text-[11px] leading-relaxed">
-                              <p className="font-bold mb-1">Shared inventory parser</p>
-                              Automated attachments will use the same supplier detection, format normalization, inventory replacement, auto-mapping, and availability refresh path as manual uploads.
+                              <p className="font-bold mb-1">Automated Stock Synchronisation</p>
+                              Inbound emails from suppliers or forwarded reports are automatically parsed, matching against supplier profiles and refreshing live inventory stock levels without manual intervention.
                           </div>
-                              </>
-                          )}
                       </div>
                   </div>
 
-                  {/* Right Column: Inbound Inbox */}
-                  <div className={`${isManualMode ? 'space-y-4' : 'lg:col-span-2 space-y-4'}`}>
-                      {isManualMode ? (
-                          selectedInventoryUpload ? (
-                              <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col justify-center animate-fade-in">
-                                  <div className="max-w-2xl">
-                                      <div className="flex items-start justify-between gap-4">
-                                          <div>
-                                              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Selected Supplier</p>
-                                              <h4 className="text-xl font-bold text-gray-900 dark:text-white mt-1">{selectedManualSupplier?.name}</h4>
-                                              <p className="text-sm text-secondary dark:text-gray-400 mt-2" title={selectedInventoryUpload.sourceReportName || undefined}>
-                                                  {selectedInventoryUpload.sourceReportName || 'No inventory document uploaded yet.'}
-                                              </p>
-                                          </div>
-                                          {selectedInventoryUpload.uploadedAt ? (
-                                              <CheckCircle2 size={22} className="text-emerald-500 shrink-0" />
-                                          ) : (
-                                              <AlertCircle size={22} className="text-gray-300 shrink-0" />
-                                          )}
-                                      </div>
+                  {/* Right Column: Inbound Inbox & Status */}
+                  <div className="lg:col-span-2 space-y-4">
+                      {/* Mailbox Status Card */}
+                      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5 animate-fade-in">
+                          <div className="flex items-start gap-3">
+                              <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600 shrink-0">
+                                  <Inbox size={18} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                  <h4 className="text-sm font-bold text-gray-900 dark:text-white">Automated Mailbox Pipeline</h4>
+                                  <p className="text-xs text-secondary dark:text-gray-400 mt-0.5 leading-relaxed">
+                                      Attachments received at the inbound mailbox flow through automatic supplier detection, normalization, inventory replacement, auto-mapping, and live availability refresh.
+                                  </p>
+                              </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-3 mt-4">
+                              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Mailbox</p>
+                                  <p className="mt-1.5 text-xs font-bold text-gray-900 dark:text-white truncate" title={ingestEmailAddress || undefined}>{ingestEmailAddress || 'Not configured'}</p>
+                              </div>
+                              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Polling</p>
+                                  <p className="mt-1.5 text-xs font-bold text-gray-900 dark:text-white">{ingestInterval}</p>
+                              </div>
+                              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Engine</p>
+                                  <p className="mt-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">Automated Pipeline</p>
+                              </div>
+                          </div>
+                      </div>
 
-                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
-                                          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
-                                              <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Upload Status</p>
-                                              <p className={`mt-2 text-sm font-bold ${selectedInventoryUpload.uploadedAt ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                                                  {selectedInventoryUpload.uploadedAt ? 'Uploaded' : 'Awaiting File'}
-                                              </p>
-                                          </div>
-                                          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
-                                              <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Last Uploaded</p>
-                                              <p className="mt-2 text-sm font-bold text-gray-900 dark:text-white">
-                                                  {selectedInventoryUpload.uploadedAt ? new Date(selectedInventoryUpload.uploadedAt).toLocaleDateString() : '-'}
-                                              </p>
-                                          </div>
-                                          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
-                                              <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Rows Loaded</p>
-                                              <p className="mt-2 text-sm font-bold text-gray-900 dark:text-white">{selectedInventoryUpload.recordCount || 0}</p>
-                                          </div>
-                                      </div>
-
-                                      <p className="text-xs text-secondary dark:text-gray-400 mt-5 leading-relaxed">
-                                          Uploading a new file replaces only this supplier's inventory, then continues through the same mapping, memory, and availability refresh process used by automated email ingestion.
-                                      </p>
-                                      
-                                      <div className="mt-6 flex justify-end">
+                      {/* Tabbed Ingestion Status Panel */}
+                      {(() => {
+                          const pendingCount = emailIngestionQueue.filter(i => i.status === 'PENDING').length;
+                          const statusMeta: Record<string, { label: string; cls: string }> = {
+                              PENDING:        { label: 'Pending',        cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border-blue-100 dark:border-blue-900/30' },
+                              PROCESSING:     { label: 'Processing…',    cls: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' },
+                              PROCESSED:      { label: 'Ingested',       cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30' },
+                              REJECTED_STALE: { label: 'Stale (skipped)', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' },
+                              NEEDS_SUPPLIER: { label: 'Needs supplier', cls: 'bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400 border-purple-100 dark:border-purple-900/30' },
+                              FAILED:         { label: 'Failed',         cls: 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-100 dark:border-red-900/30' },
+                              SKIPPED:        { label: 'Skipped',        cls: 'bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400 border-gray-200 dark:border-gray-800' }
+                          };
+                          return (
+                              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[420px] animate-fade-in">
+                                  {/* Tabs Header */}
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
+                                      <div className="flex bg-gray-50 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-800 self-start">
                                           <button
                                               type="button"
-                                              onClick={() => setManualIngestSupplierId(AUTO_DETECT_SUPPLIER_VALUE)}
-                                              className="text-xs font-bold text-secondary hover:text-primary transition-colors flex items-center gap-1.5"
+                                              onClick={() => setEmailHubStatusTab('QUEUE')}
+                                              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                                  emailHubStatusTab === 'QUEUE'
+                                                      ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-sm'
+                                                      : 'text-secondary hover:text-primary dark:hover:text-white'
+                                              }`}
                                           >
-                                              ← View all suppliers
+                                              <Inbox size={14} />
+                                              Email Inbox Queue
+                                              {pendingCount > 0 && (
+                                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                                      {pendingCount}
+                                                  </span>
+                                              )}
+                                          </button>
+                                          <button
+                                              type="button"
+                                              onClick={() => setEmailHubStatusTab('SUPPLIERS')}
+                                              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                                  emailHubStatusTab === 'SUPPLIERS'
+                                                      ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-sm'
+                                                      : 'text-secondary hover:text-primary dark:hover:text-white'
+                                              }`}
+                                          >
+                                              <Building2 size={14} />
+                                              Supplier Ingestion Status
                                           </button>
                                       </div>
+
+                                      {/* Search / Action controls based on active tab */}
+                                      {emailHubStatusTab === 'QUEUE' ? (
+                                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                                              <button type="button" onClick={refreshEmailIngestionQueue} className="btn-secondary flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg" title="Refresh queue">
+                                                  <RefreshCw size={13} /> Refresh
+                                              </button>
+                                              <button
+                                                  type="button"
+                                                  onClick={drainSupplierInbox}
+                                                  disabled={isDrainingInbox || pendingCount === 0}
+                                                  className="btn-primary flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg disabled:opacity-50"
+                                              >
+                                                  {isDrainingInbox ? <RefreshCw size={13} className="animate-spin" /> : <Wand2 size={13} />}
+                                                  Process inbox{pendingCount > 0 ? ` (${pendingCount})` : ''}
+                                              </button>
+                                          </div>
+                                      ) : (
+                                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                                              {/* Filter Buttons */}
+                                              <div className="flex rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-0.5 text-xs font-medium">
+                                                  {(['ALL', 'INGESTED', 'AWAITING'] as const).map(filterType => {
+                                                      const count = filterType === 'ALL'
+                                                          ? sortedUploads.length
+                                                          : filterType === 'INGESTED'
+                                                              ? sortedUploads.filter(u => !!u.uploadedAt).length
+                                                              : sortedUploads.filter(u => !u.uploadedAt).length;
+                                                      return (
+                                                          <button
+                                                              key={filterType}
+                                                              type="button"
+                                                              onClick={() => setSupplierStatusFilter(filterType)}
+                                                              className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all ${
+                                                                  supplierStatusFilter === filterType
+                                                                      ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-xs'
+                                                                      : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                                              }`}
+                                                          >
+                                                              {filterType.toLowerCase()} ({count})
+                                                          </button>
+                                                      );
+                                                  })}
+                                              </div>
+                                              
+                                              <div className="relative min-w-[180px]">
+                                                  <Search className="absolute left-2.5 top-2 text-gray-400" size={13} />
+                                                  <input
+                                                      type="text"
+                                                      placeholder="Search suppliers..."
+                                                      value={supplierSearchQuery}
+                                                      onChange={e => setSupplierSearchQuery(e.target.value)}
+                                                      className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-7 pr-3 py-1 rounded-lg text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                                  />
+                                              </div>
+                                          </div>
+                                      )}
                                   </div>
-                              </div>
-                          ) : (
-                              <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[400px] animate-fade-in">
-                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
-                                      <div>
-                                          <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                              <Files size={18} className="text-blue-500" />
-                                              All Suppliers Ingestion Status
-                                          </h4>
-                                          <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
-                                              Overview of latest uploaded files and record counts. Click a supplier to upload/view.
-                                          </p>
-                                      </div>
-                                      
-                                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-                                          {/* Ingested / Awaiting Filters */}
-                                          <div className="flex rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-0.5 text-xs font-medium">
-                                              {(['ALL', 'INGESTED', 'AWAITING'] as const).map(filterType => {
-                                                  const count = filterType === 'ALL'
-                                                      ? sortedUploads.length
-                                                      : filterType === 'INGESTED'
-                                                          ? sortedUploads.filter(u => !!u.uploadedAt).length
-                                                          : sortedUploads.filter(u => !u.uploadedAt).length;
+
+                                  {/* Tab Contents */}
+                                  {emailHubStatusTab === 'QUEUE' ? (
+                                      /* Inbound Email Queue */
+                                      emailIngestionQueue.length === 0 ? (
+                                          <div className="py-14 text-center flex-1 flex flex-col justify-center">
+                                              <Inbox size={32} className="mx-auto text-gray-300 dark:text-gray-700 mb-2" />
+                                              <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">No emails received yet.</p>
+                                              <p className="text-xs text-tertiary dark:text-gray-500 mt-1 max-w-sm mx-auto">Forwarded supplier reports appear here after the next mailbox poll.</p>
+                                          </div>
+                                      ) : (
+                                          <div className="flex-1 overflow-y-auto max-h-[380px] divide-y divide-gray-150 dark:divide-gray-800 pr-1">
+                                              {emailIngestionQueue.map(item => {
+                                                  const meta = statusMeta[item.status] || statusMeta.SKIPPED;
                                                   return (
-                                                      <button
-                                                          key={filterType}
-                                                          type="button"
-                                                          onClick={() => setSupplierStatusFilter(filterType)}
-                                                          className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all ${
-                                                              supplierStatusFilter === filterType
-                                                                  ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-xs'
-                                                                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-                                                          }`}
-                                                      >
-                                                          {filterType.toLowerCase()} ({count})
-                                                      </button>
+                                                      <div key={item.id} className="flex items-start justify-between gap-3 py-3 last:pb-0">
+                                                          <div className="min-w-0">
+                                                              <div className="flex items-center gap-2">
+                                                                  <FileSpreadsheet size={14} className="text-gray-400 shrink-0" />
+                                                                  <span className="font-semibold text-sm text-gray-900 dark:text-white truncate max-w-[280px]" title={item.attachmentName}>{item.attachmentName}</span>
+                                                              </div>
+                                                              <div className="text-[11px] text-secondary dark:text-gray-500 mt-0.5 truncate max-w-[380px]">
+                                                                  {item.detectedSupplierName || 'Supplier TBD'}
+                                                                  {item.reportDate ? ` · ${item.reportDate}` : ''}
+                                                                  {item.rowsImported != null ? ` · ${item.rowsImported} rows` : ''}
+                                                                  {item.fromAddress ? ` · from ${item.fromAddress}` : ''}
+                                                              </div>
+                                                              {item.error && (
+                                                                  <div className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 truncate max-w-[380px]" title={item.error}>{item.error}</div>
+                                                              )}
+                                                          </div>
+                                                          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.cls}`}>{meta.label}</span>
+                                                      </div>
                                                   );
                                               })}
                                           </div>
-                                          
-                                          <div className="relative min-w-[180px]">
-                                              <Search className="absolute left-2.5 top-2 text-gray-400" size={13} />
-                                              <input
-                                                  type="text"
-                                                  placeholder="Search suppliers..."
-                                                  value={supplierSearchQuery}
-                                                  onChange={e => setSupplierSearchQuery(e.target.value)}
-                                                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-7 pr-3 py-1 rounded-lg text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                                              />
-                                          </div>
-                                      </div>
-                                  </div>
-
-                                  <div className="flex-1 overflow-y-auto max-h-[420px] pr-1">
-                                      <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                                          {filteredUploads.map((upload) => {
-                                              const isUploaded = !!upload.uploadedAt;
-                                              return (
-                                                  <div
-                                                      key={upload.supplier.id}
-                                                      onClick={() => {
-                                                          setManualIngestSupplierId(upload.supplier.id);
-                                                          setMappingSupplierId(upload.supplier.id);
-                                                      }}
-                                                      className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl cursor-pointer transition-all"
-                                                  >
-                                                      <div className="flex items-center gap-3 min-w-0">
-                                                          <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
-                                                              <Building2 size={16} className="group-hover:scale-110 transition-transform" />
-                                                          </div>
-                                                          <div className="min-w-0">
-                                                              <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
-                                                                  {upload.supplier.name}
-                                                              </div>
-                                                              <div className="flex items-center gap-2 mt-0.5">
-                                                                  {isUploaded ? (
-                                                                      <>
-                                                                          <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
-                                                                          <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[200px] sm:max-w-[300px]" title={upload.sourceReportName}>
-                                                                              {upload.sourceReportName}
-                                                                          </span>
-                                                                      </>
-                                                                  ) : (
-                                                                      <span className="text-xs text-tertiary dark:text-gray-500 italic">
-                                                                          No file uploaded yet
-                                                                      </span>
-                                                                  )}
-                                                              </div>
-                                                          </div>
-                                                      </div>
-
-                                                      <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
-                                                          <div>
-                                                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                                  isUploaded
-                                                                      ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30'
-                                                                      : 'bg-gray-100 dark:bg-white/5 text-gray-500 border border-gray-200 dark:border-gray-800'
-                                                              }`}>
-                                                                  {isUploaded ? 'Uploaded' : 'Awaiting File'}
-                                                              </span>
-                                                          </div>
-                                                          {isUploaded && (
-                                                              <div className="text-xs">
-                                                                  <div className="font-semibold text-gray-900 dark:text-white">
-                                                                      {upload.recordCount} rows
-                                                                  </div>
-                                                                  <div className="text-[10px] text-tertiary dark:text-gray-500">
-                                                                      {new Date(upload.uploadedAt!).toLocaleDateString()}
-                                                                  </div>
-                                                              </div>
-                                                          )}
-                                                      </div>
-                                                  </div>
-                                              );
-                                          })}
-                                          {filteredUploads.length === 0 && (
-                                              <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
-                                                  No suppliers match your search.
-                                              </div>
-                                          )}
-                                      </div>
-                                  </div>
-                              </div>
-                          )
-                      ) : (
-                          <div className="space-y-4">
-                              {/* Mailbox Status Card */}
-                              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5 animate-fade-in">
-                                  <div className="flex items-start gap-3">
-                                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600 shrink-0">
-                                          <Inbox size={18} />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                          <h4 className="text-sm font-bold text-gray-900 dark:text-white">Automated Mailbox Pipeline</h4>
-                                          <p className="text-xs text-secondary dark:text-gray-400 mt-0.5 leading-relaxed">
-                                              Attachments received at the inbound mailbox flow through the same supplier detection, normalization, replacement, auto-mapping, and availability refresh process as manual uploads.
-                                          </p>
-                                      </div>
-                                  </div>
-                                  <div className="grid grid-cols-3 gap-3 mt-4">
-                                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
-                                          <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Mailbox</p>
-                                          <p className="mt-1.5 text-xs font-bold text-gray-900 dark:text-white truncate" title={ingestEmailAddress || undefined}>{ingestEmailAddress || 'Not configured'}</p>
-                                      </div>
-                                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
-                                          <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Polling</p>
-                                          <p className="mt-1.5 text-xs font-bold text-gray-900 dark:text-white">{ingestInterval}</p>
-                                      </div>
-                                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
-                                          <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Parser</p>
-                                          <p className="mt-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">Shared with manual</p>
-                                      </div>
-                                  </div>
-                              </div>
-
-                              {/* Tabbed Ingestion Status Panel */}
-                              {(() => {
-                                  const pendingCount = emailIngestionQueue.filter(i => i.status === 'PENDING').length;
-                                  const statusMeta: Record<string, { label: string; cls: string }> = {
-                                      PENDING:        { label: 'Pending',        cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border-blue-100 dark:border-blue-900/30' },
-                                      PROCESSING:     { label: 'Processing…',    cls: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' },
-                                      PROCESSED:      { label: 'Ingested',       cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30' },
-                                      REJECTED_STALE: { label: 'Stale (skipped)', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' },
-                                      NEEDS_SUPPLIER: { label: 'Needs supplier', cls: 'bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400 border-purple-100 dark:border-purple-900/30' },
-                                      FAILED:         { label: 'Failed',         cls: 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-100 dark:border-red-900/30' },
-                                      SKIPPED:        { label: 'Skipped',        cls: 'bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400 border-gray-200 dark:border-gray-800' }
-                                  };
-                                  return (
-                                      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[420px] animate-fade-in">
-                                          {/* Tabs Header */}
-                                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
-                                              <div className="flex bg-gray-50 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-800 self-start">
-                                                  <button
-                                                      type="button"
-                                                      onClick={() => setEmailHubStatusTab('QUEUE')}
-                                                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                                          emailHubStatusTab === 'QUEUE'
-                                                              ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-sm'
-                                                              : 'text-secondary hover:text-primary dark:hover:text-white'
-                                                      }`}
-                                                  >
-                                                      <Inbox size={14} />
-                                                      Email Inbox Queue
-                                                      {pendingCount > 0 && (
-                                                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                                                              {pendingCount}
-                                                          </span>
-                                                      )}
-                                                  </button>
-                                                  <button
-                                                      type="button"
-                                                      onClick={() => setEmailHubStatusTab('SUPPLIERS')}
-                                                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                                          emailHubStatusTab === 'SUPPLIERS'
-                                                              ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-sm'
-                                                              : 'text-secondary hover:text-primary dark:hover:text-white'
-                                                      }`}
-                                                  >
-                                                      <Building2 size={14} />
-                                                      Supplier Ingestion Status
-                                                  </button>
-                                              </div>
-
-                                              {/* Search / Action controls based on active tab */}
-                                              {emailHubStatusTab === 'QUEUE' ? (
-                                                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                                                      <button type="button" onClick={refreshEmailIngestionQueue} className="btn-secondary flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg" title="Refresh queue">
-                                                          <RefreshCw size={13} /> Refresh
-                                                      </button>
-                                                      <button
-                                                          type="button"
-                                                          onClick={drainSupplierInbox}
-                                                          disabled={isDrainingInbox || pendingCount === 0}
-                                                          className="btn-primary flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg disabled:opacity-50"
+                                      )
+                                  ) : (
+                                      /* Supplier Ingestion Status */
+                                      <div className="flex-1 overflow-y-auto max-h-[380px] pr-1">
+                                          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                              {filteredUploads.map((upload) => {
+                                                  const isUploaded = !!upload.uploadedAt;
+                                                  return (
+                                                      <div
+                                                          key={upload.supplier.id}
+                                                          className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 last:pb-0"
                                                       >
-                                                          {isDrainingInbox ? <RefreshCw size={13} className="animate-spin" /> : <Wand2 size={13} />}
-                                                          Process inbox{pendingCount > 0 ? ` (${pendingCount})` : ''}
-                                                      </button>
-                                                  </div>
-                                              ) : (
-                                                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-                                                      {/* Filter Buttons */}
-                                                      <div className="flex rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-0.5 text-xs font-medium">
-                                                          {(['ALL', 'INGESTED', 'AWAITING'] as const).map(filterType => {
-                                                              const count = filterType === 'ALL'
-                                                                  ? sortedUploads.length
-                                                                  : filterType === 'INGESTED'
-                                                                      ? sortedUploads.filter(u => !!u.uploadedAt).length
-                                                                      : sortedUploads.filter(u => !u.uploadedAt).length;
-                                                              return (
-                                                                  <button
-                                                                      key={filterType}
-                                                                      type="button"
-                                                                      onClick={() => setSupplierStatusFilter(filterType)}
-                                                                      className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all ${
-                                                                          supplierStatusFilter === filterType
-                                                                              ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-xs'
-                                                                              : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-                                                                      }`}
-                                                                  >
-                                                                      {filterType.toLowerCase()} ({count})
-                                                                  </button>
-                                                              );
-                                                          })}
+                                                          <div className="flex items-center gap-3 min-w-0">
+                                                              <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
+                                                                  <Building2 size={16} />
+                                                              </div>
+                                                              <div className="min-w-0">
+                                                                  <div className="font-bold text-sm text-gray-900 dark:text-white transition-colors flex items-center gap-1.5">
+                                                                      {upload.supplier.name}
+                                                                  </div>
+                                                                  <div className="flex items-center gap-2 mt-0.5">
+                                                                      {isUploaded ? (
+                                                                          <>
+                                                                              <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
+                                                                              <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[220px] sm:max-w-[320px]" title={upload.sourceReportName}>
+                                                                                  {upload.sourceReportName}
+                                                                              </span>
+                                                                          </>
+                                                                      ) : (
+                                                                          <span className="text-xs text-tertiary dark:text-gray-500 italic">
+                                                                              No email received yet
+                                                                          </span>
+                                                                      )}
+                                                                  </div>
+                                                              </div>
+                                                          </div>
+
+                                                          <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
+                                                              <div>
+                                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                                                      isUploaded
+                                                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30'
+                                                                          : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-gray-800'
+                                                                  }`}>
+                                                                      {isUploaded ? 'Ingested' : 'Awaiting Email'}
+                                                                  </span>
+                                                              </div>
+                                                              {isUploaded && (
+                                                                  <div className="text-xs">
+                                                                      <div className="font-semibold text-gray-900 dark:text-white">
+                                                                          {upload.recordCount} rows
+                                                                      </div>
+                                                                      <div className="text-[10px] text-tertiary dark:text-gray-500">
+                                                                          {new Date(upload.uploadedAt!).toLocaleDateString()}
+                                                                      </div>
+                                                                  </div>
+                                                              )}
+                                                          </div>
                                                       </div>
-                                                      
-                                                      <div className="relative min-w-[180px]">
-                                                          <Search className="absolute left-2.5 top-2 text-gray-400" size={13} />
-                                                          <input
-                                                              type="text"
-                                                              placeholder="Search suppliers..."
-                                                              value={supplierSearchQuery}
-                                                              onChange={e => setSupplierSearchQuery(e.target.value)}
-                                                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-7 pr-3 py-1 rounded-lg text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                                                          />
-                                                      </div>
+                                                  );
+                                              })}
+                                              {filteredUploads.length === 0 && (
+                                                  <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
+                                                      No suppliers match your filter/search.
                                                   </div>
                                               )}
                                           </div>
-
-                                          {/* Tab Contents */}
-                                          {emailHubStatusTab === 'QUEUE' ? (
-                                              /* Inbound Email Queue */
-                                              emailIngestionQueue.length === 0 ? (
-                                                  <div className="py-14 text-center flex-1 flex flex-col justify-center">
-                                                      <Inbox size={32} className="mx-auto text-gray-300 dark:text-gray-700 mb-2" />
-                                                      <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">No emails received yet.</p>
-                                                      <p className="text-xs text-tertiary dark:text-gray-500 mt-1 max-w-sm mx-auto">Forwarded supplier reports appear here after the next mailbox poll.</p>
-                                                  </div>
-                                              ) : (
-                                                  <div className="flex-1 overflow-y-auto max-h-[380px] divide-y divide-gray-150 dark:divide-gray-800 pr-1">
-                                                      {emailIngestionQueue.map(item => {
-                                                          const meta = statusMeta[item.status] || statusMeta.SKIPPED;
-                                                          return (
-                                                              <div key={item.id} className="flex items-start justify-between gap-3 py-3 last:pb-0">
-                                                                  <div className="min-w-0">
-                                                                      <div className="flex items-center gap-2">
-                                                                          <FileSpreadsheet size={14} className="text-gray-400 shrink-0" />
-                                                                          <span className="font-semibold text-sm text-gray-900 dark:text-white truncate max-w-[280px]" title={item.attachmentName}>{item.attachmentName}</span>
-                                                                      </div>
-                                                                      <div className="text-[11px] text-secondary dark:text-gray-500 mt-0.5 truncate max-w-[380px]">
-                                                                          {item.detectedSupplierName || 'Supplier TBD'}
-                                                                          {item.reportDate ? ` · ${item.reportDate}` : ''}
-                                                                          {item.rowsImported != null ? ` · ${item.rowsImported} rows` : ''}
-                                                                          {item.fromAddress ? ` · from ${item.fromAddress}` : ''}
-                                                                      </div>
-                                                                      {item.error && (
-                                                                          <div className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 truncate max-w-[380px]" title={item.error}>{item.error}</div>
-                                                                      )}
-                                                                  </div>
-                                                                  <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.cls}`}>{meta.label}</span>
-                                                              </div>
-                                                          );
-                                                      })}
-                                                  </div>
-                                              )
-                                          ) : (
-                                              /* Supplier Ingestion Status */
-                                              <div className="flex-1 overflow-y-auto max-h-[380px] pr-1">
-                                                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                                                      {filteredUploads.map((upload) => {
-                                                          const isUploaded = !!upload.uploadedAt;
-                                                          return (
-                                                              <div
-                                                                  key={upload.supplier.id}
-                                                                  className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 last:pb-0"
-                                                              >
-                                                                  <div className="flex items-center gap-3 min-w-0">
-                                                                      <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
-                                                                          <Building2 size={16} />
-                                                                      </div>
-                                                                      <div className="min-w-0">
-                                                                          <div className="font-bold text-sm text-gray-900 dark:text-white transition-colors flex items-center gap-1.5">
-                                                                              {upload.supplier.name}
-                                                                          </div>
-                                                                          <div className="flex items-center gap-2 mt-0.5">
-                                                                              {isUploaded ? (
-                                                                                  <>
-                                                                                      <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
-                                                                                      <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[220px] sm:max-w-[320px]" title={upload.sourceReportName}>
-                                                                                          {upload.sourceReportName}
-                                                                                      </span>
-                                                                                  </>
-                                                                              ) : (
-                                                                                  <span className="text-xs text-tertiary dark:text-gray-500 italic">
-                                                                                      No email received yet
-                                                                                  </span>
-                                                                              )}
-                                                                          </div>
-                                                                      </div>
-                                                                  </div>
-
-                                                                  <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
-                                                                      <div>
-                                                                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                                                              isUploaded
-                                                                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30'
-                                                                                  : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-gray-800'
-                                                                          }`}>
-                                                                              {isUploaded ? 'Ingested' : 'Awaiting Email'}
-                                                                          </span>
-                                                                      </div>
-                                                                      {isUploaded && (
-                                                                          <div className="text-xs">
-                                                                              <div className="font-semibold text-gray-900 dark:text-white">
-                                                                                  {upload.recordCount} rows
-                                                                              </div>
-                                                                              <div className="text-[10px] text-tertiary dark:text-gray-500">
-                                                                                  {new Date(upload.uploadedAt!).toLocaleDateString()}
-                                                                              </div>
-                                                                          </div>
-                                                                      )}
-                                                                  </div>
-                                                              </div>
-                                                          );
-                                                      })}
-                                                      {filteredUploads.length === 0 && (
-                                                          <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
-                                                              No suppliers match your filter/search.
-                                                          </div>
-                                                      )}
-                                                  </div>
-                                              </div>
-                                          )}
                                       </div>
-                                   );
-                               })()}
-                           </div>
-                       )}
+                                  )}
+                              </div>
+                          );
+                      })()}
                   </div>
               </div>
           </div>
@@ -3653,7 +3319,7 @@ if __name__ == "__main__":
                               Supplier Inventory Ingestion Hub
                           </h4>
                           <p className="text-xs text-secondary dark:text-gray-400 mt-1 max-w-xl">
-                              Upload a supplier file manually or switch to automated inbound email ingestion. Both paths replace the supplier inventory, auto-map products, and refresh available stock.
+                              Automated inbound email ingestion continuously receives supplier inventory reports, auto-maps products, and keeps available stock levels up to date in real time.
                           </p>
                       </div>
                       <button 
