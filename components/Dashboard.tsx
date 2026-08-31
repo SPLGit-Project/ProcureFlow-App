@@ -328,18 +328,20 @@ export default function Dashboard() {
   }, [filteredPos]);
 
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-7.25rem)] max-w-7xl flex-col gap-6 overflow-hidden animate-page-entry pb-12">
+    <div className="mx-auto flex min-h-[calc(100dvh-7.25rem)] max-w-7xl flex-col gap-5 sm:gap-6 overflow-hidden animate-page-entry px-3 sm:px-6 pb-12">
       <PageHeader title="Executive Dashboard" subtitle="Procurement Analytics & Performance" />
 
       {/* ── TOP CONTROLS & TIMEFRAME SLICER ─────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#15171e] p-3.5 rounded-2xl border border-gray-200/80 dark:border-gray-800 shadow-2xs">
-        <div className="flex items-center gap-2">
-          <BarChart3 size={18} className="text-[var(--color-brand)]" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#15171e] p-3.5 sm:p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center font-bold shrink-0">
+            <BarChart3 size={18} />
+          </div>
           <div>
             <h2 className="text-xs font-black uppercase tracking-widest text-gray-900 dark:text-white">
               Portfolio Scope
             </h2>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate max-w-[240px] sm:max-w-none">
               {activeSiteIds.length === 0
                 ? 'Consolidated View (All Laundry Locations)'
                 : activeSiteIds.length === 1
@@ -350,7 +352,7 @@ export default function Dashboard() {
         </div>
 
         {/* Timeframe selector tabs */}
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/60 p-1 rounded-xl">
+        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/60 p-1 rounded-xl overflow-x-auto max-w-full shrink-0">
           {[
             { id: 'ALL', label: 'All Time' },
             { id: 'FY2526', label: 'FY 25/26' },
@@ -361,7 +363,7 @@ export default function Dashboard() {
               key={t.id}
               type="button"
               onClick={() => setTimeframe(t.id as TimeframePreset)}
-              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
                 timeframe === t.id
                   ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-xs'
                   : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
@@ -374,9 +376,9 @@ export default function Dashboard() {
       </div>
 
       {/* ── EXECUTIVE KPI METRIC CARDS ────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         {/* Total Spend */}
-        <div className="p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
               Total PO Issued (Inc GST)
@@ -386,7 +388,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div>
-            <p className="text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+            <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
               {formatCurrency(kpis.totalPoInc)}
             </p>
             <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
@@ -397,7 +399,7 @@ export default function Dashboard() {
         </div>
 
         {/* Goods Received */}
-        <div className="p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
               Goods Received (GR Inc GST)
@@ -407,7 +409,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div>
-            <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+            <p className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
               {formatCurrency(kpis.totalGrInc)}
             </p>
             <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
@@ -418,7 +420,7 @@ export default function Dashboard() {
         </div>
 
         {/* Fulfillment Rate */}
-        <div className="p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
               Delivery Fulfillment Rate
@@ -429,7 +431,7 @@ export default function Dashboard() {
           </div>
           <div>
             <div className="flex items-baseline justify-between">
-              <p className="text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+              <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
                 {kpis.fulfillmentRate}%
               </p>
               <span className="text-[11px] font-bold text-gray-500">
@@ -447,7 +449,7 @@ export default function Dashboard() {
         </div>
 
         {/* Open Commitment */}
-        <div className="p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
               Open Commitment (Inc GST)
@@ -457,7 +459,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div>
-            <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
+            <p className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
               {formatCurrency(kpis.totalOpenInc)}
             </p>
             <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
@@ -468,7 +470,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── HERO MONTHLY PROCUREMENT FLOW CHART ───────────────────────────────── */}
-      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] p-5 shadow-2xs">
+      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 sm:p-5 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
             <h3 className="text-sm font-bold text-gray-900 dark:text-white">
@@ -488,13 +490,13 @@ export default function Dashboard() {
           </button>
         </div>
 
-        <div className="h-[320px] w-full">
+        <div className="h-[260px] sm:h-[320px] w-full">
           {monthlyChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyChartData} margin={{ top: 15, right: 10, left: 10, bottom: 20 }}>
+              <BarChart data={monthlyChartData} margin={{ top: 15, right: 10, left: -10, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
-                <XAxis dataKey="monthLabel" tick={{ fontSize: 11, fill: '#888' }} />
-                <YAxis tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: '#888' }} />
+                <XAxis dataKey="monthLabel" tick={{ fontSize: 10, fill: '#888' }} />
+                <YAxis tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} tick={{ fontSize: 10, fill: '#888' }} />
                 <RechartsTooltip
                   formatter={(val: number) => [formatCurrency(val), '']}
                   contentStyle={{
@@ -506,7 +508,7 @@ export default function Dashboard() {
                     boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)'
                   }}
                 />
-                <Legend wrapperStyle={{ paddingTop: '12px', fontSize: '12px' }} />
+                <Legend wrapperStyle={{ paddingTop: '12px', fontSize: '11px' }} />
                 <Bar dataKey="poAmount" name="PO Amount (Inc GST)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="grAmount" name="Goods Received (Inc GST)" fill="#10b981" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="openAmount" name="Open Amount (Inc GST)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
@@ -523,9 +525,9 @@ export default function Dashboard() {
       {/* ── STRATEGIC SPEND ANALYTICS: REASON SPLIT & SUPPLIERS ────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Reason for Request Analysis */}
-        <div className="p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                 Spend Split by Reason for Request
               </h3>
@@ -572,9 +574,9 @@ export default function Dashboard() {
         </div>
 
         {/* Supplier Share of Spend */}
-        <div className="p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                 Supplier Share of Spend
               </h3>
@@ -590,7 +592,7 @@ export default function Dashboard() {
               {supplierSpend.slice(0, 4).map((s) => (
                 <div key={s.supplier}>
                   <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="font-bold text-gray-800 dark:text-gray-200 truncate max-w-[200px]" title={s.supplier}>
+                    <span className="font-bold text-gray-800 dark:text-gray-200 truncate max-w-[180px] sm:max-w-[220px]" title={s.supplier}>
                       {s.supplier}
                     </span>
                     <span className="font-black text-gray-900 dark:text-white">
@@ -616,7 +618,7 @@ export default function Dashboard() {
             <span className="font-bold text-blue-700 dark:text-blue-300">
               Primary Supplier (Top Spend):
             </span>
-            <span className="font-black text-blue-800 dark:text-blue-200 truncate max-w-[200px]">
+            <span className="font-black text-blue-800 dark:text-blue-200 truncate max-w-[160px] sm:max-w-[200px]">
               {supplierSpend[0]?.supplier || '-'}
             </span>
           </div>
@@ -624,7 +626,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── SITE PROCUREMENT & PERFORMANCE RANKING ────────────────────────────── */}
-      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] p-5 shadow-2xs">
+      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 sm:p-5 shadow-2xs">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-sm font-bold text-gray-900 dark:text-white">
@@ -636,8 +638,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <table className="w-full text-left text-xs min-w-[560px]">
             <thead className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
               <tr>
                 <th className="p-3">Laundry Site</th>
@@ -652,10 +654,10 @@ export default function Dashboard() {
               {sitePerformance.map((s) => (
                 <tr key={s.site} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
                   <td className="p-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Building2 size={14} className="text-gray-400" />
-                    <span>{s.site}</span>
+                    <Building2 size={14} className="text-gray-400 shrink-0" />
+                    <span className="truncate max-w-[160px] sm:max-w-none">{s.site}</span>
                   </td>
-                  <td className="p-3 text-right font-black text-emerald-600 dark:text-emerald-400">
+                  <td className="p-3 text-right font-black text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                     {formatCurrency(s.spend)}
                   </td>
                   <td className="p-3 text-center font-medium text-gray-700 dark:text-gray-300">
@@ -675,7 +677,7 @@ export default function Dashboard() {
                       {s.fulfillment}%
                     </span>
                   </td>
-                  <td className="p-3 text-gray-600 dark:text-gray-300 truncate max-w-[200px]" title={s.topItem}>
+                  <td className="p-3 text-gray-600 dark:text-gray-300 truncate max-w-[180px]" title={s.topItem}>
                     {s.topItem}
                   </td>
                 </tr>
@@ -688,7 +690,7 @@ export default function Dashboard() {
       {/* ── TOP SKU VELOCITY & RECENT ORDERS PULSE ─────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Top SKU Ranking (2 Columns) */}
-        <div className="lg:col-span-2 p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs">
+        <div className="lg:col-span-2 p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-bold text-gray-900 dark:text-white">
@@ -701,15 +703,15 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => navigate('/catalogue')}
-              className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"
+              className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 shrink-0"
             >
               <span>View Catalog</span>
               <ArrowRight size={13} />
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <table className="w-full text-left text-xs min-w-[480px]">
               <thead className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
                 <tr>
                   <th className="p-2.5">Item Description</th>
@@ -722,14 +724,14 @@ export default function Dashboard() {
                 {topSKUs.map((sku) => (
                   <tr key={sku.name} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
                     <td className="p-2.5">
-                      <p className="font-bold text-gray-900 dark:text-white truncate max-w-[240px]">{sku.name}</p>
+                      <p className="font-bold text-gray-900 dark:text-white truncate max-w-[200px] sm:max-w-[260px]">{sku.name}</p>
                       <p className="text-[10px] text-gray-400 font-mono">{sku.sku}</p>
                     </td>
                     <td className="p-2.5 text-center font-medium">{sku.orderedQty.toLocaleString()}</td>
                     <td className="p-2.5 text-center font-bold text-emerald-600 dark:text-emerald-400">
                       {sku.receivedQty.toLocaleString()}
                     </td>
-                    <td className="p-2.5 text-right font-black text-gray-900 dark:text-white">
+                    <td className="p-2.5 text-right font-black text-gray-900 dark:text-white whitespace-nowrap">
                       {formatCurrency(sku.spend)}
                     </td>
                   </tr>
@@ -740,7 +742,7 @@ export default function Dashboard() {
         </div>
 
         {/* Recent Orders Pulse (1 Column) */}
-        <div className="p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-gray-900 dark:text-white">
@@ -756,7 +758,7 @@ export default function Dashboard() {
               </button>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Latest procurement submissions.
+              Latest procurement submissions across all operating locations.
             </p>
 
             <div className="space-y-2.5">
@@ -787,15 +789,6 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => navigate('/create')}
-            className="w-full mt-4 py-2.5 bg-[var(--color-brand)] text-white text-xs font-bold rounded-xl shadow-xs hover:opacity-90 active:scale-98 transition-all flex items-center justify-center gap-1.5"
-          >
-            <span>Create New Request</span>
-            <ArrowRight size={14} />
-          </button>
         </div>
       </div>
     </div>
