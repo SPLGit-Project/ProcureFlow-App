@@ -683,7 +683,7 @@ const Layout = () => {
                         </button>
                       </>
                     )}
-                    {location.pathname === '/requests' && hasPermission('create_request') && (
+                    {['/', '/dashboard', '/procurement', '/procurement/dashboard', '/smart-buying', '/requests', '/active-requests'].includes(location.pathname) && hasPermission('create_request') && (
                       <Link
                         to="/create"
                         className="bg-tranquil text-white h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest hover:opacity-90 active:scale-95 shadow-sm shadow-tranquil/30 transition-all flex items-center gap-1.5 shrink-0 mr-1"
@@ -1006,7 +1006,7 @@ const Layout = () => {
                 </button>
               </>
             )}
-            {location.pathname === '/requests' && hasPermission('create_request') && (
+            {['/', '/dashboard', '/procurement', '/procurement/dashboard', '/smart-buying', '/requests', '/active-requests'].includes(location.pathname) && hasPermission('create_request') && (
               <Link
                 to="/create"
                 className="bg-[var(--color-brand)] text-white h-9 px-4 rounded-xl text-xs font-bold hover:opacity-90 active:scale-95 shadow-sm shadow-[var(--color-brand)]/20 transition-all flex items-center gap-1.5 shrink-0 mr-2"

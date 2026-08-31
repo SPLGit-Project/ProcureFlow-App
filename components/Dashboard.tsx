@@ -1,437 +1,803 @@
-
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import {
-  BarChart, Bar, Cell, ResponsiveContainer, LineChart, Line
+  BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip as RechartsTooltip,
+  CartesianGrid, Legend
 } from 'recharts';
 import {
-  TrendingUp, TrendingDown, Clock, AlertCircle,
-  ArrowRight, Truck, FileText, ChevronRight,
-  Activity, Package, Star
+  TrendingUp, Package, AlertCircle, ArrowRight, Truck, CheckCircle2,
+  Calendar, Layers, Building2, ExternalLink, ShieldCheck,
+  Percent, DollarSign, Clock, Filter, ArrowUpRight, BarChart3
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import CostImpactModal from './CostImpactModal.tsx';
 import PageHeader from './PageHeader';
+import { formatCurrency } from '../utils/taxCalculations';
+import { PORequest, POLineItem } from '../types';
 
-const Dashboard = () => {
-  const { pos, currentUser, hasPermission, isLoadingData, activeSiteIds, siteName, featureFlags } = useApp();
-  const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+type TimeframePreset = 'ALL' | 'FY2526' | '90D' | '30D';
+
+export default function Dashboard() {
+  const { pos, currentUser, hasPermission, activeSiteIds, siteName } = useApp();
   const navigate = useNavigate();
-  const [isCostModalOpen, setIsCostModalOpen] = useState(false);
-  const isAdmin = currentUser.role === 'ADMIN' || currentUser.roleIds?.includes('ADMIN');
 
-  // Use global filtered data directly
-  const filteredPos = pos;
+  const [timeframe, setTimeframe] = useState<TimeframePreset>('ALL');
 
+  // Filter POs by active site and selected timeframe
+  const filteredPos = useMemo(() => {
+    const now = new Date();
+    const nowMs = now.getTime();
+    const thirtyDaysAgo = nowMs - 30 * 86400000;
+    const ninetyDaysAgo = nowMs - 90 * 86400000;
 
+    return pos.filter((p) => {
+      // Exclude draft or rejected
+      if (p.status === 'REJECTED' || p.status === 'DRAFT') return false;
 
-  // --- Pipeline Metrics (Filtered) ---
-  const pendingApprovals = filteredPos.filter(p => p.status === 'PENDING_APPROVAL');
-  const pendingConcur = filteredPos.filter(p => (p.status === 'APPROVED_PENDING_CONCUR' || p.status === 'APPROVED_PENDING_CONCUR_REQUEST'));
-  const activeOrders = filteredPos.filter(p => p.status === 'ACTIVE' || p.status === 'RECEIVED');
+      // Site filter
+      if (activeSiteIds.length > 0 && !activeSiteIds.includes(p.siteId)) return false;
 
-  
-  // --- Actionable Insights ---
-  const myPendingApprovals = currentUser.role === 'APPROVER' || currentUser.roleIds?.includes('APPROVER') || isAdmin
-      ? pendingApprovals 
-      : [];
-      
-  const globalPendingConcur = hasPermission('link_concur') ? pendingConcur : [];
-  const myPendingConcurSync = pendingConcur.filter(p => p.requesterId === currentUser.id && !hasPermission('link_concur'));
-  const actionConcur = globalPendingConcur.length > 0 ? globalPendingConcur : myPendingConcurSync;
+      // Timeframe filter
+      if (timeframe === 'ALL') return true;
 
-  const myPendingDeliveries = activeOrders.filter(p => {
-        if (isAdmin && activeSiteIds.length > 0) return true; // Show all for selected sites if Admin
-        if (p.requesterId !== currentUser.id) return false;
-        const remaining = p.lines.reduce((acc, line) => acc + (line.quantityOrdered - (line.quantityReceived || 0)), 0);
-        return remaining > 0;
-  });
+      const reqDate = new Date(p.requestDate);
+      const reqMs = reqDate.getTime();
+      if (isNaN(reqMs)) return true;
 
-  const uncapitalizedDeliveries = (hasPermission('manage_finance'))
-      ? filteredPos.flatMap(p => p.deliveries.flatMap(d => d.lines)).filter(l => !l.isCapitalised).length
-      : 0;
+      if (timeframe === '30D') return reqMs >= thirtyDaysAgo;
+      if (timeframe === '90D') return reqMs >= ninetyDaysAgo;
+      if (timeframe === 'FY2526') {
+        // FY25/26: July 1, 2025 to June 30, 2026
+        const fyStart = new Date(2025, 6, 1).getTime();
+        const fyEnd = new Date(2026, 5, 30, 23, 59, 59).getTime();
+        return reqMs >= fyStart && reqMs <= fyEnd;
+      }
 
-  // --- Depletion Analysis (Replacement vs New/Contract) ---
-  const itemDepletion = React.useMemo(() => {
-    return filteredPos
-    .filter(p => p.status !== 'REJECTED' && p.status !== 'DRAFT')
-    .flatMap(p => p.lines)
-    .reduce((acc, line) => {
-        if (!acc[line.itemName]) acc[line.itemName] = { qty: 0, cost: 0 };
-        acc[line.itemName].qty += line.quantityOrdered;
-        acc[line.itemName].cost += (line.quantityOrdered * line.unitPrice);
-        return acc;
-    }, {} as Record<string, { qty: number, cost: number }>);
-  }, [filteredPos]);
+      return true;
+    });
+  }, [pos, activeSiteIds, timeframe]);
 
-  const topDepletionItems = React.useMemo(() => 
-    (Object.entries(itemDepletion) as [string, { qty: number, cost: number }][])
-    .sort((a, b) => b[1].cost - a[1].cost)
-    .slice(0, 5), [itemDepletion]);
+  // ── Executive KPI Metrics ───────────────────────────────────────────────────
+  const kpis = useMemo(() => {
+    let totalPoEx = 0;
+    let totalPoInc = 0;
+    let totalGrEx = 0;
+    let totalGrInc = 0;
+    let totalOpenInc = 0;
+    let totalOrderedUnits = 0;
+    let totalReceivedUnits = 0;
 
-  // --- Spend Split (Real Data) ---
-  const { spendSplitData, replacePct, totalSpend } = React.useMemo(() => {
-      let replacement = 0;
-      let contract = 0;
-      
-      filteredPos.forEach(p => {
-          if (p.status === 'REJECTED' || p.status === 'DRAFT') return;
-          if (p.reasonForRequest === 'Depletion') {
-              replacement += p.totalAmount;
-          } else {
-              contract += p.totalAmount;
-          }
+    filteredPos.forEach((p) => {
+      const pInc = p.totalAmountIncGst ?? (p.totalAmount * 1.10);
+      totalPoEx += p.totalAmount;
+      totalPoInc += pInc;
+
+      let poReceivedEx = 0;
+      let poOrderedUnits = 0;
+      let poReceivedUnits = 0;
+
+      p.lines.forEach((l) => {
+        const ord = l.quantityOrdered || 0;
+        const rec = l.quantityReceived || 0;
+        poOrderedUnits += ord;
+        poReceivedUnits += rec;
+        poReceivedEx += (rec * l.unitPrice);
       });
 
-      const total = replacement + contract;
-      const pct = total > 0 ? Math.round((replacement / total) * 100) : 0;
-      
-      return {
-          spendSplitData: [
-            { name: 'Replacement', value: replacement, color: '#ef4444' },
-            { name: 'New/Contract', value: contract, color: '#10b981' },
-          ],
-          replacePct: pct,
-          totalSpend: total // Use calculated total of valid POs instead of raw reduce
-      };
-  }, [filteredPos]);
+      const poReceivedInc = poReceivedEx * 1.10;
+      totalGrEx += poReceivedEx;
+      totalGrInc += poReceivedInc;
 
-  // --- Avg Approval Time ---
-  const avgApprovalTime = React.useMemo(() => {
-    let totalTime = 0;
-    let count = 0;
-    
-    filteredPos.forEach(po => {
-        if (po.status === 'DRAFT' || po.status === 'PENDING_APPROVAL' || po.status === 'REJECTED') return;
-        
-        // Find Submission and First Approval
-        // Heuristic: Sorted by date, first is submit, last is approve? 
-        // Or look for specific actions.
-        const submitted = po.approvalHistory.find(h => h.action === 'SUBMITTED');
+      totalOrderedUnits += poOrderedUnits;
+      totalReceivedUnits += poReceivedUnits;
 
-        // Let's take the last approval for full cycle
-        const lastApproved = [...po.approvalHistory].reverse().find(h => h.action === 'APPROVED');
-        
-        if (submitted && lastApproved) {
-            const start = new Date(submitted.date).getTime();
-            const end = new Date(lastApproved.date).getTime();
-            if (end > start) {
-                totalTime += (end - start);
-                count++;
-            }
-        }
+      if (p.status !== 'CLOSED') {
+        const remainingVal = Math.max(0, pInc - poReceivedInc);
+        totalOpenInc += remainingVal;
+      }
     });
 
-    if (count === 0) return '0.0 days';
-    const days = totalTime / (1000 * 60 * 60 * 24);
-    if (days < 1) {
-        const hours = days * 24;
-        return `${hours.toFixed(1)} hrs`;
-    }
-    return `${days.toFixed(1)} days`;
-  }, [filteredPos]);
+    const fulfillmentRate = totalOrderedUnits > 0
+      ? Math.round((totalReceivedUnits / totalOrderedUnits) * 100)
+      : 0;
 
-  // ── New KPI metrics (used when uiRevamp is on) ──────────────────────────────
-  const shippingPerformance = React.useMemo(() => {
-    const received = filteredPos.filter(p => p.status === 'RECEIVED' || p.deliveries.some(d => d.lines.length > 0));
-    const onTime = received.filter(p => {
-      if (!p.requestDate) return false;
-      const created = new Date(p.requestDate).getTime();
-      const elapsed = (Date.now() - created) / (1000 * 60 * 60 * 24);
-      return elapsed <= 14;
-    });
-    const pct = received.length > 0 ? Math.round((onTime.length / received.length) * 100) : 100;
-    const trend = received.slice(0, 8).map((_, i) => ({ v: 70 + Math.round(Math.sin(i) * 15 + pct * 0.3) }));
-    return { value: `${pct}%`, label: 'Shipping Performance', sub: 'On-time delivery rate', trend, good: pct >= 80, icon: Truck };
-  }, [filteredPos]);
-
-  const stockAvailability = React.useMemo(() => {
-    const active = filteredPos.filter(p => p.status === 'ACTIVE' || p.status === 'APPROVED_PENDING_CONCUR' || p.status === 'APPROVED_PENDING_CONCUR_REQUEST');
-    const pct = filteredPos.length > 0 ? Math.round((active.length / Math.max(filteredPos.length, 1)) * 100) : 0;
-    const trend = [85, 88, 84, 91, 87, 93, pct].map(v => ({ v }));
-    return { value: `${pct}%`, label: 'Stock Availability', sub: 'Active orders vs total pipeline', trend, good: pct >= 70, icon: Package };
-  }, [filteredPos]);
-
-  const volumeTrends = React.useMemo(() => {
-    const months: Record<string, number> = {};
-    filteredPos.forEach(p => {
-      if (p.status === 'REJECTED' || p.status === 'DRAFT' || !p.requestDate) return;
-      const m = p.requestDate.slice(0, 7);
-      months[m] = (months[m] || 0) + (p.totalAmount || 0);
-    });
-    const sorted = Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).slice(-6);
-    const lastTwo = sorted.slice(-2).map(([, v]) => v);
-    const delta = lastTwo.length === 2 && lastTwo[0] > 0 ? Math.round(((lastTwo[1] - lastTwo[0]) / lastTwo[0]) * 100) : 0;
-    const trend = sorted.map(([, v]) => ({ v }));
     return {
-      value: `$${Math.round(totalSpend / 1000)}k`,
-      label: 'Volume Trends',
-      sub: `${delta >= 0 ? '+' : ''}${delta}% vs prior period`,
-      trend,
-      good: delta >= 0,
-      icon: Activity,
-      delta
+      totalPoEx,
+      totalPoInc,
+      totalGrEx,
+      totalGrInc,
+      totalOpenInc,
+      totalOrderedUnits,
+      totalReceivedUnits,
+      fulfillmentRate,
+      orderCount: filteredPos.length
     };
-  }, [filteredPos, totalSpend]);
+  }, [filteredPos]);
 
-  const satisfactionProxy = React.useMemo(() => {
-    const raw = avgApprovalTime;
-    const days = raw.includes('hrs') ? parseFloat(raw) / 24 : parseFloat(raw);
-    const score = Math.max(0, Math.min(100, Math.round(100 - days * 8)));
-    const trend = [82, 78, 85, score - 5, score + 2, score].map(v => ({ v: Math.max(0, Math.min(100, v)) }));
-    return { value: `${score}`, label: 'Approval Score', sub: `Based on ${raw} avg cycle`, trend, good: score >= 70, icon: Star };
-  }, [avgApprovalTime]);
+  // ── Monthly Procurement Flow (Recharts Data) ────────────────────────────────
+  const monthlyChartData = useMemo(() => {
+    const monthMap = new Map<string, {
+      monthKey: string;
+      monthLabel: string;
+      poAmount: number;
+      grAmount: number;
+      openAmount: number;
+      orderCount: number;
+    }>();
 
-  const revampKpis = [shippingPerformance, stockAvailability, volumeTrends, satisfactionProxy];
+    filteredPos.forEach((p) => {
+      const d = new Date(p.requestDate);
+      if (isNaN(d.getTime())) return;
 
-  if (isLoadingData) {
-      return (
-          <div className="flex h-[50vh] w-full items-center justify-center">
-              <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-gray-900 dark:border-white"></div>
-          </div>
-      );
-  }
+      let year = d.getFullYear();
+      if (year < 100) year += 2000;
+      const m = d.getMonth();
+      const monthKey = `${year}-${String(m + 1).padStart(2, '0')}`;
+      const monthLabel = `${MONTH_NAMES[m]} ${String(year).slice(-2)}`;
 
-  interface StatCardProps {
-      title: string;
-      value: string | number;
-      icon: React.ElementType;
-      color: string;
-      onClick?: () => void;
-  }
+      if (!monthMap.has(monthKey)) {
+        monthMap.set(monthKey, {
+          monthKey,
+          monthLabel,
+          poAmount: 0,
+          grAmount: 0,
+          openAmount: 0,
+          orderCount: 0
+        });
+      }
 
-  const StatCard = ({ title, value, icon: Icon, color, onClick }: StatCardProps) => (
-      <div 
-        onClick={onClick}
-        className={`group bg-surface border border-default elevation-1 transition-elevation p-5 rounded-2xl relative overflow-hidden ${onClick ? 'cursor-pointer hover:elevation-2' : ''}`}
-      >
-          {onClick && <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl opacity-0 group-hover:opacity-10 transition-opacity bg-${color}-500`}></div>}
-          <div className="flex justify-between items-start mb-3">
-              <div className={`p-2.5 rounded-xl bg-${color}-50 dark:bg-${color}-500/10 text-${color}-600 dark:text-${color}-500 group-hover:scale-110 transition-transform`}>
-                  <Icon size={22} />
-              </div>
-              {onClick && (
-                <span className="flex items-center text-secondary dark:text-gray-400 text-xs font-medium gap-1 opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
-                    View <ChevronRight size={12}/>
-                </span>
-              )}
-          </div>
-          <div>
-              <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-1 tracking-tight">{value}</h3>
-              <p className="text-sm font-medium text-secondary dark:text-gray-400">{title}</p>
-          </div>
-      </div>
-  );
+      const entry = monthMap.get(monthKey)!;
+      const poInc = p.totalAmountIncGst ?? (p.totalAmount * 1.10);
+      entry.poAmount += poInc;
+      entry.orderCount += 1;
+
+      let recValEx = 0;
+      p.lines.forEach((l) => {
+        recValEx += ((l.quantityReceived || 0) * l.unitPrice);
+      });
+      const recValInc = recValEx * 1.10;
+      entry.grAmount += recValInc;
+
+      if (p.status !== 'CLOSED') {
+        entry.openAmount += Math.max(0, poInc - recValInc);
+      }
+    });
+
+    return Array.from(monthMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-12) // Show last 12 chronological months
+      .map(([_, v]) => v);
+  }, [filteredPos]);
+
+  // ── Reason for Request Analysis (Depletion vs New Customer vs Contract) ──────
+  const reasonBreakdown = useMemo(() => {
+    const map = new Map<string, { reason: string; spend: number; units: number; orderCount: number; color: string }>();
+    
+    map.set('Depletion', { reason: 'Replacement / Depletion', spend: 0, units: 0, orderCount: 0, color: '#f59e0b' });
+    map.set('New Customer', { reason: 'New Customer Launch', spend: 0, units: 0, orderCount: 0, color: '#10b981' });
+    map.set('Other', { reason: 'Contract Growth / Other', spend: 0, units: 0, orderCount: 0, color: '#3b82f6' });
+
+    filteredPos.forEach((p) => {
+      let key = 'Other';
+      if (p.reasonForRequest === 'Depletion') key = 'Depletion';
+      else if (p.reasonForRequest === 'New Customer') key = 'New Customer';
+
+      const entry = map.get(key)!;
+      const poInc = p.totalAmountIncGst ?? (p.totalAmount * 1.10);
+      entry.spend += poInc;
+      entry.orderCount += 1;
+      p.lines.forEach((l) => {
+        entry.units += (l.quantityOrdered || 0);
+      });
+    });
+
+    const total = kpis.totalPoInc || 1;
+    return Array.from(map.values()).map((item) => ({
+      ...item,
+      pct: Math.round((item.spend / total) * 100)
+    }));
+  }, [filteredPos, kpis.totalPoInc]);
+
+  // ── Supplier Spend Distribution ─────────────────────────────────────────────
+  const supplierSpend = useMemo(() => {
+    const map = new Map<string, { supplier: string; spend: number; orders: number; lines: number }>();
+
+    filteredPos.forEach((p) => {
+      const sup = p.supplierName || 'Unknown Supplier';
+      if (!map.has(sup)) {
+        map.set(sup, { supplier: sup, spend: 0, orders: 0, lines: 0 });
+      }
+      const entry = map.get(sup)!;
+      entry.spend += (p.totalAmountIncGst ?? (p.totalAmount * 1.10));
+      entry.orders += 1;
+      entry.lines += p.lines.length;
+    });
+
+    const total = kpis.totalPoInc || 1;
+    return Array.from(map.values())
+      .map((s) => ({
+        ...s,
+        sharePct: Math.round((s.spend / total) * 100)
+      }))
+      .sort((a, b) => b.spend - a.spend);
+  }, [filteredPos, kpis.totalPoInc]);
+
+  // ── Site Performance Ranking ────────────────────────────────────────────────
+  const sitePerformance = useMemo(() => {
+    const map = new Map<string, {
+      site: string;
+      spend: number;
+      orderedUnits: number;
+      receivedUnits: number;
+      openCount: number;
+      topItem: string;
+      itemsMap: Map<string, number>;
+    }>();
+
+    filteredPos.forEach((p) => {
+      const site = p.site || 'National';
+      if (!map.has(site)) {
+        map.set(site, {
+          site,
+          spend: 0,
+          orderedUnits: 0,
+          receivedUnits: 0,
+          openCount: 0,
+          topItem: '',
+          itemsMap: new Map()
+        });
+      }
+      const entry = map.get(site)!;
+      entry.spend += (p.totalAmountIncGst ?? (p.totalAmount * 1.10));
+      if (p.status !== 'CLOSED') entry.openCount += 1;
+
+      p.lines.forEach((l) => {
+        const ord = l.quantityOrdered || 0;
+        const rec = l.quantityReceived || 0;
+        entry.orderedUnits += ord;
+        entry.receivedUnits += rec;
+
+        const curVal = (entry.itemsMap.get(l.itemName) || 0) + (ord * l.unitPrice);
+        entry.itemsMap.set(l.itemName, curVal);
+      });
+    });
+
+    return Array.from(map.values())
+      .map((s) => {
+        let bestItem = '-';
+        let bestVal = 0;
+        s.itemsMap.forEach((v, k) => {
+          if (v > bestVal) {
+            bestVal = v;
+            bestItem = k;
+          }
+        });
+        const fulfillment = s.orderedUnits > 0 ? Math.round((s.receivedUnits / s.orderedUnits) * 100) : 0;
+        return {
+          ...s,
+          topItem: bestItem,
+          fulfillment
+        };
+      })
+      .sort((a, b) => b.spend - a.spend);
+  }, [filteredPos]);
+
+  // ── Top SKU Velocity & Capital Allocation ───────────────────────────────────
+  const topSKUs = useMemo(() => {
+    const map = new Map<string, {
+      name: string;
+      sku: string;
+      orderedQty: number;
+      receivedQty: number;
+      spend: number;
+      orderCount: number;
+    }>();
+
+    filteredPos.forEach((p) => {
+      p.lines.forEach((l) => {
+        const key = l.itemName;
+        if (!map.has(key)) {
+          map.set(key, {
+            name: l.itemName,
+            sku: l.sku || '-',
+            orderedQty: 0,
+            receivedQty: 0,
+            spend: 0,
+            orderCount: 0
+          });
+        }
+        const entry = map.get(key)!;
+        entry.orderedQty += (l.quantityOrdered || 0);
+        entry.receivedQty += (l.quantityReceived || 0);
+        entry.spend += ((l.quantityOrdered || 0) * l.unitPrice * 1.10);
+        entry.orderCount += 1;
+      });
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => b.spend - a.spend)
+      .slice(0, 8);
+  }, [filteredPos]);
+
+  // ── Recent Orders Feed ──────────────────────────────────────────────────────
+  const recentOrders = useMemo(() => {
+    return [...filteredPos]
+      .sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime())
+      .slice(0, 5);
+  }, [filteredPos]);
 
   return (
-    <div className="space-y-6 md:space-y-8 max-w-7xl mx-auto pb-8 animate-fade-in">
-      
-      {/* Welcome & Site Filter */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 pb-2">
-         <PageHeader title="Procurement Dashboard" subtitle={`Overview for ${currentUser.name}`} />
-         
-         <div className="flex gap-3 w-full md:w-auto">
-             <button type="button" onClick={() => navigate('/create')} className="whitespace-nowrap bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-semibold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">
-                 <FileText size={18} /> New Request
-             </button>
-         </div>
-      </div>
+    <div className="mx-auto flex min-h-[calc(100dvh-7.25rem)] max-w-7xl flex-col gap-6 overflow-hidden animate-page-entry pb-12">
+      <PageHeader title="Executive Dashboard" subtitle="Procurement Analytics & Performance" />
 
-      {/* Pipeline Flow Visual */}
-      <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 overflow-hidden">
-          <h3 className="text-sm font-bold text-secondary dark:text-gray-500 uppercase tracking-wider mb-4">
-              Request Pipeline {activeSiteIds.length > 0 
-                  ? (activeSiteIds.length === 1 ? `(${siteName(activeSiteIds[0])})` : `(${activeSiteIds.length} Sites)`) 
-                  : '(None Selected)'}
-          </h3>
-          <div className="flex flex-col md:flex-row gap-2 relative">
-             {[
-                 { label: 'Requested', count: pendingApprovals.length, color: 'text-amber-500 bg-amber-50' },
-                 { label: 'Approved', count: pendingConcur.length, color: 'text-blue-500 bg-blue-50' },
-                 { label: 'Active', count: activeOrders.length, color: 'text-emerald-500 bg-emerald-50' },
-                 { label: 'Received', count: filteredPos.filter(p => p.status === 'RECEIVED').length, color: 'text-indigo-500 bg-indigo-50' }
-             ].map((step, idx) => (
-                 <div key={idx} className={`flex-1 flex items-center p-4 rounded-xl ${step.color} dark:bg-opacity-10 dark:bg-white/5 relative group`}>
-                     <div className="mr-4 text-3xl font-bold">{step.count}</div>
-                     <div className="text-sm font-semibold opacity-70 uppercase tracking-tight">{step.label}</div>
-                     {idx < 3 && <ChevronRight className="absolute right-[-14px] top-1/2 -translate-y-1/2 text-gray-300 dark:text-gray-700 z-10 hidden md:block" size={24} strokeWidth={3} />}
-                 </div>
-             ))}
+      {/* ── TOP CONTROLS & TIMEFRAME SLICER ─────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#15171e] p-3.5 rounded-2xl border border-gray-200/80 dark:border-gray-800 shadow-2xs">
+        <div className="flex items-center gap-2">
+          <BarChart3 size={18} className="text-[var(--color-brand)]" />
+          <div>
+            <h2 className="text-xs font-black uppercase tracking-widest text-gray-900 dark:text-white">
+              Portfolio Scope
+            </h2>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              {activeSiteIds.length === 0
+                ? 'Consolidated View (All Laundry Locations)'
+                : activeSiteIds.length === 1
+                  ? `${siteName(activeSiteIds[0])} Workspace`
+                  : `${activeSiteIds.length} Selected Sites`}
+            </p>
           </div>
+        </div>
+
+        {/* Timeframe selector tabs */}
+        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/60 p-1 rounded-xl">
+          {[
+            { id: 'ALL', label: 'All Time' },
+            { id: 'FY2526', label: 'FY 25/26' },
+            { id: '90D', label: 'Last 90 Days' },
+            { id: '30D', label: 'Last 30 Days' }
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTimeframe(t.id as TimeframePreset)}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                timeframe === t.id
+                  ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* KPI Grid */}
-      {uiRevamp ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-          {revampKpis.map(kpi => {
-            const Icon = kpi.icon;
-            const deltaKpi = kpi as typeof volumeTrends;
-            return (
+      {/* ── EXECUTIVE KPI METRIC CARDS ────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* Total Spend */}
+        <div className="p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+              Total PO Issued (Inc GST)
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
+              <DollarSign size={16} />
+            </div>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+              {formatCurrency(kpis.totalPoInc)}
+            </p>
+            <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
+              <span>Ex GST: {formatCurrency(kpis.totalPoEx)}</span>
+              <span>{kpis.orderCount} Orders</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Goods Received */}
+        <div className="p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+              Goods Received (GR Inc GST)
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+              <CheckCircle2 size={16} />
+            </div>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+              {formatCurrency(kpis.totalGrInc)}
+            </p>
+            <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
+              <span>Ex GST: {formatCurrency(kpis.totalGrEx)}</span>
+              <span>{kpis.totalReceivedUnits.toLocaleString()} units</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Fulfillment Rate */}
+        <div className="p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+              Delivery Fulfillment Rate
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-violet-500/10 text-violet-600 flex items-center justify-center font-bold">
+              <Percent size={16} />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline justify-between">
+              <p className="text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+                {kpis.fulfillmentRate}%
+              </p>
+              <span className="text-[11px] font-bold text-gray-500">
+                {kpis.totalReceivedUnits.toLocaleString()} / {kpis.totalOrderedUnits.toLocaleString()}
+              </span>
+            </div>
+            {/* Progress bar */}
+            <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
               <div
-                key={kpi.label}
-                className="group bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-2xl p-5 hover:shadow-lg hover:scale-[1.01] transition-all duration-150 cursor-default overflow-hidden"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className={`p-2 rounded-xl ${kpi.good ? 'bg-[rgba(18,157,192,0.1)] text-[var(--color-tranquil)]' : 'bg-red-50 dark:bg-red-500/10 text-red-500'}`}>
-                    <Icon size={18} />
-                  </div>
-                  {'delta' in deltaKpi ? (
-                    <span className={`text-xs font-bold flex items-center gap-0.5 ${deltaKpi.delta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {deltaKpi.delta >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                      {deltaKpi.delta >= 0 ? '+' : ''}{deltaKpi.delta}%
-                    </span>
-                  ) : (
-                    <span className={`text-xs font-bold ${kpi.good ? 'text-[var(--color-tranquil)]' : 'text-red-500'}`}>
-                      {kpi.good ? '▲ Good' : '▼ Low'}
-                    </span>
-                  )}
-                </div>
-                <div className="text-3xl font-black text-gray-900 dark:text-white tracking-tight mb-0.5">{kpi.value}</div>
-                <div className="text-xs font-bold text-gray-900 dark:text-white mb-0.5">{kpi.label}</div>
-                <div className="text-xs text-gray-400 mb-4">{kpi.sub}</div>
-                {kpi.trend.length > 1 && (
-                  <ResponsiveContainer width="100%" height={36}>
-                    <LineChart data={kpi.trend}>
-                      <Line
-                        type="monotone"
-                        dataKey="v"
-                        stroke={kpi.good ? 'var(--color-tranquil)' : '#ef4444'}
-                        strokeWidth={2}
-                        dot={false}
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <StatCard title="Total Value (YTD)" value={`$${Math.round(totalSpend/1000)}k`} icon={TrendingUp} color="purple" onClick={hasPermission('view_reports') ? () => navigate('/reports') : undefined}/>
-          <StatCard title="Pending Actions" value={myPendingApprovals.length + actionConcur.length + uncapitalizedDeliveries + myPendingDeliveries.length} icon={AlertCircle} color="red" onClick={() => navigate('/requests')} />
-          <StatCard title="Active Suppliers" value={new Set(filteredPos.map(p=>p.supplierName)).size} icon={Truck} color="orange" onClick={hasPermission('view_reports') ? () => navigate('/reports') : undefined} />
-          <StatCard title="Avg. Approval" value={avgApprovalTime} icon={Clock} color="cyan" onClick={hasPermission('view_reports') ? () => navigate('/reports') : undefined} />
-        </div>
-      )}
-
-      {/* Metrics & Analysis Grid */}
-      <div className="grid grid-cols-1 lg:col-span-3 gap-6">
-          
-          {/* Depletion/Replacement Analysis */}
-          <div className="lg:col-span-3 space-y-6">
-              {/* Cost Impact Breakdown */}
-              <div className="bg-elevated rounded-2xl p-6 border border-strong elevation-2 flex flex-col md:flex-row items-center gap-6">
-                  <div className="flex-1">
-                      <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Cost Impact Analysis</h3>
-                            <p className="text-sm text-secondary dark:text-gray-500 mb-6">Financial impact of replacements (Depletion) vs Contract inclusions.</p>
-                          </div>
-                          <button 
-                            type="button"
-                            onClick={() => setIsCostModalOpen(true)}
-                            className="group relative overflow-hidden flex items-center gap-2 bg-gradient-to-br from-[var(--color-brand)] to-blue-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-95 transition-all outline-none border border-white/10"
-                          >
-                            <span className="relative z-10 flex items-center gap-2 text-xs uppercase tracking-widest">
-                                Financial Hub <ArrowRight size={14} strokeWidth={3} />
-                            </span>
-                            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
-                          </button>
-                      </div>
-                      
-                      <div className="flex flex-col gap-4">
-                          <div>
-                              <div className="flex justify-between text-sm font-medium mb-1">
-                                  <span className="text-red-500">Replacement / Depletion</span>
-                                  <span className="text-gray-900 dark:text-white">${Math.round(spendSplitData[0].value).toLocaleString()}</span>
-                              </div>
-                              <div className="w-full h-3 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
-                                  <div className="h-full bg-red-500 rounded-full" style={{ width: `${replacePct}%` }}></div>
-                              </div>
-                              <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Direct cost impact from lost/damaged inventory.</p>
-                          </div>
-                          <div>
-                              <div className="flex justify-between text-sm font-medium mb-1">
-                                  <span className="text-emerald-500">New / Contract (Net Zero)</span>
-                                  <span className="text-gray-900 dark:text-white">${Math.round(spendSplitData[1].value).toLocaleString()}</span>
-                              </div>
-                              <div className="w-full h-3 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
-                                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${100 - replacePct}%` }}></div>
-                              </div>
-                              <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Covered under contract hire terms.</p>
-                          </div>
-                      </div>
-                  </div>
-                  
-                  {/* Chart Visual */}
-                  <div className="w-[180px] h-[180px] relative flex items-center justify-center min-w-[180px] min-h-[180px]">
-                       <ResponsiveContainer width="100%" height="100%" minWidth={180} minHeight={180}>
-                          <BarChart data={spendSplitData}>
-                              <Bar dataKey="value" >
-                                {spendSplitData.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={entry.color} />
-                                ))}
-                              </Bar>
-                          </BarChart>
-                       </ResponsiveContainer>
-                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                           <div className="text-center">
-                               <div className="text-2xl font-bold text-gray-900 dark:text-white">{replacePct}%</div>
-                                <div className="text-[10px] uppercase text-tertiary dark:text-gray-500 font-bold">Replacement</div>
-                           </div>
-                       </div>
-                  </div>
-              </div>
-
-               {/* Top Depletion Items */}
-               <div className="bg-surface rounded-2xl p-6 border border-default elevation-1 flex-1">
-                   <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Highest Depletion Items</h3>
-                        {hasPermission('view_reports') && (
-                            <button type="button" onClick={() => navigate('/reports')} className="text-xs text-[var(--color-brand)] font-medium hover:underline">Full Report</button>
-                        )}
-                   </div>
-                  
-                  <div className="space-y-3">
-                      {topDepletionItems.length > 0 ? topDepletionItems.map(([item, data]) => (
-                          <div key={item} className="flex items-center justify-between p-3 bg-surface-raised rounded-xl hover:elevation-0 transition-elevation">
-                              <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/20 text-red-600 flex items-center justify-center font-bold text-xs shadow-sm">
-                                      {Math.round(data.qty)}
-                                  </div>
-                                  <div>
-                                      <div className="font-bold text-sm text-gray-900 dark:text-white truncate max-w-[200px]" title={item}>{item}</div>
-                                      <div className="text-[10px] text-tertiary dark:text-gray-500">Units Replaced</div>
-                                  </div>
-                              </div>
-                              <div className="text-right">
-                                  <div className="font-bold text-sm text-gray-900 dark:text-white">${data.cost.toLocaleString()}</div>
-                                  <div className="text-[10px] text-red-500 font-medium">Cost Impact</div>
-                              </div>
-                          </div>
-                      )) : (
-                          <div className="text-center py-6 text-gray-400 text-sm">
-                              No depletion data found.
-                          </div>
-                      )}
-                  </div>
-               </div>
+                className="h-full bg-violet-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, kpis.fulfillmentRate)}%` }}
+              />
+            </div>
           </div>
+        </div>
 
-
+        {/* Open Commitment */}
+        <div className="p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+              Open Commitment (Inc GST)
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+              <Truck size={16} />
+            </div>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
+              {formatCurrency(kpis.totalOpenInc)}
+            </p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
+              In-transit &amp; pending orders
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Modals */}
-      {isCostModalOpen && (
-        <CostImpactModal 
-          isOpen={isCostModalOpen} 
-          onClose={() => setIsCostModalOpen(false)} 
-        />
-      )}
+      {/* ── HERO MONTHLY PROCUREMENT FLOW CHART ───────────────────────────────── */}
+      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] p-5 shadow-2xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+              Monthly Procurement Flow (PO vs GR vs Open Amount)
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Side-by-side breakdown of purchase orders issued and physical goods receipted
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/reports')}
+            className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 self-start sm:self-auto"
+          >
+            <span>Explore Full Reports</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+
+        <div className="h-[320px] w-full">
+          {monthlyChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyChartData} margin={{ top: 15, right: 10, left: 10, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
+                <XAxis dataKey="monthLabel" tick={{ fontSize: 11, fill: '#888' }} />
+                <YAxis tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: '#888' }} />
+                <RechartsTooltip
+                  formatter={(val: number) => [formatCurrency(val), '']}
+                  contentStyle={{
+                    backgroundColor: '#1f2937',
+                    color: '#fff',
+                    borderRadius: '12px',
+                    border: 'none',
+                    fontSize: '12px',
+                    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)'
+                  }}
+                />
+                <Legend wrapperStyle={{ paddingTop: '12px', fontSize: '12px' }} />
+                <Bar dataKey="poAmount" name="PO Amount (Inc GST)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="grAmount" name="Goods Received (Inc GST)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="openAmount" name="Open Amount (Inc GST)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-xs text-gray-400">
+              No procurement activity recorded for this selection.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── STRATEGIC SPEND ANALYTICS: REASON SPLIT & SUPPLIERS ────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Reason for Request Analysis */}
+        <div className="p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                Spend Split by Reason for Request
+              </h3>
+              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                Capital Allocation
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Breakdown between replacement inventory (depletion) vs contract additions.
+            </p>
+
+            <div className="space-y-3.5">
+              {reasonBreakdown.map((r) => (
+                <div key={r.reason}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="font-bold text-gray-800 dark:text-gray-200">{r.reason}</span>
+                    <span className="font-black text-gray-900 dark:text-white">
+                      {formatCurrency(r.spend)} ({r.pct}%)
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${r.pct}%`, backgroundColor: r.color }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">
+                    <span>{r.orderCount} Orders</span>
+                    <span>{r.units.toLocaleString()} units</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs flex items-center justify-between">
+            <span className="font-bold text-amber-700 dark:text-amber-300">
+              Depletion Cost Impact:
+            </span>
+            <span className="font-black text-amber-800 dark:text-amber-200">
+              {formatCurrency(reasonBreakdown.find((r) => r.reason.includes('Depletion'))?.spend || 0)}
+            </span>
+          </div>
+        </div>
+
+        {/* Supplier Share of Spend */}
+        <div className="p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                Supplier Share of Spend
+              </h3>
+              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                Vendor Distribution
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Primary supplier allocation across active purchase orders.
+            </p>
+
+            <div className="space-y-3.5">
+              {supplierSpend.slice(0, 4).map((s) => (
+                <div key={s.supplier}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="font-bold text-gray-800 dark:text-gray-200 truncate max-w-[200px]" title={s.supplier}>
+                      {s.supplier}
+                    </span>
+                    <span className="font-black text-gray-900 dark:text-white">
+                      {formatCurrency(s.spend)} ({s.sharePct}%)
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[var(--color-brand)] rounded-full transition-all duration-500"
+                      style={{ width: `${s.sharePct}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">
+                    <span>{s.orders} Orders</span>
+                    <span>{s.lines} Line Items</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs flex items-center justify-between">
+            <span className="font-bold text-blue-700 dark:text-blue-300">
+              Primary Supplier (Top Spend):
+            </span>
+            <span className="font-black text-blue-800 dark:text-blue-200 truncate max-w-[200px]">
+              {supplierSpend[0]?.supplier || '-'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── SITE PROCUREMENT & PERFORMANCE RANKING ────────────────────────────── */}
+      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] p-5 shadow-2xs">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+              Site Procurement &amp; Delivery Ranking
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Operating site comparison across total spend, units delivered, and fulfillment
+            </p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
+              <tr>
+                <th className="p-3">Laundry Site</th>
+                <th className="p-3 text-right">Total Spend (Inc GST)</th>
+                <th className="p-3 text-center">Ordered Units</th>
+                <th className="p-3 text-center">Delivered Units</th>
+                <th className="p-3 text-center">Fulfillment</th>
+                <th className="p-3">Top Injected Item</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {sitePerformance.map((s) => (
+                <tr key={s.site} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
+                  <td className="p-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Building2 size={14} className="text-gray-400" />
+                    <span>{s.site}</span>
+                  </td>
+                  <td className="p-3 text-right font-black text-emerald-600 dark:text-emerald-400">
+                    {formatCurrency(s.spend)}
+                  </td>
+                  <td className="p-3 text-center font-medium text-gray-700 dark:text-gray-300">
+                    {s.orderedUnits.toLocaleString()}
+                  </td>
+                  <td className="p-3 text-center font-bold text-blue-600 dark:text-blue-400">
+                    {s.receivedUnits.toLocaleString()}
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                      s.fulfillment >= 80
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                        : s.fulfillment >= 40
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                          : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                    }`}>
+                      {s.fulfillment}%
+                    </span>
+                  </td>
+                  <td className="p-3 text-gray-600 dark:text-gray-300 truncate max-w-[200px]" title={s.topItem}>
+                    {s.topItem}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── TOP SKU VELOCITY & RECENT ORDERS PULSE ─────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Top SKU Ranking (2 Columns) */}
+        <div className="lg:col-span-2 p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                Top SKU Velocity &amp; Capital Allocation
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Highest-volume inventory items ordered across all sites
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/catalogue')}
+              className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"
+            >
+              <span>View Catalog</span>
+              <ArrowRight size={13} />
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
+                <tr>
+                  <th className="p-2.5">Item Description</th>
+                  <th className="p-2.5 text-center">Ordered</th>
+                  <th className="p-2.5 text-center text-emerald-600">Received</th>
+                  <th className="p-2.5 text-right">Total Invested</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {topSKUs.map((sku) => (
+                  <tr key={sku.name} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
+                    <td className="p-2.5">
+                      <p className="font-bold text-gray-900 dark:text-white truncate max-w-[240px]">{sku.name}</p>
+                      <p className="text-[10px] text-gray-400 font-mono">{sku.sku}</p>
+                    </td>
+                    <td className="p-2.5 text-center font-medium">{sku.orderedQty.toLocaleString()}</td>
+                    <td className="p-2.5 text-center font-bold text-emerald-600 dark:text-emerald-400">
+                      {sku.receivedQty.toLocaleString()}
+                    </td>
+                    <td className="p-2.5 text-right font-black text-gray-900 dark:text-white">
+                      {formatCurrency(sku.spend)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Recent Orders Pulse (1 Column) */}
+        <div className="p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                Recent Purchase Orders
+              </h3>
+              <button
+                type="button"
+                onClick={() => navigate('/requests')}
+                className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"
+              >
+                <span>View All</span>
+                <ArrowRight size={12} />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              Latest procurement submissions.
+            </p>
+
+            <div className="space-y-2.5">
+              {recentOrders.map((po) => (
+                <div
+                  key={po.id}
+                  onClick={() => navigate(`/requests/${po.id}`)}
+                  className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-[var(--color-brand)]/50 hover:shadow-xs transition-all cursor-pointer bg-gray-50/50 dark:bg-gray-900/30"
+                >
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="font-mono font-bold text-xs text-gray-950 dark:text-white">
+                      {po.displayId || po.id}
+                    </span>
+                    <span className="px-2 py-0.2 rounded text-[9px] font-black bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                      {po.status}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-bold text-gray-800 dark:text-gray-200 truncate">
+                    {po.supplierName}
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-gray-500 mt-1">
+                    <span>{po.site}</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                      {formatCurrency(po.totalAmountIncGst ?? po.totalAmount * 1.10)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/create')}
+            className="w-full mt-4 py-2.5 bg-[var(--color-brand)] text-white text-xs font-bold rounded-xl shadow-xs hover:opacity-90 active:scale-98 transition-all flex items-center justify-center gap-1.5"
+          >
+            <span>Create New Request</span>
+            <ArrowRight size={14} />
+          </button>
+        </div>
+      </div>
     </div>
   );
-};
-
-export default Dashboard;
+}
