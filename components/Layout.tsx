@@ -720,7 +720,6 @@ const Layout = () => {
                       title="Task Center"
                     >
                       <TaskIcon size={18} />
-                      <span className="absolute top-1 right-1 w-2 h-2 bg-red-400 rounded-full border-2 border-tranquil animate-pulse" />
                     </button>
                     <button type="button"
                       onClick={() => setIsNotificationDrawerOpen(true)}
@@ -1051,7 +1050,6 @@ const Layout = () => {
               title="Task Center"
             >
               <TaskIcon size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#15171e] animate-pulse" />
             </button>
 
             <button type="button"

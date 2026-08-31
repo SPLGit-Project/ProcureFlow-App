@@ -141,7 +141,7 @@ export function buildTeamsAdaptiveCard(params: {
 }
 
 /**
- * Builds standard branded responsive HTML email template incorporating Procureflow logo
+ * Builds standard branded responsive HTML email template incorporating Procureflow logo in the body
  */
 export function buildEmailHtml(params: {
     title: string;
@@ -178,7 +178,7 @@ export function buildEmailHtml(params: {
         <tr>
             <td align="center">
                 <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;">
-                    <!-- Main Body Content with Logo at the Top -->
+                    <!-- Main Body Content with In-Body Logo at the Top -->
                     <tr>
                         <td style="padding: 36px 36px 28px 36px;">
                             <!-- ProcureFlow Logo at top of body -->
@@ -287,7 +287,7 @@ class NotificationEngineService {
     }
 
     /**
-     * Fetch in-app notifications for the current user
+     * Fetch in-app notifications for the current user (by ID or related user ID)
      */
     async getUserNotifications(userId: string, limit = 50): Promise<EnhancedAppNotification[]> {
         const { data, error } = await supabase
@@ -360,7 +360,49 @@ class NotificationEngineService {
     }
 
     /**
-     * Core dispatch engine: Renders templates and delivers across In-App, Email, and MS Teams.
+     * Fetch configured Microsoft Teams webhook URL from database
+     */
+    async getTeamsWebhookUrl(): Promise<string> {
+        try {
+            const { data } = await supabase
+                .from('app_config')
+                .select('key, value')
+                .in('key', ['teams_webhook_url', 'teams_config']);
+
+            let url = '';
+            data?.forEach(c => {
+                if (c.key === 'teams_webhook_url' && typeof c.value === 'string' && c.value) {
+                    url = c.value;
+                } else if (c.key === 'teams_config' && c.value && (c.value as any).webhookUrl) {
+                    url = (c.value as any).webhookUrl;
+                }
+            });
+            return url;
+        } catch {
+            return '';
+        }
+    }
+
+    /**
+     * Save Microsoft Teams webhook URL to database
+     */
+    async saveTeamsWebhookUrl(url: string): Promise<void> {
+        await Promise.all([
+            supabase.from('app_config').upsert({
+                key: 'teams_webhook_url',
+                value: url,
+                updated_at: new Date().toISOString()
+            }),
+            supabase.from('app_config').upsert({
+                key: 'teams_config',
+                value: { webhookUrl: url },
+                updated_at: new Date().toISOString()
+            })
+        ]);
+    }
+
+    /**
+     * Core dispatch engine: Renders templates and delivers across In-App, Email (via MS Graph), and MS Teams.
      */
     async dispatchNotification(params: DispatchNotificationParams): Promise<{
         inAppSent: number;
@@ -391,8 +433,14 @@ class NotificationEngineService {
 
         for (const recipient of params.recipients) {
             if (recipient.type === 'USER') {
-                const u = users.find(x => x.id === recipient.id);
-                if (u) targetUsers.push({ id: u.id, email: u.email, name: u.name });
+                const u = users.find(x => x.id === recipient.id || (x as any).auth_user_id === recipient.id);
+                if (u) {
+                    targetUsers.push({ id: u.id, email: u.email, name: u.name });
+                } else if (recipient.id.includes('@')) {
+                    targetUsers.push({ email: recipient.id, name: recipient.id });
+                } else {
+                    targetUsers.push({ id: recipient.id });
+                }
             } else if (recipient.type === 'ROLE') {
                 const matching = users.filter(u => 
                     u.role === recipient.id || 
@@ -412,7 +460,7 @@ class NotificationEngineService {
         const uniqueRecipients = Array.from(new Map(targetUsers.map(u => [u.id || u.email, u])).values());
 
         // Context variables for interpolation
-        const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://procureflow.com.au';
+        const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://procureflow.splservices.com.au';
         const vars = {
             ...params.variables,
             app_url: appUrl,
@@ -481,7 +529,7 @@ class NotificationEngineService {
             }
         }
 
-        // 5. Email Notification Dispatch
+        // 5. Real Email Notification Dispatch via Supabase Edge Function (Microsoft Graph)
         if (!template || template.channels.email?.enabled !== false) {
             const emailSubject = template?.channels.email?.subject 
                 ? interpolateTemplate(template.channels.email.subject, vars) 
@@ -496,7 +544,7 @@ class NotificationEngineService {
                 bodyHtml: rawBody,
                 facts: factsList,
                 actionUrl: params.actionUrl,
-                actionLabel: params.actionLabel || 'View in ProcureFlow'
+                actionLabel: params.actionLabel || 'Open in ProcureFlow'
             });
 
             for (const target of uniqueRecipients) {
@@ -508,33 +556,58 @@ class NotificationEngineService {
                     if (prefs && !prefs.email_enabled) continue;
                 }
 
-                // Log email delivery
-                emailsSent++;
-                await this.logDelivery({
-                    event_type: params.eventType,
-                    channel: 'EMAIL',
-                    recipient: targetEmail,
-                    status: 'DELIVERED',
-                    title: emailSubject,
-                    payload: {
-                        to: targetEmail,
-                        subject: emailSubject,
-                        html_preview: rawBody.slice(0, 300),
-                        logo_url: PROCUREFLOW_LOGO_URL
+                try {
+                    const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('send-notification-email', {
+                        body: {
+                            to: targetEmail,
+                            subject: emailSubject,
+                            html: emailHtml
+                        }
+                    });
+
+                    if (edgeErr) {
+                        console.warn(`[NotificationEngine] Edge function email dispatch to ${targetEmail} failed:`, edgeErr);
+                        await this.logDelivery({
+                            event_type: params.eventType,
+                            channel: 'EMAIL',
+                            recipient: targetEmail,
+                            status: 'FAILED',
+                            title: emailSubject,
+                            payload: { error: edgeErr.message }
+                        });
+                    } else {
+                        emailsSent++;
+                        await this.logDelivery({
+                            event_type: params.eventType,
+                            channel: 'EMAIL',
+                            recipient: targetEmail,
+                            status: 'DELIVERED',
+                            title: emailSubject,
+                            payload: {
+                                to: targetEmail,
+                                subject: emailSubject,
+                                response: edgeData,
+                                logo_url: PROCUREFLOW_LOGO_URL
+                            }
+                        });
                     }
-                });
+                } catch (sendErr: any) {
+                    console.error(`[NotificationEngine] Exception dispatching email:`, sendErr);
+                    await this.logDelivery({
+                        event_type: params.eventType,
+                        channel: 'EMAIL',
+                        recipient: targetEmail,
+                        status: 'FAILED',
+                        title: emailSubject,
+                        payload: { error: sendErr.message }
+                    });
+                }
             }
         }
 
         // 6. Microsoft Teams Webhook Dispatch
         try {
-            const { data: configData } = await supabase
-                .from('app_config')
-                .select('value')
-                .eq('key', 'teams_webhook_url')
-                .single();
-
-            const teamsWebhookUrl = configData?.value as string;
+            const teamsWebhookUrl = await this.getTeamsWebhookUrl();
 
             if (teamsWebhookUrl && (!template || template.channels.teams?.enabled !== false)) {
                 const teamsTitle = template?.channels.teams?.title ? interpolateTemplate(template.channels.teams.title, vars) : `ProcureFlow Alert: ${params.eventType}`;

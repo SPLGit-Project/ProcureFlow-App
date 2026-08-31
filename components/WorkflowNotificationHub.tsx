@@ -14,13 +14,18 @@ import {
     User
 } from '../types';
 import { workflowEngineService } from '../services/workflowEngineService';
-import { notificationEngineService, interpolateTemplate, PROCUREFLOW_LOGO_URL, PROCUREFLOW_ICON_URL } from '../services/notificationEngineService';
+import { notificationEngineService, interpolateTemplate, buildTeamsAdaptiveCard, buildEmailHtml, PROCUREFLOW_LOGO_URL, PROCUREFLOW_ICON_URL } from '../services/notificationEngineService';
+import { playNotificationChime } from '../services/realtimeNotificationService';
 import { useApp } from '../context/AppContext';
 import { useToast } from './ToastNotification';
 import PageHeader from './PageHeader';
 
 export const WorkflowNotificationHub: React.FC = () => {
-    const { roles, users, hasPermission, currentUser } = useApp();
+    const { roles, users, hasPermission, currentUser, refreshNotifications, setIsNotificationDrawerOpen } = useApp();
+    const [showTeamsGuide, setShowTeamsGuide] = useState(false);
+    const [testEmailRecipient, setTestEmailRecipient] = useState(currentUser?.email || 'aaron.bell@splservices.com.au');
+    const [isSendingRealEmail, setIsSendingRealEmail] = useState(false);
+    const [isTriggeringInApp, setIsTriggeringInApp] = useState(false);
     const { success, error, warning } = useToast();
 
     // Active Top-Level Tab
@@ -95,11 +100,9 @@ export const WorkflowNotificationHub: React.FC = () => {
 
     const loadChannels = async () => {
         try {
-            const { supabase } = await import('../lib/supabaseClient');
-            const { data: config } = await supabase.from('app_config').select('value').eq('key', 'teams_webhook_url').single();
-            if (config?.value) {
-                setTeamsWebhookUrl(config.value as string);
-            }
+            const url = await notificationEngineService.getTeamsWebhookUrl();
+            if (url) setTeamsWebhookUrl(url);
+            if (currentUser?.email) setTestEmailRecipient(currentUser.email);
         } catch {
             // non-fatal
         }
@@ -223,12 +226,8 @@ export const WorkflowNotificationHub: React.FC = () => {
     const handleSaveTeamsWebhook = async () => {
         setIsSavingChannels(true);
         try {
-            const { supabase } = await import('../lib/supabaseClient');
-            await supabase.from('app_config').upsert({
-                key: 'teams_webhook_url',
-                value: teamsWebhookUrl
-            });
-            success('Microsoft Teams Webhook configured successfully');
+            await notificationEngineService.saveTeamsWebhookUrl(teamsWebhookUrl);
+            success('Microsoft Teams Webhook URL saved successfully');
         } catch {
             error('Failed to save Teams webhook URL');
         } finally {
@@ -238,53 +237,130 @@ export const WorkflowNotificationHub: React.FC = () => {
 
     const handleTestTeamsWebhook = async () => {
         if (!teamsWebhookUrl) {
-            warning('Please enter a valid webhook URL first');
+            warning('Please enter a valid Microsoft Teams webhook URL first');
             return;
         }
         setIsTestingTeams(true);
+        const startTime = Date.now();
         try {
-            const card = {
-                type: 'message',
-                attachments: [{
-                    contentType: 'application/vnd.microsoft.card.adaptive',
-                    contentUrl: null,
-                    content: {
-                        $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-                        type: 'AdaptiveCard',
-                        version: '1.4',
-                        body: [
-                            {
-                                type: 'TextBlock',
-                                text: '🔔 ProcureFlow Test Notification',
-                                weight: 'Bolder',
-                                size: 'Medium',
-                                color: 'Accent'
-                            },
-                            {
-                                type: 'TextBlock',
-                                text: 'Your Microsoft Teams Webhook is connected and working perfectly!',
-                                wrap: true
-                            }
-                        ]
-                    }
-                }]
-            };
+            const cardPayload = buildTeamsAdaptiveCard({
+                title: '🔔 ProcureFlow Teams Integration Test',
+                subtitle: 'Power Automate Webhook Connector • Live Verification',
+                colorHex: '0284C7',
+                facts: [
+                    { title: 'Status', value: 'Connected & Operational' },
+                    { title: 'Environment', value: 'Production / Staging' },
+                    { title: 'Tested By', value: currentUser?.name || 'Administrator' },
+                    { title: 'Timestamp', value: new Date().toLocaleTimeString() }
+                ],
+                actionUrl: `${window.location.origin}/admin/workflows`,
+                actionLabel: 'Open ProcureFlow Admin Hub',
+                iconUrl: PROCUREFLOW_ICON_URL
+            });
 
             const resp = await fetch(teamsWebhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(card)
+                body: JSON.stringify(cardPayload)
             });
 
+            const latency = Date.now() - startTime;
+
             if (resp.ok) {
-                success('Test card sent to Microsoft Teams channel!');
+                success(`Adaptive Card posted directly to MS Teams! (${latency}ms)`);
+                await notificationEngineService.saveTeamsWebhookUrl(teamsWebhookUrl);
             } else {
-                error(`Teams webhook responded with status ${resp.status}`);
+                error(`Teams webhook responded with status ${resp.status} (${resp.statusText})`);
             }
-        } catch {
-            error('Failed to send webhook request to Teams');
+        } catch (e: any) {
+            error(`Failed to send webhook request: ${e.message}`);
         } finally {
             setIsTestingTeams(false);
+        }
+    };
+
+    const handleSendRealTestEmail = async () => {
+        if (!testEmailRecipient) {
+            warning('Please enter a recipient email address');
+            return;
+        }
+        setIsSendingRealEmail(true);
+        try {
+            const { supabase } = await import('../lib/supabaseClient');
+            const emailHtml = buildEmailHtml({
+                title: 'Action Required: PO-2026-9042 Approval Notification',
+                bodyHtml: `
+                    <p>Hi ${currentUser?.name ? currentUser.name.split(' ')[0] : 'there'},</p>
+                    <p>This is a real-time notification from <strong>ProcureFlow Enterprise</strong> confirming your live email delivery integration via Microsoft Graph API.</p>
+                    <p>A new purchase order <strong>PO-2026-9042</strong> has been submitted and is currently awaiting your executive sign-off.</p>
+                `,
+                facts: [
+                    { label: 'PO Number', value: 'PO-2026-9042' },
+                    { label: 'Supplier', value: 'Pacific Linen Supplies Pty Ltd' },
+                    { label: 'Total Amount', value: '$14,280.00' },
+                    { label: 'Delivery Site', value: 'Melbourne Central Hub' },
+                    { label: 'Requester', value: currentUser?.name || 'Aaron Bell' }
+                ],
+                actionUrl: `${window.location.origin}/requests`,
+                actionLabel: 'Review & Authorise PO in ProcureFlow',
+                logoUrl: PROCUREFLOW_LOGO_URL
+            });
+
+            const { data, error: sendErr } = await supabase.functions.invoke('send-notification-email', {
+                body: {
+                    to: testEmailRecipient,
+                    subject: 'ProcureFlow Notification: Purchase Order PO-2026-9042 Awaiting Approval',
+                    html: emailHtml,
+                    from_email: 'aaron.bell@splservices.com.au'
+                }
+            });
+
+            if (sendErr) {
+                error(`Failed to send email: ${sendErr.message}`);
+            } else {
+                success(`Real email sent via Microsoft Graph to ${testEmailRecipient}! Check your Outlook inbox.`);
+            }
+        } catch (e: any) {
+            error(`Failed to send test email: ${e.message}`);
+        } finally {
+            setIsSendingRealEmail(false);
+        }
+    };
+
+    const handleTriggerRealInApp = async () => {
+        if (!currentUser) return;
+        setIsTriggeringInApp(true);
+        try {
+            const { supabase } = await import('../lib/supabaseClient');
+            const { error: insErr } = await supabase.from('user_notifications').insert({
+                user_id: currentUser.id,
+                title: 'Purchase Order Approval Required: PO-2026-9042',
+                message: `PO-2026-9042 for $14,280.00 submitted by ${currentUser.name} requires your review.`,
+                type: 'PO_APPROVAL_REQUEST',
+                category: 'APPROVALS',
+                severity: 'WARNING',
+                action_url: '/requests',
+                action_label: 'Review PO',
+                entity_type: 'PO',
+                entity_id: 'PO-2026-9042',
+                is_read: false,
+                metadata: {
+                    po_number: 'PO-2026-9042',
+                    total_amount: '$14,280.00'
+                }
+            });
+
+            if (insErr) {
+                error(`Failed to create in-app notification: ${insErr.message}`);
+            } else {
+                playNotificationChime();
+                if (refreshNotifications) refreshNotifications();
+                success('In-App notification dispatched! Click the Bell icon in the header.');
+            }
+        } catch (e: any) {
+            error(`Failed to trigger in-app notification: ${e.message}`);
+        } finally {
+            setIsTriggeringInApp(false);
         }
     };
 
@@ -723,17 +799,46 @@ export const WorkflowNotificationHub: React.FC = () => {
 
             {/* TAB 3: CHANNELS */}
             {activeTab === 'CHANNELS' && (
-                <div className="space-y-6 animate-fade-in max-w-3xl">
-                    <div className="bg-white dark:bg-nocturne p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-sm space-y-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-500">
-                                <MessageSquare size={22} />
+                <div className="space-y-6 animate-fade-in max-w-4xl">
+                    {/* CHANNEL 1: MICROSOFT TEAMS */}
+                    <div className="bg-white dark:bg-nocturne p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-sm space-y-5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-white/5 pb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-500">
+                                    <MessageSquare size={22} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                        Microsoft Teams Channel Webhook
+                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                            teamsWebhookUrl ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                        }`}>
+                                            {teamsWebhookUrl ? 'Connected' : 'Pending Webhook URL'}
+                                        </span>
+                                    </h3>
+                                    <p className="text-xs text-gray-500">Directly post rich Adaptive Cards v1.4 with the ProcureFlow icon into your channel</p>
+                                </div>
                             </div>
-                            <div>
-                                <h3 className="text-base font-bold text-gray-900 dark:text-white">Microsoft Teams Webhook</h3>
-                                <p className="text-xs text-gray-500">Directly post rich Adaptive Cards into your team channel</p>
-                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowTeamsGuide(!showTeamsGuide)}
+                                className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 self-start sm:self-auto"
+                            >
+                                {showTeamsGuide ? 'Hide Setup Guide' : 'How to get Teams Webhook URL?'}
+                            </button>
                         </div>
+
+                        {showTeamsGuide && (
+                            <div className="p-4 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30 rounded-2xl text-xs space-y-2 text-gray-700 dark:text-gray-300">
+                                <h4 className="font-bold text-indigo-900 dark:text-indigo-300">Quick 3-Step Microsoft Teams Setup:</h4>
+                                <ol className="list-decimal list-inside space-y-1.5 leading-relaxed">
+                                    <li>Open your Microsoft Teams client & locate your support channel (e.g. <strong>ProcureFlow Alerts</strong>).</li>
+                                    <li>Click <strong>&bull;&bull;&bull; (More options)</strong> next to the channel name &rarr; select <strong>Workflows</strong> (or Connectors).</li>
+                                    <li>Search for <strong>"Send webhook alerts to a channel"</strong>, complete the prompt, copy the generated URL, and paste it below.</li>
+                                </ol>
+                            </div>
+                        )}
 
                         <div className="space-y-2">
                             <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400">Teams Incoming Webhook Connector URL</label>
@@ -741,12 +846,12 @@ export const WorkflowNotificationHub: React.FC = () => {
                                 type="url"
                                 value={teamsWebhookUrl}
                                 onChange={e => setTeamsWebhookUrl(e.target.value)}
-                                placeholder="https://outlook.office.com/webhook/..."
+                                placeholder="https://prod-XX.australiaeast.logic.azure.com:443/workflows/... or https://outlook.office.com/webhook/..."
                                 className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-xs text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
                             />
                         </div>
 
-                        <div className="flex gap-2 pt-2">
+                        <div className="flex flex-wrap gap-2 pt-1">
                             <button
                                 type="button"
                                 onClick={handleSaveTeamsWebhook}
@@ -761,10 +866,89 @@ export const WorkflowNotificationHub: React.FC = () => {
                                 type="button"
                                 onClick={handleTestTeamsWebhook}
                                 disabled={isTestingTeams}
-                                className="px-4 py-2.5 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-white font-bold text-xs rounded-xl hover:bg-gray-200 transition-all flex items-center gap-2"
+                                className="px-5 py-2.5 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md hover:bg-indigo-700 transition-all flex items-center gap-2"
                             >
                                 <Send size={16} className={isTestingTeams ? 'animate-pulse' : ''} />
-                                Test Connection Ping
+                                Send Test Adaptive Card
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* CHANNEL 2: REAL EMAIL (MICROSOFT GRAPH) */}
+                    <div className="bg-white dark:bg-nocturne p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-sm space-y-5">
+                        <div className="flex items-center gap-3 border-b border-gray-100 dark:border-white/5 pb-4">
+                            <div className="p-3 rounded-2xl bg-blue-500/10 text-blue-500">
+                                <Mail size={22} />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    Microsoft 365 Exchange Online (Email Channel)
+                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                        Connected &bull; MS Graph API
+                                    </span>
+                                </h3>
+                                <p className="text-xs text-gray-500">Delivers responsive HTML emails with in-body Procureflow logo directly to user inboxes</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400">Target Inbox For Live Test</label>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                                <input
+                                    type="email"
+                                    value={testEmailRecipient}
+                                    onChange={e => setTestEmailRecipient(e.target.value)}
+                                    placeholder="aaron.bell@splservices.com.au"
+                                    className="flex-1 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-xs text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleSendRealTestEmail}
+                                    disabled={isSendingRealEmail}
+                                    className="px-5 py-3 bg-blue-600 text-white font-bold text-xs rounded-xl shadow-md hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shrink-0"
+                                >
+                                    <Send size={16} className={isSendingRealEmail ? 'animate-spin' : ''} />
+                                    Send Live Test Email to My Inbox
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* CHANNEL 3: IN-APP REALTIME PUSH */}
+                    <div className="bg-white dark:bg-nocturne p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-sm space-y-5">
+                        <div className="flex items-center gap-3 border-b border-gray-100 dark:border-white/5 pb-4">
+                            <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500">
+                                <Bell size={22} />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    In-App Realtime Stream & Drawer
+                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                        Connected &bull; Supabase Realtime
+                                    </span>
+                                </h3>
+                                <p className="text-xs text-gray-500">Synthesizes Web Audio sound chimes, increments the header badge, and updates drawer live</p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={handleTriggerRealInApp}
+                                disabled={isTriggeringInApp}
+                                className="px-5 py-2.5 bg-amber-500 text-white font-bold text-xs rounded-xl shadow-md hover:bg-amber-600 transition-all flex items-center gap-2"
+                            >
+                                <Zap size={16} className={isTriggeringInApp ? 'animate-pulse' : ''} />
+                                Trigger Real In-App Notification (Chime + Badge)
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setIsNotificationDrawerOpen(true)}
+                                className="px-5 py-2.5 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-white font-bold text-xs rounded-xl hover:bg-gray-200 transition-all flex items-center gap-2"
+                            >
+                                <Eye size={16} />
+                                Open Notification Drawer
                             </button>
                         </div>
                     </div>
