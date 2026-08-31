@@ -1455,11 +1455,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       // --- Dynamic Manifest & Favicon Injection ---
       // 1. Favicon
-      const linkFavicon = document.querySelector("link[rel*='icon']") as HTMLLinkElement || document.createElement('link');
-      linkFavicon.type = 'image/x-icon';
+      const effectiveFavicon = (branding.logoUrl && !branding.logoUrl.includes('mercer') && !branding.logoUrl.includes('spl')) ? branding.logoUrl : '/favicon.svg';
+      const linkFavicon = document.querySelector("link[rel='icon'][type='image/svg+xml']") as HTMLLinkElement
+          || document.querySelector("link[rel*='icon']") as HTMLLinkElement
+          || document.createElement('link');
+      linkFavicon.type = effectiveFavicon.endsWith('.svg') ? 'image/svg+xml' : (effectiveFavicon.endsWith('.ico') ? 'image/x-icon' : 'image/png');
       linkFavicon.rel = 'icon';
-      linkFavicon.href = branding.logoUrl || '/favicon.ico';
-      document.getElementsByTagName('head')[0].appendChild(linkFavicon);
+      linkFavicon.href = effectiveFavicon;
+      if (!linkFavicon.parentNode) {
+          document.getElementsByTagName('head')[0].appendChild(linkFavicon);
+      }
 
       // 2. Apple Touch Icon
       const linkApple = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement || document.createElement('link');

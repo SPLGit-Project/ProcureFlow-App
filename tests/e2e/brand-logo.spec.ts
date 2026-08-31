@@ -34,5 +34,16 @@ test.describe('Brand assets and logo verification', () => {
             await page.screenshot({ path: 'test-results/side-menu-expanded.png' });
         }
     });
+
+    test('favicon and icon link tags are set to ProcureFlow assets', async ({ page }) => {
+        await page.goto('/login');
+        await page.waitForLoadState('networkidle');
+
+        const faviconLink = page.locator('link[rel="icon"][type="image/svg+xml"]');
+        await expect(faviconLink).toHaveAttribute('href', '/favicon.svg');
+
+        const icoLink = page.locator('link[rel="icon"][type="image/x-icon"]');
+        await expect(icoLink).toHaveAttribute('href', '/favicon.ico');
+    });
 });
 
