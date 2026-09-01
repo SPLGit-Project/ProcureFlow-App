@@ -201,6 +201,7 @@ export interface Item {
   unitPrice: number; // Default/Internal Price
   uom: string; // Unit of Measure
   upq?: number; // Unit per Quantity
+  cartonQty?: number; // Carton / Pack Size Multiple
   category: string;
   subCategory?: string; // New field for hierarchy
   categoryId?: string; // Foreign key for category
@@ -375,6 +376,77 @@ export interface ProductAvailability {
 
 
 
+export type SpendType = 'DEPLETION' | 'NEW_BUSINESS' | 'LINEN_HUB' | 'CAPEX' | 'MAINTENANCE';
+export type SpendSector = 'ACCOMMODATION' | 'HEALTHCARE' | 'COMBINED';
+export type ContractStream = 'BAU' | 'RHC' | 'HSV' | 'DEFENCE' | 'MINING' | 'OTHER';
+
+export interface SiteBudgetConfig {
+  siteName: string;
+  branchCode: string;
+  annualDepletionBudget: number;
+  monthlyDepletionBudget: number;
+  annualNewBusinessBudget: number;
+  monthlyNewBusinessBudget: number;
+  annualTotalBudget: number;
+}
+
+export interface EomPivotCell {
+  accommodation: number;
+  healthcare: number;
+  total: number;
+}
+
+export interface EomPivotRow {
+  branch: string;
+  siteName: string;
+  depletion: EomPivotCell;
+  newBusiness: EomPivotCell;
+  linenHub: EomPivotCell;
+  grandTotal: EomPivotCell;
+}
+
+export interface EomTrackingRow {
+  branch: string;
+  siteName: string;
+  depletionYtd: number;
+  newBusinessYtd: number;
+  depletionCurrentMonth: number;
+  newBusinessCurrentMonth: number;
+  monthlyBudgetDepletion: number;
+  monthlyBudgetNewBusiness: number;
+  varianceDepletion: number;
+  varianceNewBusiness: number;
+  spendYtdPercent: number;
+  totalAnnualBudget: number;
+}
+
+export interface EomContractSubtotals {
+  hsvYtd: number;
+  rhcDepletionYtd: number;
+  rhcNewBusinessYtd: number;
+  linenHubBudgetTotal: number;
+  linenHubYtd: number;
+  linenHubCurrentMonth: number;
+  linenHubRemaining: number;
+  grandTotalBudget: number;
+  grandTotalActualsYtd: number;
+}
+
+export interface EomReconciliationResult {
+  month: string;
+  year: number;
+  pivotRows: EomPivotRow[];
+  pivotTotals: {
+    depletion: EomPivotCell;
+    newBusiness: EomPivotCell;
+    linenHub: EomPivotCell;
+    grandTotal: EomPivotCell;
+  };
+  trackingRows: EomTrackingRow[];
+  contractSubtotals: EomContractSubtotals;
+  rawProcessedRows: Record<string, any>[];
+}
+
 export type POStatus = 
   | 'DRAFT' 
   | 'PENDING_APPROVAL' 
@@ -405,7 +477,11 @@ export interface PORequest {
   lines: POLineItem[];
   deliveries: DeliveryHeader[];
   
-  // New Fields
+  // Categorisation & EOM Tracking Fields
+  spendType?: SpendType;
+  sector?: SpendSector;
+  contractStream?: ContractStream;
+  concurPrNumber?: string;
   concurRequestNumber?: string;
   concurPoNumber?: string;
   customerName?: string;

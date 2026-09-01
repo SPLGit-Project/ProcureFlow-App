@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, type ComponentType } from 'react';
+import React, { useEffect, useMemo, useState, useRef, Fragment, type ComponentType } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import {
     AlertCircle,
@@ -37,8 +37,19 @@ import {
     YAxis
 } from 'recharts';
 import type { Item, PORequest, POStatus, Site } from '../types.ts';
+import {
+    DEFAULT_FY27_BUDGETS,
+    buildEomReconciliation,
+    buildEomConcurCsv,
+    getBranchDisplayName,
+    LINEN_HUB_TOTAL_BUDGET,
+    TOTAL_DEPLETION_BUDGET,
+    TOTAL_NEW_BUSINESS_BUDGET,
+    GRAND_TOTAL_FY27_BUDGET
+} from '../utils/budgetTracking.ts';
 
-type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY' | 'LINEN_INJECTION' | 'SUPPLIER_INVENTORY' | 'SUPPLIER_ITEM_MAPPING' | 'SUPPLIER_PRICE_VARIANCE';
+
+type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY' | 'LINEN_INJECTION' | 'SUPPLIER_INVENTORY' | 'SUPPLIER_ITEM_MAPPING' | 'SUPPLIER_PRICE_VARIANCE' | 'EOM_BUDGET_RECONCILIATION';
 type ReportRow = Record<string, string | number>;
 
 interface LinenInjectionReportRow extends ReportRow {
@@ -217,7 +228,8 @@ const REPORT_TITLES: Record<ReportType, string> = {
     LINEN_INJECTION: 'Linen Injection Report',
     SUPPLIER_INVENTORY: 'Available Supplier Inventory Report',
     SUPPLIER_ITEM_MAPPING: 'Supplier Item Mapping Report',
-    SUPPLIER_PRICE_VARIANCE: 'Supplier Price Sync Variance Report'
+    SUPPLIER_PRICE_VARIANCE: 'Supplier Price Sync Variance Report',
+    EOM_BUDGET_RECONCILIATION: 'EOM Spend & Budget Reconciliation'
 };
 
 const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
@@ -232,11 +244,12 @@ const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
     LINEN_INJECTION: 'Comprehensive breakdown of all linen injected into circulation from closed purchase orders, detailing item quantities, unit pricing, and total injected value across sites and suppliers.',
     SUPPLIER_INVENTORY: 'Provides by supplier the most recent inventory stock data available within the app, including SOH, available quantities, and stock on backorder.',
     SUPPLIER_ITEM_MAPPING: 'Provides a complete overview of the mapping of supplier items to corresponding items in the internal catalogue.',
-    SUPPLIER_PRICE_VARIANCE: 'Compares supplier price reports against the internal catalogue prices for confirmed mappings, highlighting variations and sync status.'
+    SUPPLIER_PRICE_VARIANCE: 'Compares supplier price reports against the internal catalogue prices for confirmed mappings, highlighting variations and sync status.',
+    EOM_BUDGET_RECONCILIATION: 'Executive spend vs. budget reconciliation dashboard matching Concur EOM tracking. Cross-tabulates spend by branch, sector (Accommodation vs Healthcare), and spend category (Depletion vs New Business vs Linen Hub) against FY27 baseline budgets ($14.521M).'
 };
 
 const DELIVERY_REPORTS: ReportType[] = ['OUTSTANDING_DELIVERIES', 'DELIVERY_VARIANCE', 'DELIVERY_RECONCILIATION'];
-const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY', 'LINEN_INJECTION', 'SUPPLIER_INVENTORY', 'SUPPLIER_ITEM_MAPPING', 'SUPPLIER_PRICE_VARIANCE'];
+const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY', 'LINEN_INJECTION', 'SUPPLIER_INVENTORY', 'SUPPLIER_ITEM_MAPPING', 'SUPPLIER_PRICE_VARIANCE', 'EOM_BUDGET_RECONCILIATION'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ACTIVE_DELIVERY_STATUSES: POStatus[] = ['ACTIVE', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST', 'VARIANCE_PENDING'];
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4'];
@@ -1624,6 +1637,11 @@ const ReportingView = () => {
                 data = buildSupplierItemMappingRows(mappings, items, suppliers);
             } else if (activeReport === 'SUPPLIER_PRICE_VARIANCE') {
                 data = buildSupplierPriceVarianceRows(mappings, stockSnapshots, items, suppliers);
+            } else if (activeReport === 'EOM_BUDGET_RECONCILIATION') {
+                const targetM = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[1], 10) : 8;
+                const targetY = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[0], 10) : 2026;
+                const res = buildEomReconciliation(reportPos, { targetMonth: targetM, targetYear: targetY });
+                data = res.rawProcessedRows;
             }
 
             setReportCache(activeReport, data);
@@ -1632,6 +1650,23 @@ const ReportingView = () => {
     };
 
     const exportCSV = () => {
+        if (activeReport === 'EOM_BUDGET_RECONCILIATION') {
+            const targetM = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[1], 10) : 8;
+            const targetY = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[0], 10) : 2026;
+            const res = buildEomReconciliation(reportPos, { targetMonth: targetM, targetYear: targetY });
+            const csv = buildEomConcurCsv(res);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `SPL-EOM-Spend-Reconciliation-${res.month}-${res.year}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            return;
+        }
+
         if (visibleReportData.length === 0) return;
 
         const csv = buildCsv(activeReport, visibleReportData);
@@ -1817,6 +1852,7 @@ const ReportingView = () => {
                             <ReportButton active={activeReport === 'DELIVERY_RECONCILIATION'} icon={Layers} label="Full Reconciliation" onClick={() => switchReport('DELIVERY_RECONCILIATION')} />
                             <ReportButton active={activeReport === 'ITEM_REQUEST_HISTORY'} icon={History} label="Item Request History" onClick={() => switchReport('ITEM_REQUEST_HISTORY')} />
                             <ReportButton active={activeReport === 'MONTHLY_SUMMARY'} icon={Calendar} label="Monthly PO & GR Summary" onClick={() => switchReport('MONTHLY_SUMMARY')} />
+                            <ReportButton active={activeReport === 'EOM_BUDGET_RECONCILIATION'} icon={TrendingUp} label="EOM Budget & Spend Recon" onClick={() => switchReport('EOM_BUDGET_RECONCILIATION')} />
                             <ReportButton active={activeReport === 'FINANCE_SUMMARY'} icon={TrendingUp} label="Finance Summary" onClick={() => switchReport('FINANCE_SUMMARY')} />
                             <ReportButton active={activeReport === 'PO_STATUS'} icon={FileText} label="PO Status Report" onClick={() => switchReport('PO_STATUS')} />
                             <div className="border-t border-gray-200 dark:border-gray-800 my-2 pt-2 text-[10px] font-black text-gray-400 uppercase tracking-widest px-4">Supplier Insights</div>
@@ -2185,6 +2221,13 @@ const ReportingView = () => {
                                 <SupplierItemMappingVisual rows={visibleReportData} chartMetric={chartMetric} />
                             ) : activeReport === 'SUPPLIER_PRICE_VARIANCE' && viewMode === 'CHART' ? (
                                 <SupplierPriceVarianceVisual rows={visibleReportData} chartMetric={chartMetric} />
+                            ) : activeReport === 'EOM_BUDGET_RECONCILIATION' && viewMode === 'CHART' ? (
+                                <EomBudgetReconciliationVisual
+                                    pos={reportPos}
+                                    selectedMonth={selectedMonth}
+                                    onSelectMonth={setSelectedMonth}
+                                    onExportConcurCsv={exportCSV}
+                                />
                             ) : (
                                 <ReportTable activeReport={activeReport} rows={visibleReportData} />
                             )}
@@ -4188,5 +4231,339 @@ const SupplierPriceVarianceVisual = ({ rows, chartMetric }: { rows: any[]; chart
         </div>
     );
 };
+
+
+interface EomBudgetReconciliationVisualProps {
+    pos: PORequest[];
+    selectedMonth: string;
+    onSelectMonth: (m: string) => void;
+    onExportConcurCsv: () => void;
+}
+
+const EomBudgetReconciliationVisual: React.FC<EomBudgetReconciliationVisualProps> = ({
+    pos,
+    selectedMonth,
+    onSelectMonth,
+    onExportConcurCsv
+}) => {
+    const [subTab, setSubTab] = useState<'PIVOT' | 'BUDGET_VARIANCE' | 'CHARTS'>('PIVOT');
+
+    const targetMonth = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[1], 10) : 8;
+    const targetYear = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[0], 10) : 2026;
+
+    const recon = useMemo(() => {
+        return buildEomReconciliation(pos, { targetMonth, targetYear });
+    }, [pos, targetMonth, targetYear]);
+
+    const monthOptions = [
+        { key: '2026-07', label: 'July 2026 (Jul-26)' },
+        { key: '2026-08', label: 'August 2026 (Aug-26)' },
+        { key: '2026-09', label: 'September 2026 (Sep-26)' },
+        { key: '2026-10', label: 'October 2026 (Oct-26)' },
+        { key: '2026-11', label: 'November 2026 (Nov-26)' },
+        { key: '2026-12', label: 'December 2026 (Dec-26)' },
+        { key: '2027-01', label: 'January 2027 (Jan-27)' },
+        { key: '2027-02', label: 'February 2027 (Feb-27)' },
+        { key: '2027-03', label: 'March 2027 (Mar-27)' },
+        { key: '2027-04', label: 'April 2027 (Apr-27)' },
+        { key: '2027-05', label: 'May 2027 (May-27)' },
+        { key: '2027-06', label: 'June 2027 (Jun-27)' }
+    ];
+
+    const chartData = useMemo(() => {
+        return recon.trackingRows.map(r => ({
+            name: r.siteName,
+            depletionActual: r.depletionCurrentMonth,
+            depletionBudget: r.monthlyBudgetDepletion,
+            newBusinessActual: r.newBusinessCurrentMonth,
+            newBusinessBudget: r.monthlyBudgetNewBusiness
+        }));
+    }, [recon]);
+
+    const totalDepMonth = recon.pivotTotals.depletion.total;
+    const totalNbMonth = recon.pivotTotals.newBusiness.total;
+    const totalMonthBudgetDep = 826750;
+    const totalMonthBudgetNb = 191666.67;
+    const depVariance = totalMonthBudgetDep - totalDepMonth;
+    const nbVariance = totalMonthBudgetNb - totalNbMonth;
+
+    return (
+        <div className="p-4 sm:p-6 space-y-6 overflow-y-auto flex-1 max-w-[1700px] mx-auto w-full">
+            {/* Header Controls & Month Selector */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-nocturne p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Reconciliation Period:</span>
+                    <select
+                        value={selectedMonth === 'ALL' ? '2026-08' : selectedMonth}
+                        onChange={(e) => onSelectMonth(e.target.value)}
+                        className="bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+                    >
+                        {monthOptions.map(m => (
+                            <option key={m.key} value={m.key}>{m.label}</option>
+                        ))}
+                    </select>
+
+                    <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-1">
+                        <button
+                            type="button"
+                            onClick={() => setSubTab('PIVOT')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                subTab === 'PIVOT' ? 'bg-[var(--color-brand)] text-white shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            }`}
+                        >
+                            Pivot Reconciliation
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSubTab('BUDGET_VARIANCE')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                subTab === 'BUDGET_VARIANCE' ? 'bg-[var(--color-brand)] text-white shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            }`}
+                        >
+                            Budget vs Actuals Grid
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSubTab('CHARTS')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                subTab === 'CHARTS' ? 'bg-[var(--color-brand)] text-white shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            }`}
+                        >
+                            Visual Comparison
+                        </button>
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={onExportConcurCsv}
+                    className="btn-primary text-xs flex items-center gap-2 py-2 px-4 shadow-sm"
+                >
+                    <Download size={14} /> Download Concur EOM Excel CSV
+                </button>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div className="bg-white dark:bg-nocturne p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Depletion Spend ({recon.month})</span>
+                        <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${depVariance >= 0 ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300'}`}>
+                            {depVariance >= 0 ? `+${currency(depVariance)} under` : `${currency(Math.abs(depVariance))} over`}
+                        </span>
+                    </div>
+                    <div className="text-2xl font-black text-gray-900 dark:text-white mt-2">{currency(totalDepMonth)}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex justify-between">
+                        <span>Target: {currency(totalMonthBudgetDep)}/mo</span>
+                        <span>Burn: {((totalDepMonth / totalMonthBudgetDep) * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-nocturne p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">New Business ({recon.month})</span>
+                        <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${nbVariance >= 0 ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300'}`}>
+                            {nbVariance >= 0 ? `+${currency(nbVariance)} under` : `${currency(Math.abs(nbVariance))} over`}
+                        </span>
+                    </div>
+                    <div className="text-2xl font-black text-gray-900 dark:text-white mt-2">{currency(totalNbMonth)}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex justify-between">
+                        <span>Target: {currency(totalMonthBudgetNb)}/mo</span>
+                        <span>Burn: {((totalNbMonth / totalMonthBudgetNb) * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-nocturne p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Linen Hub Allocation</span>
+                        <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300">
+                            $2.30M Budget
+                        </span>
+                    </div>
+                    <div className="text-2xl font-black text-gray-900 dark:text-white mt-2">{currency(recon.contractSubtotals.linenHubRemaining)}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex justify-between">
+                        <span>Spent YTD: {currency(recon.contractSubtotals.linenHubYtd)}</span>
+                        <span>Rem: {((recon.contractSubtotals.linenHubRemaining / 2300000) * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-nocturne p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Strategic Contracts YTD</span>
+                        <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300">
+                            HSV & RHC
+                        </span>
+                    </div>
+                    <div className="text-sm font-bold text-gray-900 dark:text-white mt-2 space-y-1">
+                        <div className="flex justify-between">
+                            <span className="text-gray-500 font-normal">HSV YTD:</span>
+                            <span>{currency(recon.contractSubtotals.hsvYtd)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500 font-normal">RHC Depletion:</span>
+                            <span>{currency(recon.contractSubtotals.rhcDepletionYtd)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500 font-normal">RHC New Business:</span>
+                            <span>{currency(recon.contractSubtotals.rhcNewBusinessYtd)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* TAB 1: Pivot Matrix View (Ash's Excel Format) */}
+            {subTab === 'PIVOT' && (
+                <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs overflow-hidden">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/[0.02]">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Spend Reconciliation Pivot Table (Excl. GST)</h3>
+                            <p className="text-xs text-gray-500">Cross-tabulation by Operating Branch, Spend Category, and Sector for {recon.month} {recon.year}.</p>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-gray-100/80 dark:bg-[#15171e] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="px-5 py-3.5">Branch / Site</th>
+                                    <th className="px-5 py-3.5">Category</th>
+                                    <th className="px-5 py-3.5 text-right">Accommodation ($)</th>
+                                    <th className="px-5 py-3.5 text-right">Healthcare ($)</th>
+                                    <th className="px-5 py-3.5 text-right">Subtotal ($ Excl. GST)</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {recon.pivotRows.map((row) => (
+                                    <React.Fragment key={row.branch}>
+                                        {row.depletion.total > 0 && (
+                                            <tr className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                                <td className="px-5 py-2.5 font-bold text-gray-900 dark:text-white">{row.siteName} ({row.branch})</td>
+                                                <td className="px-5 py-2.5 text-blue-600 dark:text-blue-400 font-semibold">Depletion</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.depletion.accommodation)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.depletion.healthcare)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono font-bold text-gray-900 dark:text-white">{currency(row.depletion.total)}</td>
+                                            </tr>
+                                        )}
+                                        {row.newBusiness.total > 0 && (
+                                            <tr className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                                <td className="px-5 py-2.5 font-bold text-gray-900 dark:text-white">{row.siteName} ({row.branch})</td>
+                                                <td className="px-5 py-2.5 text-purple-600 dark:text-purple-400 font-semibold">New Business</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.newBusiness.accommodation)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.newBusiness.healthcare)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono font-bold text-gray-900 dark:text-white">{currency(row.newBusiness.total)}</td>
+                                            </tr>
+                                        )}
+                                        {row.linenHub.total > 0 && (
+                                            <tr className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                                <td className="px-5 py-2.5 font-bold text-gray-900 dark:text-white">{row.siteName} ({row.branch})</td>
+                                                <td className="px-5 py-2.5 text-emerald-600 dark:text-emerald-400 font-semibold">Linen Hub</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.linenHub.accommodation)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.linenHub.healthcare)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono font-bold text-gray-900 dark:text-white">{currency(row.linenHub.total)}</td>
+                                            </tr>
+                                        )}
+                                        {row.grandTotal.total > 0 && (
+                                            <tr className="bg-gray-50/80 dark:bg-white/[0.03] font-bold border-b border-gray-200 dark:border-gray-800">
+                                                <td className="px-5 py-2 text-gray-500 italic" colSpan={2}>{row.siteName} Total</td>
+                                                <td className="px-5 py-2 text-right font-mono">{currency(row.grandTotal.accommodation)}</td>
+                                                <td className="px-5 py-2 text-right font-mono">{currency(row.grandTotal.healthcare)}</td>
+                                                <td className="px-5 py-2 text-right font-mono text-[var(--color-brand)]">{currency(row.grandTotal.total)}</td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
+                                ))}
+                            </tbody>
+                            <tfoot className="bg-gray-100 dark:bg-[#15171e] font-black text-xs border-t-2 border-gray-300 dark:border-gray-700">
+                                <tr>
+                                    <td className="px-5 py-3 text-gray-900 dark:text-white" colSpan={2}>GRAND TOTAL (ALL BRANCHES)</td>
+                                    <td className="px-5 py-3 text-right font-mono text-gray-900 dark:text-white">{currency(recon.pivotTotals.grandTotal.accommodation)}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-gray-900 dark:text-white">{currency(recon.pivotTotals.grandTotal.healthcare)}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-emerald-600 dark:text-emerald-400 text-sm">{currency(recon.pivotTotals.grandTotal.total)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 2: Budget vs Actuals Grid */}
+            {subTab === 'BUDGET_VARIANCE' && (
+                <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs overflow-hidden">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/[0.02]">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Branch Spend vs Monthly & Annual Budgets (FY27)</h3>
+                            <p className="text-xs text-gray-500">Tracking monthly and YTD burn rates against the baseline $14.521M operating budget.</p>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-gray-100/80 dark:bg-[#15171e] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="px-4 py-3.5">Operating Branch</th>
+                                    <th className="px-4 py-3.5 text-right">Depletion Actual</th>
+                                    <th className="px-4 py-3.5 text-right">Monthly Budget</th>
+                                    <th className="px-4 py-3.5 text-right">Depletion Var</th>
+                                    <th className="px-4 py-3.5 text-right">New Business Actual</th>
+                                    <th className="px-4 py-3.5 text-right">NB Budget</th>
+                                    <th className="px-4 py-3.5 text-right">NB Var</th>
+                                    <th className="px-4 py-3.5 text-right">Annual Budget</th>
+                                    <th className="px-4 py-3.5 text-center">YTD Burn %</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {recon.trackingRows.map((r) => (
+                                    <tr key={r.branch} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                        <td className="px-4 py-3 font-bold text-gray-900 dark:text-white">{r.siteName}</td>
+                                        <td className="px-4 py-3 text-right font-mono">{currency(r.depletionCurrentMonth)}</td>
+                                        <td className="px-4 py-3 text-right font-mono text-gray-500">{currency(r.monthlyBudgetDepletion)}</td>
+                                        <td className={`px-4 py-3 text-right font-mono font-bold ${r.varianceDepletion >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                            {r.varianceDepletion >= 0 ? `+${currency(r.varianceDepletion)}` : currency(r.varianceDepletion)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-mono">{currency(r.newBusinessCurrentMonth)}</td>
+                                        <td className="px-4 py-3 text-right font-mono text-gray-500">{currency(r.monthlyBudgetNewBusiness)}</td>
+                                        <td className={`px-4 py-3 text-right font-mono font-bold ${r.varianceNewBusiness >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                            {r.varianceNewBusiness >= 0 ? `+${currency(r.varianceNewBusiness)}` : currency(r.varianceNewBusiness)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-mono font-bold text-gray-900 dark:text-white">{currency(r.totalAnnualBudget)}</td>
+                                        <td className="px-4 py-3 text-center">
+                                            <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300">
+                                                {r.spendYtdPercent}%
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 3: Visual Comparison Charts */}
+            {subTab === 'CHARTS' && (
+                <div className="bg-white dark:bg-nocturne p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Monthly Spend vs Monthly Budget by Branch</h3>
+                    <div className="h-[360px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                                <XAxis dataKey="name" stroke="#888888" fontSize={12} />
+                                <YAxis stroke="#888888" fontSize={12} tickFormatter={(v) => `$${Math.round(v / 1000)}k`} />
+                                <RechartsTooltip
+                                    formatter={(value: any) => [`$${Number(value).toLocaleString()}`, '']}
+                                    contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
+                                />
+                                <Legend />
+                                <Bar dataKey="depletionActual" name="Depletion Actual" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="depletionBudget" name="Depletion Budget" fill="#93c5fd" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="newBusinessActual" name="New Business Actual" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="newBusinessBudget" name="New Business Budget" fill="#d8b4fe" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 export default ReportingView;

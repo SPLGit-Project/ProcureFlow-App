@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Save,
   Filter,
+  AlertTriangle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp.tsx';
@@ -36,6 +37,23 @@ const PRICE_MATCH_TOLERANCE = 0.0001;
 const PO_CREATE_DRAFT_VERSION = 1;
 const PO_CREATE_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 const REQUEST_REASON_OPTIONS = ['Depletion', 'New Customer', 'Other'] as const;
+
+// ── Pack Size / Carton Multiple Validation ──────────────────────────────────
+const getLineCartonSize = (line: POLineItem, itemsList: Item[]): number => {
+  const matchedItem = itemsList.find(i => i.id === line.itemId);
+  const upq = matchedItem?.cartonQty || matchedItem?.upq || line.upq || 1;
+  return upq > 0 ? upq : 1;
+};
+
+const getCartonMultiples = (qty: number, cartonSize: number) => {
+  if (cartonSize <= 1) return { isValid: true, lower: qty, upper: qty, cartonCount: qty };
+  const isValid = qty % cartonSize === 0;
+  const lower = Math.max(cartonSize, Math.floor(qty / cartonSize) * cartonSize);
+  const upper = Math.ceil(qty / cartonSize) * cartonSize;
+  const cartonCount = Math.ceil(qty / cartonSize);
+  return { isValid, lower, upper, cartonCount };
+};
+
 
 interface POCreateDraft {
   selectedSiteId: string;
@@ -680,6 +698,42 @@ const POCreate = () => {
                                  </div>
                              </div>
                          </div>
+                         {(() => {
+                             const cartonSize = getLineCartonSize(line, items);
+                             const { isValid, upper } = getCartonMultiples(line.quantityOrdered, cartonSize);
+                             if (cartonSize > 1 && !isValid) {
+                                 return (
+                                     <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50 rounded-lg p-2 text-xs flex flex-col gap-1.5 animate-fade-in">
+                                         <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-300 font-bold text-[11px]">
+                                             <AlertTriangle size={13} className="shrink-0" />
+                                             <span>Carton multiple required (Carton = {cartonSize.toLocaleString()} units)</span>
+                                         </div>
+                                         <div className="flex items-center justify-between text-[11px]">
+                                             <span className="text-rose-600 dark:text-rose-400">Fix to nearest multiple:</span>
+                                             <button
+                                                 type="button"
+                                                 onClick={() => {
+                                                     const pricing = calculateLinePricing(upper, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+                                                     setCart(prev => prev.map(l => l.id === line.id ? { ...l, quantityOrdered: upper, totalPrice: pricing.totalPrice, totalPriceIncGst: pricing.totalPriceIncGst } : l));
+                                                     setQuantityDrafts(prev => ({ ...prev, [line.id]: String(upper) }));
+                                                 }}
+                                                 className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded shadow-xs transition-colors"
+                                             >
+                                                 Round to {upper.toLocaleString()} units
+                                             </button>
+                                         </div>
+                                     </div>
+                                 );
+                             }
+                             if (cartonSize > 1) {
+                                 return (
+                                     <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                                         <span>✓ Multiples of {cartonSize} ({Math.round(line.quantityOrdered / cartonSize)} cartons)</span>
+                                     </div>
+                                 );
+                             }
+                             return null;
+                         })()}
                          <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800/60 text-xs text-gray-500 dark:text-gray-400">
                              <span className="text-[11px] font-semibold">Need by:</span>
                              <input 

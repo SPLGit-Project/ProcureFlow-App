@@ -499,6 +499,17 @@ const PODetail = () => {
   };
 
   const handleCompletePO = async () => {
+      // Mandatory Concur Reference Validation (System Governance Rule)
+      const hasConcurRef = Boolean(
+          (po.concurRequestNumber && po.concurRequestNumber.trim()) ||
+          (po.concurPoNumber && po.concurPoNumber.trim()) ||
+          po.lines.some(l => l.concurPoNumber && l.concurPoNumber.trim())
+      );
+      if (!hasConcurRef) {
+          alert('❌ CANNOT COMPLETE ORDER\n\nConcur Reference Number (Request PR # or Concur PO #) is required before this purchase order can be closed.\n\nPlease enter/link the Concur Reference Number to ensure data reconciliation between Concur and ProcureFlow.');
+          return;
+      }
+
       const hasOutstanding = po.lines.some(line => line.quantityReceived < line.quantityOrdered);
       const confirmMessage = hasOutstanding
           ? 'Warning: There are outstanding delivery quantities on this order. Completing it will permanently close the PO request and this action cannot be undone. Are you sure you want to proceed?'
@@ -617,6 +628,13 @@ const PODetail = () => {
 
       const quantityOrdered = Math.max(1, Math.floor(Number(addItemQty) || 0));
       const unitPrice = Math.max(0, Number(addItemPrice) || 0);
+      const cartonSize = selectedItem.cartonQty || selectedItem.upq || 1;
+      if (cartonSize > 1 && quantityOrdered % cartonSize !== 0) {
+          const lower = Math.max(cartonSize, Math.floor(quantityOrdered / cartonSize) * cartonSize);
+          const upper = Math.ceil(quantityOrdered / cartonSize) * cartonSize;
+          alert(`❌ CARTON SIZE MULTIPLE REQUIRED\n\nItem: ${selectedItem.name}\nCarton size is ${cartonSize.toLocaleString()} units.\n\nQuantity ordered (${quantityOrdered.toLocaleString()}) must be a multiple of ${cartonSize.toLocaleString()} (e.g. ${lower.toLocaleString()} or ${upper.toLocaleString()}).`);
+          return;
+      }
       const selectedPriceOption = normalizeItemPriceOptions(selectedItem).find(opt => opt.id === addItemPriceOptionId);
       const pricing = calculateLinePricing(quantityOrdered, unitPrice, 'GST', 10.0);
 
@@ -788,6 +806,17 @@ const PODetail = () => {
 
   const handleForceStatusUpdate = async (newStatus: string) => {
       if (!po) return;
+      if (newStatus === 'CLOSED') {
+          const hasConcurRef = Boolean(
+              (po.concurRequestNumber && po.concurRequestNumber.trim()) ||
+              (po.concurPoNumber && po.concurPoNumber.trim()) ||
+              po.lines.some(l => l.concurPoNumber && l.concurPoNumber.trim())
+          );
+          if (!hasConcurRef) {
+              alert('❌ CANNOT COMPLETE ORDER\n\nConcur Reference Number (Request PR # or Concur PO #) is required before this purchase order can be closed.\n\nPlease link the Concur Reference Number before closing.');
+              return;
+          }
+      }
       try {
             // Run side-effects first
             await ensureDeliveryRecord(newStatus);

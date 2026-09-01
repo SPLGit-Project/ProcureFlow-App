@@ -426,6 +426,37 @@ export default function Home() {
     return counts;
   }, [siteFilteredPOs]);
 
+
+  // ── Action Required & System Exceptions Calculation ───────────────────────
+  const pendingConcurPOs = useMemo(() => {
+    return siteFilteredPOs.filter(p => 
+      p.status === 'APPROVED_PENDING_CONCUR_REQUEST' || 
+      (p.status === 'APPROVED_PENDING_CONCUR' && !p.concurRequestNumber)
+    );
+  }, [siteFilteredPOs]);
+
+  const readyToClosePOs = useMemo(() => {
+    return siteFilteredPOs.filter(p => 
+      (p.status === 'RECEIVED' || p.status === 'VARIANCE_PENDING' || p.status === 'ACTIVE') && 
+      p.lines.length > 0 && 
+      p.lines.every(l => (l.quantityReceived || 0) >= l.quantityOrdered)
+    );
+  }, [siteFilteredPOs]);
+
+  const overdueDeliveryPOs = useMemo(() => {
+    const now = Date.now();
+    return siteFilteredPOs.filter(p => 
+      (p.status === 'ACTIVE' || p.status === 'RECEIVED' || p.status === 'VARIANCE_PENDING') && 
+      p.lines.some(l => {
+        if (!l.needByDate || (l.quantityReceived || 0) >= l.quantityOrdered) return false;
+        const diffDays = (now - new Date(l.needByDate).getTime()) / (1000 * 60 * 60 * 24);
+        return diffDays > 14;
+      })
+    );
+  }, [siteFilteredPOs]);
+
+  const totalActionExceptions = pendingConcurPOs.length + readyToClosePOs.length + overdueDeliveryPOs.length;
+
   const totalOpenRequests = useMemo(() => {
     return siteFilteredPOs.filter(p => p.status !== 'CLOSED' && p.status !== 'REJECTED').length;
   }, [siteFilteredPOs]);
@@ -686,6 +717,84 @@ export default function Home() {
               </p>
             </div>
           </div>
+
+          
+          {/* ── ACTION REQUIRED / PENDING TASKS TASK CENTER ──────────────────────── */}
+          {totalActionExceptions > 0 && (
+            <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-rose-500/10 dark:from-amber-950/30 dark:via-orange-950/30 dark:to-rose-950/30 border border-amber-200 dark:border-amber-800/40 rounded-2xl p-4 sm:p-5 shadow-xs animate-fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                    <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400" />
+                    Action Required ({totalActionExceptions} Pending Items)
+                  </h3>
+                </div>
+                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                  Data Governance & Operational Alignment Tasks
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* 1. Missing Concur PR ID */}
+                <div 
+                  onClick={() => setSelectedStage(2)}
+                  className="bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border border-amber-200/60 dark:border-amber-800/30 cursor-pointer transition-all flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold shrink-0">
+                      <Link2 size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-gray-900 dark:text-white truncate">Log Concur PR #</div>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400">Approved orders awaiting ERP link</div>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-sky-500 text-white shrink-0">
+                    {pendingConcurPOs.length}
+                  </span>
+                </div>
+
+                {/* 2. 100% Received Ready to Close */}
+                <div 
+                  onClick={() => setSelectedStage(5)}
+                  className="bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border border-amber-200/60 dark:border-amber-800/30 cursor-pointer transition-all flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0">
+                      <CheckCheck size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-gray-900 dark:text-white truncate">Ready for Order Closure</div>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400">100% physical delivery completed</div>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-500 text-white shrink-0">
+                    {readyToClosePOs.length}
+                  </span>
+                </div>
+
+                {/* 3. Overdue Deliveries > 14 Days */}
+                <div 
+                  onClick={() => setSelectedStage(4)}
+                  className="bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border border-amber-200/60 dark:border-amber-800/30 cursor-pointer transition-all flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold shrink-0">
+                      <Clock size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-gray-900 dark:text-white truncate">Overdue Deliveries</div>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400">&gt;14 days past need-by date</div>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-rose-500 text-white shrink-0">
+                    {overdueDeliveryPOs.length}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── HERO 6-STAGE INTERACTIVE WORKSPACE SELECTOR ──────────────────────── */}
           <div>
