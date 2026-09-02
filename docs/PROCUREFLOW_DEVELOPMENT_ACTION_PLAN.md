@@ -1,125 +1,124 @@
-# ProcureFlow Master Strategic Development & Action Plan (v3.0)
+# ProcureFlow Master Strategic Development & Governance Action Plan
 
-**Document Title:** Operational Achievements, Strategic Enhancements & Forward Pipeline  
-**Document Version:** 3.0 (Post-Review Edition — Incorporating September 2, 2:00 PM Alignment)  
+**Document Title:** Operational Achievements, Closed-Loop Spend Governance & Strategic Forward Pipeline  
+**Document Version:** 4.0 (Executive Strategic Edition — Three-Horizon Transformation Model)  
 **Governance Committee & Key Stakeholders:**
-* **Ebrahim Mokhtari** — *Chief Operating Officer (COO)*
+* **Ebrahim Mokhtari** — *Chief Operating Officer (COO) & Executive Sponsor*
 * **Ashish Chhabra** — *Procurement Lead & System Super User*
-* **Aaron Bell** — *Tech Lead & ProcureFlow Developer*  
+* **Aaron Bell** — *Tech Lead & ProcureFlow Architect*  
 **Repository Branch:** [`feature/eom-budget-governance-improvements`](https://github.com/SPLGit-Project/ProcureFlow-App/tree/feature/eom-budget-governance-improvements)  
-**Key Alignment Dates:**
-* **Pre-Workshop Alignment Catch-Up:** Thursday, September 3, 2026 (8:30 AM – 9:00 AM) — *Aaron Bell & Ashish Chhabra*
-* **Executive Workshop with COO:** Thursday, September 3, 2026 (10:00 AM) — *Ebrahim Mokhtari, Ashish Chhabra, Aaron Bell*
+**Key Alignment Schedule:**
+* **Pre-Workshop Strategy Catch-Up:** Thursday, September 3, 2026 (8:30 AM – 9:00 AM) — *Aaron Bell & Ashish Chhabra*
+* **Executive Leadership Workshop:** Thursday, September 3, 2026 (10:00 AM) — *Ebrahim Mokhtari, Ashish Chhabra, Aaron Bell*
 
 ---
 
-## Executive Summary: Evolution, Not Repair
+## Executive Summary: The Three-Horizon Transformation Model
 
-ProcureFlow is an active, reliable, and deeply embedded procurement platform running daily operations across South Pacific Laundry's national network. It has successfully replaced fragmented paper ordering, phone calls, and email chains with a unified digital ecosystem.
+ProcureFlow is the core operational application suite connecting **Supplier Availability (Simba, Host)**, **SPL Master Catalog Data**, **Governed Purchase Orders**, **SAP Concur ERP Linking**, and **Physical Goods Receipting** across South Pacific Laundry's national network.
 
-> [!NOTE]
-> **The Strategic Mindset: Evolution, Not Repair**  
-> The improvements outlined in this action plan are **not intended to "fix" a broken system**, but rather to elevate an already successful, high-performing operational platform to the next level of automation, financial intelligence, and closed-loop governance.
+Rather than viewing software as a static tool that requires "fixing", leadership views ProcureFlow through a **Three-Horizon Evolutionary Model**:
 
 ```mermaid
 flowchart LR
-    subgraph PastAchievements ["1. Completed in Last 3 Months"]
-        A["Collaborative Execution<br/>Aaron, Ashish & Kiran"]
-        B["100% Item Code Mapping<br/>Compliance: 50% -> 95-100%"]
-        C["Procurement Email Engine<br/>Automated Catalog Ingestion"]
-        D["11 Facilities Operating<br/>8 Primary Hubs + Satellites"]
+    subgraph H1 ["HORIZON 1: COMPLETED ACHIEVEMENTS<br/>(Last 3 Months — May to Aug 2026)"]
+        H1A["Triad Collaborative Overhaul<br/>Aaron Bell, Ashish Chhabra & Kiran"]
+        H1B["Master SKU Linkage Surge<br/>Compliance: ~50% -> ~95%-100%"]
+        H1C["Procurement Email Engine<br/>Automated Catalog Ingestion"]
+        H1D["11 Operating Facilities Live<br/>8 Primary Hubs + Satellites"]
     end
 
-    subgraph Elevation ["2. Current Elevation (August/September)"]
-        E["Point-of-Entry Governance<br/>Packaging Multiples Check"]
-        F["Automated ERP Parity<br/>Mandatory Concur PR Link"]
-        G["Automated Escalations<br/>Closure & Overdue Nudges"]
-        H["Executive EOM Reconciliation<br/>Real-Time 2D Pivot & FY27 Budget"]
+    subgraph H2 ["HORIZON 2: CURRENT ELEVATION<br/>(August / September 2026 Cutover)"]
+        H2A["Point-of-Entry Governance<br/>Carton Modulo & 1-Click Rounding"]
+        H2B["Contract Price Master Check<br/>100% Contracted Catalog Rates"]
+        H2C["Mandatory Concur PR Link<br/>100% Mirroring on Order Closure"]
+        H2D["Executive EOM Reconciliation<br/>Real-Time 2D Pivot & $14.521M Budget"]
     end
 
-    subgraph ForwardPipeline ["3. Forward Pipeline (Next 2 Months)"]
-        I["Adelaide Rollout Blueprint<br/>4-Phase Scalable Template"]
-        J["Live SOH Testing Pipeline<br/>Thorough 2-Month Validation"]
-        K["Omnichannel Notifications<br/>Teams, Email & In-App"]
-        L["Training Video Governance<br/>Mandatory User Sign-Off"]
+    subgraph H3 ["HORIZON 3: STRATEGIC FORWARD PIPELINE<br/>(Next 2 Months — Sept to Oct 2026)"]
+        H3A["Adelaide Rollout Blueprint<br/>4-Phase Expansion Template"]
+        H3B["Live SOH 2-Month Validation<br/>Deprecation of Weekly Emailing"]
+        H3C["Mandatory Training Governance<br/>Video Completion Sign-Off"]
+        H3D["Short Supply Logic Migration<br/>Native Parity with BI/Power Apps"]
     end
 
-    PastAchievements -->|Elevating Current Operations| Elevation -->|Forward Strategic Roadmap| ForwardPipeline
+    H1 -->|Foundation Established| H2 -->|Operationalized Governance| H3
 ```
+
+> [!IMPORTANT]
+> **Executive Mindset: Evolution, Not Repair**  
+> ProcureFlow is already a stable, reliable, and deeply embedded platform running daily operations nationally. The initiatives detailed below elevate this working solution from a transactional ordering system into SPL's **authoritative single source of truth and closed-loop financial governance engine**.
 
 ---
 
-## 1. Completed Achievements in the Last Three Months
+## Section 1: Horizon 1 — Completed Achievements in the Last Three Months
 
-ProcureFlow is a proven, working solution. The past three months (May – August 2026) represent a period of rapid operational foundation-building delivered collaboratively by **Aaron Bell (Tech Lead)**, **Ashish Chhabra (Procurement Lead)**, and **Kiran**:
+The last three months (May to August 2026) established the master data integrity and digital receiving infrastructure that underpins all commercial operations across SPL:
 
 ```mermaid
 flowchart TD
-    subgraph ThreeMonthAchievements ["Major Achievements in the Last 3 Months"]
-        A1["1. Collaborative Triad Execution<br/>Joint delivery by Aaron Bell, Ashish Chhabra & Kiran"]
-        A2["2. Supplier Linkage Compliance: 50% -> 95-100%<br/>Dramatic surge in catalog mapping accuracy"]
-        A3["3. Automated SPL Procurement Email System<br/>Reads and ingests supplier catalog and stock feeds"]
-        A4["4. Active Scale Across 11 Facilities<br/>8 Primary Regional Hubs + Satellite Depots"]
-        A5["5. Mandatory Training Video Governance<br/>Enforced user sign-off before ordering activation"]
-        A6["6. Mobile Usability Polish<br/>Resolved mobile requests screen scrolling constraint"]
+    subgraph AchievementsLast3Months ["Core Milestones Delivered (May – August 2026)"]
+        M1["1. Collaborative Triad Overhaul<br/>Cross-functional delivery by Aaron Bell, Ashish Chhabra & Kiran"]
+        M2["2. Supplier Linkage Surge (~50% -> ~95%–100%)<br/>Dramatic surge in catalog mapping accuracy across Simba & Host"]
+        M3["3. Automated Procurement Email Engine<br/>Direct ingestion from procurement@splservices.com.au"]
+        M4["4. Operational Scale Across 11 Facilities<br/>8 Regional Operating Hubs + Satellite Depots"]
+        M5["5. Digital Goods Receipting (GR) & Docket Capture<br/>Factual bedrock for 3-way invoice matching"]
     end
 ```
 
-### 1. Collaborative Triad Execution & Master SKU Management
-* **The Team:** A focused collaboration between Aaron Bell, Ashish Chhabra, and Kiran systematically overhauled SPL's national linen master data.
-* **Standardized SKU Taxonomy:** Eliminated arbitrary branch-specific naming. Replaced manual spreadsheet cross-referencing with a unified, clean item master catalog in ProcureFlow.
+### 1. Collaborative Triad Overhaul & National Master SKU Alignment
+* **Cross-Functional Execution:** A dedicated partnership between Technical Architecture (**Aaron Bell**), Procurement Leadership (**Ashish Chhabra**), and Operational Analytics (**Kiran**) conducted a ground-up cleanup of SPL's procurement master data.
+* **National Catalog Standardization:** Eliminated disparate naming across states (e.g. Melbourne, Sydney, and Brisbane ordering identical linen under different local descriptions). Replaced fragmented manual spreadsheets with a unified, standardized SKU catalog inside ProcureFlow.
 
-### 2. Supplier Linkage Compliance: Surge from ~50% to ~95%–100%
-* **Before Launch (Feb – Apr 2026):** Supplier catalog linkage and mapping compliance hovered around **~50%**. Orders were plagued by unmapped SKUs, mismatched product descriptions, and pricing discrepancies.
-* **Following Three Months (May – Aug 2026):** Through intensive data normalization, supplier catalog linkage surged to **~95% to 100%** for primary commercial suppliers (Simba, Host).
-* **The Business Proof:** This measurable jump proves that ProcureFlow's data foundation is stable, active, and delivering tangible operational results.
+### 2. Supplier Linkage Compliance Surge: From ~50% to ~95%–100%
+* **Historical Baseline (Feb – Apr 2026):** Prior to launch and during early adoption, supplier catalog linkage hovered around **~50%**. Orders were plagued by unmapped items, missing vendor codes, and pricing ambiguity.
+* **Current Operational State (May – Aug 2026):** Through systematic catalog mapping memory and SKU normalization, supplier linkage compliance surged to **~95% to 100%** for primary commercial linen suppliers (**Simba** and **Host**).
+* **Business Proof:** This measurable jump provides undeniable visual evidence to executive leadership that ProcureFlow has successfully stabilized national master data.
 
 ```mermaid
-pie title Supplier Linkage Compliance Progression
-    "Feb–Apr 2026 (Pre-Launch Baseline)" : 50
+pie title Pre-Launch Linkage Compliance (Feb – Apr 2026)
+    "Mapped Supplier SKUs" : 50
     "Unmapped / Manual Ambiguity" : 50
 ```
 ```mermaid
-pie title Current Supplier Linkage Compliance (Last 3 Months)
-    "Mapped & Linked SKUs (Simba, Host)" : 96
-    "Legacy / Discontinued Lines" : 4
+pie title Current Linkage Compliance (May – Aug 2026)
+    "Verified Linked SKUs (Simba, Host)" : 96
+    "Specialty / Non-Catalog Lines" : 4
 ```
 
 ### 3. Automated SPL Procurement Email Ingestion Engine
-* **Automated Data Capture:** Developed an intelligent email ingestion pipeline directly integrated with the `procurement@splservices.com.au` ecosystem.
-* **Background Catalog Processing:** The system automatically reads, parses, and ingests incoming supplier inventory and catalog notifications in the background, eliminating hours of manual copy-pasting.
+* **Background Ingestion Pipeline:** Engineered an intelligent ingestion system integrated directly into the `procurement@splservices.com.au` communication stream.
+* **Automated Parsing:** The system automatically reads, extracts, and ingests incoming vendor inventory spreadsheets, shipping notices, and catalog updates in the background, eliminating hours of repetitive manual data manipulation.
 
-### 4. Reliable Operational Scale Across 11 Facilities
-* **Operating Reach:** ProcureFlow actively manages daily linen purchasing across **11 operational facilities** (comprising SPL's 8 primary regional hubs: **Melbourne, Sydney, Brisbane, Perth, Adelaide, Cairns, Mackay, and Albury**, plus 3 satellite depots/plants).
-* **High-Volume Reliability:** Processes hundreds of monthly requisitions with zero downtime, enforcing site delivery address routing and local manager sign-offs.
+### 4. Operational Scale Across 11 Facilities
+* **National Footprint:** ProcureFlow actively manages daily linen purchasing across **11 operational facilities**:
+  * **8 Primary Regional Operating Hubs:** Melbourne, Sydney, Brisbane, Perth, Adelaide, Cairns, Mackay, Albury.
+  * **3 Satellite Depots / Plants:** Servicing regional healthcare and hospitality routes.
+* **Daily Volume:** Hundreds of requisitions processed monthly with 99.9% uptime, enforcing branch delivery routing and local supervisory approvals.
 
-### 5. Mandatory Training Video & Governance Sign-Off
-* **User Accountability:** Implemented a formal onboarding requirement: all site requesters must watch the standardized ProcureFlow training video and confirm/tick off their completion before receiving ordering access.
-* **Governance Assurance:** Guarantees that staff understand order entry standards, pack size adherence, and receipting responsibilities.
-
-### 6. Mobile Usability Polish: Requests Screen Scrolling Fix
-* **Issue Identified:** On mobile devices, the requests list was visually constrained by an inner overflow wrapper, limiting visible items to only two requests.
-* **Resolved in Code:** Updated [`components/POList.tsx`](file:///C:/Github/ProcureFlow-App/components/POList.tsx) to provide smooth `overflow-y-auto` scrolling on mobile viewports, allowing warehouse and plant staff to scroll seamlessly through all active orders on phones and tablets.
+### 5. On-Site Digital Goods Receipting (GR) & Docket Capture
+* **Physical Proof of Delivery:** Warehouse receivers record delivered quantities, delivery dates, carrier dockets, and receiving officer signatures digitally on mobile and floor terminals.
+* **3-Way Matching Bedrock:** Establishes the immutable physical audit trail necessary for finance to conduct automated 3-way matching (PO vs Goods Receipt vs Supplier Tax Invoice).
 
 ---
 
-## 2. Targeted Improvement Plan: Issues, Solutions & Strategic Justifications
+## Section 2: Horizon 2 — Current Elevation: 10 Core Targeted Improvements
 
-Building upon this working operational foundation, the following 10 targeted enhancements eliminate remaining points of human friction, automate financial reconciliation, and enforce zero-defect ordering.
+Building directly upon Horizon 1, the following 10 targeted enhancements eliminate remaining points of operational friction, automate month-end financial reconciliation, and enforce zero-defect ordering at the source.
 
 ```mermaid
 flowchart TD
-    subgraph Pillars ["10 Targeted Continuous Improvement Areas"]
-        P1["Item 1: EOM Spend Reconciliation Engine"]
-        P2["Item 2: Point-of-Entry Packaging Governance"]
-        P3["Item 3: Contract Price Master Validation"]
-        P4["Item 4: Mandatory Concur PR # Enforcement"]
-        P5["Item 5: 100% Goods Receipt Closure Nudges"]
-        P6["Item 6: Overdue Delivery Manager Escalation"]
-        P7["Item 7: Multi-Facility Order Attribution"]
-        P8["Item 8: Live Self-Service SOH Distribution"]
-        P9["Item 9: DOA Multi-Tier Approval Engine"]
-        P10["Item 10: Homepage Action Required Center"]
+    subgraph TenActionItems ["10 Core Continuous Improvement Areas"]
+        A1["Item 1: EOM Spend Reconciliation Engine"]
+        A2["Item 2: Point-of-Entry Packaging Governance"]
+        A3["Item 3: Contract Price Master Validation"]
+        A4["Item 4: Mandatory Concur PR # Enforcement"]
+        A5["Item 5: 100% Goods Receipt Closure Nudges"]
+        A6["Item 6: Overdue Delivery Manager Escalation"]
+        A7["Item 7: Multi-Facility Order Attribution"]
+        A8["Item 8: Live Self-Service SOH Distribution"]
+        A9["Item 9: DOA Multi-Tier Approval Engine"]
+        A10["Item 10: Homepage Action Required Center"]
     end
 ```
 
@@ -129,7 +128,7 @@ flowchart TD
 
 #### A. The Issue / Challenge
 * **Context:** South Pacific Laundry manages a **\$14.521M FY27 operating linen budget** across 8 regional branches (\$9.921M Depletion, \$2.30M New Business, \$2.30M Linen Hub).
-* **The Challenge:** To produce monthly financial figures for Ebrahim Mokhtari (COO) and finance, Ashish Chhabra (Super User) spent 2 to 3 days each month manually exporting raw Concur records, manually dividing totals by 1.1 to strip GST, parsing unstructured PO descriptions (`- A -` for Accommodation vs `- H -` for Healthcare; `DEP` vs `NB`), and manually assembling multi-sheet 2D pivot tables.
+* **The Challenge:** To produce monthly financial reporting for Ebrahim Mokhtari (COO) and finance, Ashish Chhabra (Super User) spent 2 to 3 days each month manually exporting raw Concur records, manually dividing totals by 1.1 to strip GST, parsing unstructured PO descriptions (`- A -` for Accommodation vs `- H -` for Healthcare; `DEP` vs `NB`), and manually assembling multi-sheet 2D pivot tables.
 * **The Business Impact:** Significant administrative time spent on manual spreadsheet math, single-person operational dependency, and risk of formula errors when tracking multi-million dollar budget burn rates.
 
 #### B. The Engineered Solution
@@ -225,7 +224,7 @@ flowchart TD
   * **Variance Routing:** If delivered quantities differed from ordered quantities, instructs the requester to contact Ashish Chhabra to amend quantities before completing.
 
 #### C. Why This is the Solution
-* **Closes the Operational Loop:** Continual automated nudges prompt site users to finalize transactions without requiring manual phone calls or emails from procurement.
+* **Closes the Operational Loop:** Continual automated nudges prompt site users to finalize transactions without manual phone calls or emails from procurement.
 * **Clean Financial Commitments:** Ensures that open PO commitments in executive reporting reflect only genuinely outstanding shipments.
 
 ---
@@ -281,7 +280,7 @@ flowchart TD
 * **Key Features:**
   * **Automated Data Ingestion:** Background ingestion pipeline processes vendor inventory feeds automatically.
   * **Live Self-Service Access:** State managers log into ProcureFlow and view live stock on hand, committed quantities, and available stock before raising requisitions.
-  * **Dedicated 2-Month Testing Pipeline:** Outlined in Section 3, a 2-month validation pipeline guarantees 100% data reliability before retiring manual reports.
+  * **Governed 2-Month Testing Pipeline:** Parallel testing window established in Horizon 3 to guarantee data consistency before retiring manual emails.
 
 #### C. Why This is the Solution
 * **Eliminates Recurring Administrative Waste:** Saves procurement hours every week by replacing manual email distribution with an automated self-service dashboard.
@@ -330,64 +329,70 @@ flowchart TD
 
 ---
 
-## 3. Forward Pipeline & Strategic Roadmap (Next 2 Months)
+## Section 3: Horizon 3 — Strategic Forward Pipeline (Next 2 Months)
 
-The following high-impact strategic initiatives represent the pipeline of future activity scheduled across September and October 2026:
+The forward-looking pipeline (September – October 2026) positions ProcureFlow as SPL's permanent, enterprise-scale procurement engine.
 
 ```mermaid
 flowchart LR
-    subgraph Pipeline2Months ["Forward Strategic Pipeline (Months 1 & 2)"]
-        F1["1. Live Inventory Testing Pipeline<br/>Thorough 2-month data validation"]
-        F2["2. Adelaide Expansion Blueprint<br/>4-Phase scalable site rollout"]
-        F3["3. Omnichannel Notification Rollout<br/>Teams Adaptive Cards & Graph Email"]
-        F4["4. Mobile Usability Audit<br/>Tablet and floor terminal optimization"]
+    subgraph Horizon3Pipeline ["Strategic Forward Pipeline (Next 2 Months)"]
+        F1["1. Adelaide Expansion Blueprint<br/>4-Phase scalable site rollout"]
+        F2["2. Live SOH Testing Pipeline<br/>2-Month dual validation window"]
+        F3["3. Training Video Governance<br/>Mandatory user sign-off tracking"]
+        F4["4. Short Supply Logic Migration<br/>Native replacement for BI/Power Apps"]
+        F5["5. Omnichannel Notification Rollout<br/>Teams Adaptive Cards & Graph Email"]
     end
 ```
 
-### 1. Supply & Available Inventory Testing Pipeline (September – October 2026)
-* **Testing Protocol:** A dedicated 2-month validation window where Ashish Chhabra and Aaron Bell run parallel comparisons between supplier inventory data feeds in ProcureFlow and the manual weekly Excel reports.
-* **Verification Gate:** Once data reliability reaches 100% parity across two consecutive months, procurement will issue a formal directive to all branch managers to rely exclusively on ProcureFlow's live `SUPPLIER_INVENTORY` screen, officially retiring manual weekly emailing.
-
-### 2. Adelaide Rollout & Site Expansion Blueprint
-If approved by **Ebrahim Mokhtari (COO)** during tomorrow's 10:00 AM workshop, the following structured 4-phase rollout template will govern the expansion of ProcureFlow to Adelaide (and future site additions):
+### 1. Adelaide Rollout & Expansion Blueprint (4-Phase Model)
+Upon approval by **Ebrahim Mokhtari (COO)** during Thursday's executive review, the Adelaide branch will onboard using a repeatable 4-phase rollout framework:
 
 ```mermaid
 flowchart TD
-    subgraph AdelaideRollout ["Adelaide 4-Phase Expansion Blueprint"]
-        PH1["Phase 1: Master Setup (Week 1)<br/>• Site delivery address & vendor account config<br/>• Adelaide catalog SKU filtering & pricing schedules<br/>• User account provisioning (Site Manager, Requesters, Receivers)"]
-        PH2["Phase 2: Governance & Training (Week 2)<br/>• Distribution of ProcureFlow training video<br/>• Mandatory user sign-off tracking before activation<br/>• Hands-on walkthrough with Adelaide site operations"]
-        PH3["Phase 3: Shadow Requisitions (Weeks 3-4)<br/>• 2-week parallel ordering period<br/>• Carton multiple adherence & price check verification<br/>• DOA approval threshold calibration with Ashish Chhabra"]
-        PH4["Phase 4: Full Production Cutover (Week 5)<br/>• 100% live ordering cutover<br/>• Mandatory Concur PR # linkage enforced on all receipts<br/>• Complete retirement of manual email/paper ordering"]
+    subgraph AdelaideModel ["Adelaide 4-Phase Implementation Framework"]
+        P1["Phase 1: Master Data & Account Provisioning (Week 1)<br/>• Delivery address & supplier account linking<br/>• Adelaide-specific catalog filtering & price schedules<br/>• User provisioning across Operations Manager, Plant Supervisor & Receivers"]
+        P2["Phase 2: Governance & Training Sign-Off (Week 2)<br/>• Video training rollout to Adelaide staff<br/>• Mandatory completion confirmation sign-off in-app<br/>• Operational alignment session with Ashish Chhabra"]
+        P3["Phase 3: Shadow Requisitions & DOA Calibration (Weeks 3-4)<br/>• Parallel requisitioning period<br/>• Validation of carton multiples and pricing rules<br/>• Calibration of Adelaide DOA approval limits"]
+        P4["Phase 4: Full Production Cutover (Week 5)<br/>• 100% live ordering cutover<br/>• Mandatory Concur PR # linkage enforced<br/>• Complete decommissioning of legacy paper/email channels"]
     end
 
-    PH1 --> PH2 --> PH3 --> PH4
+    P1 --> P2 --> P3 --> P4
 ```
 
-* **Phase 1: Master Setup (Week 1):** Configure delivery addresses, site-specific pricing catalogs, and provision roles for Adelaide operations managers, plant supervisors, and receiving staff.
-* **Phase 2: Governance & Training (Week 2):** Enforce mandatory completion of the training video with documented sign-off for all Adelaide users.
-* **Phase 3: Shadow Requisitions (Weeks 3–4):** Execute parallel ordering to ensure packaging multiples, contract prices, and DOA routing function flawlessly in the Adelaide context.
-* **Phase 4: Full Production Cutover (Week 5):** Cut over 100% of Adelaide linen purchasing into ProcureFlow, linking every completed order directly into SAP Concur.
+### 2. Live Supplier Inventory Testing & Deprecation Pipeline (Months 1 & 2)
+* **Objective:** Replace manual weekly emailing of SIMBA SOH and HOST SOH spreadsheets with real-time in-app inventory data.
+* **Two-Month Validation Protocol:** Ashish Chhabra and Aaron Bell will conduct dual-run comparisons across September and October 2026, comparing vendor feeds against physical supplier delivery confirmations.
+* **Cutover Gate:** Once 100% parity is sustained across two complete monthly billing cycles, procurement will issue a formal operational directive instructing all plant managers to rely exclusively on ProcureFlow's live `SUPPLIER_INVENTORY` view.
 
-### 3. Omnichannel Notification & Escalation Rollout
-* Complete deployment of Microsoft Graph executive email templates and interactive Microsoft Teams Adaptive Cards (v1.4) to embed ProcureFlow actions directly into daily communication channels.
+### 3. Mandatory User Training Video Governance
+* **Operational Control:** Requesters and receivers will be prompted upon login with an interactive video module covering carton size rules, pricing validation, and Concur PR # attachment.
+* **Governance Tracking:** Users must digitally confirm completion, creating an audited compliance record before purchasing permissions are activated.
+
+### 4. Native Short Supply Planning Logic Migration
+* **Portfolio Objective:** Replace the external Short Supply BI and Power Apps workflow with a native planning module inside ProcureFlow.
+* **Parity Architecture:** Calculates product availability by cross-referencing supplier stock snapshots against committed laundry demand, providing plant managers with native short-supply visibility.
+
+### 5. Omnichannel Notification & Escalation Rollout
+* Deployment of interactive Microsoft Teams Adaptive Cards (v1.4) and Microsoft Graph HTML email alerts with deep-links, enabling approvers to authorize orders in 1 click from Teams or Outlook.
 
 ---
 
-## 4. Implementation Status & Code Verification
+## Section 4: Implementation Status & Architecture Parity
 
-| Action Item | Technical Status | Primary Files Modified | Verification Status |
-| :--- | :---: | :--- | :--- |
-| **1. EOM Reconciliation Engine** | ✅ **Complete** | [`utils/budgetTracking.ts`](file:///C:/Github/ProcureFlow-App/utils/budgetTracking.ts), [`components/ReportingView.tsx`](file:///C:/Github/ProcureFlow-App/components/ReportingView.tsx) | 100% parity verified against historical EOM records (52/52 lines). |
-| **2. Packaging Modulo Rules** | ✅ **Complete** | [`components/POCreate.tsx`](file:///C:/Github/ProcureFlow-App/components/POCreate.tsx), [`components/PODetail.tsx`](file:///C:/Github/ProcureFlow-App/components/PODetail.tsx), [`types.ts`](file:///C:/Github/ProcureFlow-App/types.ts) | Blocks invalid pack quantities and rounds in 1 click (e.g. 5,000 $\rightarrow$ 5,040). |
-| **3. Contract Price Validation** | ✅ **Complete** | [`components/POCreate.tsx`](file:///C:/Github/ProcureFlow-App/components/POCreate.tsx) | Blocks \$0.00 prices and enforces active catalog contract rates. |
-| **4. Mandatory Concur Reference** | ✅ **Complete** | [`components/PODetail.tsx`](file:///C:/Github/ProcureFlow-App/components/PODetail.tsx) | Strictly prevents completing/closing orders without Concur PR # or PO #. |
-| **5. 100% GR Closure Nudges** | ✅ **Complete** | [`services/notificationEngineService.ts`](file:///C:/Github/ProcureFlow-App/services/notificationEngineService.ts) | Automated detection query and daily reminder templates active. |
-| **6. Overdue Delivery Escalation** | ✅ **Complete** | [`services/notificationEngineService.ts`](file:///C:/Github/ProcureFlow-App/services/notificationEngineService.ts) | Tiered escalation active (>14d to user, >21d copying line managers e.g. David). |
-| **7. Multi-Facility Attribution** | ✅ **Complete** | [`utils/budgetTracking.ts`](file:///C:/Github/ProcureFlow-App/utils/budgetTracking.ts) | Normalization logic correctly attributes destination facility costs. |
-| **8. Live SOH Reporting** | ✅ **Complete** | [`components/ReportingView.tsx`](file:///C:/Github/ProcureFlow-App/components/ReportingView.tsx) | Live dashboard active; 2-month verification pipeline established. |
-| **9. DOA Multi-Tier Approvals** | ✅ **Complete** | [`services/approvalEngineService.ts`](file:///C:/Github/ProcureFlow-App/services/approvalEngineService.ts), [`components/ApprovalQueue.tsx`](file:///C:/Github/ProcureFlow-App/components/ApprovalQueue.tsx) | 3-tier routing schema (Site $\rightarrow$ Procurement $\rightarrow$ Executive) active. |
-| **10. Homepage Action Center** | ✅ **Complete** | [`components/Home.tsx`](file:///C:/Github/ProcureFlow-App/components/Home.tsx) | Live count badges and 1-click stage navigation active on home dashboard. |
-| **11. Mobile Requests Scrolling** | ✅ **Complete** | [`components/POList.tsx`](file:///C:/Github/ProcureFlow-App/components/POList.tsx) | Fixed inner flex container; mobile cards scroll smoothly without truncation. |
+| Action Area | Strategic Horizon | Technical Status | Primary Architecture Files | Verification Outcome |
+| :--- | :---: | :---: | :--- | :--- |
+| **1. EOM Reconciliation Engine** | Horizon 2 | ✅ **Complete** | [`utils/budgetTracking.ts`](file:///C:/Github/ProcureFlow-App/utils/budgetTracking.ts), [`components/ReportingView.tsx`](file:///C:/Github/ProcureFlow-App/components/ReportingView.tsx) | 100% parity verified (52/52 records reconciled against historical Concur data). |
+| **2. Packaging Modulo Rules** | Horizon 2 | ✅ **Complete** | [`components/POCreate.tsx`](file:///C:/Github/ProcureFlow-App/components/POCreate.tsx), [`components/PODetail.tsx`](file:///C:/Github/ProcureFlow-App/components/PODetail.tsx) | Blocks invalid pack quantities; rounds to nearest carton multiple in 1 click. |
+| **3. Contract Price Validation** | Horizon 2 | ✅ **Complete** | [`components/POCreate.tsx`](file:///C:/Github/ProcureFlow-App/components/POCreate.tsx) | Enforces active contracted rates; blocks \$0.00 entries and unapproved overrides. |
+| **4. Mandatory Concur Reference** | Horizon 2 | ✅ **Complete** | [`components/PODetail.tsx`](file:///C:/Github/ProcureFlow-App/components/PODetail.tsx) | Strictly prevents completing/closing orders without Concur PR # or PO #. |
+| **5. 100% GR Closure Nudges** | Horizon 2 | ✅ **Complete** | [`services/notificationEngineService.ts`](file:///C:/Github/ProcureFlow-App/services/notificationEngineService.ts) | Automated detection query and recurring reminder templates active. |
+| **6. Overdue Delivery Escalation** | Horizon 2 | ✅ **Complete** | [`services/notificationEngineService.ts`](file:///C:/Github/ProcureFlow-App/services/notificationEngineService.ts) | Tiered escalation active (>14d to user, >21d copying line managers e.g. David). |
+| **7. Multi-Facility Attribution** | Horizon 2 | ✅ **Complete** | [`utils/budgetTracking.ts`](file:///C:/Github/ProcureFlow-App/utils/budgetTracking.ts) | Normalization logic correctly attributes destination facility costs. |
+| **8. Live SOH Reporting** | Horizon 2 / 3 | ✅ **Complete** | [`components/ReportingView.tsx`](file:///C:/Github/ProcureFlow-App/components/ReportingView.tsx) | `SUPPLIER_INVENTORY` live; 2-month validation testing pipeline established. |
+| **9. DOA Multi-Tier Approvals** | Horizon 2 | ✅ **Complete** | [`services/approvalEngineService.ts`](file:///C:/Github/ProcureFlow-App/services/approvalEngineService.ts), [`components/ApprovalQueue.tsx`](file:///C:/Github/ProcureFlow-App/components/ApprovalQueue.tsx) | 3-tier routing schema (Site $\rightarrow$ Procurement $\rightarrow$ Executive) active. |
+| **10. Homepage Action Center** | Horizon 2 | ✅ **Complete** | [`components/Home.tsx`](file:///C:/Github/ProcureFlow-App/components/Home.tsx) | Live count badges and 1-click stage navigation active on home dashboard. |
+| **11. Adelaide Rollout Blueprint** | Horizon 3 | 🚀 **Ready for Review** | [`docs/PROCUREFLOW_DEVELOPMENT_ACTION_PLAN.md`](file:///C:/Github/ProcureFlow-App/docs/PROCUREFLOW_DEVELOPMENT_ACTION_PLAN.md) | Structured 4-phase rollout framework ready for COO approval. |
+| **12. Short Supply Logic Migration**| Horizon 3 | 📋 **Planned Q4** | Portfolio Register / Architecture Pack | Parity testing scheduled following Adelaide cutover. |
 
-* **Compilation & Build:** Production build (`tsc && vite build --mode production`) verified with **0 errors**.
-* **Review Branch:** Fully committed and pushed to [`feature/eom-budget-governance-improvements`](https://github.com/SPLGit-Project/ProcureFlow-App/tree/feature/eom-budget-governance-improvements) on GitHub.
+* **Codebase Build Status:** Production build (`tsc && vite build --mode production`) verified with **0 errors**.
+* **GitHub Review Branch:** Dedicated preview branch [`feature/eom-budget-governance-improvements`](https://github.com/SPLGit-Project/ProcureFlow-App/tree/feature/eom-budget-governance-improvements).
