@@ -953,12 +953,13 @@ export const db = {
     },
     
 
-    updatePODetails: async (id: string, details: { clientName?: string, reasonForRequest?: string, comments?: string }): Promise<void> => {
-        const { error } = await supabase.from('po_requests').update({
-            customer_name: details.clientName,
-            reason_for_request: details.reasonForRequest,
-            comments: details.comments
-        }).eq('id', id);
+    updatePODetails: async (id: string, details: { clientName?: string, reasonForRequest?: string, comments?: string, siteId?: string }): Promise<void> => {
+        const updates: Record<string, unknown> = {};
+        if (details.clientName !== undefined) updates.customer_name = details.clientName;
+        if (details.reasonForRequest !== undefined) updates.reason_for_request = details.reasonForRequest;
+        if (details.comments !== undefined) updates.comments = details.comments;
+        if (details.siteId !== undefined) updates.site_id = details.siteId;
+        const { error } = await supabase.from('po_requests').update(updates).eq('id', id);
         if (error) throw error;
     },
 
@@ -971,6 +972,7 @@ export const db = {
             comments?: string;
             concurRequestNumber?: string;
             concurPoNumber?: string;
+            siteId?: string;
             lines: POLineItem[];
         }
     ): Promise<void> => {
@@ -1055,7 +1057,8 @@ export const db = {
                 reason_for_request: updates.reasonForRequest,
                 comments: updates.comments,
                 customer_name: updates.customerName,
-                concur_request_number: updates.concurRequestNumber
+                concur_request_number: updates.concurRequestNumber,
+                site_id: updates.siteId || null
             },
             p_lines: lineRows
         });

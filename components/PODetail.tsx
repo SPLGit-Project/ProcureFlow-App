@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, ShieldCheck, ShoppingCart, CheckCheck, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, ShieldCheck, ShoppingCart, CheckCheck, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X, MapPin } from 'lucide-react';
 import { DeliveryHeader, Item, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
@@ -35,6 +35,7 @@ interface PODetailEditDraft {
     comments: string;
     concurRequestNumber: string;
     concurPoNumber: string;
+    siteId?: string;
   };
   editableLines: POLineItem[];
   addItemId: string;
@@ -48,7 +49,7 @@ interface PODetailEditDraft {
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, suppliers, items, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO } = useApp();
+  const { pos, suppliers, items, sites, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -63,7 +64,7 @@ const PODetail = () => {
   const [isEditing, setIsEditing] = useState(false);
   
   // Local state for edits
-  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: 'Depletion', comments: '', concurRequestNumber: '', concurPoNumber: '' });
+  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: 'Depletion', comments: '', concurRequestNumber: '', concurPoNumber: '', siteId: '' });
   const [editableLines, setEditableLines] = useState<POLineItem[]>([]);
   const [addItemId, setAddItemId] = useState('');
   const [addItemQty, setAddItemQty] = useState('1');
@@ -119,7 +120,14 @@ const PODetail = () => {
 
     if (!draft) return;
 
-    setHeaderEdits(draft.headerEdits);
+    setHeaderEdits({
+      clientName: draft.headerEdits.clientName || '',
+      reason: draft.headerEdits.reason || 'Depletion',
+      comments: draft.headerEdits.comments || '',
+      concurRequestNumber: draft.headerEdits.concurRequestNumber || '',
+      concurPoNumber: draft.headerEdits.concurPoNumber || '',
+      siteId: draft.headerEdits.siteId || po.siteId || ''
+    });
     setEditableLines(draft.editableLines);
     setAddItemId(draft.addItemId);
     setAddItemQty(draft.addItemQty);
@@ -541,7 +549,8 @@ const PODetail = () => {
             reason: po.reasonForRequest || 'Depletion',
             comments: po.comments || '',
             concurRequestNumber: po.concurRequestNumber || '',
-            concurPoNumber: po.concurPoNumber || ''
+            concurPoNumber: po.concurPoNumber || '',
+            siteId: po.siteId || (sites.find(s => s.name === po.site)?.id || '')
         });
         setEditableLines(po.lines.map(line => ({ ...line })));
         setAddItemId('');
@@ -558,6 +567,7 @@ const PODetail = () => {
       clearDraft(editDraftKey);
       setIsEditing(false);
       setEditableLines([]);
+      setHeaderEdits({ clientName: '', reason: 'Depletion', comments: '', concurRequestNumber: '', concurPoNumber: '', siteId: '' });
       setAddItemId('');
       setAddItemPriceOptionId('');
       setAddItemQty('1');
@@ -688,6 +698,7 @@ const PODetail = () => {
                 comments: headerEdits.comments,
                 concurRequestNumber: trimmedConcurReq,
                 concurPoNumber: trimmedConcurPo,
+                siteId: headerEdits.siteId || po.siteId,
                 lines: updatedLines
             });
             
@@ -1003,8 +1014,8 @@ const PODetail = () => {
         </div>
 
         {/* Additional Request Details */}
-        {(po.customerName || po.reasonForRequest || po.comments || isEditing) && (
-            <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl p-4 border border-gray-100 dark:border-gray-800 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        {(po.customerName || po.reasonForRequest || po.comments || po.site || po.siteId || isEditing) && (
+            <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl p-4 border border-gray-100 dark:border-gray-800 mb-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="flex gap-3 items-start">
                     <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-secondary"><User size={16}/></div>
                     <div className="w-full">
@@ -1017,6 +1028,31 @@ const PODetail = () => {
                             />
                         ) : (
                             <p className="text-sm font-medium text-primary dark:text-white">{po.customerName || '-'}</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex gap-3 items-start">
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg"><MapPin size={16}/></div>
+                    <div className="w-full">
+                        <p className="text-xs text-secondary uppercase font-bold">Site</p>
+                        {isEditing && isAdmin ? (
+                            <select 
+                                className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                value={headerEdits.siteId || po.siteId || ''}
+                                onChange={e => setHeaderEdits({...headerEdits, siteId: e.target.value})}
+                            >
+                                {sites.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                                {headerEdits.siteId && !sites.some(s => s.id === headerEdits.siteId) && (
+                                    <option value={headerEdits.siteId}>{po.site || headerEdits.siteId}</option>
+                                )}
+                            </select>
+                        ) : (
+                            <p className="text-sm font-medium text-primary dark:text-white">
+                                {sites.find(s => s.id === (isEditing ? (headerEdits.siteId || po.siteId) : po.siteId))?.name || po.site || '-'}
+                            </p>
                         )}
                     </div>
                 </div>
@@ -1087,7 +1123,7 @@ const PODetail = () => {
                     </div>
                 </div>
 
-                <div className="flex gap-3 items-start md:col-span-1">
+                <div className="flex gap-3 items-start col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-2">
                     <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><FileText size={16}/></div>
                     <div className="w-full">
                         <p className="text-xs text-gray-500 uppercase font-bold">Comments</p>

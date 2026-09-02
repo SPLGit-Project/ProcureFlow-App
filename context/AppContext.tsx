@@ -283,7 +283,7 @@ interface AppContextType {
   createPO: (po: PORequest) => Promise<boolean>;
   saveDraftPO: (po: PORequest) => Promise<boolean>;
   submitDraftPO: (poId: string) => Promise<void>;
-  updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; concurRequestNumber?: string; concurPoNumber?: string; lines: POLineItem[]; }) => Promise<void>;
+  updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; concurRequestNumber?: string; concurPoNumber?: string; siteId?: string; lines: POLineItem[]; }) => Promise<void>;
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
   linkConcurRequest: (poId: string, concurRequestNumber: string) => void;
   linkConcurPO: (poId: string, concurPoNumber: string) => void;
@@ -2293,6 +2293,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           comments?: string;
           concurRequestNumber?: string;
           concurPoNumber?: string;
+          siteId?: string;
           lines: POLineItem[];
       }
   ) => {
@@ -2339,6 +2340,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               comments: updates.comments,
               concurRequestNumber: updates.concurRequestNumber,
               concurPoNumber: updates.concurPoNumber,
+              siteId: updates.siteId,
               lines: normalizedLines
           });
 
@@ -2350,6 +2352,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               const nextConcurReq = updates.concurRequestNumber !== undefined
                   ? (updates.concurRequestNumber.trim() || undefined)
                   : p.concurRequestNumber;
+              const matchedSite = updates.siteId ? sites.find(s => s.id === updates.siteId) : undefined;
               return {
                   ...p,
                   customerName: updates.customerName,
@@ -2357,6 +2360,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                   comments: updates.comments,
                   concurRequestNumber: nextConcurReq,
                   concurPoNumber: nextConcurPo,
+                  siteId: updates.siteId !== undefined ? updates.siteId : p.siteId,
+                  site: matchedSite ? matchedSite.name : p.site,
                   totalAmount: Number(totalAmount.toFixed(2)),
                   lines: normalizedLines
               };
