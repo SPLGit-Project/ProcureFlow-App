@@ -583,7 +583,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
         </div>
 
         {/* Mobile Card View */}
-        <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-800">
+        <div className="md:hidden overflow-y-auto flex-1 min-h-0 divide-y divide-gray-100 dark:divide-gray-800">
           {filteredPos.map((po) => (
             <Link key={po.id} to={`/requests/${po.id}`} className="block p-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
               <div className="mb-3 space-y-2">
