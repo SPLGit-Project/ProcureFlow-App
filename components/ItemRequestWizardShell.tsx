@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronRight } from 'lucide-react';
+import { Check, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useSetPageMeta } from '../context/PageMetaContext';
 
 // ── Step definitions ───────────────────────────────────────────────────────────
@@ -201,15 +201,15 @@ const ItemRequestWizardShell: React.FC<ItemRequestWizardShellProps> = ({
   });
 
   return (
-    <div className="flex flex-col min-h-full animate-page-entry">
+    <div className="flex flex-col min-h-full animate-page-entry pb-20 lg:pb-0">
 
       {/* ── Horizontal stepper ─────────────────────────────────────────────── */}
-      <div className="px-8 py-4 border-b border-gray-100 dark:border-gray-800">
+      <div className="px-4 sm:px-8 py-3 sm:py-4 border-b border-gray-100 dark:border-gray-800">
         <HorizontalStepper steps={steps} activeStepIndex={activeStepIndex} />
       </div>
 
       {/* ── Body ───────────────────────────────────────────────────────────── */}
-      <div className="flex-1 px-8 py-8">
+      <div className="flex-1 px-3 sm:px-8 py-4 sm:py-8">
         <div className={`max-w-6xl mx-auto ${contextPanel ? 'grid grid-cols-1 lg:grid-cols-3 gap-8' : ''}`}>
 
           {/* Main content — 2/3 width when context panel present */}
@@ -225,6 +225,46 @@ const ItemRequestWizardShell: React.FC<ItemRequestWizardShellProps> = ({
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* ── Mobile Sticky Navigation Footer ── */}
+      <div className="lg:hidden fixed inset-x-0 bottom-0 z-40 bg-white/95 dark:bg-nocturne/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-3 pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+        <div className="flex items-center justify-between gap-3 max-w-md mx-auto">
+          {!isFirstStep && onPrevious ? (
+            <button
+              type="button"
+              onClick={stableOnPrevious}
+              className="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 active:scale-95 transition-all min-h-[44px] flex items-center justify-center gap-1"
+            >
+              <ChevronLeft size={16} />
+              Previous
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={stableOnCancel}
+              className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-800 text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all min-h-[44px]"
+            >
+              Cancel
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={stableOnContinue}
+            disabled={continueDisabled || isSaving}
+            className="flex-1 px-5 py-2.5 rounded-xl bg-tranquil hover:opacity-90 active:scale-95 text-white font-black text-xs shadow-md shadow-tranquil/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all min-h-[44px] flex items-center justify-center gap-1.5"
+          >
+            {isSaving ? (
+              <span>Saving…</span>
+            ) : (
+              <>
+                <span>{forwardLabel}</span>
+                <ChevronRight size={14} />
+              </>
+            )}
+          </button>
         </div>
       </div>
 

@@ -273,6 +273,7 @@ const Layout = () => {
   // ─── REVAMPED LAYOUT (floating rail) ────────────────────────────────────────
   if (uiRevamp) {
     const sidebarW = isRevampExpanded ? '212px' : '64px';
+    const isWorkflowRoute = location.pathname === '/create' || location.pathname.startsWith('/items/requests/new') || Boolean(pageMeta.wizardActions);
 
     return (
       <PageMetaContext.Provider value={{ registerMeta, unregisterMeta }}>
@@ -461,35 +462,37 @@ const Layout = () => {
           </aside>
 
           {/* ── Bottom tab bar — mobile ── */}
-          <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-nocturne/95 backdrop-blur border-t border-white/5 flex items-center justify-around px-2 pb-safe pt-2">
-            {navItems.slice(0, 5).map(item => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all text-[10px] font-bold uppercase tracking-wide
-                    ${isActive ? 'text-tranquil' : 'text-white/40 hover:text-white'}`
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <Icon size={20} className={isActive ? 'text-tranquil' : ''} />
-                      <span className="truncate max-w-[48px]">{item.label.split(' ')[0]}</span>
-                    </>
-                  )}
-                </NavLink>
-              );
-            })}
-            <button type="button"
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-white/40 hover:text-white text-[10px] font-bold uppercase tracking-wide"
-            >
-              <Menu size={20} />
-              More
-            </button>
-          </nav>
+          {!isWorkflowRoute && (
+            <nav aria-label="Mobile navigation" className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-nocturne/95 backdrop-blur border-t border-white/5 flex items-center justify-around px-2 pb-safe pt-2">
+              {navItems.slice(0, 5).map(item => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={({ isActive }) =>
+                      `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all text-[10px] font-bold uppercase tracking-wide
+                      ${isActive ? 'text-tranquil' : 'text-white/40 hover:text-white'}`
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <Icon size={20} className={isActive ? 'text-tranquil' : ''} />
+                        <span className="truncate max-w-[48px]">{item.label.split(' ')[0]}</span>
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
+              <button type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-white/40 hover:text-white text-[10px] font-bold uppercase tracking-wide"
+              >
+                <Menu size={20} />
+                More
+              </button>
+            </nav>
+          )}
 
           {/* Mobile drawer (all nav items) */}
           {isMobileMenuOpen && (
@@ -706,7 +709,7 @@ const Layout = () => {
                     <NavLink
                       to="/"
                       className={({ isActive }) =>
-                        `relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95 ${
+                        `hidden sm:inline-flex relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95 ${
                           isActive ? 'ring-2 ring-white/40 dark:ring-white/20' : ''
                         }`
                       }
@@ -716,7 +719,7 @@ const Layout = () => {
                     </NavLink>
                     <button type="button"
                       onClick={() => setIsTaskDrawerOpen(true)}
-                      className="relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
+                      className="hidden sm:inline-flex relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
                       title="Task Center"
                     >
                       <TaskIcon size={18} />
@@ -766,6 +769,22 @@ const Layout = () => {
 
           <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
           <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
+
+          <NotificationDrawer
+            isOpen={isNotificationDrawerOpen}
+            onClose={() => setIsNotificationDrawerOpen(false)}
+            notifications={notifications}
+            onRefresh={refreshNotifications}
+            onOpenPreferences={() => setIsNotificationPrefsOpen(true)}
+          />
+
+          {currentUser?.id && (
+            <NotificationPreferencesModal
+              isOpen={isNotificationPrefsOpen}
+              onClose={() => setIsNotificationPrefsOpen(false)}
+              userId={currentUser.id}
+            />
+          )}
         </div>
       </PageMetaContext.Provider>
     );

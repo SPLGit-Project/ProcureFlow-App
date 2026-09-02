@@ -440,27 +440,31 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                     aria-pressed={isActive}
                     aria-label={option.label}
                     title={option.label}
-                    className={`group flex h-10 shrink-0 items-center rounded-full border transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/40 ${
+                    className={`group flex h-9 sm:h-10 shrink-0 items-center rounded-full border transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/40 ${
                       isActive
-                        ? 'bg-[var(--color-brand)]/12 border-[var(--color-brand)]/40 text-[var(--color-brand)] pl-3 pr-4 shadow-sm'
-                        : 'bg-gray-50 dark:bg-[#15171e] border-gray-200 dark:border-gray-700 text-secondary dark:text-gray-300 pl-3 pr-3 hover:bg-gray-100 dark:hover:bg-[#20232e] hover:border-gray-300 dark:hover:border-gray-600'
+                        ? 'bg-[var(--color-brand)]/12 border-[var(--color-brand)]/40 text-[var(--color-brand)] pl-3 pr-3.5 shadow-sm'
+                        : 'bg-gray-50 dark:bg-[#15171e] border-gray-200 dark:border-gray-700 text-secondary dark:text-gray-300 pl-2.5 pr-2.5 sm:pl-3 sm:pr-3 hover:bg-gray-100 dark:hover:bg-[#20232e] hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
                   >
                     <Icon size={16} className={`transition-transform duration-300 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`} />
                     <span
-                      className={`overflow-hidden whitespace-nowrap text-sm font-semibold transition-all duration-300 ${
-                        isActive ? 'ml-2 max-w-[11rem] opacity-100' : 'ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[11rem] group-hover:opacity-100'
+                      className={`overflow-hidden whitespace-nowrap text-xs sm:text-sm font-semibold transition-all duration-300 ${
+                        isActive
+                          ? 'ml-2 max-w-[11rem] opacity-100'
+                          : 'ml-1.5 max-w-[11rem] opacity-90 sm:ml-0 sm:max-w-0 sm:opacity-0 sm:group-hover:ml-2 sm:group-hover:max-w-[11rem] sm:group-hover:opacity-100'
                       }`}
                     >
                       {option.label}
                     </span>
                     <span
                       className={`overflow-hidden transition-all duration-300 ${
-                        isActive ? 'ml-2 max-w-[4rem] opacity-100' : 'ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[4rem] group-hover:opacity-100'
+                        isActive
+                          ? 'ml-1.5 max-w-[4rem] opacity-100'
+                          : 'ml-1 max-w-[4rem] opacity-90 sm:ml-0 sm:max-w-0 sm:opacity-0 sm:group-hover:ml-2 sm:group-hover:max-w-[4rem] sm:group-hover:opacity-100'
                       }`}
                     >
                       <span
-                        className={`inline-flex min-w-6 items-center justify-center rounded-md px-1.5 py-0.5 text-xs ${
+                        className={`inline-flex min-w-5 sm:min-w-6 items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] sm:text-xs font-bold ${
                           isActive
                             ? 'bg-[var(--color-brand)]/20 text-[var(--color-brand)]'
                             : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'

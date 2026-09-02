@@ -3128,7 +3128,7 @@ if __name__ == "__main__":
         </>
       )}
 
-      {/* Revamp mode: portal the tab bar into the floating header's center slot */}
+      {/* Revamp mode: portal the tab bar into the floating header's center slot (desktop lg+) */}
       {uiRevamp && adminTabSlot && createPortal(
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide py-0.5">
           {visibleTabs.map(tab => {
@@ -3157,7 +3157,34 @@ if __name__ == "__main__":
         adminTabSlot
       )}
 
-      <div className="mt-6 flex-1 overflow-y-auto min-h-0 pb-12">
+      {/* Revamp mode: in-page scrollable tab rail for mobile & tablet (< lg) */}
+      {uiRevamp && (
+        <div className="lg:hidden -mx-3 px-3 sm:mx-0 sm:px-0 pt-2 pb-1">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-1 px-1 bg-white/80 dark:bg-nocturne/80 backdrop-blur rounded-2xl border border-gray-200/80 dark:border-gray-800 shadow-2xs">
+            {visibleTabs.map(tab => {
+              const isActive = activeTab === tab.id;
+              const TabIcon = tab.icon;
+              return (
+                <button
+                  type="button"
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all text-xs font-bold shrink-0 ${
+                    isActive
+                      ? 'bg-tranquil text-white shadow-sm shadow-tranquil/30'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'
+                  }`}
+                >
+                  <TabIcon size={15} className="shrink-0" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 sm:mt-6 flex-1 overflow-y-auto min-h-0 pb-12">
 
       {activeTab === 'PROFILE' && (
           <div className="animate-fade-in max-w-2xl">

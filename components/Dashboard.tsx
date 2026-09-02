@@ -495,7 +495,7 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyChartData} margin={{ top: 15, right: 10, left: -10, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
-                <XAxis dataKey="monthLabel" tick={{ fontSize: 10, fill: '#888' }} />
+                <XAxis dataKey="monthLabel" tick={{ fontSize: 10, fill: '#888' }} interval="preserveStartEnd" />
                 <YAxis tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} tick={{ fontSize: 10, fill: '#888' }} />
                 <RechartsTooltip
                   formatter={(val: number) => [formatCurrency(val), '']}
@@ -702,7 +702,7 @@ export default function Dashboard() {
             </div>
             <button
               type="button"
-              onClick={() => navigate('/catalogue')}
+              onClick={() => navigate('/item-catalogue')}
               className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 shrink-0"
             >
               <span>View Catalog</span>
