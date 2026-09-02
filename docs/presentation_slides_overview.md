@@ -3,9 +3,7 @@
 **PowerPoint File:** [`docs/ProcureFlow_Executive_Roadmap.pptx`](file:///C:/Github/ProcureFlow-App/docs/ProcureFlow_Executive_Roadmap.pptx)  
 **Format:** 16:9 Widescreen (.pptx)  
 **Executive Audience:** Ebrahim Mokhtari (Chief Operating Officer), Ashish Chhabra (Procurement Lead), Aaron Bell (Tech Lead / Architect)  
-**Workshop Schedule:** Thursday, September 3, 2026
-* **8:30 AM – 9:00 AM:** Pre-Workshop Strategy Alignment *(Aaron Bell & Ashish Chhabra)*
-* **10:00 AM:** Executive Leadership Workshop *(Ebrahim Mokhtari, Ashish Chhabra, Aaron Bell)*
+**Document Version:** 5.1 (National Governance & Operational Parity Edition)  
 
 ---
 
@@ -18,21 +16,21 @@
 * **Subtitle:** *The Three-Horizon Transformation: From Transactional Ordering to National Operating Backbone*
 * **Executive Attribution:**
   * **Executive Sponsor:** Ebrahim Mokhtari (Chief Operating Officer)
-  * **Key Presenters:** Ashish Chhabra (Procurement Lead) & Aaron Bell (Tech Lead / Architect)
-  * **Timing:** Pre-Alignment 8:30 AM | Executive Workshop 10:00 AM — Thursday, September 3, 2026
+  * **Key Presenters:** Ashish Chhabra (Procurement Lead) & Aaron Bell (Tech Lead / Software Architect)
+  * **Date:** September 2026
 * **Presenter Speaking Note (Aaron / Ashish):**
-  > *"Eb, thank you for joining us today. Over the last three months, ProcureFlow has matured from a transactional ordering portal into a robust operational platform actively running 100% of daily linen POs across 11 facilities. Today, we're presenting the roadmap that transitions ProcureFlow into South Pacific Laundry’s authoritative spend control and financial governance backbone."*
+  > *"Eb, over the last three months, ProcureFlow has matured from a transactional ordering portal into a robust operational platform actively running 100% of daily linen POs across all 11 facilities. Today, we are presenting the roadmap that transitions ProcureFlow into South Pacific Laundry’s authoritative spend control and financial governance backbone."*
 
 ---
 
 ### Slide 2: Executive Context: Governance Objectives & Endorsements Sought
 * **Category:** Executive Briefing
 * **Three Dedicated Pillars:**
-  1. **Strategic Position (A Proven, Stable Foundation):** ProcureFlow is already working stably in daily operations with 99.9% uptime and over 900+ requisitions processed. Triad master catalog cleanup drove supplier linkage compliance from ~50% to 95%–100%.
+  1. **Strategic Position (A Proven, Stable Foundation):** ProcureFlow is already working stably in daily operations with 99.9% uptime and over 900+ requisitions processed across all 11 live facilities. Master catalog cleanup drove supplier linkage compliance from ~50% to 95%–100%.
   2. **Current Upgrades (Closed-Loop Governance):** Point-of-entry carton modulo enforcement with 1-click smart rounding, contract price master locking to guarantee clean 3-way invoice matching in Concur, mandatory Concur PR # verification, and native EOM reconciliation against the $14.521M FY27 budget.
-  3. **Decisions Sought (COO Endorsements):** Formal sign-off on Adelaide 4-phase rollout blueprint, endorsement of 2-month SOH dual validation protocol, authorization of mandatory in-app video training gating, and production branch merge.
+  3. **Decisions Sought (COO Endorsements):** Formal sign-off on national closed-loop governance deployment across all 11 live facilities, endorsement of 2-month SOH dual validation protocol, authorization of mandatory in-app video training gating, and production branch merge.
 * **Presenter Speaking Note (Ashish):**
-  > *"The key takeaway for leadership is that this is not a 'bug fix' session. The software is fundamentally stable and deeply embedded. Today's workshop is about locking in commercial governance at the point of entry and securing Eb's endorsement on four strategic forward milestones."*
+  > *"The key takeaway for leadership is that this is not a 'bug fix' session. The software is fundamentally stable and deeply embedded across every plant. Today is about locking in commercial governance at the point of entry and securing Eb's endorsement on four strategic forward milestones."*
 
 ---
 
@@ -40,10 +38,10 @@
 * **Category:** Strategic Transformation
 * **The Three Evolutionary Horizons:**
   * **Previous State (Baseline Foundation):** Disparate branch ordering via phone and paper, ~50% supplier catalog linkage, free-text pricing errors freezing Concur invoices, and 2–3 days manual EOM spreadsheet crunch.
-  * **Current State (Delivered Track Record):** Collaborative Triad overhaul (Aaron, Ashish, Kiran), 11 facilities live, 95%–100% SKU mapping surge, automated email ingestion engine, closed-loop spend guardrails, and real-time EOM reconciliation.
-  * **Future State (Enterprise BAU Backbone):** Adelaide 4-phase expansion, live SOH 2-month validation leading to spreadsheet email deprecation, mandatory video training sign-off gating, native Short Supply planning engine, and Teams Adaptive Card approvals.
+  * **Current State (Delivered Track Record):** Collaborative Triad overhaul (Aaron, Ashish, Kiran), all 11 facilities live, 95%–100% SKU mapping surge, automated email ingestion engine, closed-loop spend guardrails, and real-time EOM reconciliation.
+  * **Future State (Enterprise BAU Backbone):** National governance scaling across all 11 live sites, live SOH 2-month validation leading to spreadsheet email deprecation, mandatory video training sign-off gating, native Short Supply planning engine, and Teams Adaptive Card approvals.
 * **Presenter Speaking Note (Aaron):**
-  > *"We structure our roadmap across Three Horizons. Horizon 1 reflects what was delivered in the last 3 months to stabilize our baseline. Horizon 2 represents the governance guardrails currently deployed and verified on our review branch. Horizon 3 outlines our forward pipeline for the next 2 months to achieve deep BAU integration."*
+  > *"We structure our roadmap across Three Horizons. Horizon 1 reflects what was delivered in the last 3 months to stabilize our baseline. Horizon 2 represents the governance guardrails currently deployed and verified on our review branch. Horizon 3 outlines our forward pipeline for the next 2 months to achieve deep BAU integration across all our operating plants."*
 
 ---
 
@@ -60,9 +58,9 @@
 ### Slide 5: Current State: Proven Track Record Delivered in the Last 3 Months
 * **Category:** Operational Track Record
 * **Four Highlight Badges (01 to 04):**
-  * **01. Collaborative Triad Master SKU Governance:** Aaron Bell, Ashish Chhabra, and Kiran ground-up cleanup of SPL master data, replacing disparate branch naming with a standardized national catalog.
+  * **01. Cross-Functional Triad SKU Governance:** Aaron Bell, Ashish Chhabra, and Kiran ground-up cleanup of SPL master data, replacing disparate branch naming with a standardized national catalog.
   * **02. Automated Procurement Email Ingestion Engine:** Automated parsing pipeline directly connected to `procurement@splservices.com.au` that extracts incoming supplier inventory reports, shipping notices, and catalog updates without manual effort.
-  * **03. Active Operations Across 11 Facilities:** Running daily linen purchasing across 8 primary regional hubs (Melbourne, Sydney, Brisbane, Perth, Adelaide, Cairns, Mackay, Albury) plus satellite facilities with 99.9% uptime.
+  * **03. Active Operations Across 11 Facilities:** Running daily linen purchasing across all 8 primary regional hubs (Melbourne, Sydney, Brisbane, Perth, Adelaide, Cairns, Mackay, Albury) plus satellite facilities with 99.9% uptime.
   * **04. Digital Goods Receipting (GR) & Dockets:** On-site mobile docket capture creating an unbroken audit record of physical delivery before finance matches vendor invoices.
 * **Presenter Speaking Note (Aaron):**
   > *"Through close collaboration between technical architecture, procurement, and analytics, we replaced disconnected spreadsheets with an automated ingestion engine and unified master data. ProcureFlow is reliably processing hundreds of requisitions across 11 plants every single month."*
@@ -124,36 +122,36 @@
 
 ---
 
-### Slide 11: Site Expansion Blueprint: Adelaide 4-Phase Implementation Framework
-* **Category:** Site Rollout Framework
-* **Four Structured Phases:**
-  * **Phase 1 (Week 1) — Master Setup & Accounts:** Addresses, Simba/Host account linking, catalog schedules, and user provisioning.
-  * **Phase 2 (Week 2) — Governance Alignment & Video Sign-Off:** Mandatory video training, digital completion sign-off, and operational alignment session with Ashish.
-  * **Phase 3 (Weeks 3–4) — Shadow POs & DOA Calibration:** Parallel ordering, carton modulo validation, and DOA hierarchy testing.
-  * **Phase 4 (Week 5) — Full Live Production Cutover:** 100% live ordering, mandatory Concur PR linking, and decommissioning of legacy channels.
+### Slide 11: National Operating Footprint: 11 Live Sites Under Standardized Governance
+* **Category:** National Operational Coverage
+* **Overview of Live Network Coverage:**
+  * **8 Primary Regional Operating Hubs (100% Live):** Melbourne, Sydney, Brisbane, Perth, Adelaide, Cairns, Mackay, Albury.
+  * **3 Satellite Depots / Facilities (100% Live):** Managing local linen turnaround and healthcare routes.
+  * **Unified Policy Enactment:** All 11 facilities are already active and running daily on ProcureFlow; the new point-of-entry packaging rules, contract price locks, and Concur PR verification apply uniformly across all sites without exception.
 * **Presenter Speaking Note (Aaron):**
-  > *"Adelaide is our next major milestone. Rather than a rushed rollout, we have created a proven 4-phase template with clear exit gates for each phase. Once Eb signs off today, Phase 1 commences immediately."*
+  > *"All 11 of our operating plants—from Melbourne, Sydney, Brisbane, and Perth to Adelaide, Albury, and regional Queensland—are already live and running daily on ProcureFlow. These governance enhancements standardize operations uniformly across our entire national network."*
 
 ---
 
 ### Slide 12: Executive Endorsements Sought & Implementation Cadence
 * **Category:** Executive Alignment
 * **Four Endorsements Requested from Ebrahim Mokhtari (COO):**
-  1. Endorsement of the Adelaide 4-Phase Rollout Blueprint.
+  1. National Closed-Loop Governance Deployment (carton modulo, contract price master, mandatory Concur PR across all 11 live facilities).
   2. Approval of the 2-Month Live SOH Dual Validation Protocol (Sep–Oct 2026).
   3. Authorization of Mandatory In-App Video Training Gating.
   4. Authorization to merge review branch `feature/eom-budget-governance-improvements` into production.
-* **Key Alignment Cadence:**
-  * Pre-Workshop Strategy Catch-Up: Thursday, Sep 3, 2026 (8:30 AM – 9:00 AM)
-  * Executive Leadership Workshop: Thursday, Sep 3, 2026 (10:00 AM)
+* **Implementation Cadence:**
+  * Month 1 (September 2026): Production release of point-of-entry rules; launch 2-month SOH dual validation with Simba & Host.
+  * Month 2 (October 2026): SOH email deprecation; rollout of in-app video training sign-off; initiate native Short Supply engine migration.
+  * Ongoing Governance (FY27): Continuous 2D pivot tracking against $14.521M baseline budget; automated overdue delivery escalations.
 * **Presenter Speaking Note (Ashish & Aaron):**
-  > *"Eb, with your endorsement of these four items today, we will deploy the governance enhancements to production immediately, initiate Adelaide onboarding next week, and secure South Pacific Laundry’s procurement operations for the remainder of FY27."*
+  > *"Eb, with your endorsement of these four items, we will deploy the governance enhancements to production immediately, continue the SOH dual validation throughout September and October, and secure South Pacific Laundry’s procurement operations for the remainder of FY27."*
 
 ---
 
 ## Technical Artifacts & Verification Summary
 
 * **Master Presentation Deck:** [`docs/ProcureFlow_Executive_Roadmap.pptx`](file:///C:/Github/ProcureFlow-App/docs/ProcureFlow_Executive_Roadmap.pptx) (12 widescreen slides, executive color palette, fully verified).
-* **Master Action Plan:** [`docs/PROCUREFLOW_DEVELOPMENT_ACTION_PLAN.md`](file:///C:/Github/ProcureFlow-App/docs/PROCUREFLOW_DEVELOPMENT_ACTION_PLAN.md) (v5.0 Elevated Executive Edition).
+* **Master Action Plan:** [`docs/PROCUREFLOW_DEVELOPMENT_ACTION_PLAN.md`](file:///C:/Github/ProcureFlow-App/docs/PROCUREFLOW_DEVELOPMENT_ACTION_PLAN.md) (v5.1 Elevated Executive Edition).
 * **Review Branch:** [`feature/eom-budget-governance-improvements`](https://github.com/SPLGit-Project/ProcureFlow-App/tree/feature/eom-budget-governance-improvements).
 * **Build Status:** Clean production build (`tsc && vite build --mode production`) verified with **0 errors**.
