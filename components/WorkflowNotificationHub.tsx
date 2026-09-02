@@ -31,6 +31,15 @@ export const WorkflowNotificationHub: React.FC = () => {
     // Active Top-Level Tab
     const [activeTab, setActiveTab] = useState<'WORKFLOWS' | 'TEMPLATES' | 'CHANNELS' | 'LOGS' | 'ANALYTICS'>('WORKFLOWS');
 
+    // Filter active users with verified ProcureFlow system access
+    const activeSystemUsers = useMemo(() => {
+        return (users || []).filter(u => {
+            const isApproved = u.status === 'APPROVED' || (!u.status && Boolean(u.email));
+            const isNotDeactivated = u.status !== 'ARCHIVED' && u.status !== 'REJECTED';
+            return isApproved && isNotDeactivated && Boolean(u.name || u.email);
+        }).sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || ''));
+    }, [users]);
+
     // ── 1. Workflows State ────────────────────────────────────────────────────────
     const [workflows, setWorkflows] = useState<UnifiedWorkflowDefinition[]>([]);
     const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('');
@@ -368,8 +377,8 @@ export const WorkflowNotificationHub: React.FC = () => {
         <div className="space-y-6 animate-page-entry pb-16 max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <PageHeader
-                    title="Workflow & Notification Studio"
-                    subtitle="Orchestrate conditional routing, multi-tier approvals, and rich multi-channel notification templates."
+                    title="System Configuration"
+                    subtitle="System Configuration"
                 />
             </div>
 
@@ -472,7 +481,9 @@ export const WorkflowNotificationHub: React.FC = () => {
                                             stage_id: `stage_${Date.now()}`,
                                             stage_name: '',
                                             approver_type: 'ROLE',
-                                            approver_id: 'APPROVER',
+                                            approver_id: roles[0]?.id || 'APPROVER',
+                                            approver_role: roles[0]?.id || 'APPROVER',
+                                            approver_user_id: activeSystemUsers[0]?.id || '',
                                             sla_hours: 24,
                                             description: ''
                                         });
@@ -525,10 +536,51 @@ export const WorkflowNotificationHub: React.FC = () => {
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-3 border-t border-gray-200/60 dark:border-white/5 text-xs">
                                                 <div>
                                                     <span className="text-[10px] font-black uppercase text-gray-400 block">Approver</span>
-                                                    <span className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1 mt-0.5">
-                                                        <Shield size={12} className="text-purple-500" />
-                                                        {stage.approver_id}
-                                                    </span>
+                                                    {(() => {
+                                                        const isUser = stage.approver_type === 'USER' || (stage.approver_type === 'BOTH' && Boolean(stage.approver_user_id));
+                                                        const assignedUser = users.find(u => u.id === (stage.approver_user_id || stage.approver_id));
+                                                        const roleId = stage.approver_role || (stage.approver_type === 'ROLE' ? stage.approver_id : undefined);
+                                                        const assignedRole = roles.find(r => r.id === roleId || r.name === roleId);
+
+                                                        if (stage.approver_type === 'BOTH' && assignedUser) {
+                                                            return (
+                                                                <div className="mt-0.5">
+                                                                    <div className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5 truncate" title={`${assignedUser.name || assignedUser.email} (Fallback: ${assignedRole?.name || stage.approver_role || 'Role'})`}>
+                                                                        <UserIcon size={12} className="text-blue-500 shrink-0" />
+                                                                        <span className="truncate">{assignedUser.name || assignedUser.email}</span>
+                                                                        <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold shrink-0">User</span>
+                                                                    </div>
+                                                                    <div className="text-[10px] text-gray-400 truncate mt-0.5 flex items-center gap-1">
+                                                                        <Shield size={10} className="text-purple-400 shrink-0" />
+                                                                        <span className="truncate">Fallback: {assignedRole?.name || stage.approver_role || 'Role'}</span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        }
+
+                                                        if (isUser && assignedUser) {
+                                                            return (
+                                                                <div className="mt-0.5">
+                                                                    <div className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5 truncate" title={`${assignedUser.name} (${assignedUser.email})`}>
+                                                                        <UserIcon size={12} className="text-blue-500 shrink-0" />
+                                                                        <span className="truncate">{assignedUser.name || assignedUser.email}</span>
+                                                                        <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold shrink-0">Individual</span>
+                                                                    </div>
+                                                                    <div className="text-[10px] text-gray-400 truncate mt-0.5">
+                                                                        {assignedUser.email}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        }
+
+                                                        return (
+                                                            <div className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5 mt-0.5 truncate" title={assignedRole?.name || stage.approver_id}>
+                                                                <Shield size={12} className="text-purple-500 shrink-0" />
+                                                                <span className="truncate">{assignedRole?.name || stage.approver_id}</span>
+                                                                <span className="text-[9px] px-1 py-0.2 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-bold shrink-0">Role</span>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
 
                                                 <div>
@@ -541,15 +593,21 @@ export const WorkflowNotificationHub: React.FC = () => {
 
                                                 <div>
                                                     <span className="text-[10px] font-black uppercase text-gray-400 block">Condition</span>
-                                                    <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block">
+                                                    <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block truncate">
                                                         {stage.condition ? `${stage.condition.field} ${stage.condition.operator} ${stage.condition.value}` : 'Always Execute'}
                                                     </span>
                                                 </div>
 
                                                 <div>
                                                     <span className="text-[10px] font-black uppercase text-gray-400 block">Escalation</span>
-                                                    <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block">
-                                                        {stage.escalate_to_role ? `${stage.escalate_to_role} (${stage.escalate_after_hours}h)` : 'None'}
+                                                    <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block truncate">
+                                                        {(() => {
+                                                            const escUser = stage.escalate_to_user_id ? users.find(u => u.id === stage.escalate_to_user_id) : null;
+                                                            const escRole = stage.escalate_to_role ? (roles.find(r => r.id === stage.escalate_to_role)?.name || stage.escalate_to_role) : null;
+                                                            if (escUser) return `${escUser.name || escUser.email} (${stage.escalate_after_hours || 48}h)`;
+                                                            if (escRole) return `${escRole} (${stage.escalate_after_hours || 48}h)`;
+                                                            return 'None';
+                                                        })()}
                                                     </span>
                                                 </div>
                                             </div>
@@ -1093,17 +1151,142 @@ export const WorkflowNotificationHub: React.FC = () => {
                                 />
                             </div>
 
-                            <div>
-                                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Approver Role</label>
-                                <select
-                                    value={editingStage.approver_id}
-                                    onChange={e => setEditingStage({ ...editingStage, approver_id: e.target.value })}
-                                    className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm"
-                                >
-                                    {roles.map(r => (
-                                        <option key={r.id} value={r.id}>{r.name}</option>
-                                    ))}
-                                </select>
+                            {/* Approver Assignment Configuration */}
+                            <div className="space-y-3 pt-1">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase text-gray-400 mb-1.5">Approver Assignment Type</label>
+                                    <div className="grid grid-cols-3 gap-1.5 p-1 bg-gray-100 dark:bg-white/5 rounded-xl border border-gray-200/60 dark:border-white/10">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setEditingStage({
+                                                    ...editingStage,
+                                                    approver_type: 'ROLE',
+                                                    approver_id: editingStage.approver_role || roles[0]?.id || 'APPROVER'
+                                                });
+                                            }}
+                                            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all ${
+                                                editingStage.approver_type === 'ROLE'
+                                                    ? 'bg-white dark:bg-nocturne text-[var(--color-brand)] shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                            }`}
+                                        >
+                                            <Shield size={13} />
+                                            <span>Role</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const firstUser = activeSystemUsers[0];
+                                                setEditingStage({
+                                                    ...editingStage,
+                                                    approver_type: 'USER',
+                                                    approver_id: editingStage.approver_user_id || firstUser?.id || '',
+                                                    approver_user_id: editingStage.approver_user_id || firstUser?.id || ''
+                                                });
+                                            }}
+                                            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all ${
+                                                editingStage.approver_type === 'USER'
+                                                    ? 'bg-white dark:bg-nocturne text-[var(--color-brand)] shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                            }`}
+                                        >
+                                            <UserIcon size={13} />
+                                            <span>Individual</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const firstUser = activeSystemUsers[0];
+                                                const firstRole = roles[0]?.id || 'APPROVER';
+                                                setEditingStage({
+                                                    ...editingStage,
+                                                    approver_type: 'BOTH',
+                                                    approver_id: editingStage.approver_user_id || firstUser?.id || '',
+                                                    approver_user_id: editingStage.approver_user_id || firstUser?.id || '',
+                                                    approver_role: editingStage.approver_role || firstRole
+                                                });
+                                            }}
+                                            className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition-all ${
+                                                editingStage.approver_type === 'BOTH'
+                                                    ? 'bg-white dark:bg-nocturne text-[var(--color-brand)] shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                            }`}
+                                        >
+                                            <span className="flex items-center gap-0.5">
+                                                <UserIcon size={11} />+<Shield size={11} />
+                                            </span>
+                                            <span>Both</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* When ROLE or BOTH is selected */}
+                                {(editingStage.approver_type === 'ROLE' || editingStage.approver_type === 'BOTH') && (
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
+                                            {editingStage.approver_type === 'BOTH' ? 'Fallback Approver Role' : 'Approver Role'}
+                                        </label>
+                                        <select
+                                            value={editingStage.approver_type === 'BOTH' ? (editingStage.approver_role || roles[0]?.id) : editingStage.approver_id}
+                                            onChange={e => {
+                                                if (editingStage.approver_type === 'BOTH') {
+                                                    setEditingStage({ ...editingStage, approver_role: e.target.value });
+                                                } else {
+                                                    setEditingStage({ ...editingStage, approver_id: e.target.value, approver_role: e.target.value });
+                                                }
+                                            }}
+                                            className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white font-medium"
+                                        >
+                                            {roles.map(r => (
+                                                <option key={r.id} value={r.id}>{r.name}</option>
+                                            ))}
+                                        </select>
+                                        <p className="text-[11px] text-gray-400 mt-1">
+                                            {editingStage.approver_type === 'BOTH'
+                                                ? 'If the assigned individual is absent, users holding this role can review and sign off.'
+                                                : 'Any active user assigned this system role is authorized to review and approve.'}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* When INDIVIDUAL or BOTH is selected */}
+                                {(editingStage.approver_type === 'USER' || editingStage.approver_type === 'BOTH') && (
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-[10px] font-black uppercase text-gray-400">
+                                                {editingStage.approver_type === 'BOTH' ? 'Designated Individual Approver' : 'Assigned Individual'}
+                                            </label>
+                                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                                <CheckCircle2 size={11} /> Verified System Access
+                                            </span>
+                                        </div>
+                                        <select
+                                            value={editingStage.approver_type === 'BOTH' ? (editingStage.approver_user_id || activeSystemUsers[0]?.id) : editingStage.approver_id}
+                                            onChange={e => {
+                                                const selectedUserId = e.target.value;
+                                                if (editingStage.approver_type === 'BOTH') {
+                                                    setEditingStage({ ...editingStage, approver_user_id: selectedUserId, approver_id: selectedUserId });
+                                                } else {
+                                                    setEditingStage({ ...editingStage, approver_id: selectedUserId, approver_user_id: selectedUserId });
+                                                }
+                                            }}
+                                            className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white font-medium"
+                                        >
+                                            {activeSystemUsers.map(u => {
+                                                const roleName = roles.find(r => r.id === u.role)?.name || u.role;
+                                                return (
+                                                    <option key={u.id} value={u.id}>
+                                                        {u.name || u.email} ({u.email}) — Role: {roleName}
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                        <p className="text-[11px] text-gray-400 mt-1">
+                                            Only approved accounts with active ProcureFlow credentials can be assigned.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             <div>
@@ -1112,21 +1295,40 @@ export const WorkflowNotificationHub: React.FC = () => {
                                     type="number"
                                     value={editingStage.sla_hours}
                                     onChange={e => setEditingStage({ ...editingStage, sla_hours: parseInt(e.target.value) || 24 })}
-                                    className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm"
+                                    className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white font-medium"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Escalate To Role (Optional)</label>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] font-black uppercase text-gray-400">Escalate To (Optional)</label>
+                                    <span className="text-[10px] text-gray-400">Role or Individual</span>
+                                </div>
                                 <select
-                                    value={editingStage.escalate_to_role || ''}
-                                    onChange={e => setEditingStage({ ...editingStage, escalate_to_role: e.target.value || undefined })}
-                                    className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm"
+                                    value={editingStage.escalate_to_user_id ? `USER:${editingStage.escalate_to_user_id}` : (editingStage.escalate_to_role ? `ROLE:${editingStage.escalate_to_role}` : '')}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        if (!val) {
+                                            setEditingStage({ ...editingStage, escalate_to_role: undefined, escalate_to_user_id: undefined, escalate_to_type: undefined });
+                                        } else if (val.startsWith('USER:')) {
+                                            setEditingStage({ ...editingStage, escalate_to_user_id: val.replace('USER:', ''), escalate_to_role: undefined, escalate_to_type: 'USER' });
+                                        } else if (val.startsWith('ROLE:')) {
+                                            setEditingStage({ ...editingStage, escalate_to_role: val.replace('ROLE:', ''), escalate_to_user_id: undefined, escalate_to_type: 'ROLE' });
+                                        }
+                                    }}
+                                    className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white font-medium"
                                 >
                                     <option value="">No Escalation</option>
-                                    {roles.map(r => (
-                                        <option key={r.id} value={r.id}>{r.name}</option>
-                                    ))}
+                                    <optgroup label="System Roles">
+                                        {roles.map(r => (
+                                            <option key={`role_${r.id}`} value={`ROLE:${r.id}`}>Role: {r.name}</option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="Specific Individuals (Verified System Access)">
+                                        {activeSystemUsers.map(u => (
+                                            <option key={`user_${u.id}`} value={`USER:${u.id}`}>Individual: {u.name || u.email} ({u.email})</option>
+                                        ))}
+                                    </optgroup>
                                 </select>
                             </div>
                         </div>
