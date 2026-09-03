@@ -952,11 +952,15 @@ export interface WorkflowStageDefinition {
   stage_id: string;
   stage_name: string;
   description?: string;
-  approver_type: 'ROLE' | 'USER' | 'AUTO' | 'REQUESTER_MANAGER';
-  approver_id: string; // Role name or User UUID
+  approver_type: 'ROLE' | 'USER' | 'BOTH' | 'AUTO' | 'REQUESTER_MANAGER';
+  approver_id: string; // Role name/ID or User UUID
+  approver_role?: string; // Designated or fallback role ID
+  approver_user_id?: string; // Designated specific individual UUID
   sla_hours: number;
   condition?: WorkflowCondition;
+  escalate_to_type?: 'ROLE' | 'USER';
   escalate_to_role?: string;
+  escalate_to_user_id?: string;
   escalate_after_hours?: number;
   auto_action?: 'APPROVE' | 'REJECT' | 'ESCALATE';
 }

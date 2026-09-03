@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext.tsx';
 import Layout from './components/Layout.tsx';
@@ -20,6 +20,36 @@ if ('serviceWorker' in navigator) {
       });
   });
 }
+
+// Global active-scroll detector for auto-fading invisible scrollbars
+const GlobalScrollbarHandler: React.FC = () => {
+  useEffect(() => {
+    let scrollTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    const handleScrollActivity = () => {
+      if (!document.body.classList.contains('is-scrolling')) {
+        document.body.classList.add('is-scrolling');
+      }
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        document.body.classList.remove('is-scrolling');
+      }, 1000);
+    };
+
+    window.addEventListener('scroll', handleScrollActivity, { capture: true, passive: true });
+    window.addEventListener('wheel', handleScrollActivity, { capture: true, passive: true });
+    window.addEventListener('touchmove', handleScrollActivity, { capture: true, passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScrollActivity, { capture: true });
+      window.removeEventListener('wheel', handleScrollActivity, { capture: true });
+      window.removeEventListener('touchmove', handleScrollActivity, { capture: true });
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  }, []);
+
+  return null;
+};
 
 // Lazy Load Heavy Components
 const Home = lazy(() => import('./components/Home.tsx'));
@@ -89,6 +119,7 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <AppProvider>
+      <GlobalScrollbarHandler />
       <ErrorBoundary>
         <BrowserRouter>
           <Routes>

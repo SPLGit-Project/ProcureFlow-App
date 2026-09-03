@@ -793,14 +793,14 @@ export default function ItemCatalogue() {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-initial">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               type="text"
               placeholder="Search name, code, price, GSM, attributes…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30 w-72"
+              className="pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30 w-full sm:w-72"
             />
           </div>
           <button
@@ -1061,7 +1061,101 @@ export default function ItemCatalogue() {
           </div>
         ) : (
           <div className="overflow-auto max-h-[60vh]">
-            <table className="w-full text-left text-sm border-collapse">
+            {/* Mobile Card View */}
+            <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-800">
+              {filtered.map(item => {
+                const isWorkflow = workflowItemIds.has(item.id);
+                const proposedCode = getProposedMdCode(item);
+                const displayWeight = getDisplayWeight(item);
+                const attrs = [item.item_size, item.item_colour, item.item_material].filter(Boolean).join(' · ');
+                const isInactive = item.active_flag === false;
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`p-4 space-y-2.5 transition-colors ${
+                      isInactive ? 'opacity-60 bg-gray-50/50 dark:bg-black/20' : 'bg-white dark:bg-nocturne'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-gray-900 dark:text-white text-sm leading-snug truncate" title={item.name}>
+                          {item.name}
+                        </h4>
+                        {item.category && (
+                          <p className="text-[10px] text-gray-400 mt-0.5 truncate">{item.category}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setEditingItem(item)}
+                          title="Edit item"
+                          className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAuditItem(item)}
+                          title="View audit history"
+                          className="p-2 rounded-xl text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                        >
+                          <History size={16} />
+                        </button>
+                        {!isInactive ? (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmArchive(item)}
+                            title="Archive item"
+                            className="p-2 rounded-xl text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          >
+                            <Archive size={16} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmReactivate(item)}
+                            title="Restore item"
+                            className="p-2 rounded-xl text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                          >
+                            <RefreshCw size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-mono font-bold text-[11px] bg-gray-100 dark:bg-white/5 px-2 py-0.5 rounded text-gray-700 dark:text-gray-300">
+                        {isWorkflow ? proposedCode : (item.sap_item_code_raw || item.sku || proposedCode)}
+                      </span>
+                      {item.item_pool && (
+                        <span className="text-[11px] text-gray-500 font-medium">
+                          Pool: {item.item_pool}
+                        </span>
+                      )}
+                      {item.rfid_flag && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wider text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40 px-1.5 py-0.5 rounded">
+                          <Cpu size={10} /> RFID
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-800 text-xs">
+                      <span className="text-gray-500 truncate max-w-[200px]">
+                        {attrs || displayWeight || 'Standard specs'}
+                      </span>
+                      <div className="shrink-0">
+                        <SmartPriceCell item={item} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table View */}
+            <table className="hidden md:table w-full text-left text-sm border-collapse">
               <thead className="bg-gray-50 dark:bg-[#15171e] text-[10px] uppercase tracking-wider text-gray-400 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Name</th>

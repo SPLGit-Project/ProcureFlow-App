@@ -7,30 +7,185 @@ import {
 import {
   TrendingUp, Package, AlertCircle, ArrowRight, Truck, CheckCircle2,
   Calendar, Layers, Building2, ExternalLink, ShieldCheck,
-  Percent, DollarSign, Clock, Filter, ArrowUpRight, BarChart3
+  Percent, DollarSign, Clock, Filter, ArrowUpRight, BarChart3,
+  Tag, RotateCcw, X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from './PageHeader';
 import { formatCurrency } from '../utils/taxCalculations';
 import { PORequest, POLineItem } from '../types';
+import { classifyLegacyPO } from '../utils/budgetTracking';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-type TimeframePreset = 'ALL' | 'FY2526' | '90D' | '30D';
+export type TimeframePreset = 'ALL' | 'FY2627' | 'FY_YTD' | 'YTD' | 'THIS_MONTH' | 'LAST_MONTH' | 'CUSTOM';
+export type DashboardCategory = 'ALL' | 'DEPLETION' | 'ACCOMMODATION' | 'HEALTHCARE' | 'NEW_BUSINESS' | 'LINEN_HUB';
+
+interface CategoryOption {
+  id: DashboardCategory;
+  label: string;
+  dotColor: string;
+  activeColor: string;
+}
+
+const CATEGORY_OPTIONS: CategoryOption[] = [
+  { id: 'ALL', label: 'All Categories', dotColor: 'bg-gray-400', activeColor: 'bg-gray-900 dark:bg-white text-white dark:text-gray-900' },
+  { id: 'DEPLETION', label: 'Depletion', dotColor: 'bg-amber-500', activeColor: 'bg-amber-500 text-white shadow-amber-500/20' },
+  { id: 'ACCOMMODATION', label: 'Accommodation', dotColor: 'bg-blue-500', activeColor: 'bg-blue-600 text-white shadow-blue-500/20' },
+  { id: 'HEALTHCARE', label: 'Healthcare', dotColor: 'bg-purple-500', activeColor: 'bg-purple-600 text-white shadow-purple-500/20' },
+  { id: 'NEW_BUSINESS', label: 'New Business', dotColor: 'bg-emerald-500', activeColor: 'bg-emerald-600 text-white shadow-emerald-500/20' },
+  { id: 'LINEN_HUB', label: 'Linen Hub', dotColor: 'bg-cyan-500', activeColor: 'bg-cyan-600 text-white shadow-cyan-500/20' }
+];
+
+function parseDateMs(dateStr?: string): number {
+  if (!dateStr) return NaN;
+  const direct = new Date(dateStr).getTime();
+  if (!isNaN(direct)) return direct;
+  const parts = dateStr.split(/[/.-]/);
+  if (parts.length === 3) {
+    const d = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    let y = parseInt(parts[2], 10);
+    if (y < 100) y += 2000;
+    const parsed = new Date(y, m, d).getTime();
+    if (!isNaN(parsed)) return parsed;
+  }
+  return NaN;
+}
+
+function matchesTimeframe(
+  reqDateStr: string,
+  preset: TimeframePreset,
+  customStart?: string,
+  customEnd?: string
+): boolean {
+  if (preset === 'ALL') return true;
+  const reqMs = parseDateMs(reqDateStr);
+  if (isNaN(reqMs)) return true;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  if (preset === 'FY2627') {
+    const fyStart = new Date(2026, 6, 1, 0, 0, 0, 0).getTime();
+    const fyEnd = new Date(2027, 5, 30, 23, 59, 59, 999).getTime();
+    return reqMs >= fyStart && reqMs <= fyEnd;
+  }
+
+  if (preset === 'FY_YTD') {
+    const fyStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+    const fyStart = new Date(fyStartYear, 6, 1, 0, 0, 0, 0).getTime();
+    const fyEnd = now.getTime();
+    return reqMs >= fyStart && reqMs <= fyEnd;
+  }
+
+  if (preset === 'YTD') {
+    const ytdStart = new Date(currentYear, 0, 1, 0, 0, 0, 0).getTime();
+    const ytdEnd = now.getTime();
+    return reqMs >= ytdStart && reqMs <= ytdEnd;
+  }
+
+  if (preset === 'THIS_MONTH') {
+    const start = new Date(currentYear, currentMonth, 1, 0, 0, 0, 0).getTime();
+    const end = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999).getTime();
+    return reqMs >= start && reqMs <= end;
+  }
+
+  if (preset === 'LAST_MONTH') {
+    const start = new Date(currentYear, currentMonth - 1, 1, 0, 0, 0, 0).getTime();
+    const end = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999).getTime();
+    return reqMs >= start && reqMs <= end;
+  }
+
+  if (preset === 'CUSTOM') {
+    const startMs = customStart ? new Date(`${customStart}T00:00:00`).getTime() : null;
+    const endMs = customEnd ? new Date(`${customEnd}T23:59:59.999`).getTime() : null;
+    if (startMs && reqMs < startMs) return false;
+    if (endMs && reqMs > endMs) return false;
+    return true;
+  }
+
+  return true;
+}
+
+function matchesCategory(po: PORequest, cat: DashboardCategory): boolean {
+  if (cat === 'ALL') return true;
+
+  const desc = (po.comments || po.reasonForRequest || po.customerName || (po.lines?.[0]?.itemName ?? '')).toUpperCase();
+  const classified = classifyLegacyPO({
+    description: desc,
+    site: po.site || po.siteId,
+    concurPoNumber: po.concurPoNumber || po.concurRequestNumber,
+    customerName: po.customerName,
+    reasonForRequest: po.reasonForRequest,
+    spendType: po.spendType,
+    sector: po.sector,
+    contractStream: po.contractStream,
+  });
+
+  const siteLower = (po.site || '').toLowerCase();
+  const isLinenHub = po.siteId === 'site-hol' || siteLower.includes('linen hub') || siteLower.includes('holdings') || siteLower === 'hol';
+
+  switch (cat) {
+    case 'DEPLETION':
+      return !isLinenHub && (
+        classified.spendType === 'DEPLETION' ||
+        po.reasonForRequest === 'Depletion' ||
+        po.spendType === 'DEPLETION' ||
+        desc.includes('DEPLETION') ||
+        desc.includes('DEP')
+      );
+
+    case 'NEW_BUSINESS':
+      return !isLinenHub && (
+        classified.spendType === 'NEW_BUSINESS' ||
+        po.reasonForRequest === 'New Customer' ||
+        po.spendType === 'NEW_BUSINESS' ||
+        desc.includes('NEW BUSINESS') ||
+        desc.includes('NEW CUST') ||
+        desc.includes('NB')
+      );
+
+    case 'LINEN_HUB':
+      return isLinenHub || classified.spendType === 'LINEN_HUB' || po.spendType === 'LINEN_HUB' || desc.includes('LINEN HUB');
+
+    case 'ACCOMMODATION':
+      return (
+        classified.sector === 'ACCOMMODATION' ||
+        po.sector === 'ACCOMMODATION' ||
+        desc.includes('HOTEL') ||
+        desc.includes('RESORT') ||
+        po.lines?.some(l => (l.itemName || '').toUpperCase().includes('ACCOM'))
+      );
+
+    case 'HEALTHCARE':
+      return (
+        classified.sector === 'HEALTHCARE' ||
+        po.sector === 'HEALTHCARE' ||
+        desc.includes('HOSPITAL') ||
+        desc.includes('HEALTHCARE') ||
+        desc.includes('HSV') ||
+        desc.includes('RHC') ||
+        po.lines?.some(l => (l.itemName || '').toUpperCase().includes('HEALTH') || (l.itemName || '').toUpperCase().includes('GOWN') || (l.itemName || '').toUpperCase().includes('SCRUB'))
+      );
+
+    default:
+      return true;
+  }
+}
 
 export default function Dashboard() {
   const { pos, currentUser, hasPermission, activeSiteIds, siteName } = useApp();
   const navigate = useNavigate();
 
   const [timeframe, setTimeframe] = useState<TimeframePreset>('ALL');
+  const [category, setCategory] = useState<DashboardCategory>('ALL');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
 
-  // Filter POs by active site and selected timeframe
+  // Filter POs by active site, selected timeframe, and selected category
   const filteredPos = useMemo(() => {
-    const now = new Date();
-    const nowMs = now.getTime();
-    const thirtyDaysAgo = nowMs - 30 * 86400000;
-    const ninetyDaysAgo = nowMs - 90 * 86400000;
-
     return pos.filter((p) => {
       // Exclude draft or rejected
       if (p.status === 'REJECTED' || p.status === 'DRAFT') return false;
@@ -39,24 +194,45 @@ export default function Dashboard() {
       if (activeSiteIds.length > 0 && !activeSiteIds.includes(p.siteId)) return false;
 
       // Timeframe filter
-      if (timeframe === 'ALL') return true;
+      if (!matchesTimeframe(p.requestDate, timeframe, customStartDate, customEndDate)) {
+        return false;
+      }
 
-      const reqDate = new Date(p.requestDate);
-      const reqMs = reqDate.getTime();
-      if (isNaN(reqMs)) return true;
-
-      if (timeframe === '30D') return reqMs >= thirtyDaysAgo;
-      if (timeframe === '90D') return reqMs >= ninetyDaysAgo;
-      if (timeframe === 'FY2526') {
-        // FY25/26: July 1, 2025 to June 30, 2026
-        const fyStart = new Date(2025, 6, 1).getTime();
-        const fyEnd = new Date(2026, 5, 30, 23, 59, 59).getTime();
-        return reqMs >= fyStart && reqMs <= fyEnd;
+      // Category filter
+      if (!matchesCategory(p, category)) {
+        return false;
       }
 
       return true;
     });
-  }, [pos, activeSiteIds, timeframe]);
+  }, [pos, activeSiteIds, timeframe, category, customStartDate, customEndDate]);
+
+  // Compute category order counts under current site & timeframe
+  const categoryCounts = useMemo(() => {
+    const counts: Record<DashboardCategory, number> = {
+      ALL: 0,
+      DEPLETION: 0,
+      ACCOMMODATION: 0,
+      HEALTHCARE: 0,
+      NEW_BUSINESS: 0,
+      LINEN_HUB: 0
+    };
+
+    pos.forEach((p) => {
+      if (p.status === 'REJECTED' || p.status === 'DRAFT') return;
+      if (activeSiteIds.length > 0 && !activeSiteIds.includes(p.siteId)) return;
+      if (!matchesTimeframe(p.requestDate, timeframe, customStartDate, customEndDate)) return;
+
+      counts.ALL++;
+      if (matchesCategory(p, 'DEPLETION')) counts.DEPLETION++;
+      if (matchesCategory(p, 'ACCOMMODATION')) counts.ACCOMMODATION++;
+      if (matchesCategory(p, 'HEALTHCARE')) counts.HEALTHCARE++;
+      if (matchesCategory(p, 'NEW_BUSINESS')) counts.NEW_BUSINESS++;
+      if (matchesCategory(p, 'LINEN_HUB')) counts.LINEN_HUB++;
+    });
+
+    return counts;
+  }, [pos, activeSiteIds, timeframe, customStartDate, customEndDate]);
 
   // ── Executive KPI Metrics ───────────────────────────────────────────────────
   const kpis = useMemo(() => {
@@ -331,47 +507,190 @@ export default function Dashboard() {
     <div className="mx-auto flex min-h-[calc(100dvh-7.25rem)] max-w-7xl flex-col gap-5 sm:gap-6 overflow-hidden animate-page-entry px-3 sm:px-6 pb-12">
       <PageHeader title="Executive Dashboard" subtitle="Procurement Analytics & Performance" />
 
-      {/* ── TOP CONTROLS & TIMEFRAME SLICER ─────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#15171e] p-3.5 sm:p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 shadow-2xs">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center font-bold shrink-0">
-            <BarChart3 size={18} />
+      {/* ── TOP CONTROLS, TIMEFRAME SLICER & CATEGORY FILTER ────────────────── */}
+      <div className="bg-white dark:bg-[#15171e] p-3.5 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 shadow-2xs space-y-3.5">
+        {/* Tier 1: Portfolio Scope Identity & Timeframe Toggles */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center font-bold shrink-0">
+              <BarChart3 size={18} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xs font-black uppercase tracking-widest text-gray-900 dark:text-white">
+                  Portfolio Scope
+                </h2>
+                {(timeframe !== 'ALL' || category !== 'ALL') && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+                    {filteredPos.length} filtered {filteredPos.length === 1 ? 'order' : 'orders'}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate max-w-[280px] sm:max-w-none">
+                {activeSiteIds.length === 0
+                  ? 'Consolidated View (All Laundry Locations)'
+                  : activeSiteIds.length === 1
+                    ? `${siteName(activeSiteIds[0])} Workspace`
+                    : `${activeSiteIds.length} Selected Sites`}
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-xs font-black uppercase tracking-widest text-gray-900 dark:text-white">
-              Portfolio Scope
-            </h2>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate max-w-[240px] sm:max-w-none">
-              {activeSiteIds.length === 0
-                ? 'Consolidated View (All Laundry Locations)'
-                : activeSiteIds.length === 1
-                  ? `${siteName(activeSiteIds[0])} Workspace`
-                  : `${activeSiteIds.length} Selected Sites`}
-            </p>
+
+          {/* Timeframe selector tabs */}
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/60 p-1 rounded-xl overflow-x-auto scrollbar-hide max-w-full shrink-0">
+            {[
+              { id: 'ALL', label: 'All Time' },
+              { id: 'FY2627', label: 'FY26-27' },
+              { id: 'FY_YTD', label: 'FY YTD' },
+              { id: 'YTD', label: 'YTD' },
+              { id: 'THIS_MONTH', label: 'This Month' },
+              { id: 'LAST_MONTH', label: 'Last Month' },
+              { id: 'CUSTOM', label: 'Date Range', icon: Calendar }
+            ].map((t) => {
+              const Icon = (t as any).icon;
+              const isActive = timeframe === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTimeframe(t.id as TimeframePreset)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+                    isActive
+                      ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-xs'
+                      : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  {Icon && <Icon size={13} className={isActive ? 'text-[var(--color-brand)]' : 'text-gray-400'} />}
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Timeframe selector tabs */}
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/60 p-1 rounded-xl overflow-x-auto max-w-full shrink-0">
-          {[
-            { id: 'ALL', label: 'All Time' },
-            { id: 'FY2526', label: 'FY 25/26' },
-            { id: '90D', label: 'Last 90 Days' },
-            { id: '30D', label: 'Last 30 Days' }
-          ].map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTimeframe(t.id as TimeframePreset)}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-                timeframe === t.id
-                  ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-xs'
-                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        {/* Custom Date Range Picker Drawer (when Date Range is active) */}
+        {timeframe === 'CUSTOM' && (
+          <div className="p-3 bg-gray-50/90 dark:bg-white/5 rounded-xl border border-gray-200/80 dark:border-white/10 animate-fade-in flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-gray-600 dark:text-gray-300 uppercase text-[10px] tracking-wider flex items-center gap-1">
+                <Calendar size={13} className="text-[var(--color-brand)]" />
+                Custom Range:
+              </span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#15171e] text-gray-900 dark:text-white font-medium focus:ring-1 focus:ring-[var(--color-brand)] outline-none"
+                  placeholder="Start date"
+                />
+                <span className="text-gray-400 font-bold">to</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#15171e] text-gray-900 dark:text-white font-medium focus:ring-1 focus:ring-[var(--color-brand)] outline-none"
+                  placeholder="End date"
+                />
+              </div>
+              {(customStartDate || customEndDate) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomStartDate('');
+                    setCustomEndDate('');
+                  }}
+                  className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                  title="Clear dates"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Quick shortcuts */}
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
+              <span className="text-[10px] font-bold text-gray-400 uppercase hidden md:inline">Quick Presets:</span>
+              {[
+                { label: 'Past 7 Days', days: 7 },
+                { label: 'Past 30 Days', days: 30 },
+                { label: 'Past 60 Days', days: 60 },
+                { label: 'Past 90 Days', days: 90 }
+              ].map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => {
+                    const end = new Date();
+                    const start = new Date(end.getTime() - p.days * 86400000);
+                    setCustomStartDate(start.toISOString().split('T')[0]);
+                    setCustomEndDate(end.toISOString().split('T')[0]);
+                  }}
+                  className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shadow-2xs whitespace-nowrap"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tier 2: Category Filter Toggles */}
+        <div className="pt-2.5 border-t border-gray-100 dark:border-gray-800/80 flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Tag size={13} className="text-gray-400" />
+            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+              Category:
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-0.5">
+            {CATEGORY_OPTIONS.map((cat) => {
+              const isSelected = category === cat.id;
+              const count = categoryCounts[cat.id];
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setCategory(category === cat.id && cat.id !== 'ALL' ? 'ALL' : cat.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                    isSelected
+                      ? `${cat.activeColor} shadow-sm`
+                      : 'bg-gray-100 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  {cat.id !== 'ALL' && (
+                    <span className={`w-2 h-2 rounded-full ${cat.dotColor} shrink-0 ${isSelected ? 'ring-2 ring-white/60' : ''}`} />
+                  )}
+                  <span>{cat.label}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+                    isSelected
+                      ? 'bg-black/20 text-white dark:bg-white/20'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+
+            {(category !== 'ALL' || timeframe !== 'ALL') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTimeframe('ALL');
+                  setCategory('ALL');
+                  setCustomStartDate('');
+                  setCustomEndDate('');
+                }}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-400 hover:text-red-500 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all shrink-0 ml-1"
+                title="Reset all filters"
+              >
+                <RotateCcw size={12} />
+                <span>Reset</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -495,7 +814,7 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyChartData} margin={{ top: 15, right: 10, left: -10, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
-                <XAxis dataKey="monthLabel" tick={{ fontSize: 10, fill: '#888' }} />
+                <XAxis dataKey="monthLabel" tick={{ fontSize: 10, fill: '#888' }} interval="preserveStartEnd" />
                 <YAxis tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} tick={{ fontSize: 10, fill: '#888' }} />
                 <RechartsTooltip
                   formatter={(val: number) => [formatCurrency(val), '']}
@@ -702,7 +1021,7 @@ export default function Dashboard() {
             </div>
             <button
               type="button"
-              onClick={() => navigate('/catalogue')}
+              onClick={() => navigate('/item-catalogue')}
               className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 shrink-0"
             >
               <span>View Catalog</span>

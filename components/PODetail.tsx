@@ -533,7 +533,7 @@ const PODetail = () => {
               comments: 'Order marked as complete by user'
           });
           globalThis.alert('Order completed successfully.');
-          navigate('/pos'); // Go back to list on success
+          navigate('/requests'); // Go back to list on success
       } catch (e: unknown) {
           console.error("Completion failed:", e);
           const msg = e instanceof Error ? e.message : 'Unknown error';
@@ -1382,7 +1382,138 @@ const PODetail = () => {
                       );
                   })()}
 
-                  <table className="w-full text-left text-sm text-secondary dark:text-gray-400">
+                  {/* Mobile Card List View */}
+                  <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-800">
+                      {linesInView.map((line) => {
+                          const pricing = calculateLinePricing(
+                              line.quantityOrdered,
+                              line.unitPrice,
+                              line.taxCode || 'GST',
+                              line.taxRate ?? 10.0
+                          );
+                          const hasShortage = line.quantityReceived < line.quantityOrdered;
+                          const hasOver = line.quantityReceived > line.quantityOrdered;
+
+                          return (
+                              <div key={line.id} className="p-4 space-y-3 bg-white dark:bg-nocturne">
+                                  {/* Header: Item Name, SKU & Delete button */}
+                                  <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                          <div className="font-bold text-gray-900 dark:text-white text-sm leading-snug">
+                                              {line.itemName}
+                                          </div>
+                                          <div className="flex items-center gap-2 mt-0.5">
+                                              <span className="text-xs text-gray-400 font-mono">{line.sku}</span>
+                                              {line.priceOptionLabel && (
+                                                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
+                                                      {line.priceOptionLabel}
+                                                  </span>
+                                              )}
+                                          </div>
+                                      </div>
+                                      {isEditing && canEditRequest && (
+                                          <button
+                                              type="button"
+                                              onClick={() => handleRemoveDraftLine(line.id)}
+                                              disabled={linesInView.length <= 1}
+                                              className="p-2 text-red-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed shrink-0 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                                              title={linesInView.length <= 1 ? 'At least one line is required' : 'Remove line'}
+                                              aria-label={`Remove ${line.itemName}`}
+                                          >
+                                              <Trash2 size={16} />
+                                          </button>
+                                      )}
+                                  </div>
+
+                                  {/* Need by Date & Badges */}
+                                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                      <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Need by:</span>
+                                          {isEditing ? (
+                                              <input
+                                                  type="date"
+                                                  className="px-2 py-1 text-xs border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                  value={line.needByDate || (po?.requestDate ? po.requestDate.split('T')[0] : '')}
+                                                  onChange={(e) => handleLineNeedByDateChange(line.id, e.target.value)}
+                                              />
+                                          ) : (
+                                              <span className="font-medium text-gray-800 dark:text-gray-200">
+                                                  {formatDisplayDate(line.needByDate || po?.requestDate)}
+                                              </span>
+                                          )}
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5">
+                                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                              {line.taxCode || 'GST'}
+                                          </span>
+                                          {hasOver && (
+                                              <span className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-500/20">
+                                                  +{line.quantityReceived - line.quantityOrdered} Over
+                                              </span>
+                                          )}
+                                          {hasShortage && line.quantityReceived > 0 && (
+                                              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-500/20">
+                                                  {line.quantityOrdered - line.quantityReceived} Remaining
+                                              </span>
+                                          )}
+                                      </div>
+                                  </div>
+
+                                  {/* Quantities & Pricing Grid */}
+                                  <div className="grid grid-cols-3 gap-2 bg-gray-50 dark:bg-[#15171e] p-2.5 rounded-xl border border-gray-100 dark:border-gray-800 text-xs">
+                                      <div>
+                                          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Ordered</span>
+                                          {isEditing ? (
+                                              <input
+                                                  type="number"
+                                                  min={1}
+                                                  step={1}
+                                                  className="w-full mt-1 px-2 py-1 text-center font-bold border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                  value={line.quantityOrdered}
+                                                  onChange={(e) => handleLineQtyChange(line.id, e.target.value)}
+                                              />
+                                          ) : (
+                                              <span className="font-bold text-gray-900 dark:text-white text-sm">{line.quantityOrdered}</span>
+                                          )}
+                                      </div>
+
+                                      <div>
+                                          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Unit Price</span>
+                                          {isEditing ? (
+                                              <div className="flex items-center mt-1">
+                                                  <span className="text-gray-400 text-xs mr-0.5">$</span>
+                                                  <input
+                                                      type="number"
+                                                      step="0.01"
+                                                      min="0"
+                                                      className="w-full px-1.5 py-1 text-right font-bold border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white text-xs"
+                                                      value={line.unitPrice}
+                                                      onChange={(e) => handleLinePriceChange(line.id, e.target.value)}
+                                                  />
+                                              </div>
+                                          ) : (
+                                              <span className="font-medium text-gray-700 dark:text-gray-300 text-sm">{formatCurrency(line.unitPrice)}</span>
+                                          )}
+                                      </div>
+
+                                      <div className="text-right">
+                                          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Total (Inc)</span>
+                                          <span className="font-black text-[var(--color-brand)] text-sm">{formatCurrency(pricing.totalPriceIncGst)}</span>
+                                          <div className="text-[9px] text-gray-400">({formatCurrency(pricing.totalPrice)} ex)</div>
+                                      </div>
+                                  </div>
+                              </div>
+                          );
+                      })}
+                      {linesInView.length === 0 && (
+                          <div className="p-8 text-center text-gray-400 text-sm">
+                              No line items.
+                          </div>
+                      )}
+                  </div>
+
+                  <table className="hidden md:table w-full text-left text-sm text-secondary dark:text-gray-400">
                       <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
                           <tr>
                               <th className="px-6 py-4">Item Details</th>

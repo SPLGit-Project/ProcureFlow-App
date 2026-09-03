@@ -1,4 +1,4 @@
-﻿import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 import { 
     UnifiedWorkflowDefinition, 
     WorkflowStageDefinition, 
@@ -137,6 +137,7 @@ class WorkflowEngineService {
             entityId: string;
             actionUrl?: string;
             approverRoleId?: string;
+            approverUserId?: string;
         }
     ) {
         const matchingRules = workflow.notification_rules.filter(r => r.trigger === trigger);
@@ -146,8 +147,13 @@ class WorkflowEngineService {
 
             if (rule.custom_recipients && rule.custom_recipients.length > 0) {
                 recipients.push(...rule.custom_recipients);
-            } else if (context.approverRoleId) {
-                recipients.push({ type: 'ROLE', id: context.approverRoleId });
+            } else if (context.approverUserId || context.approverRoleId) {
+                if (context.approverUserId) {
+                    recipients.push({ type: 'USER', id: context.approverUserId });
+                }
+                if (context.approverRoleId) {
+                    recipients.push({ type: 'ROLE', id: context.approverRoleId });
+                }
             } else {
                 recipients.push({ type: 'REQUESTER', id: String(context.variables.requester_id || '') });
             }

@@ -1311,16 +1311,16 @@ const POCreate = () => {
       )}
 
       {/* Mobile Sticky Bottom Bar */}
-      <div className="fixed inset-x-0 bottom-0 md:hidden z-30">
-          <div className="bg-white dark:bg-nocturne border-t border-gray-200 dark:border-gray-800 shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
-              <div className="mx-auto w-full max-w-screen-sm flex flex-col gap-2 px-3 pt-3 pb-safe">
+      <div className="fixed inset-x-0 bottom-0 md:hidden z-40">
+          <div className="bg-white/95 dark:bg-nocturne/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-[0_-5px_25px_rgba(0,0,0,0.15)]">
+              <div className="mx-auto w-full max-w-screen-sm flex flex-col gap-2 px-3.5 pt-3 pb-safe">
                   <button
                       type="button"
                       onClick={() => setIsMobileCartOpen(true)}
-                      className="w-full text-left rounded-xl px-2 py-1 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                      className="w-full text-left rounded-xl px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 active:scale-[0.99] transition-all"
                   >
                       <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mb-0.5">
-                          <ShoppingCart size={12}/> {cart.length} items <ChevronUp size={12}/>
+                          <ShoppingCart size={14}/> <span className="font-semibold">{cart.length} items in cart</span> <ChevronUp size={14} className="ml-auto text-gray-400" />
                       </div>
                       <div className="flex items-baseline gap-2">
                           <span className="font-bold text-xl text-gray-900 dark:text-white truncate">
@@ -1331,22 +1331,22 @@ const POCreate = () => {
                           </span>
                       </div>
                   </button>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2.5">
                       <button
                           type="button"
                           onClick={handleSaveDraft}
                           disabled={!selectedSupplier || isSavingDraft || isSubmitting}
-                          className="flex-1 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-3 py-3 rounded-xl font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5"
+                          className="flex-1 min-h-[44px] border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-3 py-3 rounded-xl font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-1.5 active:scale-95 transition-all"
                       >
-                          <Save size={15} /> {isSavingDraft ? 'Saving…' : 'Draft'}
+                          <Save size={16} /> {isSavingDraft ? 'Saving…' : 'Draft'}
                       </button>
                       <button
                           type="button"
                           onClick={() => guardedSubmit(handleSubmit)}
                           disabled={cart.length === 0 || isSubmitting}
-                          className="flex-[2] bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none"
+                          className="flex-[2] min-h-[44px] bg-[var(--color-brand)] hover:opacity-90 active:scale-95 text-white px-5 py-3 rounded-xl font-black text-sm shadow-lg disabled:opacity-50 disabled:shadow-none transition-all"
                       >
-                          {isSubmitting ? 'Submitting...' : 'Submit'}
+                          {isSubmitting ? 'Submitting...' : 'Review & Submit'}
                       </button>
                   </div>
               </div>
