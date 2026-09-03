@@ -143,7 +143,7 @@ const InAppNotificationPopupItem: React.FC<InAppNotificationPopupItemProps> = ({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
             onClick={handleCardClick}
-            className={`relative w-full max-w-md bg-white/95 dark:bg-[#181b24]/95 backdrop-blur-xl border ${config.border} rounded-2xl shadow-2xl ${config.glow} overflow-hidden transition-all duration-300 hover:scale-[1.01] cursor-pointer group animate-slide-down select-none`}
+            className={`relative w-full max-w-md bg-white/95 dark:bg-[#181b24]/95 backdrop-blur-xl border ${config.border} rounded-2xl shadow-2xl ${config.glow} overflow-hidden transition-all duration-300 hover:scale-[1.01] cursor-pointer group animate-notif-enter select-none`}
             role="alert"
         >
             {/* Top accent border line */}
@@ -274,7 +274,7 @@ export const InAppNotificationPopupContainer: React.FC<InAppNotificationPopupCon
 
     return (
         <div 
-            className="fixed top-4 sm:top-5 right-3 sm:right-5 left-3 sm:left-auto z-[99999] flex flex-col gap-3 max-w-[calc(100vw-1.5rem)] sm:max-w-md sm:w-[420px] pointer-events-none"
+            className="fixed top-4 left-3 right-3 sm:top-auto sm:bottom-6 sm:left-auto sm:right-6 z-[99999] flex flex-col sm:flex-col-reverse gap-3 max-w-[calc(100vw-1.5rem)] sm:max-w-md sm:w-[420px] pointer-events-none"
             aria-live="polite"
         >
             {popups.map(popup => (

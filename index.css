@@ -376,3 +376,36 @@ body.is-scrolling *::-webkit-scrollbar-thumb,
 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.45) !important;
 }
+
+/* In-App Notification Responsive Popup Animations */
+@keyframes notif-enter-mobile {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes notif-enter-desktop {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-notif-enter {
+  animation: notif-enter-mobile 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (min-width: 640px) {
+  .animate-notif-enter {
+    animation: notif-enter-desktop 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
