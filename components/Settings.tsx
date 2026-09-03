@@ -43,6 +43,8 @@ import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { HierarchyManager } from '../utils/hierarchyManager.ts';
 import SimpleWorkflowConfig from './SimpleWorkflowConfig.tsx';
 import WorkflowNotificationHub from './WorkflowNotificationHub.tsx';
+import EOMReconciliationAdminPanel from './EOMReconciliationAdminPanel.tsx';
+import { ShieldCheck } from 'lucide-react';
 
 
 import RoleTreeManager from './RoleTreeManager.tsx';
@@ -82,7 +84,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_development', label: 'Development Admin', description: 'Access to Smart Buying and Data Ingest tools', icon: Code, category: 'Development' }
 ];
 
-type AdminTab = 'PROFILE' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC' | 'SMART_BUYING' | 'ITEM_CREATION';
+type AdminTab = 'PROFILE' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC' | 'SMART_BUYING' | 'ITEM_CREATION' | 'EOM_RECONCILIATION';
 
 const MASTER_ITEM_COLUMNS = [
     { key: 'sku', label: 'SKU' },
@@ -2587,7 +2589,8 @@ const Settings = () => {
       { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'view_audit_logs' },
       { id: 'DATA_SYNC', label: 'Data Sync', icon: Database, permission: 'manage_settings' },
       { id: 'SMART_BUYING',    label: 'Smart Buying',   icon: BarChart3, permission: 'manage_settings' },
-      { id: 'ITEM_CREATION',   label: 'Item Creation',  icon: Package,   permission: 'manage_items' }
+      { id: 'ITEM_CREATION',   label: 'Item Creation',  icon: Package,   permission: 'manage_items' },
+      { id: 'EOM_RECONCILIATION', label: 'EOM P&L Reconciliation', icon: ShieldCheck, permission: 'manage_settings' }
   ];
 
   const visibleTabs: { id: AdminTab, icon: React.ElementType, label: string }[] = [
@@ -5419,7 +5422,7 @@ if __name__ == "__main__":
                                      .replace(/{app_name}/g, branding.appName)
                                      .replace(/{link}/g, '<a href="#">http://example.com</a>')
                                      .replace(/{invited_by_name}/g, currentUser?.name || 'Admin')
-                                 }}></div>
+                                     }}></div>
                             </div>
                        </div>
                   </div>
@@ -5443,6 +5446,11 @@ if __name__ == "__main__":
              {activeTab === 'ITEM_CREATION' && (
                  <div className="animate-fade-in">
                      <ItemCreationSettings />
+                 </div>
+             )}
+             {activeTab === 'EOM_RECONCILIATION' && (
+                 <div className="animate-fade-in">
+                     <EOMReconciliationAdminPanel />
                  </div>
              )}
              {/* WORKFLOW STEP MODAL */}
