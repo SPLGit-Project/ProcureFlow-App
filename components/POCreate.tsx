@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
-import { Item, ItemPriceOption, POLineItem, PORequest } from '../types.ts';
+import { Item, ItemPriceOption, POLineItem, PORequest, SpendCategory } from '../types.ts';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
 import { canonicalSupplierName, dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
 import {
@@ -60,6 +60,7 @@ interface POCreateDraft {
   selectedSupplierId: string;
   isHeaderExpanded: boolean;
   customerName: string;
+  sector?: SpendCategory;
   reasonForRequest: 'Depletion' | 'New Customer' | 'Other';
   comments: string;
   requestDate: string;
@@ -135,9 +136,57 @@ const POCreate = () => {
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(initialDraft?.isHeaderExpanded ?? true);
   
   const [customerName, setCustomerName] = useState(initialDraft?.customerName || '');
+  const [sector, setSector] = useState<SpendCategory>(initialDraft?.sector || 'ACCOMMODATION');
   const [reasonForRequest, setReasonForRequest] = useState<'Depletion' | 'New Customer' | 'Other'>(initialDraft?.reasonForRequest || 'Depletion');
   const [comments, setComments] = useState(initialDraft?.comments || '');
   const [requestDate, setRequestDate] = useState(initialDraft?.requestDate || getLocalDateInputValue());
+
+  const inferCategoryFromCustomer = (cust: string): SpendCategory | null => {
+    const upper = cust.toUpperCase();
+    if (
+      upper.includes('CIVEO') ||
+      upper.includes('HOMEGROUND') ||
+      upper.includes('MINING') ||
+      upper.includes('BHP') ||
+      upper.includes('RIO') ||
+      upper.includes('FMG') ||
+      upper.includes('CAMP') ||
+      upper.includes('SODEXO') ||
+      upper.includes('COMPASS')
+    ) {
+      return 'MINING';
+    }
+    if (
+      upper.includes('RAMSAY') ||
+      upper.includes('RHC') ||
+      upper.includes('HSV') ||
+      upper.includes('HEALTH') ||
+      upper.includes('HOSPITAL') ||
+      upper.includes('CLINIC') ||
+      upper.includes('AGED CARE')
+    ) {
+      return 'HEALTHCARE';
+    }
+    if (
+      upper.includes('HOTEL') ||
+      upper.includes('RESORT') ||
+      upper.includes('CROWN') ||
+      upper.includes('ACCOR') ||
+      upper.includes('MARRIOTT') ||
+      upper.includes('HILTON') ||
+      upper.includes('STAR') ||
+      upper.includes('OAKS')
+    ) {
+      return 'ACCOMMODATION';
+    }
+    return null;
+  };
+
+  const handleCustomerNameChange = (val: string) => {
+    setCustomerName(val);
+    const inferred = inferCategoryFromCustomer(val);
+    if (inferred) setSector(inferred);
+  };
 
   const [cart, setCart] = useState<POLineItem[]>(initialDraft?.cart || []);
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>(initialDraft?.quantityDrafts || {});
@@ -187,6 +236,7 @@ const POCreate = () => {
     selectedSupplierId,
     isHeaderExpanded,
     customerName,
+    sector,
     reasonForRequest,
     comments,
     requestDate,
@@ -199,6 +249,7 @@ const POCreate = () => {
     cart,
     comments,
     customerName,
+    sector,
     isCartExpanded,
     isCatalogExpanded,
     isHeaderExpanded,
@@ -557,6 +608,7 @@ const POCreate = () => {
       ],
       deliveries: [],
       customerName,
+      sector,
       reasonForRequest,
       comments
     };
@@ -919,11 +971,39 @@ const POCreate = () => {
                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Customer Name</label>
                              <input 
                                 type="text"
-                                placeholder="E.g. Hilton Hotel, Crown Casino"
+                                placeholder="E.g. Hilton Hotel, Crown Casino, Civeo"
                                 className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
                                 value={customerName}
-                                onChange={(e) => setCustomerName(e.target.value)}
+                                onChange={(e) => handleCustomerNameChange(e.target.value)}
                              />
+
+                             {/* Category / Sector Selector */}
+                             <div className="mt-3">
+                               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                                 Customer Category
+                               </label>
+                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                                 {[
+                                   { id: 'ACCOMMODATION', label: 'Accommodation' },
+                                   { id: 'HEALTHCARE', label: 'Healthcare' },
+                                   { id: 'MINING', label: 'Mining' },
+                                   { id: 'OTHER', label: 'Other' },
+                                 ].map((cat) => (
+                                   <button
+                                     key={cat.id}
+                                     type="button"
+                                     onClick={() => setSector(cat.id as SpendCategory)}
+                                     className={`py-1.5 px-2 text-[11px] font-bold rounded-lg border transition-all ${
+                                       sector === cat.id
+                                         ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)] shadow-xs'
+                                         : 'bg-white dark:bg-[#15171e] text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                                     }`}
+                                   >
+                                     {cat.label}
+                                   </button>
+                                 ))}
+                               </div>
+                             </div>
                         </div>
                     </div>
 

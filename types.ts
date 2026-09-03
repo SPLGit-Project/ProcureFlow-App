@@ -377,7 +377,8 @@ export interface ProductAvailability {
 
 
 export type SpendType = 'DEPLETION' | 'NEW_BUSINESS' | 'LINEN_HUB' | 'CAPEX' | 'MAINTENANCE';
-export type SpendSector = 'ACCOMMODATION' | 'HEALTHCARE' | 'COMBINED';
+export type SpendSector = 'ACCOMMODATION' | 'HEALTHCARE' | 'MINING' | 'OTHER' | 'COMBINED';
+export type SpendCategory = 'ACCOMMODATION' | 'HEALTHCARE' | 'MINING' | 'OTHER';
 export type ContractStream = 'BAU' | 'RHC' | 'HSV' | 'DEFENCE' | 'MINING' | 'OTHER';
 
 export interface SiteBudgetConfig {

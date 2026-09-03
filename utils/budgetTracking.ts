@@ -165,28 +165,44 @@ export function classifyLegacyPO(po: {
   contractStream: ContractStream;
 } {
   const desc = (po.description || '').toUpperCase();
-  const branch = normalizeBranchCode(po.site || po.concurPoNumber, desc);
+  const custName = (po.customerName || '').toUpperCase();
+  const combinedText = `${desc} ${custName}`;
+  const branch = normalizeBranchCode(po.site || po.concurPoNumber, combinedText);
 
-  // 1. Sector Classification: Priority on explicit single letter flags - A - or - H -
+  // 1. Sector / Category Classification: Priority on Mining tokens, Healthcare flags, Central Holding, then Accommodation
   let sector: SpendSector = po.sector || 'ACCOMMODATION';
   if (!po.sector) {
-    if (/[-_\s]H[-_\s]/.test(desc) || desc.endsWith('-H') || desc.endsWith(' H')) {
-      sector = 'HEALTHCARE';
-    } else if (/[-_\s]A[-_\s]/.test(desc) || desc.endsWith('-A') || desc.endsWith(' A')) {
-      sector = 'ACCOMMODATION';
+    if (
+      combinedText.includes('CIVEO') ||
+      combinedText.includes('HOMEGROUND') ||
+      combinedText.includes('MINING') ||
+      combinedText.includes('BHP') ||
+      combinedText.includes('RIO TINTO') ||
+      combinedText.includes('FMG') ||
+      combinedText.includes('CAMP') ||
+      combinedText.includes('SODEXO') ||
+      combinedText.includes('COMPASS')
+    ) {
+      sector = 'MINING';
     } else if (
-      desc.includes('HEALTHCARE') ||
-      desc.includes('HOSPITAL') ||
-      desc.includes('HSV') ||
-      desc.includes('GOWN') ||
-      desc.includes('SCRUB')
+      /[-_\s]H[-_\s]/.test(desc) || desc.endsWith('-H') || desc.endsWith(' H') ||
+      combinedText.includes('HEALTHCARE') ||
+      combinedText.includes('HOSPITAL') ||
+      combinedText.includes('HSV') ||
+      combinedText.includes('RAMSAY') ||
+      combinedText.includes('RHC') ||
+      combinedText.includes('GOWN') ||
+      combinedText.includes('SCRUB')
     ) {
       sector = 'HEALTHCARE';
     } else if (
-      desc.includes('ACCOMMODATION') ||
-      desc.includes('HOTEL') ||
-      desc.includes('RESORT')
+      branch === 'HOL' ||
+      combinedText.includes('LINEN HUB') ||
+      combinedText.includes('HOLDINGS') ||
+      combinedText.includes('AIRLIE BEACH')
     ) {
+      sector = 'OTHER';
+    } else {
       sector = 'ACCOMMODATION';
     }
   }
@@ -200,7 +216,7 @@ export function classifyLegacyPO(po: {
       contractStream = 'RHC';
     } else if (desc.includes('DEFENCE')) {
       contractStream = 'DEFENCE';
-    } else if (desc.includes('MINING') || desc.includes('CIVEO') || desc.includes('HOMEGROUND')) {
+    } else if (combinedText.includes('MINING') || combinedText.includes('CIVEO') || combinedText.includes('HOMEGROUND')) {
       contractStream = 'MINING';
     }
   }
