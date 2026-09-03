@@ -14,6 +14,7 @@ export const PROCUREFLOW_ICON_URL = 'https://raw.githubusercontent.com/SPLGit-Pr
 export interface DispatchNotificationParams {
     eventType: string;
     templateKey?: string;
+    siteId?: string;
     recipients: Array<{
         type: 'USER' | 'ROLE' | 'REQUESTER' | 'CUSTOM_EMAIL';
         id: string; // user id, role name, or raw email
@@ -416,33 +417,84 @@ class NotificationEngineService {
     }
 
     /**
-     * Fetch configured Microsoft Teams webhook URL from database
+     * Fetch configured Microsoft Teams webhook URL from database.
+     * If a siteId is provided and that facility has a dedicated webhook configured, it takes priority.
      */
-    async getTeamsWebhookUrl(): Promise<string> {
+    async getTeamsWebhookUrl(siteId?: string): Promise<string> {
         try {
             const { data } = await supabase
                 .from('app_config')
                 .select('key, value')
                 .in('key', ['teams_webhook_url', 'teams_config']);
 
-            let url = '';
+            let defaultUrl = '';
+            let siteWebhooks: Record<string, string> = {};
+
             data?.forEach(c => {
                 if (c.key === 'teams_webhook_url' && typeof c.value === 'string' && c.value) {
-                    url = c.value;
-                } else if (c.key === 'teams_config' && c.value && (c.value as any).webhookUrl) {
-                    url = (c.value as any).webhookUrl;
+                    defaultUrl = c.value;
+                } else if (c.key === 'teams_config' && c.value) {
+                    const conf = c.value as any;
+                    if (conf.webhookUrl) defaultUrl = conf.webhookUrl;
+                    if (conf.siteWebhooks && typeof conf.siteWebhooks === 'object') {
+                        siteWebhooks = conf.siteWebhooks;
+                    }
                 }
             });
-            return url;
+
+            if (siteId && siteWebhooks[siteId]) {
+                return siteWebhooks[siteId];
+            }
+            return defaultUrl;
         } catch {
             return '';
         }
     }
 
     /**
-     * Save Microsoft Teams webhook URL to database
+     * Fetch all site-specific Teams webhooks
+     */
+    async getSiteTeamsWebhooks(): Promise<Record<string, string>> {
+        try {
+            const { data } = await supabase
+                .from('app_config')
+                .select('value')
+                .eq('key', 'teams_config')
+                .single();
+
+            const conf = data?.value as any;
+            return (conf && conf.siteWebhooks && typeof conf.siteWebhooks === 'object') ? conf.siteWebhooks : {};
+        } catch {
+            return {};
+        }
+    }
+
+    /**
+     * Save a site-specific Microsoft Teams webhook URL
+     */
+    async saveSiteTeamsWebhookUrl(siteId: string, url: string): Promise<void> {
+        const currentSiteWebhooks = await this.getSiteTeamsWebhooks();
+        const currentDefault = await this.getTeamsWebhookUrl();
+        const updated = {
+            ...currentSiteWebhooks,
+            [siteId]: url.trim()
+        };
+
+        await supabase.from('app_config').upsert({
+            key: 'teams_config',
+            value: {
+                webhookUrl: currentDefault,
+                siteWebhooks: updated
+            },
+            updated_at: new Date().toISOString()
+        });
+    }
+
+    /**
+     * Save Microsoft Teams default webhook URL to database
      */
     async saveTeamsWebhookUrl(url: string): Promise<void> {
+        const siteWebhooks = await this.getSiteTeamsWebhooks();
         await Promise.all([
             supabase.from('app_config').upsert({
                 key: 'teams_webhook_url',
@@ -451,7 +503,10 @@ class NotificationEngineService {
             }),
             supabase.from('app_config').upsert({
                 key: 'teams_config',
-                value: { webhookUrl: url },
+                value: {
+                    webhookUrl: url,
+                    siteWebhooks: siteWebhooks
+                },
                 updated_at: new Date().toISOString()
             })
         ]);
@@ -663,7 +718,8 @@ class NotificationEngineService {
 
         // 6. Microsoft Teams Webhook Dispatch
         try {
-            const teamsWebhookUrl = await this.getTeamsWebhookUrl();
+            const targetSiteId = params.siteId || (params.variables?.siteId ? String(params.variables.siteId) : undefined) || (params.variables?.site_id ? String(params.variables.site_id) : undefined);
+            const teamsWebhookUrl = await this.getTeamsWebhookUrl(targetSiteId);
 
             if (teamsWebhookUrl && (!template || template.channels.teams?.enabled !== false)) {
                 const teamsTitle = template?.channels.teams?.title ? interpolateTemplate(template.channels.teams.title, vars) : `ProcureFlow Alert: ${params.eventType}`;

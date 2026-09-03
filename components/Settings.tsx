@@ -20,7 +20,7 @@ import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
 import { supabase } from '../lib/supabaseClient.ts';
 import { SupplierStockSnapshot, SupplierProductMap, Item, Supplier, SupplierContact, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType, UserNotificationPreferences } from '../types.ts';
-import { notificationEngineService } from '../services/notificationEngineService.ts';
+import { notificationEngineService, buildTeamsAdaptiveCard } from '../services/notificationEngineService.ts';
 import { playNotificationChime } from '../services/realtimeNotificationService.ts';
 import { NOTIFICATION_SCENARIOS, getUserEligibleScenarios, isScenarioAllowedForRoles, NotificationScenarioConfig } from '../utils/notificationScenarios.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
@@ -995,6 +995,58 @@ const Settings = () => {
               .catch(err => console.error('Failed to load profile notification preferences:', err));
       }
   }, [currentUser?.id, activeTab]);
+
+  // Load Site Teams Webhooks
+  const [siteTeamsWebhooks, setSiteTeamsWebhooks] = useState<Record<string, string>>({});
+  const [siteTeamsWebhookInput, setSiteTeamsWebhookInput] = useState('');
+  const [isTestingSiteWebhook, setIsTestingSiteWebhook] = useState(false);
+
+  useEffect(() => {
+      if (activeTab === 'SITES') {
+          notificationEngineService.getSiteTeamsWebhooks()
+              .then(webhooks => setSiteTeamsWebhooks(webhooks))
+              .catch(err => console.error('Failed to load site teams webhooks:', err));
+      }
+  }, [activeTab]);
+
+  const handleTestSiteTeamsWebhook = async () => {
+      if (!siteTeamsWebhookInput.trim()) {
+          error('Please enter a webhook URL first');
+          return;
+      }
+      setIsTestingSiteWebhook(true);
+      try {
+          const testCard = buildTeamsAdaptiveCard({
+              title: `ProcureFlow Channel Verified — ${siteForm.name || 'Site Facility'}`,
+              subtitle: 'Specialised Linen Services Alerts Network',
+              colorHex: '059669',
+              facts: [
+                  { title: 'Facility:', value: siteForm.name || 'Facility' },
+                  { title: 'Location:', value: `${siteForm.suburb || ''}, ${siteForm.state || ''}`.trim() || 'N/A' },
+                  { title: 'Integration:', value: 'Power Automate Workflow' },
+                  { title: 'Status:', value: 'Connected & Operational' }
+              ],
+              actionLabel: 'Open ProcureFlow',
+              actionUrl: window.location.origin
+          });
+
+          const resp = await fetch(siteTeamsWebhookInput.trim(), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(testCard)
+          });
+
+          if (resp.ok) {
+              success(`Test alert posted successfully to Microsoft Teams channel for ${siteForm.name || 'site'}!`);
+          } else {
+              error(`Teams webhook responded with status ${resp.status}`);
+          }
+      } catch (err: any) {
+          error(`Failed to dispatch test card: ${err.message}`);
+      } finally {
+          setIsTestingSiteWebhook(false);
+      }
+  };
 
   const handleToggleDirectoryChannel = async (userId: string, channel: 'email' | 'teams' | 'in_app', currentVal: boolean) => {
       setTogglingUserChannel({ userId, channel });
@@ -3150,8 +3202,38 @@ if __name__ == "__main__":
       setIsSupplierFormOpen(false);
   };
   const openSupplierForm = (s?: Supplier) => { if(s) { setEditingSupplier(s); setSupplierForm(createSupplierFormState(s)); } else { setEditingSupplier(null); setSupplierForm(createSupplierFormState()); } setIsSupplierFormOpen(true); };
-  const handleSiteFormSubmit = (e: React.FormEvent) => { e.preventDefault(); const newSite: Site = { id: editingSite ? editingSite.id : uuidv4(), name: siteForm.name, suburb: siteForm.suburb, address: siteForm.address, state: siteForm.state, zip: siteForm.zip, contactPerson: siteForm.contactPerson }; editingSite ? updateSite(newSite) : addSite(newSite); setIsSiteFormOpen(false); };
-  const openSiteForm = (s?: Site) => { if(s) { setEditingSite(s); setSiteForm({ name: s.name, suburb: s.suburb, address: s.address, state: s.state, zip: s.zip, contactPerson: s.contactPerson }); } else { setEditingSite(null); setSiteForm({ name: '', suburb: '', address: '', state: '', zip: '', contactPerson: '' }); } setIsSiteFormOpen(true); };
+  const handleSiteFormSubmit = async (e: React.FormEvent) => { 
+      e.preventDefault(); 
+      const siteId = editingSite ? editingSite.id : uuidv4();
+      const newSite: Site = { 
+          id: siteId, 
+          name: siteForm.name, 
+          suburb: siteForm.suburb, 
+          address: siteForm.address, 
+          state: siteForm.state, 
+          zip: siteForm.zip, 
+          contactPerson: siteForm.contactPerson 
+      }; 
+      editingSite ? updateSite(newSite) : addSite(newSite); 
+
+      if (siteTeamsWebhookInput !== undefined) {
+          await notificationEngineService.saveSiteTeamsWebhookUrl(siteId, siteTeamsWebhookInput);
+          setSiteTeamsWebhooks(prev => ({ ...prev, [siteId]: siteTeamsWebhookInput.trim() }));
+      }
+      setIsSiteFormOpen(false); 
+  };
+  const openSiteForm = (s?: Site) => { 
+      if(s) { 
+          setEditingSite(s); 
+          setSiteForm({ name: s.name, suburb: s.suburb, address: s.address, state: s.state, zip: s.zip, contactPerson: s.contactPerson }); 
+          setSiteTeamsWebhookInput(siteTeamsWebhooks[s.id] || '');
+      } else { 
+          setEditingSite(null); 
+          setSiteForm({ name: '', suburb: '', address: '', state: '', zip: '', contactPerson: '' }); 
+          setSiteTeamsWebhookInput('');
+      } 
+      setIsSiteFormOpen(true); 
+  };
   const handleWorkflowUpdate = (id: string, updates: Partial<WorkflowStep>) => { const step = workflowSteps.find(s => s.id === id); if (step) updateWorkflowStep({ ...step, ...updates }); };
 
   // --- Notification Logic ---
@@ -4511,7 +4593,7 @@ if __name__ == "__main__":
                  <div className="flex justify-end mb-4"><button type="button" onClick={() => openSiteForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Site</button></div>
                  <div className="table-shell">
                     <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[700px]">
-                        <thead className="table-header"><tr><th className="px-6 py-4 table-sticky-left">Site Name</th><th className="px-6 py-4">Suburb</th><th className="px-6 py-4">Address</th><th className="px-6 py-4">State</th><th className="px-6 py-4">Contact</th><th className="px-6 py-4 text-center table-sticky-right">Action</th></tr></thead>
+                        <thead className="table-header"><tr><th className="px-6 py-4 table-sticky-left">Site Name</th><th className="px-6 py-4">Suburb</th><th className="px-6 py-4">Address</th><th className="px-6 py-4">State</th><th className="px-6 py-4">Contact</th><th className="px-6 py-4">Teams Channel</th><th className="px-6 py-4 text-center table-sticky-right">Action</th></tr></thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                             {sites.map(s => (
                                 <tr key={s.id} className="table-row">
@@ -4520,7 +4602,18 @@ if __name__ == "__main__":
                                     <td className="px-6 py-4">{s.address}</td>
                                     <td className="px-6 py-4"><span className="badge">{s.state}</span> <span className="text-xs text-gray-400">{s.zip}</span></td>
                                     <td className="px-6 py-4">{s.contactPerson}</td>
-                                    <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button type="button" onClick={() => openSiteForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button type="button" onClick={() => deleteSite(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
+                                    <td className="px-6 py-4">
+                                        {siteTeamsWebhooks[s.id] ? (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                                <Check size={12} className="text-indigo-600 dark:text-indigo-400" /> Connected
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-400">
+                                                Not Configured
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button type="button" onClick={() => openSiteForm(s)} className="icon-btn-blue" title="Edit Site & Webhook"><Edit2 size={16}/></button><button type="button" onClick={() => deleteSite(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -4557,6 +4650,34 @@ if __name__ == "__main__":
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Contact person</label>
                                 <input required className="input-field" value={siteForm.contactPerson} onChange={e => setSiteForm({...siteForm, contactPerson: e.target.value})}/>
+                            </div>
+                            <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-xl border border-indigo-100 dark:border-indigo-900/40 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+                                        <MessageSquare size={14} className="text-indigo-600"/> Microsoft Teams Channel Webhook
+                                    </label>
+                                    {siteTeamsWebhookInput && (
+                                        <button
+                                            type="button"
+                                            onClick={handleTestSiteTeamsWebhook}
+                                            disabled={isTestingSiteWebhook}
+                                            className="text-[11px] font-black uppercase text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1 hover:underline"
+                                        >
+                                            {isTestingSiteWebhook ? <Loader2 size={12} className="animate-spin" /> : <PlayCircle size={12} />}
+                                            Send Test Alert
+                                        </button>
+                                    )}
+                                </div>
+                                <input 
+                                    type="url"
+                                    className="input-field font-mono text-xs bg-white dark:bg-nocturne" 
+                                    placeholder="https://...powerautomate/.../invoke?..."
+                                    value={siteTeamsWebhookInput} 
+                                    onChange={e => setSiteTeamsWebhookInput(e.target.value)}
+                                />
+                                <p className="text-[10px] text-gray-500 leading-relaxed">
+                                    Power Automate workflow URL for this facility's Teams channel (e.g. <code>Site - {siteForm.name || 'Adelaide'}</code>). Alerts for this site will post directly here.
+                                </p>
                             </div>
                             <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setIsSiteFormOpen(false)} className="px-4 py-2 text-secondary font-medium hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="btn-primary">Save Site</button></div>
                         </form>
