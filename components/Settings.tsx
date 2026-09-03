@@ -14,12 +14,14 @@ import {
     GitMerge, Fingerprint, Palette, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
     Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3, Sparkles,
-    Building2, Files, FileSpreadsheet
+    Building2, Files, FileSpreadsheet, Volume2, Moon, Sliders
 } from 'lucide-react';
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
 import { supabase } from '../lib/supabaseClient.ts';
-import { SupplierStockSnapshot, SupplierProductMap, Item, Supplier, SupplierContact, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType } from '../types.ts';
+import { SupplierStockSnapshot, SupplierProductMap, Item, Supplier, SupplierContact, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType, UserNotificationPreferences } from '../types.ts';
+import { notificationEngineService } from '../services/notificationEngineService.ts';
+import { playNotificationChime } from '../services/realtimeNotificationService.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { canonicalSupplierName, dedupeSuppliersForDisplay, findSupplierByContactEmail, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import { useLocation } from 'react-router-dom';
@@ -936,17 +938,173 @@ const Settings = () => {
   });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
+  // --- User Directory Notification Preferences State ---
+  const [userPrefsMap, setUserPrefsMap] = useState<Record<string, UserNotificationPreferences>>({});
+  const [isLoadingUserPrefs, setIsLoadingUserPrefs] = useState(false);
+  const [togglingUserChannel, setTogglingUserChannel] = useState<{ userId: string; channel: 'email' | 'teams' | 'in_app' } | null>(null);
+
+  // --- Current User Profile Notification Preferences ---
+  const [profileNotifPrefs, setProfileNotifPrefs] = useState<UserNotificationPreferences>({
+      user_id: currentUser?.id || '',
+      email_enabled: true,
+      in_app_enabled: true,
+      teams_enabled: true,
+      sound_enabled: true,
+      digest_frequency: 'INSTANT',
+      quiet_hours_enabled: false,
+      quiet_hours_start: '22:00',
+      quiet_hours_end: '07:00',
+      category_overrides: {
+          APPROVAL: { in_app: true, email: true, teams: true },
+          STATUS_CHANGE: { in_app: true, email: true, teams: true },
+          DELIVERY: { in_app: true, email: true, teams: true },
+          ITEM_LIFECYCLE: { in_app: true, email: true, teams: false },
+          PRICING: { in_app: true, email: true, teams: false },
+          ALERT: { in_app: true, email: true, teams: true }
+      }
+  });
+  const [isSavingProfileNotifPrefs, setIsSavingProfileNotifPrefs] = useState(false);
+
+  // Load User Directory preferences
+  useEffect(() => {
+      if (activeTab === 'USERS') {
+          setIsLoadingUserPrefs(true);
+          notificationEngineService.getAllUserPreferences()
+              .then(prefs => setUserPrefsMap(prefs))
+              .catch(err => console.error('Failed to load user notification preferences:', err))
+              .finally(() => setIsLoadingUserPrefs(false));
+      }
+  }, [activeTab]);
+
+  // Load User Profile preferences
+  useEffect(() => {
+      if (currentUser?.id) {
+          notificationEngineService.getUserPreferences(currentUser.id)
+              .then(prefs => {
+                  if (prefs) {
+                      setProfileNotifPrefs(prefs);
+                  } else {
+                      setProfileNotifPrefs(prev => ({
+                          ...prev,
+                          user_id: currentUser.id
+                      }));
+                  }
+              })
+              .catch(err => console.error('Failed to load profile notification preferences:', err));
+      }
+  }, [currentUser?.id, activeTab]);
+
+  const handleToggleDirectoryChannel = async (userId: string, channel: 'email' | 'teams' | 'in_app', currentVal: boolean) => {
+      setTogglingUserChannel({ userId, channel });
+      const newVal = !currentVal;
+
+      // Optimistic update
+      setUserPrefsMap(prev => {
+          const existing = prev[userId] || {
+              user_id: userId,
+              email_enabled: true,
+              teams_enabled: true,
+              in_app_enabled: true,
+              sound_enabled: true,
+              digest_frequency: 'INSTANT',
+              quiet_hours_enabled: false,
+              quiet_hours_start: '22:00',
+              quiet_hours_end: '07:00',
+              category_overrides: {
+                  APPROVAL: { in_app: true, email: true, teams: true },
+                  STATUS_CHANGE: { in_app: true, email: true, teams: true },
+                  DELIVERY: { in_app: true, email: true, teams: true },
+                  ITEM_LIFECYCLE: { in_app: true, email: true, teams: false },
+                  PRICING: { in_app: true, email: true, teams: false },
+                  ALERT: { in_app: true, email: true, teams: true }
+              }
+          };
+          return {
+              ...prev,
+              [userId]: {
+                  ...existing,
+                  [`${channel}_enabled`]: newVal
+              }
+          };
+      });
+
+      try {
+          await notificationEngineService.setUserChannelPreference(userId, channel, newVal);
+          const channelName = channel === 'in_app' ? 'In-App' : channel === 'teams' ? 'Teams' : 'Email';
+          success(`${channelName} alerts ${newVal ? 'activated' : 'disabled'}`);
+      } catch (err) {
+          console.error('Failed to update channel preference:', err);
+          error(`Failed to update ${channel} setting`);
+          // Revert on error
+          setUserPrefsMap(prev => {
+              const existing = prev[userId];
+              if (!existing) return prev;
+              return {
+                  ...prev,
+                  [userId]: {
+                      ...existing,
+                      [`${channel}_enabled`]: currentVal
+                  }
+              };
+          });
+      } finally {
+          setTogglingUserChannel(null);
+      }
+  };
+
+  const handleToggleProfileScenarioChannel = (scenarioKey: string, channel: 'in_app' | 'email' | 'teams') => {
+      setProfileNotifPrefs(prev => {
+          const overrides = prev.category_overrides || {};
+          const current = overrides[scenarioKey] || { in_app: true, email: true, teams: true };
+          return {
+              ...prev,
+              category_overrides: {
+                  ...overrides,
+                  [scenarioKey]: {
+                      ...current,
+                      [channel]: !current[channel]
+                  }
+              }
+          };
+      });
+  };
+
+  const handleSaveProfileNotifPrefs = async () => {
+      if (!currentUser?.id) return;
+      setIsSavingProfileNotifPrefs(true);
+      try {
+          await notificationEngineService.saveUserPreferences({
+              ...profileNotifPrefs,
+              user_id: currentUser.id
+          });
+          success('Notification preferences & scenarios saved successfully!');
+      } catch (err) {
+          console.error('Failed to save profile notification preferences:', err);
+          error('Failed to save notification preferences');
+      } finally {
+          setIsSavingProfileNotifPrefs(false);
+      }
+  };
+
   const handleSaveProfile = async () => {
       setIsSavingProfile(true);
       try {
           await updateProfile(profileForm);
-          alert('Profile updated successfully!');
+          if (currentUser?.id) {
+              await notificationEngineService.saveUserPreferences({
+                  ...profileNotifPrefs,
+                  user_id: currentUser.id
+              });
+          }
+          success('Profile and notification preferences updated successfully!');
       } catch (e) {
-          alert('Failed to update profile.');
+          console.error('Failed to update profile:', e);
+          error('Failed to update profile.');
       } finally {
           setIsSavingProfile(false);
       }
   };
+
 
   // --- Supplier Form State ---
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false);
@@ -3190,7 +3348,7 @@ if __name__ == "__main__":
       <div className="mt-4 sm:mt-6 flex-1 overflow-y-auto min-h-0 pb-12">
 
       {activeTab === 'PROFILE' && (
-          <div className="animate-fade-in max-w-2xl">
+          <div className="animate-fade-in max-w-4xl space-y-8">
               <div className="bg-white dark:bg-nocturne rounded-2xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">User Profile</h2>
                   
@@ -3262,6 +3420,265 @@ if __name__ == "__main__":
                                   Save Changes
                               </button>
                           </div>
+                      </div>
+                  </div>
+              </div>
+
+              {/* Notification Channels & Scenario Matrix */}
+              <div className="bg-white dark:bg-nocturne rounded-2xl p-6 md:p-8 border border-gray-200 dark:border-gray-800 shadow-sm space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-gray-100 dark:border-gray-800">
+                      <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center">
+                              <Bell size={20} />
+                          </div>
+                          <div>
+                              <h3 className="text-lg font-black text-gray-900 dark:text-white tracking-tight">Notification Channels & Scenarios</h3>
+                              <p className="text-xs text-gray-500 mt-0.5">Control which channels you receive alerts on and configure notification rules for each procurement workflow scenario.</p>
+                          </div>
+                      </div>
+                      <button
+                          type="button"
+                          onClick={handleSaveProfileNotifPrefs}
+                          disabled={isSavingProfileNotifPrefs}
+                          className="btn-primary py-2.5 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20 self-start sm:self-auto shrink-0"
+                      >
+                          {isSavingProfileNotifPrefs ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                          <span>Save Preferences</span>
+                      </button>
+                  </div>
+
+                  {/* Master Channel Toggles */}
+                  <div className="space-y-3">
+                      <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Master Channels</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          {/* In-App Alerts */}
+                          <div className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                  <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-500">
+                                      <Bell size={18} />
+                                  </div>
+                                  <div>
+                                      <div className="text-xs font-bold text-gray-900 dark:text-white">In-App Live</div>
+                                      <div className="text-[10px] text-gray-400">Live action bell alerts</div>
+                                  </div>
+                              </div>
+                              <input
+                                  type="checkbox"
+                                  checked={profileNotifPrefs.in_app_enabled}
+                                  onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, in_app_enabled: e.target.checked })}
+                                  className="w-5 h-5 accent-[var(--color-brand)] rounded cursor-pointer"
+                              />
+                          </div>
+
+                          {/* Email Digest */}
+                          <div className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                  <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500">
+                                      <Mail size={18} />
+                                  </div>
+                                  <div>
+                                      <div className="text-xs font-bold text-gray-900 dark:text-white">Email Digest</div>
+                                      <div className="text-[10px] text-gray-400">Actionable emails</div>
+                                  </div>
+                              </div>
+                              <input
+                                  type="checkbox"
+                                  checked={profileNotifPrefs.email_enabled}
+                                  onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, email_enabled: e.target.checked })}
+                                  className="w-5 h-5 accent-[var(--color-brand)] rounded cursor-pointer"
+                              />
+                          </div>
+
+                          {/* MS Teams */}
+                          <div className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                  <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-500">
+                                      <MessageSquare size={18} />
+                                  </div>
+                                  <div>
+                                      <div className="text-xs font-bold text-gray-900 dark:text-white">MS Teams</div>
+                                      <div className="text-[10px] text-gray-400">Adaptive Card alerts</div>
+                                  </div>
+                              </div>
+                              <input
+                                  type="checkbox"
+                                  checked={profileNotifPrefs.teams_enabled}
+                                  onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, teams_enabled: e.target.checked })}
+                                  className="w-5 h-5 accent-[var(--color-brand)] rounded cursor-pointer"
+                              />
+                          </div>
+
+                          {/* Audio Chimes */}
+                          <div className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                  <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500">
+                                      <Volume2 size={18} />
+                                  </div>
+                                  <div>
+                                      <div className="text-xs font-bold text-gray-900 dark:text-white">Audio Chimes</div>
+                                      <button
+                                          type="button"
+                                          onClick={() => playNotificationChime('subtle')}
+                                          className="text-[10px] text-[var(--color-brand)] font-bold hover:underline"
+                                      >
+                                          Play test chime
+                                      </button>
+                                  </div>
+                              </div>
+                              <input
+                                  type="checkbox"
+                                  checked={profileNotifPrefs.sound_enabled}
+                                  onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, sound_enabled: e.target.checked })}
+                                  className="w-5 h-5 accent-[var(--color-brand)] rounded cursor-pointer"
+                              />
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Quiet Hours */}
+                  <div className="p-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 space-y-4">
+                      <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                              <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-500">
+                                  <Moon size={18} />
+                              </div>
+                              <div>
+                                  <div className="text-xs font-bold text-gray-900 dark:text-white">Quiet Hours Schedule</div>
+                                  <div className="text-[10px] text-gray-400">Mute non-urgent audio chimes and popups during set times</div>
+                              </div>
+                          </div>
+                          <input
+                              type="checkbox"
+                              checked={profileNotifPrefs.quiet_hours_enabled}
+                              onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, quiet_hours_enabled: e.target.checked })}
+                              className="w-5 h-5 accent-[var(--color-brand)] rounded cursor-pointer"
+                          />
+                      </div>
+
+                      {profileNotifPrefs.quiet_hours_enabled && (
+                          <div className="grid grid-cols-2 gap-4 pt-3 border-t border-gray-200 dark:border-gray-800">
+                              <div>
+                                  <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Quiet Hours Start</label>
+                                  <input
+                                      type="time"
+                                      value={profileNotifPrefs.quiet_hours_start || '22:00'}
+                                      onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, quiet_hours_start: e.target.value })}
+                                      className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                  />
+                              </div>
+                              <div>
+                                  <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Quiet Hours End</label>
+                                  <input
+                                      type="time"
+                                      value={profileNotifPrefs.quiet_hours_end || '07:00'}
+                                      onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, quiet_hours_end: e.target.value })}
+                                      className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                  />
+                              </div>
+                          </div>
+                      )}
+                  </div>
+
+                  {/* Scenario Matrix */}
+                  <div className="space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                          <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Scenario Channel Matrix</h4>
+                          <span className="text-[10px] text-gray-400 font-medium">Select which channels trigger for each procurement event</span>
+                      </div>
+                      
+                      <div className="border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden bg-white dark:bg-nocturne">
+                          <table className="w-full text-left">
+                              <thead className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800 text-[10px] uppercase font-black tracking-widest text-gray-400">
+                                  <tr>
+                                      <th className="px-5 py-3.5">Procurement Scenario</th>
+                                      <th className="px-4 py-3.5 text-center w-28">In-App</th>
+                                      <th className="px-4 py-3.5 text-center w-28">Email</th>
+                                      <th className="px-4 py-3.5 text-center w-28">Teams</th>
+                                  </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                                  {[
+                                      { 
+                                          key: 'APPROVAL', 
+                                          title: 'Requisition Approvals & Escalations', 
+                                          desc: 'Pending purchase requisitions requiring review, sign-off decisions, and overdue escalation alerts',
+                                          badge: 'Approvals'
+                                      },
+                                      { 
+                                          key: 'STATUS_CHANGE', 
+                                          title: 'PO & Order Status Confirmations', 
+                                          desc: 'PO status progressions, supplier acknowledgements, Need-By Date updates, and Ready to Close notices',
+                                          badge: 'Orders'
+                                      },
+                                      { 
+                                          key: 'DELIVERY', 
+                                          title: 'Goods Receipts & Delivery Discrepancies', 
+                                          desc: 'Delivery docket receipts, quantity variance warnings (ordered vs received), and overdue shipments',
+                                          badge: 'Deliveries'
+                                      },
+                                      { 
+                                          key: 'ITEM_LIFECYCLE', 
+                                          title: 'Catalog & Item Master Changes', 
+                                          desc: 'New item requests submitted, item specifications approved, pack size changes, and catalog releases',
+                                          badge: 'Master Data'
+                                      },
+                                      { 
+                                          key: 'PRICING', 
+                                          title: 'Contract Pricing & Tariff Updates', 
+                                          desc: 'Supplier pricing schedule adjustments, future price activations, and pricing variance alerts',
+                                          badge: 'Pricing'
+                                      },
+                                      { 
+                                          key: 'ALERT', 
+                                          title: 'SLA Warnings & Critical Governance', 
+                                          desc: 'Overdue 14-day delivery breaches, unlinked Concur PO numbers, and budget consumption warnings',
+                                          badge: 'Governance'
+                                      }
+                                  ].map(scen => {
+                                      const current = profileNotifPrefs.category_overrides?.[scen.key] || { in_app: true, email: true, teams: true };
+                                      return (
+                                          <tr key={scen.key} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
+                                              <td className="px-5 py-4">
+                                                  <div className="flex items-center gap-2 mb-0.5">
+                                                      <span className="font-bold text-gray-900 dark:text-white text-xs">{scen.title}</span>
+                                                      <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-gray-100 dark:bg-gray-800 text-gray-500">
+                                                          {scen.badge}
+                                                      </span>
+                                                  </div>
+                                                  <p className="text-[11px] text-gray-400 font-medium leading-relaxed">{scen.desc}</p>
+                                              </td>
+                                              <td className="px-4 py-4 text-center">
+                                                  <input
+                                                      type="checkbox"
+                                                      checked={current.in_app !== false}
+                                                      onChange={() => handleToggleProfileScenarioChannel(scen.key, 'in_app')}
+                                                      className="w-4 h-4 accent-sky-500 rounded cursor-pointer"
+                                                      title={`Toggle In-App alerts for ${scen.title}`}
+                                                  />
+                                              </td>
+                                              <td className="px-4 py-4 text-center">
+                                                  <input
+                                                      type="checkbox"
+                                                      checked={current.email !== false}
+                                                      onChange={() => handleToggleProfileScenarioChannel(scen.key, 'email')}
+                                                      className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                                                      title={`Toggle Email alerts for ${scen.title}`}
+                                                  />
+                                              </td>
+                                              <td className="px-4 py-4 text-center">
+                                                  <input
+                                                      type="checkbox"
+                                                      checked={current.teams !== false}
+                                                      onChange={() => handleToggleProfileScenarioChannel(scen.key, 'teams')}
+                                                      className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
+                                                      title={`Toggle Teams alerts for ${scen.title}`}
+                                                  />
+                                              </td>
+                                          </tr>
+                                      );
+                                  })}
+                              </tbody>
+                          </table>
                       </div>
                   </div>
               </div>
@@ -4814,10 +5231,11 @@ if __name__ == "__main__":
                   </div>
 
                   <div className="table-shell">
-                      <table className="dense-admin-table text-left min-w-[760px]">
+                      <table className="dense-admin-table text-left min-w-[880px]">
                           <thead>
                               <tr className="bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
                                   <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest table-sticky-left">User Profile</th>
+                                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Notification Channels</th>
                                   <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right table-sticky-right">Actions</th>
                               </tr>
                           </thead>
@@ -4850,7 +5268,14 @@ if __name__ == "__main__":
 
                                   if (displayUsers.length === 0) return null;
 
-                                  return displayUsers.map(user => (
+                                  return displayUsers.map(user => {
+                                      const userPrefs = userPrefsMap[user.id];
+                                      const isEmailOn = userPrefs ? userPrefs.email_enabled : true;
+                                      const isTeamsOn = userPrefs ? userPrefs.teams_enabled : true;
+                                      const isInAppOn = userPrefs ? userPrefs.in_app_enabled : true;
+                                      const isToggling = togglingUserChannel?.userId === user.id;
+
+                                      return (
                                       <tr key={user.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
                                           <td className="px-6 py-4 table-sticky-left">
                                                <div className="flex items-center gap-4">
@@ -4893,6 +5318,66 @@ if __name__ == "__main__":
                                                       </div>
                                                   </div>
                                                </div>
+                                          </td>
+                                          <td className="px-6 py-4 text-center">
+                                              {user.status === 'APPROVED' ? (
+                                                  <div className="inline-flex items-center gap-1.5 p-1 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                                                      {/* Email Toggle */}
+                                                      <button
+                                                          type="button"
+                                                          disabled={isToggling && togglingUserChannel?.channel === 'email'}
+                                                          onClick={() => handleToggleDirectoryChannel(user.id, 'email', isEmailOn)}
+                                                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all ${
+                                                              isEmailOn
+                                                                  ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                                                                  : 'bg-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                                          }`}
+                                                          title={isEmailOn ? 'Email notifications enabled — Click to disable' : 'Email notifications disabled — Click to enable'}
+                                                      >
+                                                          <Mail size={12} />
+                                                          <span>Email</span>
+                                                          <span className={`w-1.5 h-1.5 rounded-full ${isEmailOn ? 'bg-white' : 'bg-gray-400'}`} />
+                                                      </button>
+
+                                                      {/* Teams Toggle */}
+                                                      <button
+                                                          type="button"
+                                                          disabled={isToggling && togglingUserChannel?.channel === 'teams'}
+                                                          onClick={() => handleToggleDirectoryChannel(user.id, 'teams', isTeamsOn)}
+                                                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all ${
+                                                              isTeamsOn
+                                                                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                                                                  : 'bg-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                                          }`}
+                                                          title={isTeamsOn ? 'MS Teams notifications enabled — Click to disable' : 'MS Teams notifications disabled — Click to enable'}
+                                                      >
+                                                          <MessageSquare size={12} />
+                                                          <span>Teams</span>
+                                                          <span className={`w-1.5 h-1.5 rounded-full ${isTeamsOn ? 'bg-white' : 'bg-gray-400'}`} />
+                                                      </button>
+
+                                                      {/* In-App Toggle */}
+                                                      <button
+                                                          type="button"
+                                                          disabled={isToggling && togglingUserChannel?.channel === 'in_app'}
+                                                          onClick={() => handleToggleDirectoryChannel(user.id, 'in_app', isInAppOn)}
+                                                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all ${
+                                                              isInAppOn
+                                                                  ? 'bg-sky-500 text-white shadow-sm shadow-sky-500/30'
+                                                                  : 'bg-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                                          }`}
+                                                          title={isInAppOn ? 'In-App notifications enabled — Click to disable' : 'In-App notifications disabled — Click to enable'}
+                                                      >
+                                                          <Bell size={12} />
+                                                          <span>In-App</span>
+                                                          <span className={`w-1.5 h-1.5 rounded-full ${isInAppOn ? 'bg-white' : 'bg-gray-400'}`} />
+                                                      </button>
+                                                  </div>
+                                              ) : (
+                                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-400 text-[10px] font-bold uppercase tracking-wider" title="User must be granted access before notifications can be configured">
+                                                      <Lock size={10} /> Access Pending
+                                                  </span>
+                                              )}
                                           </td>
                                           <td className="px-6 py-4 text-right table-sticky-right">
                                               <div className="flex items-center justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -4969,9 +5454,10 @@ if __name__ == "__main__":
                                               </div>
                                           </td>
                                       </tr>
-                                  ));
+                                  );
+                              });
                               })() || (
-                                  <tr><td colSpan={2} className="px-6 py-20 text-center text-gray-400">
+                                  <tr><td colSpan={3} className="px-6 py-20 text-center text-gray-400">
                                       <div className="flex flex-col items-center gap-3">
                                           <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
                                               <Search size={32} className="opacity-10"/>
@@ -6147,6 +6633,88 @@ if __name__ == "__main__":
                                                   </div>
                                              </div>
                                          </div>
+
+                                         {/* Notification Channels for Existing User */}
+                                         {inviteForm.id && users.some(u => u.id === inviteForm.id) && (
+                                             <div className="pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
+                                                 <div className="flex items-center justify-between">
+                                                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                                                         <Bell size={14} className="text-[var(--color-brand)]"/> Assigned Notification Channels
+                                                     </label>
+                                                     <span className="text-[10px] text-gray-400 font-medium">Toggle active delivery destinations for this member</span>
+                                                 </div>
+                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                     {/* Email */}
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => handleToggleDirectoryChannel(inviteForm.id, 'email', userPrefsMap[inviteForm.id]?.email_enabled ?? true)}
+                                                         className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                                                             (userPrefsMap[inviteForm.id]?.email_enabled ?? true)
+                                                                 ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                                                                 : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-gray-800 text-gray-400'
+                                                         }`}
+                                                     >
+                                                         <div className="flex items-center gap-2.5">
+                                                             <Mail size={16} />
+                                                             <span className="text-xs font-bold">Email Alerts</span>
+                                                         </div>
+                                                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                             (userPrefsMap[inviteForm.id]?.email_enabled ?? true)
+                                                                 ? 'bg-emerald-500 text-white'
+                                                                 : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                                                         }`}>
+                                                             {(userPrefsMap[inviteForm.id]?.email_enabled ?? true) ? 'ON' : 'OFF'}
+                                                         </span>
+                                                     </button>
+
+                                                     {/* Teams */}
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => handleToggleDirectoryChannel(inviteForm.id, 'teams', userPrefsMap[inviteForm.id]?.teams_enabled ?? true)}
+                                                         className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                                                             (userPrefsMap[inviteForm.id]?.teams_enabled ?? true)
+                                                                 ? 'bg-indigo-50/80 dark:bg-indigo-950/20 border-indigo-300 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300'
+                                                                 : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-gray-800 text-gray-400'
+                                                         }`}
+                                                     >
+                                                         <div className="flex items-center gap-2.5">
+                                                             <MessageSquare size={16} />
+                                                             <span className="text-xs font-bold">MS Teams</span>
+                                                         </div>
+                                                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                             (userPrefsMap[inviteForm.id]?.teams_enabled ?? true)
+                                                                 ? 'bg-indigo-600 text-white'
+                                                                 : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                                                         }`}>
+                                                             {(userPrefsMap[inviteForm.id]?.teams_enabled ?? true) ? 'ON' : 'OFF'}
+                                                         </span>
+                                                     </button>
+
+                                                     {/* In-App */}
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => handleToggleDirectoryChannel(inviteForm.id, 'in_app', userPrefsMap[inviteForm.id]?.in_app_enabled ?? true)}
+                                                         className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                                                             (userPrefsMap[inviteForm.id]?.in_app_enabled ?? true)
+                                                                 ? 'bg-sky-50/80 dark:bg-sky-950/20 border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300'
+                                                                 : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-gray-800 text-gray-400'
+                                                         }`}
+                                                     >
+                                                         <div className="flex items-center gap-2.5">
+                                                             <Bell size={16} />
+                                                             <span className="text-xs font-bold">In-App Live</span>
+                                                         </div>
+                                                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                             (userPrefsMap[inviteForm.id]?.in_app_enabled ?? true)
+                                                                 ? 'bg-sky-500 text-white'
+                                                                 : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                                                         }`}>
+                                                             {(userPrefsMap[inviteForm.id]?.in_app_enabled ?? true) ? 'ON' : 'OFF'}
+                                                         </span>
+                                                     </button>
+                                                 </div>
+                                             </div>
+                                         )}
                                     </div>
                                )}
                            </div>

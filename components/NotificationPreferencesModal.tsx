@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     X, Bell, Volume2, Mail, MessageSquare, Moon, Clock, 
     Save, CheckCircle2, ShieldAlert, Sliders
@@ -275,11 +275,12 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                                         </thead>
                                         <tbody className="divide-y divide-gray-100 dark:divide-white/5 text-xs font-medium">
                                             {[
-                                                { key: 'APPROVAL', label: 'Approvals Required & Decisions' },
-                                                { key: 'STATUS_CHANGE', label: 'PO Status & Confirmations' },
-                                                { key: 'ITEM_LIFECYCLE', label: 'Item Creation & Master Data' },
-                                                { key: 'DELIVERY', label: 'Goods Receipts & Deliveries' },
-                                                { key: 'ALERT', label: 'SLA Warnings & Overdue Breaches' }
+                                                { key: 'APPROVAL', label: 'Requisition Approvals & Escalations' },
+                                                { key: 'STATUS_CHANGE', label: 'PO & Order Status Confirmations' },
+                                                { key: 'DELIVERY', label: 'Goods Receipts & Delivery Discrepancies' },
+                                                { key: 'ITEM_LIFECYCLE', label: 'Catalog & Item Master Changes' },
+                                                { key: 'PRICING', label: 'Contract Pricing & Tariff Updates' },
+                                                { key: 'ALERT', label: 'SLA Warnings & Critical Governance' }
                                             ].map(cat => {
                                                 const current = prefs.category_overrides[cat.key] || { in_app: true, email: true, teams: true };
                                                 return (

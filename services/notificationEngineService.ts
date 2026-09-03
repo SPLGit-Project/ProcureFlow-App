@@ -287,6 +287,62 @@ class NotificationEngineService {
     }
 
     /**
+     * Fetch all user notification preferences map keyed by user_id
+     */
+    async getAllUserPreferences(): Promise<Record<string, UserNotificationPreferences>> {
+        const { data, error } = await supabase
+            .from('user_notification_preferences')
+            .select('*');
+
+        if (error || !data) {
+            console.warn('[NotificationEngine] Failed to fetch all user preferences:', error?.message);
+            return {};
+        }
+
+        const map: Record<string, UserNotificationPreferences> = {};
+        for (const row of data) {
+            map[row.user_id] = row as UserNotificationPreferences;
+        }
+        return map;
+    }
+
+    /**
+     * Helper to toggle or update a single channel preference for a user
+     */
+    async setUserChannelPreference(
+        userId: string, 
+        channel: 'email' | 'teams' | 'in_app', 
+        enabled: boolean
+    ): Promise<UserNotificationPreferences> {
+        const existing = await this.getUserPreferences(userId);
+        const updated: UserNotificationPreferences = existing ? {
+            ...existing,
+            [`${channel}_enabled`]: enabled,
+            updated_at: new Date().toISOString()
+        } : {
+            user_id: userId,
+            email_enabled: channel === 'email' ? enabled : true,
+            teams_enabled: channel === 'teams' ? enabled : true,
+            in_app_enabled: channel === 'in_app' ? enabled : true,
+            sound_enabled: true,
+            digest_frequency: 'INSTANT',
+            quiet_hours_enabled: false,
+            category_overrides: {
+                APPROVAL: { in_app: true, email: true, teams: true },
+                STATUS_CHANGE: { in_app: true, email: true, teams: true },
+                DELIVERY: { in_app: true, email: true, teams: true },
+                ITEM_LIFECYCLE: { in_app: true, email: true, teams: false },
+                PRICING: { in_app: true, email: true, teams: false },
+                ALERT: { in_app: true, email: true, teams: true }
+            },
+            updated_at: new Date().toISOString()
+        };
+
+        await this.saveUserPreferences(updated);
+        return updated;
+    }
+
+    /**
      * Fetch in-app notifications for the current user (by ID or related user ID)
      */
     async getUserNotifications(userId: string, limit = 50): Promise<EnhancedAppNotification[]> {
