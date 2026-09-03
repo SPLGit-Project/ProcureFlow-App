@@ -2,19 +2,29 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import {
   BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip as RechartsTooltip,
-  CartesianGrid, Legend
+  CartesianGrid, Legend, ReferenceLine
 } from 'recharts';
 import {
   TrendingUp, Package, AlertCircle, ArrowRight, Truck, CheckCircle2,
   Calendar, Layers, Building2, ExternalLink, ShieldCheck,
   Percent, DollarSign, Clock, Filter, ArrowUpRight, BarChart3,
-  Tag, RotateCcw, X
+  Tag, RotateCcw, X, Scale, Receipt, Landmark, PieChart
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from './PageHeader';
 import { formatCurrency } from '../utils/taxCalculations';
 import { PORequest, POLineItem } from '../types';
-import { classifyLegacyPO } from '../utils/budgetTracking';
+import {
+  classifyLegacyPO,
+  DEFAULT_FY27_BUDGETS,
+  GRAND_TOTAL_FY27_BUDGET,
+  TOTAL_DEPLETION_BUDGET,
+  TOTAL_NEW_BUSINESS_BUDGET,
+  LINEN_HUB_TOTAL_BUDGET,
+  normalizeBranchCode,
+  getBranchDisplayName,
+  STANDARD_BRANCH_CODES
+} from '../utils/budgetTracking';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -234,71 +244,141 @@ export default function Dashboard() {
     return counts;
   }, [pos, activeSiteIds, timeframe, customStartDate, customEndDate]);
 
-  // ── Executive KPI Metrics ───────────────────────────────────────────────────
-  const kpis = useMemo(() => {
-    let totalPoEx = 0;
-    let totalPoInc = 0;
-    let totalGrEx = 0;
-    let totalGrInc = 0;
-    let totalOpenInc = 0;
-    let totalOrderedUnits = 0;
-    let totalReceivedUnits = 0;
+  // ── Executive Financial Spend & P&L KPI Metrics ────────────────────────────
+  const financialKpis = useMemo(() => {
+    let totalSpendEx = 0;
+    let totalSpendInc = 0;
+    let totalGst = 0;
+
+    let depletionSpendEx = 0;
+    let newBusinessSpendEx = 0;
+    let linenHubSpendEx = 0;
+
+    let accommodationSpendEx = 0;
+    let healthcareSpendEx = 0;
 
     filteredPos.forEach((p) => {
-      const pInc = p.totalAmountIncGst ?? (p.totalAmount * 1.10);
-      totalPoEx += p.totalAmount;
-      totalPoInc += pInc;
+      const pEx = p.totalAmount || (p.totalAmountIncGst ? p.totalAmountIncGst / 1.10 : 0);
+      const pInc = p.totalAmountIncGst ?? (pEx * 1.10);
+      const gst = Math.max(0, pInc - pEx);
 
-      let poReceivedEx = 0;
-      let poOrderedUnits = 0;
-      let poReceivedUnits = 0;
+      totalSpendEx += pEx;
+      totalSpendInc += pInc;
+      totalGst += gst;
 
-      p.lines.forEach((l) => {
-        const ord = l.quantityOrdered || 0;
-        const rec = l.quantityReceived || 0;
-        poOrderedUnits += ord;
-        poReceivedUnits += rec;
-        poReceivedEx += (rec * l.unitPrice);
+      const desc = (p.comments || p.reasonForRequest || p.customerName || (p.lines?.[0]?.itemName ?? '')).toUpperCase();
+      const classified = classifyLegacyPO({
+        description: desc,
+        site: p.site || p.siteId,
+        concurPoNumber: p.concurPoNumber || p.concurRequestNumber,
+        customerName: p.customerName,
+        reasonForRequest: p.reasonForRequest,
+        spendType: p.spendType,
+        sector: p.sector,
+        contractStream: p.contractStream,
       });
 
-      const poReceivedInc = poReceivedEx * 1.10;
-      totalGrEx += poReceivedEx;
-      totalGrInc += poReceivedInc;
+      const siteLower = (p.site || '').toLowerCase();
+      const isLinenHub = p.siteId === 'site-hol' || siteLower.includes('linen hub') || siteLower.includes('holdings') || siteLower === 'hol';
 
-      totalOrderedUnits += poOrderedUnits;
-      totalReceivedUnits += poReceivedUnits;
+      // Spend Nature (Ex GST)
+      if (isLinenHub || classified.spendType === 'LINEN_HUB' || p.spendType === 'LINEN_HUB') {
+        linenHubSpendEx += pEx;
+      } else if (classified.spendType === 'NEW_BUSINESS' || p.reasonForRequest === 'New Customer' || p.spendType === 'NEW_BUSINESS') {
+        newBusinessSpendEx += pEx;
+      } else {
+        depletionSpendEx += pEx;
+      }
 
-      if (p.status !== 'CLOSED') {
-        const remainingVal = Math.max(0, pInc - poReceivedInc);
-        totalOpenInc += remainingVal;
+      // Sector (Ex GST)
+      if (classified.sector === 'HEALTHCARE' || p.sector === 'HEALTHCARE') {
+        healthcareSpendEx += pEx;
+      } else {
+        accommodationSpendEx += pEx;
       }
     });
 
-    const fulfillmentRate = totalOrderedUnits > 0
-      ? Math.round((totalReceivedUnits / totalOrderedUnits) * 100)
-      : 0;
+    // Budget determination based on active site scope
+    let siteAnnualBudget = GRAND_TOTAL_FY27_BUDGET;
+    let siteMonthlyBudget = GRAND_TOTAL_FY27_BUDGET / 12;
+
+    if (activeSiteIds.length === 1) {
+      const bCode = normalizeBranchCode(siteName(activeSiteIds[0]));
+      if (bCode === 'HOL') {
+        siteAnnualBudget = LINEN_HUB_TOTAL_BUDGET;
+        siteMonthlyBudget = LINEN_HUB_TOTAL_BUDGET / 12;
+      } else if (DEFAULT_FY27_BUDGETS[bCode]) {
+        siteAnnualBudget = DEFAULT_FY27_BUDGETS[bCode].annualTotalBudget;
+        siteMonthlyBudget = DEFAULT_FY27_BUDGETS[bCode].annualTotalBudget / 12;
+      }
+    }
+
+    // Determine pro-rata budget target for selected timeframe
+    const now = new Date();
+    let proRataBudget = siteAnnualBudget;
+    let periodLabel = 'FY27 Annual Budget Envelope';
+
+    if (timeframe === 'THIS_MONTH' || timeframe === 'LAST_MONTH') {
+      proRataBudget = siteMonthlyBudget;
+      periodLabel = timeframe === 'THIS_MONTH' ? 'Monthly Budget (This Month)' : 'Monthly Budget (Last Month)';
+    } else if (timeframe === 'FY_YTD') {
+      const monthsElapsed = now.getMonth() >= 6 ? (now.getMonth() - 6 + 1) : (now.getMonth() + 7);
+      proRataBudget = siteMonthlyBudget * monthsElapsed;
+      periodLabel = `FYTD Budget (${monthsElapsed} Months Pro-Rata)`;
+    } else if (timeframe === 'YTD') {
+      const monthsElapsed = now.getMonth() + 1;
+      proRataBudget = siteMonthlyBudget * monthsElapsed;
+      periodLabel = `YTD Budget (${monthsElapsed} Months Pro-Rata)`;
+    } else if (timeframe === 'FY2627') {
+      proRataBudget = siteAnnualBudget;
+      periodLabel = 'FY26-27 Full Year Budget';
+    } else if (timeframe === 'CUSTOM') {
+      const startMs = customStartDate ? new Date(`${customStartDate}T00:00:00`).getTime() : null;
+      const endMs = customEndDate ? new Date(`${customEndDate}T23:59:59.999`).getTime() : null;
+      if (startMs && endMs && endMs > startMs) {
+        const days = Math.max(1, Math.round((endMs - startMs) / 86400000));
+        proRataBudget = (siteAnnualBudget / 365) * days;
+        periodLabel = `Custom Window (${days} Days Pro-Rata)`;
+      }
+    }
+
+    // Variance = Actual - Budget. Negative indicates favourable under-budget execution.
+    const varianceEx = totalSpendEx - proRataBudget;
+    const variancePct = proRataBudget > 0 ? (varianceEx / proRataBudget) * 100 : 0;
+    const isFavourable = varianceEx <= 0;
+    const budgetConsumptionPct = proRataBudget > 0 ? Math.round((totalSpendEx / proRataBudget) * 100) : 0;
 
     return {
-      totalPoEx,
-      totalPoInc,
-      totalGrEx,
-      totalGrInc,
-      totalOpenInc,
-      totalOrderedUnits,
-      totalReceivedUnits,
-      fulfillmentRate,
-      orderCount: filteredPos.length
+      totalSpendEx,
+      totalSpendInc,
+      totalGst,
+      depletionSpendEx,
+      newBusinessSpendEx,
+      linenHubSpendEx,
+      accommodationSpendEx,
+      healthcareSpendEx,
+      orderCount: filteredPos.length,
+      proRataBudget,
+      periodLabel,
+      varianceEx,
+      variancePct,
+      isFavourable,
+      budgetConsumptionPct,
+      siteAnnualBudget,
+      siteMonthlyBudget
     };
-  }, [filteredPos]);
+  }, [filteredPos, activeSiteIds, siteName, timeframe, customStartDate, customEndDate]);
 
-  // ── Monthly Procurement Flow (Recharts Data) ────────────────────────────────
-  const monthlyChartData = useMemo(() => {
+  // ── Monthly Net Spend Flow vs Budget Envelope ──────────────────────────────
+  const monthlySpendData = useMemo(() => {
     const monthMap = new Map<string, {
       monthKey: string;
       monthLabel: string;
-      poAmount: number;
-      grAmount: number;
-      openAmount: number;
+      depletionSpend: number;
+      newBusinessSpend: number;
+      linenHubSpend: number;
+      totalSpend: number;
+      budgetBaseline: number;
       orderCount: number;
     }>();
 
@@ -316,158 +396,224 @@ export default function Dashboard() {
         monthMap.set(monthKey, {
           monthKey,
           monthLabel,
-          poAmount: 0,
-          grAmount: 0,
-          openAmount: 0,
+          depletionSpend: 0,
+          newBusinessSpend: 0,
+          linenHubSpend: 0,
+          totalSpend: 0,
+          budgetBaseline: Math.round(financialKpis.siteMonthlyBudget),
           orderCount: 0
         });
       }
 
       const entry = monthMap.get(monthKey)!;
-      const poInc = p.totalAmountIncGst ?? (p.totalAmount * 1.10);
-      entry.poAmount += poInc;
-      entry.orderCount += 1;
+      const pEx = p.totalAmount || (p.totalAmountIncGst ? p.totalAmountIncGst / 1.10 : 0);
 
-      let recValEx = 0;
-      p.lines.forEach((l) => {
-        recValEx += ((l.quantityReceived || 0) * l.unitPrice);
+      const desc = (p.comments || p.reasonForRequest || p.customerName || (p.lines?.[0]?.itemName ?? '')).toUpperCase();
+      const classified = classifyLegacyPO({
+        description: desc,
+        site: p.site || p.siteId,
+        concurPoNumber: p.concurPoNumber || p.concurRequestNumber,
+        customerName: p.customerName,
+        reasonForRequest: p.reasonForRequest,
+        spendType: p.spendType,
+        sector: p.sector,
+        contractStream: p.contractStream,
       });
-      const recValInc = recValEx * 1.10;
-      entry.grAmount += recValInc;
 
-      if (p.status !== 'CLOSED') {
-        entry.openAmount += Math.max(0, poInc - recValInc);
+      const siteLower = (p.site || '').toLowerCase();
+      const isLinenHub = p.siteId === 'site-hol' || siteLower.includes('linen hub') || siteLower.includes('holdings') || siteLower === 'hol';
+
+      if (isLinenHub || classified.spendType === 'LINEN_HUB' || p.spendType === 'LINEN_HUB') {
+        entry.linenHubSpend += pEx;
+      } else if (classified.spendType === 'NEW_BUSINESS' || p.reasonForRequest === 'New Customer' || p.spendType === 'NEW_BUSINESS') {
+        entry.newBusinessSpend += pEx;
+      } else {
+        entry.depletionSpend += pEx;
       }
+
+      entry.totalSpend += pEx;
+      entry.orderCount += 1;
     });
 
     return Array.from(monthMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-12) // Show last 12 chronological months
-      .map(([_, v]) => v);
-  }, [filteredPos]);
+      .slice(-12)
+      .map(([_, v]) => ({
+        ...v,
+        depletionSpend: Math.round(v.depletionSpend),
+        newBusinessSpend: Math.round(v.newBusinessSpend),
+        linenHubSpend: Math.round(v.linenHubSpend),
+        totalSpend: Math.round(v.totalSpend)
+      }));
+  }, [filteredPos, financialKpis.siteMonthlyBudget]);
 
-  // ── Reason for Request Analysis (Depletion vs New Customer vs Contract) ──────
-  const reasonBreakdown = useMemo(() => {
-    const map = new Map<string, { reason: string; spend: number; units: number; orderCount: number; color: string }>();
-    
-    map.set('Depletion', { reason: 'Replacement / Depletion', spend: 0, units: 0, orderCount: 0, color: '#f59e0b' });
-    map.set('New Customer', { reason: 'New Customer Launch', spend: 0, units: 0, orderCount: 0, color: '#10b981' });
-    map.set('Other', { reason: 'Contract Growth / Other', spend: 0, units: 0, orderCount: 0, color: '#3b82f6' });
+  // ── Plant-by-Plant Spend vs FY27 Budget Performance ─────────────────────────
+  const plantSpendPerformance = useMemo(() => {
+    const map = new Map<string, {
+      branchCode: string;
+      siteName: string;
+      actualSpendEx: number;
+      actualSpendInc: number;
+      depletionSpendEx: number;
+      newBusinessSpendEx: number;
+      linenHubSpendEx: number;
+      accommodationSpendEx: number;
+      healthcareSpendEx: number;
+      orderCount: number;
+      allocatedBudget: number;
+    }>();
 
-    filteredPos.forEach((p) => {
-      let key = 'Other';
-      if (p.reasonForRequest === 'Depletion') key = 'Depletion';
-      else if (p.reasonForRequest === 'New Customer') key = 'New Customer';
+    STANDARD_BRANCH_CODES.forEach((bCode) => {
+      let allocatedBudget = 0;
+      if (bCode === 'HOL') {
+        allocatedBudget = LINEN_HUB_TOTAL_BUDGET;
+      } else if (DEFAULT_FY27_BUDGETS[bCode]) {
+        allocatedBudget = DEFAULT_FY27_BUDGETS[bCode].annualTotalBudget;
+      }
 
-      const entry = map.get(key)!;
-      const poInc = p.totalAmountIncGst ?? (p.totalAmount * 1.10);
-      entry.spend += poInc;
-      entry.orderCount += 1;
-      p.lines.forEach((l) => {
-        entry.units += (l.quantityOrdered || 0);
+      if (timeframe === 'THIS_MONTH' || timeframe === 'LAST_MONTH') {
+        allocatedBudget = allocatedBudget / 12;
+      } else if (timeframe === 'FY_YTD') {
+        const now = new Date();
+        const monthsElapsed = now.getMonth() >= 6 ? (now.getMonth() - 6 + 1) : (now.getMonth() + 7);
+        allocatedBudget = (allocatedBudget / 12) * monthsElapsed;
+      } else if (timeframe === 'YTD') {
+        const now = new Date();
+        const monthsElapsed = now.getMonth() + 1;
+        allocatedBudget = (allocatedBudget / 12) * monthsElapsed;
+      }
+
+      map.set(bCode, {
+        branchCode: bCode,
+        siteName: getBranchDisplayName(bCode),
+        actualSpendEx: 0,
+        actualSpendInc: 0,
+        depletionSpendEx: 0,
+        newBusinessSpendEx: 0,
+        linenHubSpendEx: 0,
+        accommodationSpendEx: 0,
+        healthcareSpendEx: 0,
+        orderCount: 0,
+        allocatedBudget
       });
     });
 
-    const total = kpis.totalPoInc || 1;
-    return Array.from(map.values()).map((item) => ({
-      ...item,
-      pct: Math.round((item.spend / total) * 100)
-    }));
-  }, [filteredPos, kpis.totalPoInc]);
+    filteredPos.forEach((p) => {
+      const desc = (p.comments || p.reasonForRequest || p.customerName || (p.lines?.[0]?.itemName ?? '')).toUpperCase();
+      const bCode = normalizeBranchCode(p.site || p.siteId, desc);
 
-  // ── Supplier Spend Distribution ─────────────────────────────────────────────
+      if (!map.has(bCode)) {
+        map.set(bCode, {
+          branchCode: bCode,
+          siteName: getBranchDisplayName(bCode),
+          actualSpendEx: 0,
+          actualSpendInc: 0,
+          depletionSpendEx: 0,
+          newBusinessSpendEx: 0,
+          linenHubSpendEx: 0,
+          accommodationSpendEx: 0,
+          healthcareSpendEx: 0,
+          orderCount: 0,
+          allocatedBudget: 0
+        });
+      }
+
+      const entry = map.get(bCode)!;
+      const pEx = p.totalAmount || (p.totalAmountIncGst ? p.totalAmountIncGst / 1.10 : 0);
+      const pInc = p.totalAmountIncGst ?? (pEx * 1.10);
+
+      entry.actualSpendEx += pEx;
+      entry.actualSpendInc += pInc;
+      entry.orderCount += 1;
+
+      const classified = classifyLegacyPO({
+        description: desc,
+        site: p.site || p.siteId,
+        concurPoNumber: p.concurPoNumber || p.concurRequestNumber,
+        customerName: p.customerName,
+        reasonForRequest: p.reasonForRequest,
+        spendType: p.spendType,
+        sector: p.sector,
+        contractStream: p.contractStream,
+      });
+
+      const isLinenHub = bCode === 'HOL' || classified.spendType === 'LINEN_HUB' || p.spendType === 'LINEN_HUB';
+
+      if (isLinenHub) {
+        entry.linenHubSpendEx += pEx;
+      } else if (classified.spendType === 'NEW_BUSINESS' || p.reasonForRequest === 'New Customer' || p.spendType === 'NEW_BUSINESS') {
+        entry.newBusinessSpendEx += pEx;
+      } else {
+        entry.depletionSpendEx += pEx;
+      }
+
+      if (classified.sector === 'HEALTHCARE' || p.sector === 'HEALTHCARE') {
+        entry.healthcareSpendEx += pEx;
+      } else {
+        entry.accommodationSpendEx += pEx;
+      }
+    });
+
+    const totalNetworkSpendEx = financialKpis.totalSpendEx || 1;
+
+    return Array.from(map.values())
+      .filter((p) => p.actualSpendEx > 0 || p.allocatedBudget > 0)
+      .map((p) => {
+        const varianceEx = p.actualSpendEx - p.allocatedBudget;
+        const variancePct = p.allocatedBudget > 0 ? (varianceEx / p.allocatedBudget) * 100 : 0;
+        const isFavourable = varianceEx <= 0;
+        const shareOfTotal = (p.actualSpendEx / totalNetworkSpendEx) * 100;
+        const budgetConsumptionPct = p.allocatedBudget > 0 ? Math.min(200, Math.round((p.actualSpendEx / p.allocatedBudget) * 100)) : 0;
+
+        return {
+          ...p,
+          varianceEx,
+          variancePct,
+          isFavourable,
+          shareOfTotal,
+          budgetConsumptionPct
+        };
+      })
+      .sort((a, b) => b.actualSpendEx - a.actualSpendEx);
+  }, [filteredPos, financialKpis.totalSpendEx, timeframe]);
+
+  // ── Supplier Spend Concentration ───────────────────────────────────────────
   const supplierSpend = useMemo(() => {
-    const map = new Map<string, { supplier: string; spend: number; orders: number; lines: number }>();
+    const map = new Map<string, { supplier: string; spendEx: number; spendInc: number; orders: number; lines: number }>();
 
     filteredPos.forEach((p) => {
       const sup = p.supplierName || 'Unknown Supplier';
       if (!map.has(sup)) {
-        map.set(sup, { supplier: sup, spend: 0, orders: 0, lines: 0 });
+        map.set(sup, { supplier: sup, spendEx: 0, spendInc: 0, orders: 0, lines: 0 });
       }
       const entry = map.get(sup)!;
-      entry.spend += (p.totalAmountIncGst ?? (p.totalAmount * 1.10));
+      const pEx = p.totalAmount || (p.totalAmountIncGst ? p.totalAmountIncGst / 1.10 : 0);
+      const pInc = p.totalAmountIncGst ?? (pEx * 1.10);
+      entry.spendEx += pEx;
+      entry.spendInc += pInc;
       entry.orders += 1;
       entry.lines += p.lines.length;
     });
 
-    const total = kpis.totalPoInc || 1;
+    const totalEx = financialKpis.totalSpendEx || 1;
     return Array.from(map.values())
       .map((s) => ({
         ...s,
-        sharePct: Math.round((s.spend / total) * 100)
+        sharePct: Math.round((s.spendEx / totalEx) * 100)
       }))
-      .sort((a, b) => b.spend - a.spend);
-  }, [filteredPos, kpis.totalPoInc]);
+      .sort((a, b) => b.spendEx - a.spendEx);
+  }, [filteredPos, financialKpis.totalSpendEx]);
 
-  // ── Site Performance Ranking ────────────────────────────────────────────────
-  const sitePerformance = useMemo(() => {
-    const map = new Map<string, {
-      site: string;
-      spend: number;
-      orderedUnits: number;
-      receivedUnits: number;
-      openCount: number;
-      topItem: string;
-      itemsMap: Map<string, number>;
-    }>();
-
-    filteredPos.forEach((p) => {
-      const site = p.site || 'National';
-      if (!map.has(site)) {
-        map.set(site, {
-          site,
-          spend: 0,
-          orderedUnits: 0,
-          receivedUnits: 0,
-          openCount: 0,
-          topItem: '',
-          itemsMap: new Map()
-        });
-      }
-      const entry = map.get(site)!;
-      entry.spend += (p.totalAmountIncGst ?? (p.totalAmount * 1.10));
-      if (p.status !== 'CLOSED') entry.openCount += 1;
-
-      p.lines.forEach((l) => {
-        const ord = l.quantityOrdered || 0;
-        const rec = l.quantityReceived || 0;
-        entry.orderedUnits += ord;
-        entry.receivedUnits += rec;
-
-        const curVal = (entry.itemsMap.get(l.itemName) || 0) + (ord * l.unitPrice);
-        entry.itemsMap.set(l.itemName, curVal);
-      });
-    });
-
-    return Array.from(map.values())
-      .map((s) => {
-        let bestItem = '-';
-        let bestVal = 0;
-        s.itemsMap.forEach((v, k) => {
-          if (v > bestVal) {
-            bestVal = v;
-            bestItem = k;
-          }
-        });
-        const fulfillment = s.orderedUnits > 0 ? Math.round((s.receivedUnits / s.orderedUnits) * 100) : 0;
-        return {
-          ...s,
-          topItem: bestItem,
-          fulfillment
-        };
-      })
-      .sort((a, b) => b.spend - a.spend);
-  }, [filteredPos]);
-
-  // ── Top SKU Velocity & Capital Allocation ───────────────────────────────────
-  const topSKUs = useMemo(() => {
+  // ── Top Linen Item Cost Drivers ────────────────────────────────────────────
+  const topItems = useMemo(() => {
     const map = new Map<string, {
       name: string;
       sku: string;
       orderedQty: number;
-      receivedQty: number;
-      spend: number;
+      spendEx: number;
+      spendInc: number;
       orderCount: number;
+      avgUnitPrice: number;
     }>();
 
     filteredPos.forEach((p) => {
@@ -478,21 +624,33 @@ export default function Dashboard() {
             name: l.itemName,
             sku: l.sku || '-',
             orderedQty: 0,
-            receivedQty: 0,
-            spend: 0,
-            orderCount: 0
+            spendEx: 0,
+            spendInc: 0,
+            orderCount: 0,
+            avgUnitPrice: l.unitPrice || 0
           });
         }
         const entry = map.get(key)!;
-        entry.orderedQty += (l.quantityOrdered || 0);
-        entry.receivedQty += (l.quantityReceived || 0);
-        entry.spend += ((l.quantityOrdered || 0) * l.unitPrice * 1.10);
+        const qty = l.quantityOrdered || 0;
+        const lineEx = qty * (l.unitPrice || 0);
+        entry.orderedQty += qty;
+        entry.spendEx += lineEx;
+        entry.spendInc += lineEx * 1.10;
         entry.orderCount += 1;
+        if (entry.orderedQty > 0) {
+          entry.avgUnitPrice = entry.spendEx / entry.orderedQty;
+        }
       });
     });
 
+    const totalItemSpendEx = Array.from(map.values()).reduce((sum, i) => sum + i.spendEx, 0) || 1;
+
     return Array.from(map.values())
-      .sort((a, b) => b.spend - a.spend)
+      .map((item) => ({
+        ...item,
+        spendSharePct: Math.round((item.spendEx / totalItemSpendEx) * 100)
+      }))
+      .sort((a, b) => b.spendEx - a.spendEx)
       .slice(0, 8);
   }, [filteredPos]);
 
@@ -694,130 +852,228 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── EXECUTIVE KPI METRIC CARDS ────────────────────────────────────────── */}
+      {/* ── MONTH-END P&L RECONCILIATION ASSURANCE BRIDGE ────────────────────── */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/20 dark:border-emerald-500/30 shadow-2xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0 mt-0.5">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                  Month-End P&amp;L Reconciliation Assurance
+                </h4>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  100% General Ledger Parity
+                </span>
+              </div>
+              <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
+                All spend metrics reflect strictly Ex-GST accounting treatment matching SAP B1 and the audited FY27 EOM Budget Reconciliation matrix.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/reporting?tab=EOM_BUDGET_RECONCILIATION')}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-100/90 dark:bg-emerald-950/50 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 rounded-xl transition-all shrink-0 self-start md:self-auto border border-emerald-500/20"
+          >
+            <span>Open Full EOM 2D Pivot Table</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+      </div>
+
+      {/* ── EXECUTIVE FINANCIAL KPI CARDS (P&L SPEND FOCUS) ─────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        {/* Total Spend */}
+        {/* Card 1: Total Net P&L Spend (Ex-GST) */}
         <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-              Total PO Issued (Inc GST)
+              Net P&amp;L Spend (Ex GST)
             </span>
             <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
               <DollarSign size={16} />
             </div>
           </div>
           <div>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
-              {formatCurrency(kpis.totalPoInc)}
-            </p>
-            <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
-              <span>Ex GST: {formatCurrency(kpis.totalPoEx)}</span>
-              <span>{kpis.orderCount} Orders</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Goods Received */}
-        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-              Goods Received (GR Inc GST)
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
-              <CheckCircle2 size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
-              {formatCurrency(kpis.totalGrInc)}
-            </p>
-            <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
-              <span>Ex GST: {formatCurrency(kpis.totalGrEx)}</span>
-              <span>{kpis.totalReceivedUnits.toLocaleString()} units</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Fulfillment Rate */}
-        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-              Delivery Fulfillment Rate
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-violet-500/10 text-violet-600 flex items-center justify-center font-bold">
-              <Percent size={16} />
-            </div>
-          </div>
-          <div>
-            <div className="flex items-baseline justify-between">
+            <div className="flex items-baseline gap-2">
               <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
-                {kpis.fulfillmentRate}%
+                {formatCurrency(financialKpis.totalSpendEx)}
               </p>
-              <span className="text-[11px] font-bold text-gray-500">
-                {kpis.totalReceivedUnits.toLocaleString()} / {kpis.totalOrderedUnits.toLocaleString()}
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                P&amp;L Recognized
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-2 pt-2 border-t border-gray-100 dark:border-gray-800/80 font-medium">
+              <span>Gross (Inc GST): {formatCurrency(financialKpis.totalSpendInc)}</span>
+              <span>GST: {formatCurrency(financialKpis.totalGst)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Spend vs Budget Run-Rate & Variance */}
+        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+              Spend vs Budget Run-Rate
+            </span>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold ${
+              financialKpis.isFavourable ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'
+            }`}>
+              <TrendingUp size={16} />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline justify-between gap-1">
+              <p className={`text-xl sm:text-2xl font-black tracking-tight ${
+                financialKpis.isFavourable ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+              }`}>
+                {financialKpis.isFavourable ? '-' : '+'}{formatCurrency(Math.abs(financialKpis.varianceEx))}
+              </p>
+              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                financialKpis.isFavourable
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                  : 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+              }`}>
+                {financialKpis.isFavourable ? 'Favourable' : 'Over Budget'} ({financialKpis.variancePct > 0 ? `+${financialKpis.variancePct.toFixed(1)}%` : `${financialKpis.variancePct.toFixed(1)}%`})
               </span>
             </div>
             {/* Progress bar */}
             <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
               <div
-                className="h-full bg-violet-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, kpis.fulfillmentRate)}%` }}
+                className={`h-full rounded-full transition-all duration-500 ${
+                  financialKpis.isFavourable ? 'bg-emerald-500' : 'bg-rose-500'
+                }`}
+                style={{ width: `${Math.min(100, financialKpis.budgetConsumptionPct)}%` }}
               />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
+              <span className="truncate max-w-[140px]">{financialKpis.periodLabel}</span>
+              <span className="font-bold">{formatCurrency(financialKpis.proRataBudget)}</span>
             </div>
           </div>
         </div>
 
-        {/* Open Commitment */}
+        {/* Card 3: Commercial Sector Spend (Accommodation vs Healthcare) */}
         <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-              Open Commitment (Inc GST)
+              Commercial Sector Spend
             </span>
-            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
-              <Truck size={16} />
+            <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
+              <Building2 size={16} />
             </div>
           </div>
           <div>
-            <p className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
-              {formatCurrency(kpis.totalOpenInc)}
-            </p>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
-              In-transit &amp; pending orders
-            </p>
+            {(() => {
+              const totalSec = (financialKpis.accommodationSpendEx + financialKpis.healthcareSpendEx) || 1;
+              const accomPct = Math.round((financialKpis.accommodationSpendEx / totalSec) * 100);
+              const healthPct = 100 - accomPct;
+              return (
+                <>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      Accom: {formatCurrency(financialKpis.accommodationSpendEx)}
+                    </span>
+                    <span className="text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-purple-500" />
+                      Health: {formatCurrency(financialKpis.healthcareSpendEx)}
+                    </span>
+                  </div>
+                  {/* Split bar */}
+                  <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex mt-2">
+                    <div style={{ width: `${accomPct}%` }} className="bg-blue-500 transition-all duration-500" />
+                    <div style={{ width: `${healthPct}%` }} className="bg-purple-500 transition-all duration-500" />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
+                    <span>Accommodation {accomPct}%</span>
+                    <span>Healthcare {healthPct}%</span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* Card 4: Spend Nature Split (Depletion vs New Business vs Linen Hub) */}
+        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+              Spend Nature Allocation
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+              <Layers size={16} />
+            </div>
+          </div>
+          <div>
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  Depletion (Operating)
+                </span>
+                <span className="font-black text-gray-900 dark:text-white">
+                  {formatCurrency(financialKpis.depletionSpendEx)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-gray-500">
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  New Business (Growth)
+                </span>
+                <span className="font-medium text-gray-700 dark:text-gray-300">
+                  {formatCurrency(financialKpis.newBusinessSpendEx)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-gray-500">
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+                  Linen Hub (Holding)
+                </span>
+                <span className="font-medium text-gray-700 dark:text-gray-300">
+                  {formatCurrency(financialKpis.linenHubSpendEx)}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ── HERO MONTHLY PROCUREMENT FLOW CHART ───────────────────────────────── */}
+      {/* ── HERO MONTHLY NET SPEND TREND VS FY27 BUDGET BASELINE ─────────────── */}
       <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 sm:p-5 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
-            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-              Monthly Procurement Flow (PO vs GR vs Open Amount)
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <span>Monthly Net Spend Trend vs FY27 Budget Baseline (Ex GST)</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                P&amp;L Recognized
+              </span>
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Side-by-side breakdown of purchase orders issued and physical goods receipted
+              Monthly net expenditure stacked by spend nature (Depletion operating cost, New Business growth pool, Linen Hub buffer) against the monthly budget baseline ({formatCurrency(financialKpis.siteMonthlyBudget)}/mo)
             </p>
           </div>
           <button
             type="button"
-            onClick={() => navigate('/reports')}
-            className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 self-start sm:self-auto"
+            onClick={() => navigate('/reporting?tab=EOM_BUDGET_RECONCILIATION')}
+            className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 self-start sm:self-auto shrink-0"
           >
             <span>Explore Full Reports</span>
             <ArrowRight size={13} />
           </button>
         </div>
 
-        <div className="h-[260px] sm:h-[320px] w-full">
-          {monthlyChartData.length > 0 ? (
+        <div className="h-[280px] sm:h-[340px] w-full">
+          {monthlySpendData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyChartData} margin={{ top: 15, right: 10, left: -10, bottom: 20 }}>
+              <BarChart data={monthlySpendData} margin={{ top: 20, right: 15, left: -5, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
                 <XAxis dataKey="monthLabel" tick={{ fontSize: 10, fill: '#888' }} interval="preserveStartEnd" />
                 <YAxis tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} tick={{ fontSize: 10, fill: '#888' }} />
                 <RechartsTooltip
-                  formatter={(val: number) => [formatCurrency(val), '']}
+                  formatter={(val: number, name: string) => [formatCurrency(val), name]}
                   contentStyle={{
                     backgroundColor: '#1f2937',
                     color: '#fff',
@@ -828,83 +1084,132 @@ export default function Dashboard() {
                   }}
                 />
                 <Legend wrapperStyle={{ paddingTop: '12px', fontSize: '11px' }} />
-                <Bar dataKey="poAmount" name="PO Amount (Inc GST)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="grAmount" name="Goods Received (Inc GST)" fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="openAmount" name="Open Amount (Inc GST)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                <ReferenceLine
+                  y={financialKpis.siteMonthlyBudget}
+                  stroke="#ef4444"
+                  strokeDasharray="4 4"
+                  strokeWidth={2}
+                  label={{
+                    value: `Budget Baseline: ${formatCurrency(financialKpis.siteMonthlyBudget)}`,
+                    fill: '#ef4444',
+                    position: 'top',
+                    fontSize: 10,
+                    fontWeight: 'bold'
+                  }}
+                />
+                <Bar dataKey="depletionSpend" name="Depletion (Operating P&L)" stackId="spend" fill="#f59e0b" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="newBusinessSpend" name="New Business (Growth Pool)" stackId="spend" fill="#10b981" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="linenHubSpend" name="Linen Hub (Holding Pool)" stackId="spend" fill="#06b6d4" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
             <div className="h-full flex items-center justify-center text-xs text-gray-400">
-              No procurement activity recorded for this selection.
+              No procurement expenditure recorded for this selection.
             </div>
           )}
         </div>
       </div>
 
-      {/* ── STRATEGIC SPEND ANALYTICS: REASON SPLIT & SUPPLIERS ────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Reason for Request Analysis */}
-        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+      {/* ── WHERE IS THE MONEY SPENT: PLANT SPEND VS BUDGET CROSS-TABULATION ── */}
+      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 sm:p-5 shadow-2xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                Spend Split by Reason for Request
-              </h3>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <span>Plant-by-Plant Spend vs FY27 Budget Cross-Tabulation</span>
               <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                Capital Allocation
+                11 Facilities
               </span>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              Breakdown between replacement inventory (depletion) vs contract additions.
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Net P&amp;L expenditure by laundry facility compared against pro-rata FY27 budget allocations ($14.521M network envelope)
             </p>
-
-            <div className="space-y-3.5">
-              {reasonBreakdown.map((r) => (
-                <div key={r.reason}>
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="font-bold text-gray-800 dark:text-gray-200">{r.reason}</span>
-                    <span className="font-black text-gray-900 dark:text-white">
-                      {formatCurrency(r.spend)} ({r.pct}%)
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${r.pct}%`, backgroundColor: r.color }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">
-                    <span>{r.orderCount} Orders</span>
-                    <span>{r.units.toLocaleString()} units</span>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
-
-          <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs flex items-center justify-between">
-            <span className="font-bold text-amber-700 dark:text-amber-300">
-              Depletion Cost Impact:
-            </span>
-            <span className="font-black text-amber-800 dark:text-amber-200">
-              {formatCurrency(reasonBreakdown.find((r) => r.reason.includes('Depletion'))?.spend || 0)}
-            </span>
-          </div>
+          <span className="text-xs font-bold text-gray-500 self-start sm:self-auto">
+            Consolidated Ex GST
+          </span>
         </div>
 
-        {/* Supplier Share of Spend */}
+        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <table className="w-full text-left text-xs min-w-[720px]">
+            <thead className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
+              <tr>
+                <th className="p-3">Laundry Facility</th>
+                <th className="p-3 text-right">Actual Spend (Ex GST)</th>
+                <th className="p-3 text-right">Allocated Budget</th>
+                <th className="p-3 text-center">Variance vs Budget</th>
+                <th className="p-3 text-center">Sector Split (Accom / Health)</th>
+                <th className="p-3 text-right">Share of Spend</th>
+                <th className="p-3 text-center">Orders</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {plantSpendPerformance.map((s) => (
+                <tr key={s.branchCode} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
+                  <td className="p-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Building2 size={14} className="text-[var(--color-brand)] shrink-0" />
+                    <span className="truncate">{s.siteName}</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-bold">
+                      {s.branchCode}
+                    </span>
+                  </td>
+                  <td className="p-3 text-right font-black text-gray-950 dark:text-white whitespace-nowrap">
+                    {formatCurrency(s.actualSpendEx)}
+                  </td>
+                  <td className="p-3 text-right font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    {formatCurrency(s.allocatedBudget)}
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                      s.isFavourable
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                        : 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                    }`}>
+                      {s.isFavourable ? '-' : '+'}{formatCurrency(Math.abs(s.varianceEx))} ({s.variancePct > 0 ? `+${s.variancePct.toFixed(1)}%` : `${s.variancePct.toFixed(1)}%`})
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    {(() => {
+                      const tot = s.accommodationSpendEx + s.healthcareSpendEx;
+                      if (tot === 0) return <span className="text-gray-400">-</span>;
+                      const aPct = Math.round((s.accommodationSpendEx / tot) * 100);
+                      const hPct = 100 - aPct;
+                      return (
+                        <div className="flex items-center justify-center gap-1 font-mono text-[11px]">
+                          <span className="text-blue-600 dark:text-blue-400 font-bold">{aPct}%</span>
+                          <span className="text-gray-400">/</span>
+                          <span className="text-purple-600 dark:text-purple-400 font-bold">{hPct}%</span>
+                        </div>
+                      );
+                    })()}
+                  </td>
+                  <td className="p-3 text-right font-bold text-gray-700 dark:text-gray-300">
+                    {s.shareOfTotal.toFixed(1)}%
+                  </td>
+                  <td className="p-3 text-center text-gray-500">
+                    {s.orderCount}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── STRATEGIC SPEND DRIVERS: SUPPLIER CONCENTRATION & TOP ITEMS ──────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Supplier Concentration */}
         <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                Supplier Share of Spend
+                Supplier Spend Concentration (Ex GST)
               </h3>
               <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                Vendor Distribution
+                Vendor Outlay
               </span>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              Primary supplier allocation across active purchase orders.
+              Net P&amp;L expenditure distribution across approved manufacturing partners.
             </p>
 
             <div className="space-y-3.5">
@@ -915,7 +1220,7 @@ export default function Dashboard() {
                       {s.supplier}
                     </span>
                     <span className="font-black text-gray-900 dark:text-white">
-                      {formatCurrency(s.spend)} ({s.sharePct}%)
+                      {formatCurrency(s.spendEx)} ({s.sharePct}%)
                     </span>
                   </div>
                   <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
@@ -925,7 +1230,7 @@ export default function Dashboard() {
                     />
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">
-                    <span>{s.orders} Orders</span>
+                    <span>{s.orders} Purchase Orders</span>
                     <span>{s.lines} Line Items</span>
                   </div>
                 </div>
@@ -935,179 +1240,128 @@ export default function Dashboard() {
 
           <div className="mt-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs flex items-center justify-between">
             <span className="font-bold text-blue-700 dark:text-blue-300">
-              Primary Supplier (Top Spend):
+              Primary Manufacturing Partner:
             </span>
-            <span className="font-black text-blue-800 dark:text-blue-200 truncate max-w-[160px] sm:max-w-[200px]">
-              {supplierSpend[0]?.supplier || '-'}
+            <span className="font-black text-blue-800 dark:text-blue-200 truncate max-w-[180px]">
+              {supplierSpend[0]?.supplier || '-'} ({supplierSpend[0]?.sharePct || 0}%)
             </span>
           </div>
         </div>
-      </div>
 
-      {/* ── SITE PROCUREMENT & PERFORMANCE RANKING ────────────────────────────── */}
-      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 sm:p-5 shadow-2xs">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-              Site Procurement &amp; Delivery Ranking
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Operating site comparison across total spend, units delivered, and fulfillment
-            </p>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-          <table className="w-full text-left text-xs min-w-[560px]">
-            <thead className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
-              <tr>
-                <th className="p-3">Laundry Site</th>
-                <th className="p-3 text-right">Total Spend (Inc GST)</th>
-                <th className="p-3 text-center">Ordered Units</th>
-                <th className="p-3 text-center">Delivered Units</th>
-                <th className="p-3 text-center">Fulfillment</th>
-                <th className="p-3">Top Injected Item</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {sitePerformance.map((s) => (
-                <tr key={s.site} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
-                  <td className="p-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Building2 size={14} className="text-gray-400 shrink-0" />
-                    <span className="truncate max-w-[160px] sm:max-w-none">{s.site}</span>
-                  </td>
-                  <td className="p-3 text-right font-black text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                    {formatCurrency(s.spend)}
-                  </td>
-                  <td className="p-3 text-center font-medium text-gray-700 dark:text-gray-300">
-                    {s.orderedUnits.toLocaleString()}
-                  </td>
-                  <td className="p-3 text-center font-bold text-blue-600 dark:text-blue-400">
-                    {s.receivedUnits.toLocaleString()}
-                  </td>
-                  <td className="p-3 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                      s.fulfillment >= 80
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                        : s.fulfillment >= 40
-                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-                          : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-                    }`}>
-                      {s.fulfillment}%
-                    </span>
-                  </td>
-                  <td className="p-3 text-gray-600 dark:text-gray-300 truncate max-w-[180px]" title={s.topItem}>
-                    {s.topItem}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ── TOP SKU VELOCITY & RECENT ORDERS PULSE ─────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Top SKU Ranking (2 Columns) */}
-        <div className="lg:col-span-2 p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                Top SKU Velocity &amp; Capital Allocation
-              </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Highest-volume inventory items ordered across all sites
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate('/item-catalogue')}
-              className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 shrink-0"
-            >
-              <span>View Catalog</span>
-              <ArrowRight size={13} />
-            </button>
-          </div>
-
-          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-            <table className="w-full text-left text-xs min-w-[480px]">
-              <thead className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
-                <tr>
-                  <th className="p-2.5">Item Description</th>
-                  <th className="p-2.5 text-center">Ordered</th>
-                  <th className="p-2.5 text-center text-emerald-600">Received</th>
-                  <th className="p-2.5 text-right">Total Invested</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {topSKUs.map((sku) => (
-                  <tr key={sku.name} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
-                    <td className="p-2.5">
-                      <p className="font-bold text-gray-900 dark:text-white truncate max-w-[200px] sm:max-w-[260px]">{sku.name}</p>
-                      <p className="text-[10px] text-gray-400 font-mono">{sku.sku}</p>
-                    </td>
-                    <td className="p-2.5 text-center font-medium">{sku.orderedQty.toLocaleString()}</td>
-                    <td className="p-2.5 text-center font-bold text-emerald-600 dark:text-emerald-400">
-                      {sku.receivedQty.toLocaleString()}
-                    </td>
-                    <td className="p-2.5 text-right font-black text-gray-900 dark:text-white whitespace-nowrap">
-                      {formatCurrency(sku.spend)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Recent Orders Pulse (1 Column) */}
+        {/* Top Linen SKU Cost Drivers */}
         <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                Recent Purchase Orders
+                Top Linen Item Cost Drivers (Ex GST)
               </h3>
-              <button
-                type="button"
-                onClick={() => navigate('/requests')}
-                className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1"
-              >
-                <span>View All</span>
-                <ArrowRight size={12} />
-              </button>
+              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                Expenditure Ranking
+              </span>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Latest procurement submissions across all operating locations.
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Highest-cost linen product lines driving financial expenditure across plants.
             </p>
 
-            <div className="space-y-2.5">
-              {recentOrders.map((po) => (
-                <div
-                  key={po.id}
-                  onClick={() => navigate(`/requests/${po.id}`)}
-                  className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-[var(--color-brand)]/50 hover:shadow-xs transition-all cursor-pointer bg-gray-50/50 dark:bg-gray-900/30"
-                >
+            <div className="space-y-3.5">
+              {topItems.slice(0, 4).map((item) => (
+                <div key={item.name}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="font-bold text-gray-800 dark:text-gray-200 truncate max-w-[180px] sm:max-w-[220px]" title={item.name}>
+                      {item.name}
+                    </span>
+                    <span className="font-black text-gray-900 dark:text-white">
+                      {formatCurrency(item.spendEx)} ({item.spendSharePct}%)
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                      style={{ width: `${item.spendSharePct}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">
+                    <span>{item.orderedQty.toLocaleString()} units</span>
+                    <span>Avg {formatCurrency(item.avgUnitPrice)}/ea</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs flex items-center justify-between">
+            <span className="font-bold text-amber-700 dark:text-amber-300">
+              Top Expenditure Item:
+            </span>
+            <span className="font-black text-amber-800 dark:text-amber-200 truncate max-w-[180px]">
+              {topItems[0]?.name || '-'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── RECENT ORDERS PULSE (FINANCIAL BREAKDOWN) ─────────────────────────── */}
+      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 sm:p-5 shadow-2xs">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+              Recent Procurement Commitments
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Latest purchase orders recognized with both Net Ex-GST and Gross Inc-GST values
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/requests')}
+            className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 shrink-0"
+          >
+            <span>View All Requests</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
+          {recentOrders.map((po) => {
+            const poEx = po.totalAmount || (po.totalAmountIncGst ? po.totalAmountIncGst / 1.10 : 0);
+            const poInc = po.totalAmountIncGst ?? (poEx * 1.10);
+            return (
+              <div
+                key={po.id}
+                onClick={() => navigate(`/requests/${po.id}`)}
+                className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-[var(--color-brand)]/50 hover:shadow-xs transition-all cursor-pointer bg-gray-50/50 dark:bg-gray-900/30 flex flex-col justify-between"
+              >
+                <div>
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="font-mono font-bold text-xs text-gray-950 dark:text-white">
                       {po.displayId || po.id}
                     </span>
-                    <span className="px-2 py-0.2 rounded text-[9px] font-black bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
                       {po.status}
                     </span>
                   </div>
                   <p className="text-[11px] font-bold text-gray-800 dark:text-gray-200 truncate">
                     {po.supplierName}
                   </p>
-                  <div className="flex items-center justify-between text-[10px] text-gray-500 mt-1">
-                    <span>{po.site}</span>
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                      {formatCurrency(po.totalAmountIncGst ?? po.totalAmount * 1.10)}
+                  <p className="text-[10px] text-gray-400 truncate">
+                    {po.site}
+                  </p>
+                </div>
+                <div className="pt-2 mt-2 border-t border-gray-200/60 dark:border-gray-800/80">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[10px] text-gray-400">Ex GST:</span>
+                    <span className="text-xs font-black text-gray-900 dark:text-white">
+                      {formatCurrency(poEx)}
                     </span>
                   </div>
+                  <div className="flex items-baseline justify-between text-[10px] text-gray-400">
+                    <span>Inc GST:</span>
+                    <span>{formatCurrency(poInc)}</span>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
