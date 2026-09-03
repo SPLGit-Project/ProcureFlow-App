@@ -3,7 +3,8 @@ import {
     GitMerge, Bell, MessageSquare, Mail, Sliders, Play, 
     Plus, Edit2, Trash2, CheckCircle2, AlertTriangle, AlertCircle, 
     Clock, Shield, User as UserIcon, Save, X, Eye, Send, 
-    RefreshCw, Zap, ArrowRight, ExternalLink, Check, Copy, Activity
+    RefreshCw, Zap, ArrowRight, ExternalLink, Check, Copy, Activity,
+    Loader2
 } from 'lucide-react';
 import { 
     UnifiedWorkflowDefinition, 
@@ -21,7 +22,7 @@ import { useToast } from './ToastNotification';
 import PageHeader from './PageHeader';
 
 export const WorkflowNotificationHub: React.FC = () => {
-    const { roles, users, hasPermission, currentUser, refreshNotifications, setIsNotificationDrawerOpen } = useApp();
+    const { roles, users, hasPermission, currentUser, refreshNotifications, setIsNotificationDrawerOpen, sites } = useApp();
     const [showTeamsGuide, setShowTeamsGuide] = useState(false);
     const [testEmailRecipient, setTestEmailRecipient] = useState(currentUser?.email || 'aaron.bell@splservices.com.au');
     const [isSendingRealEmail, setIsSendingRealEmail] = useState(false);
@@ -58,6 +59,11 @@ export const WorkflowNotificationHub: React.FC = () => {
 
     // ── 3. Channels State ─────────────────────────────────────────────────────────
     const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
+    const [siteWebhooks, setSiteWebhooks] = useState<Record<string, string>>({});
+    const [selectedSiteId, setSelectedSiteId] = useState<string>('');
+    const [testingSiteId, setTestingSiteId] = useState<string | null>(null);
+    const [isTestingAllSites, setIsTestingAllSites] = useState(false);
+    const [siteTestResults, setSiteTestResults] = useState<Record<string, { status: 'SUCCESS' | 'FAILED'; time: string; latency?: number }>>({});
     const [isSavingChannels, setIsSavingChannels] = useState(false);
     const [isTestingTeams, setIsTestingTeams] = useState(false);
 
@@ -109,8 +115,19 @@ export const WorkflowNotificationHub: React.FC = () => {
 
     const loadChannels = async () => {
         try {
-            const url = await notificationEngineService.getTeamsWebhookUrl();
-            if (url) setTeamsWebhookUrl(url);
+            const defaultUrl = await notificationEngineService.getTeamsWebhookUrl();
+            const webhooks = await notificationEngineService.getSiteTeamsWebhooks();
+            setSiteWebhooks(webhooks);
+
+            const initialSite = (sites || []).find(s => s.name?.toLowerCase().includes('melbourne')) || (sites || [])[0];
+            const initialId = initialSite?.id || '';
+            if (initialId) {
+                setSelectedSiteId(initialId);
+                setTeamsWebhookUrl(webhooks[initialId] || defaultUrl);
+            } else {
+                setTeamsWebhookUrl(defaultUrl);
+            }
+
             if (currentUser?.email) setTestEmailRecipient(currentUser.email);
         } catch {
             // non-fatal
@@ -232,15 +249,93 @@ export const WorkflowNotificationHub: React.FC = () => {
         }
     };
 
+    const handleSelectSite = (siteId: string) => {
+        setSelectedSiteId(siteId);
+        if (siteId === 'DEFAULT') {
+            notificationEngineService.getTeamsWebhookUrl().then(url => setTeamsWebhookUrl(url));
+        } else {
+            setTeamsWebhookUrl(siteWebhooks[siteId] || '');
+        }
+    };
+
     const handleSaveTeamsWebhook = async () => {
         setIsSavingChannels(true);
         try {
-            await notificationEngineService.saveTeamsWebhookUrl(teamsWebhookUrl);
-            success('Microsoft Teams Webhook URL saved successfully');
+            if (selectedSiteId && selectedSiteId !== 'DEFAULT') {
+                await notificationEngineService.saveSiteTeamsWebhookUrl(selectedSiteId, teamsWebhookUrl);
+                setSiteWebhooks(prev => ({ ...prev, [selectedSiteId]: teamsWebhookUrl.trim() }));
+                const siteName = sites?.find(s => s.id === selectedSiteId)?.name || 'Facility';
+                success(`Webhook URL for ${siteName} saved successfully!`);
+            } else {
+                await notificationEngineService.saveTeamsWebhookUrl(teamsWebhookUrl);
+                success('Default Microsoft Teams Webhook URL saved successfully');
+            }
         } catch {
             error('Failed to save Teams webhook URL');
         } finally {
             setIsSavingChannels(false);
+        }
+    };
+
+    const handleTestSingleSite = async (siteId: string, customUrl?: string) => {
+        const urlToTest = (customUrl !== undefined ? customUrl : (siteWebhooks[siteId] || teamsWebhookUrl))?.trim();
+        const siteObj = sites?.find(s => s.id === siteId);
+        const siteName = siteObj?.name || (siteId === 'DEFAULT' ? 'Default Channel' : 'Facility');
+
+        if (!urlToTest) {
+            warning(`No webhook URL configured for ${siteName}`);
+            return;
+        }
+
+        setTestingSiteId(siteId);
+        setIsTestingTeams(true);
+        const startTime = Date.now();
+        try {
+            const cardPayload = buildTeamsAdaptiveCard({
+                title: `ProcureFlow Channel Verified — ${siteName}`,
+                subtitle: 'Specialised Linen Services Alerts Network • Live Test',
+                colorHex: '059669',
+                facts: [
+                    { title: 'Facility', value: siteName },
+                    { title: 'Location', value: `${siteObj?.suburb || ''}, ${siteObj?.state || ''}`.trim() || 'Australia' },
+                    { title: 'Tested By', value: currentUser?.name || 'Administrator' },
+                    { title: 'Status', value: 'Connected & Operational' },
+                    { title: 'Timestamp', value: new Date().toLocaleTimeString() }
+                ],
+                actionUrl: `${window.location.origin}/settings`,
+                actionLabel: 'Open ProcureFlow Admin',
+                iconUrl: PROCUREFLOW_ICON_URL
+            });
+
+            const resp = await fetch(urlToTest, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cardPayload)
+            });
+
+            const latency = Date.now() - startTime;
+            if (resp.ok) {
+                setSiteTestResults(prev => ({
+                    ...prev,
+                    [siteId]: { status: 'SUCCESS', time: new Date().toLocaleTimeString(), latency }
+                }));
+                success(`Test card posted to ${siteName} in MS Teams! (${latency}ms)`);
+            } else {
+                setSiteTestResults(prev => ({
+                    ...prev,
+                    [siteId]: { status: 'FAILED', time: new Date().toLocaleTimeString() }
+                }));
+                error(`${siteName} webhook responded with status ${resp.status}`);
+            }
+        } catch (e: any) {
+            setSiteTestResults(prev => ({
+                ...prev,
+                [siteId]: { status: 'FAILED', time: new Date().toLocaleTimeString() }
+            }));
+            error(`Failed to send test alert to ${siteName}: ${e.message}`);
+        } finally {
+            setTestingSiteId(null);
+            setIsTestingTeams(false);
         }
     };
 
@@ -249,42 +344,73 @@ export const WorkflowNotificationHub: React.FC = () => {
             warning('Please enter a valid Microsoft Teams webhook URL first');
             return;
         }
-        setIsTestingTeams(true);
-        const startTime = Date.now();
-        try {
-            const cardPayload = buildTeamsAdaptiveCard({
-                title: '🔔 ProcureFlow Teams Integration Test',
-                subtitle: 'Power Automate Webhook Connector • Live Verification',
-                colorHex: '0284C7',
-                facts: [
-                    { title: 'Status', value: 'Connected & Operational' },
-                    { title: 'Environment', value: 'Production / Staging' },
-                    { title: 'Tested By', value: currentUser?.name || 'Administrator' },
-                    { title: 'Timestamp', value: new Date().toLocaleTimeString() }
-                ],
-                actionUrl: `${window.location.origin}/admin/workflows`,
-                actionLabel: 'Open ProcureFlow Admin Hub',
-                iconUrl: PROCUREFLOW_ICON_URL
-            });
+        await handleTestSingleSite(selectedSiteId || 'DEFAULT', teamsWebhookUrl);
+    };
 
-            const resp = await fetch(teamsWebhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(cardPayload)
-            });
+    const handleTestAllSites = async () => {
+        setIsTestingAllSites(true);
+        let successCount = 0;
+        let failCount = 0;
 
-            const latency = Date.now() - startTime;
-
-            if (resp.ok) {
-                success(`Adaptive Card posted directly to MS Teams! (${latency}ms)`);
-                await notificationEngineService.saveTeamsWebhookUrl(teamsWebhookUrl);
-            } else {
-                error(`Teams webhook responded with status ${resp.status} (${resp.statusText})`);
+        for (const site of (sites || [])) {
+            const url = siteWebhooks[site.id];
+            if (!url) {
+                failCount++;
+                continue;
             }
-        } catch (e: any) {
-            error(`Failed to send webhook request: ${e.message}`);
-        } finally {
-            setIsTestingTeams(false);
+
+            const startTime = Date.now();
+            try {
+                const cardPayload = buildTeamsAdaptiveCard({
+                    title: `ProcureFlow Channel Verified — ${site.name}`,
+                    subtitle: 'Specialised Linen Services Alerts Network • Nationwide Verification',
+                    colorHex: '059669',
+                    facts: [
+                        { title: 'Facility', value: site.name },
+                        { title: 'State', value: site.state || 'N/A' },
+                        { title: 'Tested By', value: currentUser?.name || 'Administrator' },
+                        { title: 'Status', value: 'Connected & Operational' }
+                    ],
+                    actionUrl: `${window.location.origin}/settings`,
+                    actionLabel: 'Open ProcureFlow',
+                    iconUrl: PROCUREFLOW_ICON_URL
+                });
+
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cardPayload)
+                });
+
+                const latency = Date.now() - startTime;
+                if (resp.ok) {
+                    successCount++;
+                    setSiteTestResults(prev => ({
+                        ...prev,
+                        [site.id]: { status: 'SUCCESS', time: new Date().toLocaleTimeString(), latency }
+                    }));
+                } else {
+                    failCount++;
+                    setSiteTestResults(prev => ({
+                        ...prev,
+                        [site.id]: { status: 'FAILED', time: new Date().toLocaleTimeString() }
+                    }));
+                }
+            } catch {
+                failCount++;
+                setSiteTestResults(prev => ({
+                    ...prev,
+                    [site.id]: { status: 'FAILED', time: new Date().toLocaleTimeString() }
+                }));
+            }
+        }
+
+        setIsTestingAllSites(false);
+        if (successCount > 0) {
+            success(`Batch verification complete: ${successCount} facility channels verified in MS Teams!`);
+        }
+        if (failCount > 0) {
+            warning(`${failCount} facility channels could not be reached.`);
         }
     };
 
@@ -858,8 +984,8 @@ export const WorkflowNotificationHub: React.FC = () => {
             {/* TAB 3: CHANNELS */}
             {activeTab === 'CHANNELS' && (
                 <div className="space-y-6 animate-fade-in max-w-4xl">
-                    {/* CHANNEL 1: MICROSOFT TEAMS */}
-                    <div className="bg-white dark:bg-nocturne p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-sm space-y-5">
+                    {/* CHANNEL 1: MICROSOFT TEAMS NATIONWIDE FACILITY NETWORK */}
+                    <div className="bg-white dark:bg-nocturne p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-sm space-y-6">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-white/5 pb-4">
                             <div className="flex items-center gap-3">
                                 <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-500">
@@ -867,68 +993,220 @@ export const WorkflowNotificationHub: React.FC = () => {
                                 </div>
                                 <div>
                                     <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                        Microsoft Teams Channel Webhook
-                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                                            teamsWebhookUrl ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                        }`}>
-                                            {teamsWebhookUrl ? 'Connected' : 'Pending Webhook URL'}
+                                        Microsoft Teams Facility Webhook Channels
+                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                            {Object.keys(siteWebhooks).length} of {(sites || []).length} Connected
                                         </span>
                                     </h3>
-                                    <p className="text-xs text-gray-500">Directly post rich Adaptive Cards v1.4 with the ProcureFlow icon into your channel</p>
+                                    <p className="text-xs text-gray-500">Directly post rich Adaptive Cards v1.4 into dedicated Specialised Linen Services site channels</p>
                                 </div>
                             </div>
 
-                            <button
-                                type="button"
-                                onClick={() => setShowTeamsGuide(!showTeamsGuide)}
-                                className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 self-start sm:self-auto"
-                            >
-                                {showTeamsGuide ? 'Hide Setup Guide' : 'How to get Teams Webhook URL?'}
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleTestAllSites}
+                                    disabled={isTestingAllSites}
+                                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+                                    title="Test all 11 site channels simultaneously"
+                                >
+                                    {isTestingAllSites ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+                                    Test All 11 Sites
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTeamsGuide(!showTeamsGuide)}
+                                    className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1 self-start sm:self-auto ml-1"
+                                >
+                                    {showTeamsGuide ? 'Hide Guide' : 'Setup Guide'}
+                                </button>
+                            </div>
                         </div>
 
                         {showTeamsGuide && (
                             <div className="p-4 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30 rounded-2xl text-xs space-y-2 text-gray-700 dark:text-gray-300">
                                 <h4 className="font-bold text-indigo-900 dark:text-indigo-300">Quick 3-Step Microsoft Teams Setup:</h4>
                                 <ol className="list-decimal list-inside space-y-1.5 leading-relaxed">
-                                    <li>Open your Microsoft Teams client & locate your support channel (e.g. <strong>ProcureFlow Alerts</strong>).</li>
-                                    <li>Click <strong>&bull;&bull;&bull; (More options)</strong> next to the channel name &rarr; select <strong>Workflows</strong> (or Connectors).</li>
-                                    <li>Search for <strong>"Send webhook alerts to a channel"</strong>, complete the prompt, copy the generated URL, and paste it below.</li>
+                                    <li>Open your Microsoft Teams client & locate the facility channel under <strong>ProcureFlow - Alerts</strong> (e.g. <strong>Site - Adelaide</strong>).</li>
+                                    <li>Click <strong>&bull;&bull;&bull; (More options)</strong> next to the channel name &rarr; select <strong>Workflows</strong>.</li>
+                                    <li>Search for <strong>"Send webhook alerts to a channel"</strong>, complete the prompt, copy the generated URL, and paste it into the facility field below.</li>
                                 </ol>
                             </div>
                         )}
 
-                        <div className="space-y-2">
-                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400">Teams Incoming Webhook Connector URL</label>
-                            <input
-                                type="url"
-                                value={teamsWebhookUrl}
-                                onChange={e => setTeamsWebhookUrl(e.target.value)}
-                                placeholder="https://prod-XX.australiaeast.logic.azure.com:443/workflows/... or https://outlook.office.com/webhook/..."
-                                className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-xs text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
-                            />
+                        {/* Individual Facility Selector & Live Tester */}
+                        <div className="bg-gray-50/70 dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-100 dark:border-white/5 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
+                                        Select Facility to Inspect or Test
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <select
+                                            value={selectedSiteId}
+                                            onChange={e => handleSelectSite(e.target.value)}
+                                            className="bg-white dark:bg-nocturne border border-gray-200 dark:border-white/10 rounded-xl px-3.5 py-2 text-xs font-bold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] shadow-sm"
+                                        >
+                                            <option value="DEFAULT">Default Fallback Channel (General)</option>
+                                            {(sites || []).map(s => (
+                                                <option key={s.id} value={s.id}>
+                                                    {s.name} ({s.state}) {siteWebhooks[s.id] ? '✓ Connected' : '(Pending)'}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {selectedSiteId && selectedSiteId !== 'DEFAULT' && (
+                                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                                siteWebhooks[selectedSiteId] 
+                                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                            }`}>
+                                                {siteWebhooks[selectedSiteId] ? 'Connected' : 'Pending Webhook'}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {selectedSiteId && (
+                                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveTeamsWebhook}
+                                            disabled={isSavingChannels}
+                                            className="px-4 py-2 bg-[var(--color-brand)] text-white font-bold text-xs rounded-xl shadow-sm hover:opacity-90 transition-all flex items-center gap-1.5"
+                                        >
+                                            <Save size={14} />
+                                            Save Webhook
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleTestSingleSite(selectedSiteId, teamsWebhookUrl)}
+                                            disabled={testingSiteId === selectedSiteId || !teamsWebhookUrl}
+                                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
+                                        >
+                                            <Send size={14} className={testingSiteId === selectedSiteId ? 'animate-pulse' : ''} />
+                                            {testingSiteId === selectedSiteId ? 'Sending...' : 'Send Test Adaptive Card'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
+                                    {selectedSiteId === 'DEFAULT' ? 'Default Tenant Webhook URL' : `${sites?.find(s => s.id === selectedSiteId)?.name || 'Facility'} Webhook URL`}
+                                </label>
+                                <input
+                                    type="url"
+                                    value={teamsWebhookUrl}
+                                    onChange={e => setTeamsWebhookUrl(e.target.value)}
+                                    placeholder="https://...powerplatform.com:443/powerautomate/.../invoke?..."
+                                    className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-xs text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                />
+                            </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-2 pt-1">
-                            <button
-                                type="button"
-                                onClick={handleSaveTeamsWebhook}
-                                disabled={isSavingChannels}
-                                className="px-5 py-2.5 bg-[var(--color-brand)] text-white font-bold text-xs rounded-xl shadow-lg shadow-[rgba(var(--color-brand-rgb),0.2)] hover:opacity-90 transition-all flex items-center gap-2"
-                            >
-                                <Save size={16} />
-                                Save Webhook
-                            </button>
+                        {/* Complete Facility Channels Table */}
+                        <div className="space-y-3 pt-2">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-xs font-black uppercase tracking-widest text-gray-400">
+                                    Nationwide Facility Channels & Live Status
+                                </h4>
+                                <span className="text-[11px] text-gray-500">
+                                    Click <strong>Test</strong> on any row to dispatch a live Adaptive Card to that channel
+                                </span>
+                            </div>
 
-                            <button
-                                type="button"
-                                onClick={handleTestTeamsWebhook}
-                                disabled={isTestingTeams}
-                                className="px-5 py-2.5 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md hover:bg-indigo-700 transition-all flex items-center gap-2"
-                            >
-                                <Send size={16} className={isTestingTeams ? 'animate-pulse' : ''} />
-                                Send Test Adaptive Card
-                            </button>
+                            <div className="border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-white dark:bg-nocturne">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/10 text-[10px] uppercase font-black tracking-widest text-gray-400">
+                                        <tr>
+                                            <th className="px-4 py-3">Facility</th>
+                                            <th className="px-3 py-3">Channel Name</th>
+                                            <th className="px-3 py-3 text-center">Status</th>
+                                            <th className="px-3 py-3 text-center">Latest Result</th>
+                                            <th className="px-4 py-3 text-right">Quick Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-white/5 font-medium">
+                                        {(sites || []).map(site => {
+                                            const hasWebhook = Boolean(siteWebhooks[site.id]);
+                                            const isSelected = selectedSiteId === site.id;
+                                            const testResult = siteTestResults[site.id];
+                                            const isTestingThis = testingSiteId === site.id || isTestingAllSites;
+
+                                            return (
+                                                <tr 
+                                                    key={site.id} 
+                                                    className={`hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors ${
+                                                        isSelected ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : ''
+                                                    }`}
+                                                >
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                                                            {site.name}
+                                                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-bold">
+                                                                {site.state}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-[10px] text-gray-400 font-normal">
+                                                            {site.suburb ? `${site.suburb}, ${site.state}` : site.address}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-3 font-mono text-[11px] text-indigo-600 dark:text-indigo-400">
+                                                        Site - {site.name.replace(/^SPL\s+/i, '')}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-center">
+                                                        {hasWebhook ? (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                                                <Check size={10} /> Connected
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                                                Pending URL
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-center">
+                                                        {testResult ? (
+                                                            testResult.status === 'SUCCESS' ? (
+                                                                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1">
+                                                                    <Check size={12} /> 202 OK {testResult.latency ? `(${testResult.latency}ms)` : ''}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[10px] font-bold text-rose-500 flex items-center justify-center gap-1">
+                                                                    <AlertTriangle size={12} /> Failed
+                                                                </span>
+                                                            )
+                                                        ) : (
+                                                            <span className="text-[10px] text-gray-400 italic">Ready</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSelectSite(site.id)}
+                                                                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-nocturne text-gray-700 dark:text-gray-300 transition-all"
+                                                            >
+                                                                Configure
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleTestSingleSite(site.id)}
+                                                                disabled={isTestingThis || !hasWebhook}
+                                                                className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 disabled:opacity-40"
+                                                                title={`Send test alert to ${site.name}`}
+                                                            >
+                                                                {isTestingThis ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />}
+                                                                Test
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
