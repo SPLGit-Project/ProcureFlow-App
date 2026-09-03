@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
     X, Bell, Volume2, Mail, MessageSquare, Moon, Clock, 
-    Save, CheckCircle2, ShieldAlert, Sliders
+    Save, CheckCircle2, ShieldAlert, Sliders, Lock
 } from 'lucide-react';
 import { UserNotificationPreferences } from '../types';
 import { notificationEngineService } from '../services/notificationEngineService';
 import { playNotificationChime } from '../services/realtimeNotificationService';
 import { useToast } from './ToastNotification';
+import { useApp } from '../context/AppContext';
+import { getUserEligibleScenarios, NOTIFICATION_SCENARIOS, isScenarioAllowedForRoles } from '../utils/notificationScenarios';
 
 interface NotificationPreferencesModalProps {
     isOpen: boolean;
@@ -20,6 +22,7 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
     userId
 }) => {
     const { success, error } = useToast();
+    const { currentUser, roles, users, hasPermission } = useApp();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [prefs, setPrefs] = useState<UserNotificationPreferences>({
@@ -260,65 +263,94 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                             </div>
 
                             {/* Category Granular Matrix */}
-                            <div className="space-y-3">
-                                <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">Category Channels</h3>
-                                
-                                <div className="border border-gray-200 dark:border-white/5 rounded-2xl overflow-hidden bg-white dark:bg-nocturne">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-100 dark:border-white/5 text-[10px] uppercase font-black tracking-widest text-gray-400">
-                                            <tr>
-                                                <th className="px-4 py-3">Category</th>
-                                                <th className="px-4 py-3 text-center">In-App</th>
-                                                <th className="px-4 py-3 text-center">Email</th>
-                                                <th className="px-4 py-3 text-center">Teams</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100 dark:divide-white/5 text-xs font-medium">
-                                            {[
-                                                { key: 'APPROVAL', label: 'Requisition Approvals & Escalations' },
-                                                { key: 'STATUS_CHANGE', label: 'PO & Order Status Confirmations' },
-                                                { key: 'DELIVERY', label: 'Goods Receipts & Delivery Discrepancies' },
-                                                { key: 'ITEM_LIFECYCLE', label: 'Catalog & Item Master Changes' },
-                                                { key: 'PRICING', label: 'Contract Pricing & Tariff Updates' },
-                                                { key: 'ALERT', label: 'SLA Warnings & Critical Governance' }
-                                            ].map(cat => {
-                                                const current = prefs.category_overrides[cat.key] || { in_app: true, email: true, teams: true };
-                                                return (
-                                                    <tr key={cat.key} className="hover:bg-gray-50/50 dark:hover:bg-white/5">
-                                                        <td className="px-4 py-3 font-bold text-gray-900 dark:text-white">
-                                                            {cat.label}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-center">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={current.in_app !== false}
-                                                                onChange={() => toggleCategoryChannel(cat.key, 'in_app')}
-                                                                className="w-4 h-4 accent-[var(--color-brand)] rounded"
-                                                            />
-                                                        </td>
-                                                        <td className="px-4 py-3 text-center">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={current.email !== false}
-                                                                onChange={() => toggleCategoryChannel(cat.key, 'email')}
-                                                                className="w-4 h-4 accent-[var(--color-brand)] rounded"
-                                                            />
-                                                        </td>
-                                                        <td className="px-4 py-3 text-center">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={current.teams !== false}
-                                                                onChange={() => toggleCategoryChannel(cat.key, 'teams')}
-                                                                className="w-4 h-4 accent-[var(--color-brand)] rounded"
-                                                            />
-                                                        </td>
+                            {(() => {
+                                const targetUser = users?.find(u => u.id === userId) || (currentUser?.id === userId ? currentUser : null);
+                                const eligibleScenarios = getUserEligibleScenarios(targetUser, roles, hasPermission);
+                                const userRoleNames = (targetUser?.roleIds || [targetUser?.role]).filter(Boolean).map(rid => roles.find(r => r.id === rid)?.name || rid).join(', ') || 'Standard Member';
+
+                                return (
+                                    <div className="space-y-3">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">Scenario Channel Routing</h3>
+                                                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+                                                    {eligibleScenarios.length} Active
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-gray-500 mt-0.5">
+                                                Workflows unlocked for assigned roles: <span className="font-bold text-gray-700 dark:text-gray-300">{userRoleNames}</span>.
+                                            </p>
+                                        </div>
+                                        
+                                        <div className="border border-gray-200 dark:border-white/5 rounded-2xl overflow-hidden bg-white dark:bg-nocturne">
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-100 dark:border-white/5 text-[10px] uppercase font-black tracking-widest text-gray-400">
+                                                    <tr>
+                                                        <th className="px-4 py-3">Procurement Scenario</th>
+                                                        <th className="px-4 py-3 text-center">In-App</th>
+                                                        <th className="px-4 py-3 text-center">Email</th>
+                                                        <th className="px-4 py-3 text-center">Teams</th>
                                                     </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 dark:divide-white/5 text-xs font-medium">
+                                                    {eligibleScenarios.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={4} className="px-6 py-8 text-center text-gray-400">
+                                                                <div className="flex flex-col items-center gap-2">
+                                                                    <Lock size={20} className="text-gray-300 dark:text-gray-600" />
+                                                                    <p className="font-bold text-xs text-gray-500">No active notification scenarios</p>
+                                                                    <p className="text-[11px]">No workflows are currently assigned to your roles ({userRoleNames}).</p>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ) : (
+                                                        eligibleScenarios.map(cat => {
+                                                            const current = prefs.category_overrides[cat.key] || { in_app: true, email: true, teams: true };
+                                                            return (
+                                                                <tr key={cat.key} className="hover:bg-gray-50/50 dark:hover:bg-white/5">
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="flex items-center gap-2 mb-0.5">
+                                                                            <span className="font-bold text-gray-900 dark:text-white">{cat.title}</span>
+                                                                            <span className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded">
+                                                                                {cat.badge}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-[10px] text-gray-400 leading-tight">{cat.desc}</p>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={current.in_app !== false}
+                                                                            onChange={() => toggleCategoryChannel(cat.key, 'in_app')}
+                                                                            className="w-4 h-4 accent-[var(--color-brand)] rounded cursor-pointer"
+                                                                        />
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={current.email !== false}
+                                                                            onChange={() => toggleCategoryChannel(cat.key, 'email')}
+                                                                            className="w-4 h-4 accent-[var(--color-brand)] rounded cursor-pointer"
+                                                                        />
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={current.teams !== false}
+                                                                            onChange={() => toggleCategoryChannel(cat.key, 'teams')}
+                                                                            className="w-4 h-4 accent-[var(--color-brand)] rounded cursor-pointer"
+                                                                        />
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </>
                     )}
                 </div>

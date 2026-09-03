@@ -22,6 +22,7 @@ import { supabase } from '../lib/supabaseClient.ts';
 import { SupplierStockSnapshot, SupplierProductMap, Item, Supplier, SupplierContact, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType, UserNotificationPreferences } from '../types.ts';
 import { notificationEngineService } from '../services/notificationEngineService.ts';
 import { playNotificationChime } from '../services/realtimeNotificationService.ts';
+import { NOTIFICATION_SCENARIOS, getUserEligibleScenarios, isScenarioAllowedForRoles, NotificationScenarioConfig } from '../utils/notificationScenarios.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { canonicalSupplierName, dedupeSuppliersForDisplay, findSupplierByContactEmail, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import { useLocation } from 'react-router-dom';
@@ -964,6 +965,7 @@ const Settings = () => {
       }
   });
   const [isSavingProfileNotifPrefs, setIsSavingProfileNotifPrefs] = useState(false);
+  const [showAllScenariosInProfile, setShowAllScenariosInProfile] = useState(false);
 
   // Load User Directory preferences
   useEffect(() => {
@@ -1065,6 +1067,50 @@ const Settings = () => {
                       [channel]: !current[channel]
                   }
               }
+          };
+      });
+  };
+
+  const handleToggleUserScenarioChannel = (targetUserId: string, scenarioKey: string, channel: 'in_app' | 'email' | 'teams') => {
+      setUserPrefsMap(prev => {
+          const existing = prev[targetUserId] || {
+              user_id: targetUserId,
+              email_enabled: true,
+              teams_enabled: true,
+              in_app_enabled: true,
+              sound_enabled: true,
+              digest_frequency: 'INSTANT',
+              quiet_hours_enabled: false,
+              quiet_hours_start: '22:00',
+              quiet_hours_end: '07:00',
+              category_overrides: {
+                  APPROVAL: { in_app: true, email: true, teams: true },
+                  STATUS_CHANGE: { in_app: true, email: true, teams: true },
+                  DELIVERY: { in_app: true, email: true, teams: true },
+                  ITEM_LIFECYCLE: { in_app: true, email: true, teams: false },
+                  PRICING: { in_app: true, email: true, teams: false },
+                  ALERT: { in_app: true, email: true, teams: true }
+              }
+          };
+          const currentOverrides = existing.category_overrides || {};
+          const currentCat = currentOverrides[scenarioKey] || { in_app: true, email: true, teams: true };
+          const updatedCat = { ...currentCat, [channel]: !currentCat[channel] };
+          const updated = {
+              ...existing,
+              category_overrides: {
+                  ...currentOverrides,
+                  [scenarioKey]: updatedCat
+              }
+          };
+
+          // Optimistic async background sync to DB
+          notificationEngineService.saveUserPreferences(updated).catch(e => {
+              console.error('Failed to sync user scenario preference:', e);
+          });
+
+          return {
+              ...prev,
+              [targetUserId]: updated
           };
       });
   };
@@ -3580,107 +3626,132 @@ if __name__ == "__main__":
                   </div>
 
                   {/* Scenario Matrix */}
-                  <div className="space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                          <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Scenario Channel Matrix</h4>
-                          <span className="text-[10px] text-gray-400 font-medium">Select which channels trigger for each procurement event</span>
-                      </div>
-                      
-                      <div className="border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden bg-white dark:bg-nocturne">
-                          <table className="w-full text-left">
-                              <thead className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800 text-[10px] uppercase font-black tracking-widest text-gray-400">
-                                  <tr>
-                                      <th className="px-5 py-3.5">Procurement Scenario</th>
-                                      <th className="px-4 py-3.5 text-center w-28">In-App</th>
-                                      <th className="px-4 py-3.5 text-center w-28">Email</th>
-                                      <th className="px-4 py-3.5 text-center w-28">Teams</th>
-                                  </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
-                                  {[
-                                      { 
-                                          key: 'APPROVAL', 
-                                          title: 'Requisition Approvals & Escalations', 
-                                          desc: 'Pending purchase requisitions requiring review, sign-off decisions, and overdue escalation alerts',
-                                          badge: 'Approvals'
-                                      },
-                                      { 
-                                          key: 'STATUS_CHANGE', 
-                                          title: 'PO & Order Status Confirmations', 
-                                          desc: 'PO status progressions, supplier acknowledgements, Need-By Date updates, and Ready to Close notices',
-                                          badge: 'Orders'
-                                      },
-                                      { 
-                                          key: 'DELIVERY', 
-                                          title: 'Goods Receipts & Delivery Discrepancies', 
-                                          desc: 'Delivery docket receipts, quantity variance warnings (ordered vs received), and overdue shipments',
-                                          badge: 'Deliveries'
-                                      },
-                                      { 
-                                          key: 'ITEM_LIFECYCLE', 
-                                          title: 'Catalog & Item Master Changes', 
-                                          desc: 'New item requests submitted, item specifications approved, pack size changes, and catalog releases',
-                                          badge: 'Master Data'
-                                      },
-                                      { 
-                                          key: 'PRICING', 
-                                          title: 'Contract Pricing & Tariff Updates', 
-                                          desc: 'Supplier pricing schedule adjustments, future price activations, and pricing variance alerts',
-                                          badge: 'Pricing'
-                                      },
-                                      { 
-                                          key: 'ALERT', 
-                                          title: 'SLA Warnings & Critical Governance', 
-                                          desc: 'Overdue 14-day delivery breaches, unlinked Concur PO numbers, and budget consumption warnings',
-                                          badge: 'Governance'
-                                      }
-                                  ].map(scen => {
-                                      const current = profileNotifPrefs.category_overrides?.[scen.key] || { in_app: true, email: true, teams: true };
-                                      return (
-                                          <tr key={scen.key} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
-                                              <td className="px-5 py-4">
-                                                  <div className="flex items-center gap-2 mb-0.5">
-                                                      <span className="font-bold text-gray-900 dark:text-white text-xs">{scen.title}</span>
-                                                      <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-gray-100 dark:bg-gray-800 text-gray-500">
-                                                          {scen.badge}
-                                                      </span>
-                                                  </div>
-                                                  <p className="text-[11px] text-gray-400 font-medium leading-relaxed">{scen.desc}</p>
-                                              </td>
-                                              <td className="px-4 py-4 text-center">
-                                                  <input
-                                                      type="checkbox"
-                                                      checked={current.in_app !== false}
-                                                      onChange={() => handleToggleProfileScenarioChannel(scen.key, 'in_app')}
-                                                      className="w-4 h-4 accent-sky-500 rounded cursor-pointer"
-                                                      title={`Toggle In-App alerts for ${scen.title}`}
-                                                  />
-                                              </td>
-                                              <td className="px-4 py-4 text-center">
-                                                  <input
-                                                      type="checkbox"
-                                                      checked={current.email !== false}
-                                                      onChange={() => handleToggleProfileScenarioChannel(scen.key, 'email')}
-                                                      className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
-                                                      title={`Toggle Email alerts for ${scen.title}`}
-                                                  />
-                                              </td>
-                                              <td className="px-4 py-4 text-center">
-                                                  <input
-                                                      type="checkbox"
-                                                      checked={current.teams !== false}
-                                                      onChange={() => handleToggleProfileScenarioChannel(scen.key, 'teams')}
-                                                      className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
-                                                      title={`Toggle Teams alerts for ${scen.title}`}
-                                                  />
-                                              </td>
+                  {(() => {
+                      const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || (currentUser?.roleIds || []).includes('ADMIN') || hasPermission('manage_settings');
+                      const eligibleScenarios = getUserEligibleScenarios(currentUser, roles, hasPermission);
+                      const displayedScenarios = (isCurrentUserAdmin && showAllScenariosInProfile) ? NOTIFICATION_SCENARIOS : eligibleScenarios;
+                      const userRoleNames = (currentUser?.roleIds || [currentUser?.role]).filter(Boolean).map(rid => roles.find(r => r.id === rid)?.name || rid).join(', ') || 'Standard Member';
+
+                      return (
+                          <div className="space-y-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                  <div>
+                                      <div className="flex items-center gap-2">
+                                          <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Scenario Channel Routing Matrix</h4>
+                                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+                                              {displayedScenarios.length} Active
+                                          </span>
+                                      </div>
+                                      <p className="text-[11px] text-gray-500 mt-0.5">
+                                          Tied to workflows granted by your assigned roles: <span className="font-bold text-gray-700 dark:text-gray-300">{userRoleNames}</span>.
+                                      </p>
+                                  </div>
+                                  {isCurrentUserAdmin && (
+                                      <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-white/5 p-1 rounded-xl self-start sm:self-auto shrink-0">
+                                          <button
+                                              type="button"
+                                              onClick={() => setShowAllScenariosInProfile(false)}
+                                              className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                                                  !showAllScenariosInProfile ? 'bg-white dark:bg-nocturne text-[var(--color-brand)] shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                                              }`}
+                                          >
+                                              My Role Access ({eligibleScenarios.length})
+                                          </button>
+                                          <button
+                                              type="button"
+                                              onClick={() => setShowAllScenariosInProfile(true)}
+                                              className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                                                  showAllScenariosInProfile ? 'bg-white dark:bg-nocturne text-[var(--color-brand)] shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                                              }`}
+                                          >
+                                              All Scenarios ({NOTIFICATION_SCENARIOS.length})
+                                          </button>
+                                      </div>
+                                  )}
+                              </div>
+                              
+                              <div className="border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden bg-white dark:bg-nocturne">
+                                  <table className="w-full text-left">
+                                      <thead className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800 text-[10px] uppercase font-black tracking-widest text-gray-400">
+                                          <tr>
+                                              <th className="px-5 py-3.5">Procurement Scenario</th>
+                                              <th className="px-4 py-3.5 text-center w-28">In-App</th>
+                                              <th className="px-4 py-3.5 text-center w-28">Email</th>
+                                              <th className="px-4 py-3.5 text-center w-28">Teams</th>
                                           </tr>
-                                      );
-                                  })}
-                              </tbody>
-                          </table>
-                      </div>
-                  </div>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                                          {displayedScenarios.length === 0 ? (
+                                              <tr>
+                                                  <td colSpan={4} className="px-6 py-12 text-center text-gray-400">
+                                                      <div className="flex flex-col items-center gap-2">
+                                                          <Lock size={24} className="text-gray-300 dark:text-gray-600" />
+                                                          <p className="font-bold text-sm text-gray-500">No active notification scenarios</p>
+                                                          <p className="text-xs max-w-sm">No procurement workflow scenarios are currently unlocked for your assigned roles ({userRoleNames}). Contact your administrator to request role permissions.</p>
+                                                      </div>
+                                                  </td>
+                                              </tr>
+                                          ) : (
+                                              displayedScenarios.map(scen => {
+                                                  const isGranted = isScenarioAllowedForRoles(scen, currentUser?.roleIds || [currentUser?.role || ''], roles, hasPermission);
+                                                  const current = profileNotifPrefs.category_overrides?.[scen.key] || { in_app: true, email: true, teams: true };
+                                                  return (
+                                                      <tr key={scen.key} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
+                                                          <td className="px-5 py-4">
+                                                              <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                                                                  <span className="font-bold text-gray-900 dark:text-white text-xs">{scen.title}</span>
+                                                                  <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-gray-100 dark:bg-gray-800 text-gray-500">
+                                                                      {scen.badge}
+                                                                  </span>
+                                                                  {isGranted ? (
+                                                                      <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
+                                                                          Role Granted
+                                                                      </span>
+                                                                  ) : (
+                                                                      <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 flex items-center gap-1">
+                                                                          <Lock size={8} /> {scen.roleExplanation}
+                                                                      </span>
+                                                                  )}
+                                                              </div>
+                                                              <p className="text-[11px] text-gray-400 font-medium leading-relaxed">{scen.desc}</p>
+                                                          </td>
+                                                          <td className="px-4 py-4 text-center">
+                                                              <input
+                                                                  type="checkbox"
+                                                                  checked={current.in_app !== false}
+                                                                  onChange={() => handleToggleProfileScenarioChannel(scen.key, 'in_app')}
+                                                                  className="w-4 h-4 accent-sky-500 rounded cursor-pointer"
+                                                                  title={`Toggle In-App alerts for ${scen.title}`}
+                                                              />
+                                                          </td>
+                                                          <td className="px-4 py-4 text-center">
+                                                              <input
+                                                                  type="checkbox"
+                                                                  checked={current.email !== false}
+                                                                  onChange={() => handleToggleProfileScenarioChannel(scen.key, 'email')}
+                                                                  className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                                                                  title={`Toggle Email alerts for ${scen.title}`}
+                                                              />
+                                                          </td>
+                                                          <td className="px-4 py-4 text-center">
+                                                              <input
+                                                                  type="checkbox"
+                                                                  checked={current.teams !== false}
+                                                                  onChange={() => handleToggleProfileScenarioChannel(scen.key, 'teams')}
+                                                                  className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
+                                                                  title={`Toggle Teams alerts for ${scen.title}`}
+                                                              />
+                                                          </td>
+                                                      </tr>
+                                                  );
+                                              })
+                                          )}
+                                      </tbody>
+                                  </table>
+                              </div>
+                          </div>
+                      );
+                  })()}
               </div>
 
               <div className="mt-8 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 p-6 rounded-2xl flex items-start gap-4">
@@ -6712,6 +6783,109 @@ if __name__ == "__main__":
                                                              {(userPrefsMap[inviteForm.id]?.in_app_enabled ?? true) ? 'ON' : 'OFF'}
                                                          </span>
                                                      </button>
+                                                 </div>
+
+                                                 {/* Role-Tied Scenario Routing Matrix */}
+                                                 <div className="pt-3 border-t border-gray-100 dark:border-gray-800 space-y-3">
+                                                     {(() => {
+                                                         const targetUserScenarios = NOTIFICATION_SCENARIOS.filter(s => isScenarioAllowedForRoles(s, inviteForm.roleIds, roles));
+                                                         return (
+                                                             <>
+                                                                 <div className="flex items-center justify-between">
+                                                                     <div>
+                                                                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                                                                             <Sliders size={14} className="text-[var(--color-brand)]"/> Role-Granted Scenario Routing
+                                                                         </label>
+                                                                         <p className="text-[10px] text-gray-400 font-medium">
+                                                                             Scenarios automatically unlocked based on the selected roles above.
+                                                                         </p>
+                                                                     </div>
+                                                                     <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-brand)] bg-[var(--color-brand)]/10 px-2 py-0.5 rounded-full">
+                                                                         {targetUserScenarios.length} of {NOTIFICATION_SCENARIOS.length} Active
+                                                                     </span>
+                                                                 </div>
+
+                                                                 <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-gray-50/50 dark:bg-white/5">
+                                                                     <table className="w-full text-left">
+                                                                         <thead className="bg-gray-100/70 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800 text-[9px] uppercase font-black tracking-widest text-gray-400">
+                                                                             <tr>
+                                                                                 <th className="px-3 py-2">Scenario</th>
+                                                                                 <th className="px-2 py-2 text-center w-20">In-App</th>
+                                                                                 <th className="px-2 py-2 text-center w-20">Email</th>
+                                                                                 <th className="px-2 py-2 text-center w-20">Teams</th>
+                                                                             </tr>
+                                                                         </thead>
+                                                                         <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                                                                             {NOTIFICATION_SCENARIOS.map(scen => {
+                                                                                 const isGranted = isScenarioAllowedForRoles(scen, inviteForm.roleIds, roles);
+                                                                                 const userPrefOverrides = userPrefsMap[inviteForm.id]?.category_overrides || {};
+                                                                                 const current = userPrefOverrides[scen.key] || { in_app: true, email: true, teams: true };
+
+                                                                                 if (!isGranted) {
+                                                                                     return (
+                                                                                         <tr key={scen.key} className="opacity-45 bg-gray-50/30 dark:bg-white/[0.02]">
+                                                                                             <td className="px-3 py-2.5">
+                                                                                                 <div className="flex items-center gap-2">
+                                                                                                     <span className="font-bold text-gray-500 text-xs line-through">{scen.title}</span>
+                                                                                                     <span className="text-[8px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-amber-200 dark:border-amber-900/50">
+                                                                                                         <Lock size={8} /> {scen.roleExplanation}
+                                                                                                     </span>
+                                                                                                 </div>
+                                                                                             </td>
+                                                                                             <td colSpan={3} className="px-2 py-2.5 text-center text-[10px] text-gray-400 italic">
+                                                                                                 Role not assigned
+                                                                                             </td>
+                                                                                         </tr>
+                                                                                     );
+                                                                                 }
+
+                                                                                 return (
+                                                                                     <tr key={scen.key} className="hover:bg-white dark:hover:bg-nocturne transition-colors">
+                                                                                         <td className="px-3 py-2.5">
+                                                                                             <div className="flex items-center gap-2 mb-0.5">
+                                                                                                 <span className="font-bold text-gray-900 dark:text-white text-xs">{scen.title}</span>
+                                                                                                 <span className="text-[8px] font-black uppercase text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/50">
+                                                                                                     {scen.badge}
+                                                                                                 </span>
+                                                                                             </div>
+                                                                                             <p className="text-[10px] text-gray-400 leading-tight">{scen.desc}</p>
+                                                                                         </td>
+                                                                                         <td className="px-2 py-2.5 text-center">
+                                                                                             <input
+                                                                                                 type="checkbox"
+                                                                                                 checked={current.in_app !== false}
+                                                                                                 onChange={() => handleToggleUserScenarioChannel(inviteForm.id, scen.key, 'in_app')}
+                                                                                                 className="w-3.5 h-3.5 accent-sky-500 rounded cursor-pointer"
+                                                                                                 title={`Toggle In-App for ${scen.title}`}
+                                                                                             />
+                                                                                         </td>
+                                                                                         <td className="px-2 py-2.5 text-center">
+                                                                                             <input
+                                                                                                 type="checkbox"
+                                                                                                 checked={current.email !== false}
+                                                                                                 onChange={() => handleToggleUserScenarioChannel(inviteForm.id, scen.key, 'email')}
+                                                                                                 className="w-3.5 h-3.5 accent-emerald-500 rounded cursor-pointer"
+                                                                                                 title={`Toggle Email for ${scen.title}`}
+                                                                                             />
+                                                                                         </td>
+                                                                                         <td className="px-2 py-2.5 text-center">
+                                                                                             <input
+                                                                                                 type="checkbox"
+                                                                                                 checked={current.teams !== false}
+                                                                                                 onChange={() => handleToggleUserScenarioChannel(inviteForm.id, scen.key, 'teams')}
+                                                                                                 className="w-3.5 h-3.5 accent-indigo-500 rounded cursor-pointer"
+                                                                                                 title={`Toggle Teams for ${scen.title}`}
+                                                                                             />
+                                                                                         </td>
+                                                                                     </tr>
+                                                                                 );
+                                                                             })}
+                                                                         </tbody>
+                                                                     </table>
+                                                                 </div>
+                                                             </>
+                                                         );
+                                                     })()}
                                                  </div>
                                              </div>
                                          )}
