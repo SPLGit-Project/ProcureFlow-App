@@ -48,6 +48,7 @@ import TaskDrawer from './TaskDrawer.tsx';
 import AccountDrawer from './AccountDrawer.tsx';
 import NotificationDrawer from './NotificationDrawer.tsx';
 import NotificationPreferencesModal from './NotificationPreferencesModal.tsx';
+import InAppNotificationPopupContainer from './InAppNotificationPopup.tsx';
 import { BrandLogo } from './BrandLogo.tsx';
 import procureFlowLogo from '../docs/Logo Branding/LOGO-NEW/Procureflow_Logo.png';
 
@@ -78,7 +79,9 @@ const Layout = () => {
     setIsNotificationDrawerOpen,
     isNotificationPrefsOpen,
     setIsNotificationPrefsOpen,
-    refreshNotifications
+    refreshNotifications,
+    notificationPopups,
+    dismissNotificationPopup
   } = useApp();
   const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -1130,6 +1133,13 @@ const Layout = () => {
       <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
 
       <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
+
+      <InAppNotificationPopupContainer
+        popups={notificationPopups}
+        onDismiss={dismissNotificationPopup}
+        onOpenDrawer={() => setIsNotificationDrawerOpen(true)}
+        onRefresh={refreshNotifications}
+      />
 
       <NotificationDrawer
         isOpen={isNotificationDrawerOpen}

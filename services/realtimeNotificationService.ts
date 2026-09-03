@@ -133,6 +133,19 @@ class RealtimeNotificationManager {
         return () => this.callbacks.delete(callback);
     }
 
+    public emitLocalNotification(notif: EnhancedAppNotification) {
+        const severity = notif.severity;
+        if (severity === 'CRITICAL') {
+            playNotificationChime('alert');
+        } else if (severity === 'SUCCESS') {
+            playNotificationChime('success');
+        } else {
+            playNotificationChime('subtle');
+        }
+
+        this.callbacks.forEach(cb => cb(notif));
+    }
+
     public unsubscribe() {
         if (this.channel) {
             supabase.removeChannel(this.channel);

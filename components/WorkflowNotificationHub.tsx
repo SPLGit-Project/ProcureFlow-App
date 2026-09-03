@@ -12,7 +12,8 @@ import {
     NotificationTemplate, 
     NotificationDeliveryLog,
     RoleDefinition,
-    User
+    User,
+    EnhancedAppNotification
 } from '../types';
 import { workflowEngineService } from '../services/workflowEngineService';
 import { notificationEngineService, interpolateTemplate, buildTeamsAdaptiveCard, buildEmailHtml, PROCUREFLOW_LOGO_URL, PROCUREFLOW_ICON_URL } from '../services/notificationEngineService';
@@ -22,7 +23,7 @@ import { useToast } from './ToastNotification';
 import PageHeader from './PageHeader';
 
 export const WorkflowNotificationHub: React.FC = () => {
-    const { roles, users, hasPermission, currentUser, refreshNotifications, setIsNotificationDrawerOpen, sites } = useApp();
+    const { roles, users, hasPermission, currentUser, refreshNotifications, setIsNotificationDrawerOpen, sites, triggerNotificationPopup } = useApp();
     const [showTeamsGuide, setShowTeamsGuide] = useState(false);
     const [testEmailRecipient, setTestEmailRecipient] = useState(currentUser?.email || 'aaron.bell@splservices.com.au');
     const [isSendingRealEmail, setIsSendingRealEmail] = useState(false);
@@ -467,12 +468,13 @@ export const WorkflowNotificationHub: React.FC = () => {
         setIsTriggeringInApp(true);
         try {
             const { supabase } = await import('../lib/supabaseClient');
-            const { error: insErr } = await supabase.from('user_notifications').insert({
+            const newNotifPayload: EnhancedAppNotification = {
+                id: `test-notif-${Date.now()}`,
                 user_id: currentUser.id,
                 title: 'Purchase Order Approval Required: PO-2026-9042',
                 message: `PO-2026-9042 for $14,280.00 submitted by ${currentUser.name} requires your review.`,
                 type: 'PO_APPROVAL_REQUEST',
-                category: 'APPROVALS',
+                category: 'APPROVAL',
                 severity: 'WARNING',
                 action_url: '/requests',
                 action_label: 'Review PO',
@@ -482,15 +484,35 @@ export const WorkflowNotificationHub: React.FC = () => {
                 metadata: {
                     po_number: 'PO-2026-9042',
                     total_amount: '$14,280.00'
-                }
-            });
+                },
+                created_at: new Date().toISOString()
+            };
+
+            const { data: insertedData, error: insErr } = await supabase.from('user_notifications').insert({
+                user_id: currentUser.id,
+                title: newNotifPayload.title,
+                message: newNotifPayload.message,
+                type: newNotifPayload.type,
+                category: 'APPROVAL',
+                severity: newNotifPayload.severity,
+                action_url: newNotifPayload.action_url,
+                action_label: newNotifPayload.action_label,
+                entity_type: newNotifPayload.entity_type,
+                entity_id: newNotifPayload.entity_id,
+                is_read: false,
+                metadata: newNotifPayload.metadata
+            }).select().single();
 
             if (insErr) {
                 error(`Failed to create in-app notification: ${insErr.message}`);
             } else {
-                playNotificationChime();
+                playNotificationChime('alert');
+                const finalNotif = (insertedData as EnhancedAppNotification) || newNotifPayload;
+                if (triggerNotificationPopup) {
+                    triggerNotificationPopup(finalNotif);
+                }
                 if (refreshNotifications) refreshNotifications();
-                success('In-App notification dispatched! Click the Bell icon in the header.');
+                success('In-App notification pop-up triggered! Check the interactive alert on your screen.');
             }
         } catch (e: any) {
             error(`Failed to trigger in-app notification: ${e.message}`);
@@ -1258,12 +1280,12 @@ export const WorkflowNotificationHub: React.FC = () => {
                             </div>
                             <div>
                                 <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                    In-App Realtime Stream & Drawer
+                                    In-App Realtime Stream, Interactive Pop-ups & Drawer
                                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                                         Connected &bull; Supabase Realtime
                                     </span>
                                 </h3>
-                                <p className="text-xs text-gray-500">Synthesizes Web Audio sound chimes, increments the header badge, and updates drawer live</p>
+                                <p className="text-xs text-gray-500">Triggers interactive floating alert pop-ups, Web Audio sound chimes, increments the header badge, and updates drawer live</p>
                             </div>
                         </div>
 
@@ -1275,7 +1297,7 @@ export const WorkflowNotificationHub: React.FC = () => {
                                 className="px-5 py-2.5 bg-amber-500 text-white font-bold text-xs rounded-xl shadow-md hover:bg-amber-600 transition-all flex items-center gap-2"
                             >
                                 <Zap size={16} className={isTriggeringInApp ? 'animate-pulse' : ''} />
-                                Trigger Real In-App Notification (Chime + Badge)
+                                Trigger In-App Notification Pop-up (Live Alert)
                             </button>
 
                             <button

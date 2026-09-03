@@ -278,6 +278,9 @@ interface AppContextType {
   isNotificationPrefsOpen: boolean;
   setIsNotificationPrefsOpen: (open: boolean) => void;
   refreshNotifications: () => Promise<void>;
+  notificationPopups: EnhancedAppNotification[];
+  dismissNotificationPopup: (id: string) => void;
+  triggerNotificationPopup: (notif: EnhancedAppNotification) => void;
   
   // Core Actions
   createPO: (po: PORequest) => Promise<boolean>;
@@ -499,12 +502,24 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // Real-Time In-App Notifications State
   const [notifications, setNotifications] = useState<EnhancedAppNotification[]>([]);
+  const [notificationPopups, setNotificationPopups] = useState<EnhancedAppNotification[]>([]);
   const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
   const [isNotificationPrefsOpen, setIsNotificationPrefsOpen] = useState(false);
 
   const unreadNotificationCount = React.useMemo(() => {
     return notifications.filter(n => !n.is_read).length;
   }, [notifications]);
+
+  const dismissNotificationPopup = useCallback((id: string) => {
+    setNotificationPopups(prev => prev.filter(p => p.id !== id));
+  }, []);
+
+  const triggerNotificationPopup = useCallback((notif: EnhancedAppNotification) => {
+    setNotificationPopups(prev => {
+      if (prev.some(p => p.id === notif.id)) return prev;
+      return [notif, ...prev].slice(0, 3);
+    });
+  }, []);
 
   const refreshNotifications = useCallback(async () => {
     if (!currentUser?.id) return;
@@ -519,6 +534,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   useEffect(() => {
     if (!currentUser?.id) {
       setNotifications([]);
+      setNotificationPopups([]);
       realtimeNotificationService.unsubscribe();
       return;
     }
@@ -526,12 +542,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     refreshNotifications();
     realtimeNotificationService.subscribe(currentUser.id, (newNotif) => {
       setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
+      triggerNotificationPopup(newNotif);
     });
 
     return () => {
       realtimeNotificationService.unsubscribe();
     };
-  }, [currentUser?.id, refreshNotifications]);
+  }, [currentUser?.id, refreshNotifications, triggerNotificationPopup]);
 
   const currentUserRef = React.useRef<User | null>(currentUser);
   const rolesRef = React.useRef<RoleDefinition[]>(roles);
@@ -3113,6 +3130,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep,
     notificationRules, upsertNotificationRule, deleteNotificationRule,
     notifications, unreadNotificationCount, isNotificationDrawerOpen, setIsNotificationDrawerOpen, isNotificationPrefsOpen, setIsNotificationPrefsOpen, refreshNotifications,
+    notificationPopups, dismissNotificationPopup, triggerNotificationPopup,
     theme, setTheme, branding, updateBranding,
     createPO, saveDraftPO, submitDraftPO, updatePendingPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
     updateProfile, switchRole,
@@ -3172,6 +3190,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
     notifications, unreadNotificationCount, isNotificationDrawerOpen, isNotificationPrefsOpen, refreshNotifications,
+    notificationPopups, dismissNotificationPopup, triggerNotificationPopup,
     reloadData, siteName, featureFlags, marginThresholds, cachedReports, cachedRunTimes, setReportCache
   ]);
 
