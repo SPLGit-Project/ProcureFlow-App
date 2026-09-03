@@ -128,13 +128,13 @@ export default function EOMReconciliationAdminPanel() {
 
         <div className="p-5 rounded-2xl bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 shadow-2xs">
           <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-            Linen Hub Holdings Reserve
+            Linen Hub Dedicated Reserve
           </span>
           <p className="text-2xl font-black text-cyan-600 dark:text-cyan-400 tracking-tight mt-1">
             {formatCurrency(financialTotals.linenHubEx)}
           </p>
           <span className="text-[11px] font-medium text-gray-500 mt-1 block">
-            Central replenishment &amp; buffer stock
+            Central replenishment &amp; dedicated stock
           </span>
         </div>
 

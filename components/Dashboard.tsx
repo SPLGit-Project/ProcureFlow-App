@@ -23,7 +23,7 @@ import {
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-export type TimeframePreset = 'ALL' | 'FY2627' | 'FY_YTD' | 'YTD' | 'THIS_MONTH' | 'LAST_MONTH' | 'CUSTOM';
+export type TimeframePreset = 'ALL' | 'FY2627' | 'YTD' | 'THIS_MONTH' | 'LAST_MONTH' | 'CUSTOM';
 
 function parseDateMs(dateStr?: string): number {
   if (!dateStr) return NaN;
@@ -56,16 +56,10 @@ function matchesTimeframe(
   const currentMonth = now.getMonth();
 
   if (preset === 'FY2627') {
+    // FY26-27 Year-To-Date (from 1 July 2026 up to current date)
     const fyStart = new Date(2026, 6, 1, 0, 0, 0, 0).getTime();
-    const fyEnd = new Date(2027, 5, 30, 23, 59, 59, 999).getTime();
-    return reqMs >= fyStart && reqMs <= fyEnd;
-  }
-
-  if (preset === 'FY_YTD') {
-    const fyStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
-    const fyStart = new Date(fyStartYear, 6, 1, 0, 0, 0, 0).getTime();
-    const fyEnd = now.getTime();
-    return reqMs >= fyStart && reqMs <= fyEnd;
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+    return reqMs >= fyStart && reqMs <= endOfToday;
   }
 
   if (preset === 'YTD') {
@@ -390,7 +384,7 @@ export default function Dashboard() {
 
         let primaryCategory = 'Depletion';
         if (p.linenHubSpendEx > p.depletionSpendEx && p.linenHubSpendEx > p.newBusinessSpendEx) {
-          primaryCategory = 'Linen Hub';
+          primaryCategory = 'Dedicated';
         } else if (p.newBusinessSpendEx > p.depletionSpendEx) {
           primaryCategory = 'New Business';
         }
@@ -518,7 +512,6 @@ export default function Dashboard() {
             {[
               { id: 'ALL', label: 'All Time' },
               { id: 'FY2627', label: 'FY26-27' },
-              { id: 'FY_YTD', label: 'FY YTD' },
               { id: 'YTD', label: 'YTD' },
               { id: 'THIS_MONTH', label: 'This Month' },
               { id: 'LAST_MONTH', label: 'Last Month' },
@@ -766,13 +759,13 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Card 6: Linen Hub Spend (Ex GST) */}
+        {/* Card 6: Linen Hub / Dedicated Spend (Ex GST) */}
         <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-cyan-500" />
               <span className="text-[10px] font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
-                Linen Hub
+                Linen Hub (Dedicated)
               </span>
             </div>
             <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-600 flex items-center justify-center font-bold">
@@ -806,7 +799,7 @@ export default function Dashboard() {
               Monthly Net Spend Trend (Ex GST)
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Chronological net expenditure by spend stream (Depletion replacement, New Business growth, Linen Hub buffer)
+              Chronological net expenditure by spend stream (Depletion replacement, New Business growth, Linen Hub dedicated)
             </p>
           </div>
           <button
@@ -840,7 +833,7 @@ export default function Dashboard() {
                 <Legend wrapperStyle={{ paddingTop: '12px', fontSize: '11px' }} />
                 <Bar dataKey="depletionSpend" name="Depletion (Replacement)" stackId="spend" fill="#f59e0b" radius={[0, 0, 0, 0]} />
                 <Bar dataKey="newBusinessSpend" name="New Business (Growth)" stackId="spend" fill="#10b981" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="linenHubSpend" name="Linen Hub (Holding Buffer)" stackId="spend" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="linenHubSpend" name="Linen Hub (Dedicated)" stackId="spend" fill="#06b6d4" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
