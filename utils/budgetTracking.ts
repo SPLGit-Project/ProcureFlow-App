@@ -201,6 +201,8 @@ export function classifyLegacyPO(po: {
       combinedText.includes('HOLDINGS') ||
       combinedText.includes('AIRLIE BEACH')
     ) {
+      sector = 'LINEN_HUB';
+    } else if (po.reasonForRequest === 'Other') {
       sector = 'OTHER';
     } else {
       sector = 'ACCOMMODATION';

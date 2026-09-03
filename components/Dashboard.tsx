@@ -8,7 +8,7 @@ import {
   TrendingUp, ArrowRight, Package,
   Calendar, Layers, Building2,
   DollarSign, BarChart3,
-  X, Activity, Compass
+  X, Activity, Compass, Tag
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from './PageHeader';
@@ -91,6 +91,12 @@ function matchesTimeframe(
   return true;
 }
 
+export interface InputtedOtherReason {
+  reason: string;
+  spendEx: number;
+  orders: number;
+}
+
 interface CategoryMetrics {
   id: SpendCategory;
   name: string;
@@ -104,6 +110,7 @@ interface CategoryMetrics {
   newBusinessOrders: number;
   otherSpendEx: number;
   otherOrders: number;
+  otherReasons: InputtedOtherReason[];
 }
 
 export default function Dashboard() {
@@ -161,6 +168,7 @@ export default function Dashboard() {
         newBusinessOrders: 0,
         otherSpendEx: 0,
         otherOrders: 0,
+        otherReasons: [],
       },
       HEALTHCARE: {
         id: 'HEALTHCARE',
@@ -175,6 +183,7 @@ export default function Dashboard() {
         newBusinessOrders: 0,
         otherSpendEx: 0,
         otherOrders: 0,
+        otherReasons: [],
       },
       MINING: {
         id: 'MINING',
@@ -189,6 +198,22 @@ export default function Dashboard() {
         newBusinessOrders: 0,
         otherSpendEx: 0,
         otherOrders: 0,
+        otherReasons: [],
+      },
+      LINEN_HUB: {
+        id: 'LINEN_HUB',
+        name: 'Linen Hub',
+        spendEx: 0,
+        spendInc: 0,
+        orders: 0,
+        pct: 0,
+        depletionSpendEx: 0,
+        depletionOrders: 0,
+        newBusinessSpendEx: 0,
+        newBusinessOrders: 0,
+        otherSpendEx: 0,
+        otherOrders: 0,
+        otherReasons: [],
       },
       OTHER: {
         id: 'OTHER',
@@ -203,6 +228,7 @@ export default function Dashboard() {
         newBusinessOrders: 0,
         otherSpendEx: 0,
         otherOrders: 0,
+        otherReasons: [],
       }
     };
 
@@ -227,14 +253,26 @@ export default function Dashboard() {
         contractStream: p.contractStream,
       });
 
-      // 1. Determine Category: Accommodation vs Healthcare vs Mining vs Other
+      const bCode = normalizeBranchCode(p.site || p.siteId, desc);
+      const isLinenHub = bCode === 'HOL' ||
+        p.siteId === 'site-hol' ||
+        p.sector === 'LINEN_HUB' ||
+        classified.sector === 'LINEN_HUB' ||
+        p.spendType === 'LINEN_HUB' ||
+        classified.spendType === 'LINEN_HUB' ||
+        desc.includes('LINEN HUB') ||
+        desc.includes('HOLDINGS');
+
+      // 1. Determine Category: Linen Hub vs Other vs Mining vs Healthcare vs Accommodation
       let catKey: SpendCategory = 'ACCOMMODATION';
-      if (p.sector === 'MINING' || classified.sector === 'MINING') {
+      if (isLinenHub) {
+        catKey = 'LINEN_HUB';
+      } else if (p.reasonForRequest === 'Other' || p.sector === 'OTHER' || classified.sector === 'OTHER') {
+        catKey = 'OTHER';
+      } else if (p.sector === 'MINING' || classified.sector === 'MINING' || classified.contractStream === 'MINING') {
         catKey = 'MINING';
       } else if (p.sector === 'HEALTHCARE' || classified.sector === 'HEALTHCARE') {
         catKey = 'HEALTHCARE';
-      } else if (p.sector === 'OTHER' || classified.sector === 'OTHER' || classified.branch === 'HOL') {
-        catKey = 'OTHER';
       } else {
         catKey = 'ACCOMMODATION';
       }
@@ -255,7 +293,7 @@ export default function Dashboard() {
         reasonKey = 'depletion';
       }
 
-      // Total reasons accumulation
+      // Total reasons accumulation (for Consolidated card and charts)
       if (reasonKey === 'depletion') {
         totalDepletionSpendEx += pEx;
         totalDepletionOrders++;
@@ -283,13 +321,40 @@ export default function Dashboard() {
         cat.otherSpendEx += pEx;
         cat.otherOrders++;
       }
+
+      // 3. For the OTHER card: Track specific inputted reasons
+      if (catKey === 'OTHER') {
+        let rawReason = (p.comments || '').trim();
+        if (!rawReason) {
+          rawReason = p.reasonForRequest && p.reasonForRequest !== 'Other'
+            ? p.reasonForRequest
+            : 'Unspecified / General';
+        }
+        // Truncate cleanly if verbose
+        const cleanReason = rawReason.length > 32 ? rawReason.substring(0, 30) + '...' : rawReason;
+        const existing = cat.otherReasons.find((r) => r.reason.toLowerCase() === cleanReason.toLowerCase());
+        if (existing) {
+          existing.spendEx += pEx;
+          existing.orders += 1;
+        } else {
+          cat.otherReasons.push({
+            reason: cleanReason,
+            spendEx: pEx,
+            orders: 1
+          });
+        }
+      }
     });
 
     const total = totalSpendEx || 1;
     categories.ACCOMMODATION.pct = (categories.ACCOMMODATION.spendEx / total) * 100;
     categories.HEALTHCARE.pct = (categories.HEALTHCARE.spendEx / total) * 100;
     categories.MINING.pct = (categories.MINING.spendEx / total) * 100;
+    categories.LINEN_HUB.pct = (categories.LINEN_HUB.spendEx / total) * 100;
     categories.OTHER.pct = (categories.OTHER.spendEx / total) * 100;
+
+    // Sort reasons inside OTHER card by highest spend
+    categories.OTHER.otherReasons.sort((a, b) => b.spendEx - a.spendEx);
 
     return {
       totalSpendEx,
@@ -401,6 +466,7 @@ export default function Dashboard() {
       accommodationSpendEx: number;
       healthcareSpendEx: number;
       miningSpendEx: number;
+      linenHubSpendEx: number;
       otherCategorySpendEx: number;
       orderCount: number;
     }>();
@@ -417,6 +483,7 @@ export default function Dashboard() {
         accommodationSpendEx: 0,
         healthcareSpendEx: 0,
         miningSpendEx: 0,
+        linenHubSpendEx: 0,
         otherCategorySpendEx: 0,
         orderCount: 0,
       });
@@ -438,6 +505,7 @@ export default function Dashboard() {
           accommodationSpendEx: 0,
           healthcareSpendEx: 0,
           miningSpendEx: 0,
+          linenHubSpendEx: 0,
           otherCategorySpendEx: 0,
           orderCount: 0,
         });
@@ -462,13 +530,24 @@ export default function Dashboard() {
         contractStream: p.contractStream,
       });
 
+      const isLinenHub = bCode === 'HOL' ||
+        p.siteId === 'site-hol' ||
+        p.sector === 'LINEN_HUB' ||
+        classified.sector === 'LINEN_HUB' ||
+        p.spendType === 'LINEN_HUB' ||
+        classified.spendType === 'LINEN_HUB' ||
+        desc.includes('LINEN HUB') ||
+        desc.includes('HOLDINGS');
+
       // Category breakdown
-      if (p.sector === 'MINING' || classified.sector === 'MINING') {
+      if (isLinenHub) {
+        entry.linenHubSpendEx += pEx;
+      } else if (p.reasonForRequest === 'Other' || p.sector === 'OTHER' || classified.sector === 'OTHER') {
+        entry.otherCategorySpendEx += pEx;
+      } else if (p.sector === 'MINING' || classified.sector === 'MINING' || classified.contractStream === 'MINING') {
         entry.miningSpendEx += pEx;
       } else if (p.sector === 'HEALTHCARE' || classified.sector === 'HEALTHCARE') {
         entry.healthcareSpendEx += pEx;
-      } else if (p.sector === 'OTHER' || classified.sector === 'OTHER' || bCode === 'HOL') {
-        entry.otherCategorySpendEx += pEx;
       } else {
         entry.accommodationSpendEx += pEx;
       }
@@ -500,7 +579,9 @@ export default function Dashboard() {
         const shareOfTotal = (p.actualSpendEx / totalNetworkSpendEx) * 100;
 
         let primaryCategory = 'Accommodation';
-        if (p.miningSpendEx > p.accommodationSpendEx && p.miningSpendEx > p.healthcareSpendEx) {
+        if (p.linenHubSpendEx > p.accommodationSpendEx && p.linenHubSpendEx > p.healthcareSpendEx) {
+          primaryCategory = 'Linen Hub';
+        } else if (p.miningSpendEx > p.accommodationSpendEx && p.miningSpendEx > p.healthcareSpendEx) {
           primaryCategory = 'Mining';
         } else if (p.healthcareSpendEx > p.accommodationSpendEx) {
           primaryCategory = 'Healthcare';
@@ -733,29 +814,29 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── CATEGORY CARDS WITH INTERNAL REASON BREAKDOWNS ───────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 sm:gap-4">
+      {/* ── 6 EXECUTIVE CATEGORY CARDS ───────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-3.5">
         {/* Card 1: Total Net Spend (Ex GST) */}
-        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+        <div className="p-3.5 sm:p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
                   Total Net Spend
                 </span>
-                <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mt-0.5">
+                <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">
                   Consolidated Spend
                 </p>
               </div>
-              <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold shrink-0">
-                <DollarSign size={16} />
+              <div className="w-7 h-7 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold shrink-0">
+                <DollarSign size={15} />
               </div>
             </div>
             <div>
-              <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+              <p className="text-lg sm:text-xl font-black text-gray-950 dark:text-white tracking-tight">
                 {formatCurrency(spendKpis.totalSpendEx)}
               </p>
-              <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
+              <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
                 <span className="font-bold text-blue-600 dark:text-blue-400">{spendKpis.orderCount} Total Orders</span>
                 <span>GST: {formatCurrency(spendKpis.totalGst)}</span>
               </div>
@@ -766,32 +847,32 @@ export default function Dashboard() {
           <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800/80 space-y-1.5 text-xs font-medium">
             <div className="flex items-center justify-between text-[11px]">
               <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                 Depletion:
               </span>
               <span className="font-bold text-gray-900 dark:text-white">
                 {formatCurrency(spendKpis.totalDepletionSpendEx)}
-                <span className="text-[10px] text-gray-400 font-normal ml-1">({spendKpis.totalDepletionOrders})</span>
+                <span className="text-[10px] text-gray-400 font-normal ml-0.5">({spendKpis.totalDepletionOrders})</span>
               </span>
             </div>
             <div className="flex items-center justify-between text-[11px]">
               <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                 New Business:
               </span>
               <span className="font-bold text-gray-900 dark:text-white">
                 {formatCurrency(spendKpis.totalNewBusinessSpendEx)}
-                <span className="text-[10px] text-gray-400 font-normal ml-1">({spendKpis.totalNewBusinessOrders})</span>
+                <span className="text-[10px] text-gray-400 font-normal ml-0.5">({spendKpis.totalNewBusinessOrders})</span>
               </span>
             </div>
             <div className="flex items-center justify-between text-[11px]">
               <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                <span className="w-2 h-2 rounded-full bg-cyan-500 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 shrink-0" />
                 Other:
               </span>
               <span className="font-bold text-gray-900 dark:text-white">
                 {formatCurrency(spendKpis.totalOtherSpendEx)}
-                <span className="text-[10px] text-gray-400 font-normal ml-1">({spendKpis.totalOtherOrders})</span>
+                <span className="text-[10px] text-gray-400 font-normal ml-0.5">({spendKpis.totalOtherOrders})</span>
               </span>
             </div>
           </div>
@@ -801,9 +882,9 @@ export default function Dashboard() {
         {(() => {
           const cat = spendKpis.categories.ACCOMMODATION;
           return (
-            <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+            <div className="p-3.5 sm:p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-indigo-500" />
@@ -811,27 +892,27 @@ export default function Dashboard() {
                         Accommodation
                       </span>
                     </div>
-                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mt-0.5">
+                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">
                       Hotels &amp; Resorts
                     </p>
                   </div>
-                  <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold shrink-0">
-                    <Building2 size={16} />
+                  <div className="w-7 h-7 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+                    <Building2 size={15} />
                   </div>
                 </div>
                 <div>
-                  <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+                  <p className="text-lg sm:text-xl font-black text-gray-950 dark:text-white tracking-tight">
                     {formatCurrency(cat.spendEx)}
                   </p>
-                  <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
+                  <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-1.5">
                     <div
                       className="h-full bg-indigo-500 rounded-full transition-all duration-500"
                       style={{ width: `${Math.min(100, cat.pct)}%` }}
                     />
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
+                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
                     <span className="font-bold text-gray-900 dark:text-white">{cat.orders} Orders</span>
-                    <span className="font-bold text-indigo-600 dark:text-indigo-400">{cat.pct.toFixed(1)}% of spend</span>
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400">{cat.pct.toFixed(1)}%</span>
                   </div>
                 </div>
               </div>
@@ -840,32 +921,32 @@ export default function Dashboard() {
               <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800/80 space-y-1.5 text-xs font-medium">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                     Depletion:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.depletionSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.depletionOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.depletionOrders})</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                     New Business:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.newBusinessSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.newBusinessOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.newBusinessOrders})</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-cyan-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 shrink-0" />
                     Other:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.otherSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.otherOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.otherOrders})</span>
                   </span>
                 </div>
               </div>
@@ -877,9 +958,9 @@ export default function Dashboard() {
         {(() => {
           const cat = spendKpis.categories.HEALTHCARE;
           return (
-            <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+            <div className="p-3.5 sm:p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-purple-500" />
@@ -887,27 +968,27 @@ export default function Dashboard() {
                         Healthcare
                       </span>
                     </div>
-                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mt-0.5">
+                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">
                       Hospitals &amp; Clinical
                     </p>
                   </div>
-                  <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold shrink-0">
-                    <Activity size={16} />
+                  <div className="w-7 h-7 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold shrink-0">
+                    <Activity size={15} />
                   </div>
                 </div>
                 <div>
-                  <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+                  <p className="text-lg sm:text-xl font-black text-gray-950 dark:text-white tracking-tight">
                     {formatCurrency(cat.spendEx)}
                   </p>
-                  <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
+                  <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-1.5">
                     <div
                       className="h-full bg-purple-500 rounded-full transition-all duration-500"
                       style={{ width: `${Math.min(100, cat.pct)}%` }}
                     />
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
+                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
                     <span className="font-bold text-gray-900 dark:text-white">{cat.orders} Orders</span>
-                    <span className="font-bold text-purple-600 dark:text-purple-400">{cat.pct.toFixed(1)}% of spend</span>
+                    <span className="font-bold text-purple-600 dark:text-purple-400">{cat.pct.toFixed(1)}%</span>
                   </div>
                 </div>
               </div>
@@ -916,32 +997,32 @@ export default function Dashboard() {
               <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800/80 space-y-1.5 text-xs font-medium">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                     Depletion:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.depletionSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.depletionOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.depletionOrders})</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                     New Business:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.newBusinessSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.newBusinessOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.newBusinessOrders})</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-cyan-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 shrink-0" />
                     Other:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.otherSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.otherOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.otherOrders})</span>
                   </span>
                 </div>
               </div>
@@ -953,9 +1034,9 @@ export default function Dashboard() {
         {(() => {
           const cat = spendKpis.categories.MINING;
           return (
-            <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+            <div className="p-3.5 sm:p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-amber-600" />
@@ -963,27 +1044,27 @@ export default function Dashboard() {
                         Mining
                       </span>
                     </div>
-                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mt-0.5">
+                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">
                       Resources &amp; Camps
                     </p>
                   </div>
-                  <div className="w-8 h-8 rounded-xl bg-amber-600/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
-                    <Compass size={16} />
+                  <div className="w-7 h-7 rounded-xl bg-amber-600/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
+                    <Compass size={15} />
                   </div>
                 </div>
                 <div>
-                  <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+                  <p className="text-lg sm:text-xl font-black text-gray-950 dark:text-white tracking-tight">
                     {formatCurrency(cat.spendEx)}
                   </p>
-                  <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
+                  <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-1.5">
                     <div
                       className="h-full bg-amber-600 rounded-full transition-all duration-500"
                       style={{ width: `${Math.min(100, cat.pct)}%` }}
                     />
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
+                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
                     <span className="font-bold text-gray-900 dark:text-white">{cat.orders} Orders</span>
-                    <span className="font-bold text-amber-700 dark:text-amber-400">{cat.pct.toFixed(1)}% of spend</span>
+                    <span className="font-bold text-amber-700 dark:text-amber-400">{cat.pct.toFixed(1)}%</span>
                   </div>
                 </div>
               </div>
@@ -992,32 +1073,32 @@ export default function Dashboard() {
               <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800/80 space-y-1.5 text-xs font-medium">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                     Depletion:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.depletionSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.depletionOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.depletionOrders})</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                     New Business:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.newBusinessSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.newBusinessOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.newBusinessOrders})</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-cyan-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 shrink-0" />
                     Other:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.otherSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.otherOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.otherOrders})</span>
                   </span>
                 </div>
               </div>
@@ -1025,41 +1106,41 @@ export default function Dashboard() {
           );
         })()}
 
-        {/* Card 5: Other */}
+        {/* Card 5: Linen Hub */}
         {(() => {
-          const cat = spendKpis.categories.OTHER;
+          const cat = spendKpis.categories.LINEN_HUB;
           return (
-            <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+            <div className="p-3.5 sm:p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-cyan-500" />
-                      <span className="text-[10px] font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
-                        Other
+                      <span className="w-2 h-2 rounded-full bg-teal-500" />
+                      <span className="text-[10px] font-black uppercase tracking-wider text-teal-600 dark:text-teal-400">
+                        Linen Hub
                       </span>
                     </div>
-                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mt-0.5">
-                      Central &amp; Unallocated
+                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                      Central Holding
                     </p>
                   </div>
-                  <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-600 flex items-center justify-center font-bold shrink-0">
-                    <Package size={16} />
+                  <div className="w-7 h-7 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center font-bold shrink-0">
+                    <Layers size={15} />
                   </div>
                 </div>
                 <div>
-                  <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+                  <p className="text-lg sm:text-xl font-black text-gray-950 dark:text-white tracking-tight">
                     {formatCurrency(cat.spendEx)}
                   </p>
-                  <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
+                  <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-1.5">
                     <div
-                      className="h-full bg-cyan-500 rounded-full transition-all duration-500"
+                      className="h-full bg-teal-500 rounded-full transition-all duration-500"
                       style={{ width: `${Math.min(100, cat.pct)}%` }}
                     />
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
+                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
                     <span className="font-bold text-gray-900 dark:text-white">{cat.orders} Orders</span>
-                    <span className="font-bold text-cyan-600 dark:text-cyan-400">{cat.pct.toFixed(1)}% of spend</span>
+                    <span className="font-bold text-teal-600 dark:text-teal-400">{cat.pct.toFixed(1)}%</span>
                   </div>
                 </div>
               </div>
@@ -1068,34 +1149,103 @@ export default function Dashboard() {
               <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800/80 space-y-1.5 text-xs font-medium">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                     Depletion:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.depletionSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.depletionOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.depletionOrders})</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                     New Business:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.newBusinessSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.newBusinessOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.newBusinessOrders})</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-cyan-500 shrink-0" />
-                    Other:
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 shrink-0" />
+                    Dedicated:
                   </span>
                   <span className="font-bold text-gray-900 dark:text-white">
                     {formatCurrency(cat.otherSpendEx)}
-                    <span className="text-[10px] text-gray-400 font-normal ml-1">({cat.otherOrders})</span>
+                    <span className="text-[10px] text-gray-400 font-normal ml-0.5">({cat.otherOrders})</span>
                   </span>
                 </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Card 6: Other (Displays Inputted Reasons for 'Other' Requests) */}
+        {(() => {
+          const cat = spendKpis.categories.OTHER;
+          return (
+            <div className="p-3.5 sm:p-4 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-slate-500" />
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                        Other
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                      Special &amp; Custom
+                    </p>
+                  </div>
+                  <div className="w-7 h-7 rounded-xl bg-slate-500/10 text-slate-600 flex items-center justify-center font-bold shrink-0">
+                    <Tag size={15} />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-lg sm:text-xl font-black text-gray-950 dark:text-white tracking-tight">
+                    {formatCurrency(cat.spendEx)}
+                  </p>
+                  <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-1.5">
+                    <div
+                      className="h-full bg-slate-500 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, cat.pct)}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-medium">
+                    <span className="font-bold text-gray-900 dark:text-white">{cat.orders} Orders</span>
+                    <span className="font-bold text-slate-600 dark:text-slate-400">{cat.pct.toFixed(1)}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Inputted Reasons Breakdown for 'Other' Requests */}
+              <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800/80 space-y-1.5 text-xs font-medium">
+                {cat.otherReasons.length > 0 ? (
+                  cat.otherReasons.slice(0, 3).map((r) => (
+                    <div key={r.reason} className="flex items-center justify-between text-[11px]">
+                      <span className="flex items-center gap-1 text-gray-500 dark:text-gray-400 truncate max-w-[105px]" title={r.reason}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                        <span className="truncate">{r.reason}:</span>
+                      </span>
+                      <span className="font-bold text-gray-900 dark:text-white shrink-0 text-right">
+                        {formatCurrency(r.spendEx)}
+                        <span className="text-[10px] text-gray-400 font-normal ml-0.5">({r.orders})</span>
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-2.5 text-center text-[10px] text-gray-400 italic">
+                    No &apos;Other&apos; requests in period
+                  </div>
+                )}
+                {cat.otherReasons.length > 3 && (
+                  <div className="text-[9px] text-gray-400 font-medium text-right pt-0.5">
+                    +{cat.otherReasons.length - 3} more reasons
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -1211,7 +1361,9 @@ export default function Dashboard() {
                           ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
                           : s.primaryCategory === 'Mining'
                             ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-                            : 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300'
+                            : s.primaryCategory === 'Linen Hub'
+                              ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300'
+                              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}>
                       {s.primaryCategory}
                     </span>

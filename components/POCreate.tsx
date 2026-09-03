@@ -179,6 +179,13 @@ const POCreate = () => {
     ) {
       return 'ACCOMMODATION';
     }
+    if (
+      upper.includes('LINEN HUB') ||
+      upper.includes('HOLDINGS') ||
+      upper.includes('AIRLIE BEACH')
+    ) {
+      return 'LINEN_HUB';
+    }
     return null;
   };
 
@@ -982,11 +989,12 @@ const POCreate = () => {
                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
                                  Customer Category
                                </label>
-                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                               <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
                                  {[
                                    { id: 'ACCOMMODATION', label: 'Accommodation' },
                                    { id: 'HEALTHCARE', label: 'Healthcare' },
                                    { id: 'MINING', label: 'Mining' },
+                                   { id: 'LINEN_HUB', label: 'Linen Hub' },
                                    { id: 'OTHER', label: 'Other' },
                                  ].map((cat) => (
                                    <button
