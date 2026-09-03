@@ -488,6 +488,13 @@ export const WorkflowNotificationHub: React.FC = () => {
                 created_at: new Date().toISOString()
             };
 
+            // 1. Instantly trigger visual pop-up and chime for 0ms feedback
+            playNotificationChime('alert');
+            if (triggerNotificationPopup) {
+                triggerNotificationPopup(newNotifPayload);
+            }
+
+            // 2. Persist to Supabase in parallel
             const { data: insertedData, error: insErr } = await supabase.from('user_notifications').insert({
                 user_id: currentUser.id,
                 title: newNotifPayload.title,
@@ -504,16 +511,13 @@ export const WorkflowNotificationHub: React.FC = () => {
             }).select().single();
 
             if (insErr) {
-                error(`Failed to create in-app notification: ${insErr.message}`);
-            } else {
-                playNotificationChime('alert');
-                const finalNotif = (insertedData as EnhancedAppNotification) || newNotifPayload;
-                if (triggerNotificationPopup) {
-                    triggerNotificationPopup(finalNotif);
-                }
-                if (refreshNotifications) refreshNotifications();
-                success('In-App notification pop-up triggered! Check the interactive alert on your screen.');
+                console.warn('Note: db persistence warning:', insErr.message);
+            } else if (insertedData && triggerNotificationPopup) {
+                triggerNotificationPopup(insertedData as EnhancedAppNotification);
             }
+
+            if (refreshNotifications) refreshNotifications();
+            success('In-App notification pop-up triggered! Check the interactive alert on your screen.');
         } catch (e: any) {
             error(`Failed to trigger in-app notification: ${e.message}`);
         } finally {

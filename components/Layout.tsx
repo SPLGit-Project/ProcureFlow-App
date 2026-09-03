@@ -773,6 +773,13 @@ const Layout = () => {
           <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
           <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
 
+          <InAppNotificationPopupContainer
+            popups={notificationPopups}
+            onDismiss={dismissNotificationPopup}
+            onOpenDrawer={() => setIsNotificationDrawerOpen(true)}
+            onRefresh={refreshNotifications}
+          />
+
           <NotificationDrawer
             isOpen={isNotificationDrawerOpen}
             onClose={() => setIsNotificationDrawerOpen(false)}

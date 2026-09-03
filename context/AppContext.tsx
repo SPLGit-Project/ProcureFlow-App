@@ -516,7 +516,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const triggerNotificationPopup = useCallback((notif: EnhancedAppNotification) => {
     setNotificationPopups(prev => {
-      if (prev.some(p => p.id === notif.id)) return prev;
+      if (prev.some(p => p.id === notif.id || (p.title === notif.title && p.message === notif.message))) return prev;
       return [notif, ...prev].slice(0, 3);
     });
   }, []);
