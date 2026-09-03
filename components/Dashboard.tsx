@@ -117,7 +117,7 @@ export default function Dashboard() {
     });
   }, [pos, activeSiteIds, timeframe, customStartDate, customEndDate]);
 
-  // ── Executive Category Spend KPI Metrics ──────────────────────────────────
+  // ── Executive Reason-Based Spend KPI Metrics ──────────────────────────────
   const spendKpis = useMemo(() => {
     let totalSpendEx = 0;
     let totalSpendInc = 0;
@@ -126,17 +126,17 @@ export default function Dashboard() {
     let depletionSpendEx = 0;
     let depletionOrders = 0;
 
+    let newBusinessSpendEx = 0;
+    let newBusinessOrders = 0;
+
+    let otherSpendEx = 0;
+    let otherOrders = 0;
+
     let accommodationSpendEx = 0;
     let accommodationOrders = 0;
 
     let healthcareSpendEx = 0;
     let healthcareOrders = 0;
-
-    let newBusinessSpendEx = 0;
-    let newBusinessOrders = 0;
-
-    let linenHubSpendEx = 0;
-    let linenHubOrders = 0;
 
     filteredPos.forEach((p) => {
       const pEx = p.totalAmount || (p.totalAmountIncGst ? p.totalAmountIncGst / 1.10 : 0);
@@ -162,11 +162,20 @@ export default function Dashboard() {
       const siteLower = (p.site || '').toLowerCase();
       const isLinenHub = p.siteId === 'site-hol' || siteLower.includes('linen hub') || siteLower.includes('holdings') || siteLower === 'hol';
 
-      // Spend Nature (Depletion vs New Business vs Linen Hub)
-      if (isLinenHub || classified.spendType === 'LINEN_HUB' || p.spendType === 'LINEN_HUB') {
-        linenHubSpendEx += pEx;
-        linenHubOrders++;
-      } else if (classified.spendType === 'NEW_BUSINESS' || p.reasonForRequest === 'New Customer' || p.spendType === 'NEW_BUSINESS') {
+      // Request Reason Classification: Depletion vs New Business vs Other
+      const isOtherReason = p.reasonForRequest === 'Other' || isLinenHub || classified.spendType === 'LINEN_HUB' || p.spendType === 'LINEN_HUB';
+      const isNewBusinessReason = !isOtherReason && (
+        p.reasonForRequest === 'New Customer' ||
+        classified.spendType === 'NEW_BUSINESS' ||
+        p.spendType === 'NEW_BUSINESS' ||
+        desc.includes('NEW BUSINESS') ||
+        desc.includes('NEW CUST')
+      );
+
+      if (isOtherReason) {
+        otherSpendEx += pEx;
+        otherOrders++;
+      } else if (isNewBusinessReason) {
         newBusinessSpendEx += pEx;
         newBusinessOrders++;
       } else {
@@ -174,7 +183,7 @@ export default function Dashboard() {
         depletionOrders++;
       }
 
-      // Sector (Accommodation vs Healthcare)
+      // Sector Classification: Accommodation vs Healthcare
       if (classified.sector === 'HEALTHCARE' || p.sector === 'HEALTHCARE') {
         healthcareSpendEx += pEx;
         healthcareOrders++;
@@ -194,23 +203,23 @@ export default function Dashboard() {
 
       depletionSpendEx,
       depletionOrders,
-      depletionPct: Math.round((depletionSpendEx / total) * 100),
-
-      accommodationSpendEx,
-      accommodationOrders,
-      accommodationPct: Math.round((accommodationSpendEx / total) * 100),
-
-      healthcareSpendEx,
-      healthcareOrders,
-      healthcarePct: Math.round((healthcareSpendEx / total) * 100),
+      depletionPct: (depletionSpendEx / total) * 100,
 
       newBusinessSpendEx,
       newBusinessOrders,
-      newBusinessPct: Math.round((newBusinessSpendEx / total) * 100),
+      newBusinessPct: (newBusinessSpendEx / total) * 100,
 
-      linenHubSpendEx,
-      linenHubOrders,
-      linenHubPct: Math.round((linenHubSpendEx / total) * 100),
+      otherSpendEx,
+      otherOrders,
+      otherPct: (otherSpendEx / total) * 100,
+
+      accommodationSpendEx,
+      accommodationOrders,
+      accommodationPct: (accommodationSpendEx / total) * 100,
+
+      healthcareSpendEx,
+      healthcareOrders,
+      healthcarePct: (healthcareSpendEx / total) * 100,
     };
   }, [filteredPos]);
 
@@ -221,7 +230,7 @@ export default function Dashboard() {
       monthLabel: string;
       depletionSpend: number;
       newBusinessSpend: number;
-      linenHubSpend: number;
+      otherSpend: number;
       totalSpend: number;
       orderCount: number;
     }>();
@@ -242,7 +251,7 @@ export default function Dashboard() {
           monthLabel,
           depletionSpend: 0,
           newBusinessSpend: 0,
-          linenHubSpend: 0,
+          otherSpend: 0,
           totalSpend: 0,
           orderCount: 0
         });
@@ -266,9 +275,18 @@ export default function Dashboard() {
       const siteLower = (p.site || '').toLowerCase();
       const isLinenHub = p.siteId === 'site-hol' || siteLower.includes('linen hub') || siteLower.includes('holdings') || siteLower === 'hol';
 
-      if (isLinenHub || classified.spendType === 'LINEN_HUB' || p.spendType === 'LINEN_HUB') {
-        entry.linenHubSpend += pEx;
-      } else if (classified.spendType === 'NEW_BUSINESS' || p.reasonForRequest === 'New Customer' || p.spendType === 'NEW_BUSINESS') {
+      const isOtherReason = p.reasonForRequest === 'Other' || isLinenHub || classified.spendType === 'LINEN_HUB' || p.spendType === 'LINEN_HUB';
+      const isNewBusinessReason = !isOtherReason && (
+        p.reasonForRequest === 'New Customer' ||
+        classified.spendType === 'NEW_BUSINESS' ||
+        p.spendType === 'NEW_BUSINESS' ||
+        desc.includes('NEW BUSINESS') ||
+        desc.includes('NEW CUST')
+      );
+
+      if (isOtherReason) {
+        entry.otherSpend += pEx;
+      } else if (isNewBusinessReason) {
         entry.newBusinessSpend += pEx;
       } else {
         entry.depletionSpend += pEx;
@@ -285,7 +303,7 @@ export default function Dashboard() {
         ...v,
         depletionSpend: Math.round(v.depletionSpend),
         newBusinessSpend: Math.round(v.newBusinessSpend),
-        linenHubSpend: Math.round(v.linenHubSpend),
+        otherSpend: Math.round(v.otherSpend),
         totalSpend: Math.round(v.totalSpend)
       }));
   }, [filteredPos]);
@@ -299,7 +317,7 @@ export default function Dashboard() {
       actualSpendInc: number;
       depletionSpendEx: number;
       newBusinessSpendEx: number;
-      linenHubSpendEx: number;
+      otherSpendEx: number;
       accommodationSpendEx: number;
       healthcareSpendEx: number;
       orderCount: number;
@@ -313,7 +331,7 @@ export default function Dashboard() {
         actualSpendInc: 0,
         depletionSpendEx: 0,
         newBusinessSpendEx: 0,
-        linenHubSpendEx: 0,
+        otherSpendEx: 0,
         accommodationSpendEx: 0,
         healthcareSpendEx: 0,
         orderCount: 0,
@@ -332,7 +350,7 @@ export default function Dashboard() {
           actualSpendInc: 0,
           depletionSpendEx: 0,
           newBusinessSpendEx: 0,
-          linenHubSpendEx: 0,
+          otherSpendEx: 0,
           accommodationSpendEx: 0,
           healthcareSpendEx: 0,
           orderCount: 0,
@@ -358,11 +376,21 @@ export default function Dashboard() {
         contractStream: p.contractStream,
       });
 
-      const isLinenHub = bCode === 'HOL' || classified.spendType === 'LINEN_HUB' || p.spendType === 'LINEN_HUB';
+      const siteLower = (p.site || '').toLowerCase();
+      const isLinenHub = bCode === 'HOL' || p.siteId === 'site-hol' || siteLower.includes('linen hub') || siteLower.includes('holdings') || siteLower === 'hol';
 
-      if (isLinenHub) {
-        entry.linenHubSpendEx += pEx;
-      } else if (classified.spendType === 'NEW_BUSINESS' || p.reasonForRequest === 'New Customer' || p.spendType === 'NEW_BUSINESS') {
+      const isOtherReason = p.reasonForRequest === 'Other' || isLinenHub || classified.spendType === 'LINEN_HUB' || p.spendType === 'LINEN_HUB';
+      const isNewBusinessReason = !isOtherReason && (
+        p.reasonForRequest === 'New Customer' ||
+        classified.spendType === 'NEW_BUSINESS' ||
+        p.spendType === 'NEW_BUSINESS' ||
+        desc.includes('NEW BUSINESS') ||
+        desc.includes('NEW CUST')
+      );
+
+      if (isOtherReason) {
+        entry.otherSpendEx += pEx;
+      } else if (isNewBusinessReason) {
         entry.newBusinessSpendEx += pEx;
       } else {
         entry.depletionSpendEx += pEx;
@@ -383,8 +411,8 @@ export default function Dashboard() {
         const shareOfTotal = (p.actualSpendEx / totalNetworkSpendEx) * 100;
 
         let primaryCategory = 'Depletion';
-        if (p.linenHubSpendEx > p.depletionSpendEx && p.linenHubSpendEx > p.newBusinessSpendEx) {
-          primaryCategory = 'Dedicated';
+        if (p.otherSpendEx > p.depletionSpendEx && p.otherSpendEx > p.newBusinessSpendEx) {
+          primaryCategory = 'Other';
         } else if (p.newBusinessSpendEx > p.depletionSpendEx) {
           primaryCategory = 'New Business';
         }
@@ -493,7 +521,7 @@ export default function Dashboard() {
                 </h2>
                 {timeframe !== 'ALL' && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
-                    {filteredPos.length} filtered {filteredPos.length === 1 ? 'order' : 'orders'}
+                    {timeframe === 'FY2627' ? 'FY26-27 YTD' : ''} {filteredPos.length} filtered {filteredPos.length === 1 ? 'order' : 'orders'}
                   </span>
                 )}
               </div>
@@ -606,187 +634,170 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── DEDICATED CATEGORY SPEND CARDS (NO DOUBLE UP, NO BUDGET VARIANCE) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5 sm:gap-4">
+      {/* ── 4 REASON-BASED SPEND CARDS (DEPLETION, NEW BUSINESS, OTHER) ──────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         {/* Card 1: Total Net Spend (Ex GST) */}
         <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
-            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-              Total Net Spend
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
-              <DollarSign size={16} />
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                Total Net Spend
+              </span>
+              <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mt-0.5">
+                Consolidated Spend
+              </p>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold shrink-0">
+              <DollarSign size={18} />
             </div>
           </div>
           <div>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+            <p className="text-2xl sm:text-3xl font-black text-gray-950 dark:text-white tracking-tight">
               {formatCurrency(spendKpis.totalSpendEx)}
             </p>
-            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 pt-2 border-t border-gray-100 dark:border-gray-800/80 flex flex-col gap-0.5 font-medium">
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800/80 flex flex-col gap-1 font-medium">
               <div className="flex items-center justify-between">
                 <span>Gross (Inc GST):</span>
-                <span className="font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(spendKpis.totalSpendInc)}</span>
+                <span className="font-bold text-gray-700 dark:text-gray-300">{formatCurrency(spendKpis.totalSpendInc)}</span>
               </div>
               <div className="flex items-center justify-between text-[10px]">
                 <span>GST: {formatCurrency(spendKpis.totalGst)}</span>
-                <span>{spendKpis.orderCount} Orders</span>
+                <span className="font-black text-blue-600 dark:text-blue-400">{spendKpis.orderCount} Total Orders</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Card 2: Depletion Spend (Ex GST) */}
+        {/* Card 2: Depletion (Reason: Depletion) */}
         <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                Depletion
-              </span>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  Depletion
+                </span>
+              </div>
+              <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mt-0.5">
+                Reason: Depletion
+              </p>
             </div>
-            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
-              <Layers size={16} />
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
+              <Layers size={18} />
             </div>
           </div>
           <div>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+            <p className="text-2xl sm:text-3xl font-black text-gray-950 dark:text-white tracking-tight">
               {formatCurrency(spendKpis.depletionSpendEx)}
             </p>
             {/* Share progress bar */}
-            <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
+            <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2.5">
               <div
                 className="h-full bg-amber-500 rounded-full transition-all duration-500"
                 style={{ width: `${Math.min(100, spendKpis.depletionPct)}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
-              <span>{spendKpis.depletionOrders} Orders</span>
-              <span className="font-bold text-amber-600 dark:text-amber-400">{spendKpis.depletionPct}% of spend</span>
+            <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-2 font-medium">
+              <span className="font-black text-gray-900 dark:text-white">{spendKpis.depletionOrders} Orders</span>
+              <span className="font-bold text-amber-600 dark:text-amber-400">{spendKpis.depletionPct.toFixed(1)}% of spend</span>
             </div>
           </div>
         </div>
 
-        {/* Card 3: Accommodation Sector Spend (Ex GST) */}
+        {/* Card 3: New Business (Reason: New Business) */}
         <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-indigo-500" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                Accommodation
-              </span>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  New Business
+                </span>
+              </div>
+              <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mt-0.5">
+                Reason: New Business
+              </p>
             </div>
-            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold">
-              <Building2 size={16} />
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold shrink-0">
+              <TrendingUp size={18} />
             </div>
           </div>
           <div>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
-              {formatCurrency(spendKpis.accommodationSpendEx)}
-            </p>
-            {/* Share progress bar */}
-            <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
-              <div
-                className="h-full bg-indigo-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, spendKpis.accommodationPct)}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
-              <span>{spendKpis.accommodationOrders} Orders</span>
-              <span className="font-bold text-indigo-600 dark:text-indigo-400">{spendKpis.accommodationPct}% of spend</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Healthcare Sector Spend (Ex GST) */}
-        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-purple-500" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                Healthcare
-              </span>
-            </div>
-            <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
-              <Activity size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
-              {formatCurrency(spendKpis.healthcareSpendEx)}
-            </p>
-            {/* Share progress bar */}
-            <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
-              <div
-                className="h-full bg-purple-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, spendKpis.healthcarePct)}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
-              <span>{spendKpis.healthcareOrders} Orders</span>
-              <span className="font-bold text-purple-600 dark:text-purple-400">{spendKpis.healthcarePct}% of spend</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 5: New Business Spend (Ex GST) */}
-        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                New Business
-              </span>
-            </div>
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
-              <TrendingUp size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
+            <p className="text-2xl sm:text-3xl font-black text-gray-950 dark:text-white tracking-tight">
               {formatCurrency(spendKpis.newBusinessSpendEx)}
             </p>
             {/* Share progress bar */}
-            <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
+            <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2.5">
               <div
                 className="h-full bg-emerald-500 rounded-full transition-all duration-500"
                 style={{ width: `${Math.min(100, spendKpis.newBusinessPct)}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
-              <span>{spendKpis.newBusinessOrders} Orders</span>
-              <span className="font-bold text-emerald-600 dark:text-emerald-400">{spendKpis.newBusinessPct}% of spend</span>
+            <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-2 font-medium">
+              <span className="font-black text-gray-900 dark:text-white">{spendKpis.newBusinessOrders} Orders</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400">{spendKpis.newBusinessPct.toFixed(1)}% of spend</span>
             </div>
           </div>
         </div>
 
-        {/* Card 6: Linen Hub / Dedicated Spend (Ex GST) */}
+        {/* Card 4: Other (Reason: Other) */}
         <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-cyan-500" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
-                Linen Hub (Dedicated)
-              </span>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-cyan-500" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
+                  Other
+                </span>
+              </div>
+              <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mt-0.5">
+                Reason: Other (Dedicated)
+              </p>
             </div>
-            <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-600 flex items-center justify-center font-bold">
-              <Truck size={16} />
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-600 flex items-center justify-center font-bold shrink-0">
+              <Truck size={18} />
             </div>
           </div>
           <div>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 dark:text-white tracking-tight">
-              {formatCurrency(spendKpis.linenHubSpendEx)}
+            <p className="text-2xl sm:text-3xl font-black text-gray-950 dark:text-white tracking-tight">
+              {formatCurrency(spendKpis.otherSpendEx)}
             </p>
             {/* Share progress bar */}
-            <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
+            <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden mt-2.5">
               <div
                 className="h-full bg-cyan-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, spendKpis.linenHubPct)}%` }}
+                style={{ width: `${Math.min(100, spendKpis.otherPct)}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
-              <span>{spendKpis.linenHubOrders} Orders</span>
-              <span className="font-bold text-cyan-600 dark:text-cyan-400">{spendKpis.linenHubPct}% of spend</span>
+            <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 mt-2 font-medium">
+              <span className="font-black text-gray-900 dark:text-white">{spendKpis.otherOrders} Orders</span>
+              <span className="font-bold text-cyan-600 dark:text-cyan-400">{spendKpis.otherPct.toFixed(1)}% of spend</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── COMMERCIAL SECTOR DISTRIBUTION BAR (ACCOMMODATION / HEALTHCARE) ── */}
+      <div className="bg-white dark:bg-[#15171e] px-4 py-3 sm:px-5 sm:py-3.5 rounded-2xl border border-gray-200/80 dark:border-gray-800 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 shrink-0">
+          <Building2 size={16} className="text-[var(--color-brand)] shrink-0" />
+          <span className="text-[11px] font-black uppercase tracking-wider text-gray-900 dark:text-white">
+            Commercial Sector Split:
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6 font-medium">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0" />
+            <span className="text-gray-600 dark:text-gray-300 font-semibold">Accommodation:</span>
+            <span className="font-black text-gray-950 dark:text-white">{formatCurrency(spendKpis.accommodationSpendEx)}</span>
+            <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-bold">({spendKpis.accommodationOrders} Orders • {spendKpis.accommodationPct.toFixed(1)}%)</span>
+          </div>
+          <div className="hidden sm:block w-px h-4 bg-gray-200 dark:bg-gray-700" />
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-purple-500 shrink-0" />
+            <span className="text-gray-600 dark:text-gray-300 font-semibold">Healthcare:</span>
+            <span className="font-black text-gray-950 dark:text-white">{formatCurrency(spendKpis.healthcareSpendEx)}</span>
+            <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold">({spendKpis.healthcareOrders} Orders • {spendKpis.healthcarePct.toFixed(1)}%)</span>
           </div>
         </div>
       </div>
@@ -799,7 +810,7 @@ export default function Dashboard() {
               Monthly Net Spend Trend (Ex GST)
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Chronological net expenditure by spend stream (Depletion replacement, New Business growth, Linen Hub dedicated)
+              Chronological net expenditure by request reason (Depletion replacement, New Business growth, Other dedicated)
             </p>
           </div>
           <button
@@ -833,7 +844,7 @@ export default function Dashboard() {
                 <Legend wrapperStyle={{ paddingTop: '12px', fontSize: '11px' }} />
                 <Bar dataKey="depletionSpend" name="Depletion (Replacement)" stackId="spend" fill="#f59e0b" radius={[0, 0, 0, 0]} />
                 <Bar dataKey="newBusinessSpend" name="New Business (Growth)" stackId="spend" fill="#10b981" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="linenHubSpend" name="Linen Hub (Dedicated)" stackId="spend" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="otherSpend" name="Other (Dedicated)" stackId="spend" fill="#06b6d4" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
