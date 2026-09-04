@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
     Zap, GitBranch, UserCheck, Bell, Play, Plus, 
-    ZoomIn, ZoomOut, Maximize2, RotateCcw, Save, 
+    ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, Save, 
     Sparkles, CheckCircle2, ArrowRight, Eye, Layout, Shield
 } from 'lucide-react';
 import { 
@@ -49,22 +49,56 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
     const [isSimulating, setIsSimulating] = useState(false);
     const [simActiveNodeId, setSimActiveNodeId] = useState<string | null>(null);
 
+    // Fullscreen / Expanded View State
+    const [isExpanded, setIsExpanded] = useState(false);
+
     // Unsaved Changes
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Initial Node & Edge Generator from workflow stages
+    // Listen for Escape key to exit fullscreen
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isExpanded) {
+                setIsExpanded(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isExpanded]);
+
+    // Initial Node & Edge Generator from workflow stages (Horizontal Flow)
     const initializeCanvasData = useCallback((): { nodes: CanvasNode[]; edges: CanvasEdge[] } => {
         if (workflow.canvas_data?.nodes && workflow.canvas_data.nodes.length > 0) {
+            // Check if existing saved nodes were vertically stacked (e.g. all x < 320 or x === 280)
+            const isOldVertical = workflow.canvas_data.nodes.length > 1 &&
+                workflow.canvas_data.nodes.every(n => n.x === 280 || n.x < 320);
+
+            if (isOldVertical) {
+                // Auto-upgrade vertically stacked nodes to horizontal layout!
+                const upgradedNodes = workflow.canvas_data.nodes.map((node, idx) => ({
+                    ...node,
+                    x: 60 + idx * 380,
+                    y: 200
+                }));
+                return {
+                    nodes: upgradedNodes,
+                    edges: workflow.canvas_data.edges || []
+                };
+            }
+
             return {
                 nodes: workflow.canvas_data.nodes,
                 edges: workflow.canvas_data.edges || []
             };
         }
 
-        // Generate intelligent initial layout from existing stages
+        // Generate intelligent initial HORIZONTAL layout from existing stages
         const initialNodes: CanvasNode[] = [];
         const initialEdges: CanvasEdge[] = [];
+
+        let currentX = 60;
+        const baselineY = 200;
 
         // 1. Trigger Node
         const triggerNodeId = `trigger_${workflow.id}`;
@@ -73,13 +107,13 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
             type: 'TRIGGER',
             title: workflow.name || 'Workflow Trigger',
             subtitle: workflow.trigger_event,
-            x: 280,
-            y: 40,
+            x: currentX,
+            y: baselineY,
             data: { trigger_event: workflow.trigger_event }
         });
 
         let lastNodeId = triggerNodeId;
-        let currentY = 190;
+        currentX += 380;
 
         // 2. Stages
         (workflow.stages || []).forEach((stage, idx) => {
@@ -91,8 +125,8 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                     type: 'CONDITION',
                     title: `Rule: ${stage.condition.field}`,
                     subtitle: `${stage.condition.operator} ${stage.condition.value}`,
-                    x: 280,
-                    y: currentY,
+                    x: currentX,
+                    y: baselineY,
                     data: { condition: stage.condition }
                 });
                 initialEdges.push({
@@ -101,7 +135,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                     target: condId
                 });
                 lastNodeId = condId;
-                currentY += 160;
+                currentX += 380;
             }
 
             // Approval Node
@@ -111,8 +145,8 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                 type: 'APPROVAL',
                 title: stage.stage_name || `Stage ${idx + 1}`,
                 subtitle: `SLA: ${stage.sla_hours}h`,
-                x: 280,
-                y: currentY,
+                x: currentX,
+                y: baselineY,
                 data: {
                     approver_type: stage.approver_type,
                     approver_id: stage.approver_id,
@@ -131,7 +165,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
             });
 
             lastNodeId = approvalId;
-            currentY += 180;
+            currentX += 380;
         });
 
         // 3. Notification Action Node
@@ -141,8 +175,8 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
             type: 'NOTIFICATION',
             title: 'Multi-Channel Dispatch',
             subtitle: 'In-App Pop-up + Teams + Email',
-            x: 280,
-            y: currentY,
+            x: currentX,
+            y: baselineY,
             data: {
                 channel: 'IN_APP',
                 severity: 'WARNING',
@@ -247,12 +281,28 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
         setHasUnsavedChanges(true);
     };
 
-    // Add Node from Palette
+    // Auto-Align all nodes into a clean horizontal pipeline
+    const handleAutoAlignHorizontal = () => {
+        const startX = 60;
+        const spacingX = 380;
+        const baselineY = 200;
+
+        setNodes(prev => prev.map((node, index) => ({
+            ...node,
+            x: startX + index * spacingX,
+            y: baselineY
+        })));
+        setPan({ x: 50, y: 50 });
+        setZoom(1);
+        setHasUnsavedChanges(true);
+    };
+
+    // Add Node from Palette (Horizontal placement)
     const handleAddNodeFromPalette = (item: any) => {
         const newId = `${item.type.toLowerCase()}_${Date.now()}`;
         const lastNode = nodes[nodes.length - 1];
-        const newX = lastNode ? lastNode.x : 300;
-        const newY = lastNode ? lastNode.y + 170 : 200;
+        const newX = lastNode ? lastNode.x + 380 : 60;
+        const newY = lastNode ? lastNode.y : 200;
 
         const newNode: CanvasNode = {
             id: newId,
@@ -408,7 +458,11 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
     };
 
     return (
-        <div className="flex flex-col h-[750px] bg-[#f8f9fb] dark:bg-[#0e1017] rounded-3xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-xl relative select-none">
+        <div className={`flex flex-col bg-[#f8f9fb] dark:bg-[#0e1017] rounded-3xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-xl relative select-none transition-all duration-200 ${
+            isExpanded 
+                ? 'fixed inset-0 z-[99999] rounded-none border-none h-screen w-screen' 
+                : 'h-[760px]'
+        }`}>
             {/* Top Toolbar */}
             <div className="h-14 px-5 bg-white/90 dark:bg-[#151722]/90 backdrop-blur-md border-b border-gray-200 dark:border-white/10 flex items-center justify-between z-20 shrink-0">
                 <div className="flex items-center gap-3">
@@ -421,7 +475,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                                 {workflow.name}
                             </h3>
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
-                                Active Visual Canvas
+                                Horizontal Pipeline
                             </span>
                             {hasUnsavedChanges && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 animate-pulse">
@@ -430,12 +484,47 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                             )}
                         </div>
                         <p className="text-[11px] text-gray-400">
-                            Drag nodes, configure approvers, or click (+) on connectors to inject workflow actions
+                            Horizontal node flow • Connect actions from left to right • Click (+) to insert
                         </p>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {/* Auto-Align Flow (Horizontal) */}
+                    <button
+                        type="button"
+                        onClick={handleAutoAlignHorizontal}
+                        className="px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 border border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 transition-colors shadow-sm"
+                        title="Auto-align all nodes into a clean horizontal pipeline"
+                    >
+                        <Layout size={14} />
+                        Auto-Align
+                    </button>
+
+                    {/* Expand / Fullscreen Canvas */}
+                    <button
+                        type="button"
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 border transition-all shadow-sm ${
+                            isExpanded 
+                                ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border-purple-300 dark:border-purple-800' 
+                                : 'border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200'
+                        }`}
+                        title={isExpanded ? "Collapse back to normal size (Esc)" : "Expand canvas to full desktop screen"}
+                    >
+                        {isExpanded ? (
+                            <>
+                                <Minimize2 size={14} />
+                                Exit Expand
+                            </>
+                        ) : (
+                            <>
+                                <Maximize2 size={14} />
+                                Expand Canvas
+                            </>
+                        )}
+                    </button>
+
                     {/* Live Simulation Button */}
                     <button
                         type="button"
@@ -496,7 +585,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                         {/* SVG Connectors Layer */}
                         <svg className="absolute inset-0 w-[5000px] h-[5000px] pointer-events-none overflow-visible">
                             <defs>
-                                <linearGradient id="activeLineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <linearGradient id="activeLineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                                     <stop offset="0%" stopColor="#10b981" />
                                     <stop offset="50%" stopColor="#06b6d4" />
                                     <stop offset="100%" stopColor="#8b5cf6" />
@@ -508,14 +597,21 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                                 const targetNode = nodes.find(n => n.id === edge.target);
                                 if (!sourceNode || !targetNode) return null;
 
-                                // Node width = 320, height approx 130
-                                const startX = sourceNode.x + 160;
-                                const startY = sourceNode.y + 130;
-                                const endX = targetNode.x + 160;
-                                const endY = targetNode.y;
+                                const isCondition = sourceNode.type === 'CONDITION';
+                                const isNoBranch = edge.sourceHandle === 'no';
 
-                                const dy = Math.max(40, (endY - startY) / 2);
-                                const pathData = `M ${startX} ${startY} C ${startX} ${startY + dy}, ${endX} ${endY - dy}, ${endX} ${endY}`;
+                                // Output port: Right side of source card (w=320, height approx 140)
+                                const startX = sourceNode.x + 320;
+                                const startY = isCondition 
+                                    ? (isNoBranch ? sourceNode.y + 98 : sourceNode.y + 46)
+                                    : sourceNode.y + 70;
+
+                                // Input port: Left side of target card
+                                const endX = targetNode.x;
+                                const endY = targetNode.y + 70;
+
+                                const dx = Math.max(50, Math.abs(endX - startX) / 2);
+                                const pathData = `M ${startX} ${startY} C ${startX + dx} ${startY}, ${endX - dx} ${endY}, ${endX} ${endY}`;
                                 const midX = (startX + endX) / 2;
                                 const midY = (startY + endY) / 2;
 
@@ -609,6 +705,14 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                             <ZoomIn size={16} />
                         </button>
                         <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+                        <button
+                            type="button"
+                            onClick={handleAutoAlignHorizontal}
+                            className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                            title="Auto-align all nodes horizontally"
+                        >
+                            <Layout size={16} />
+                        </button>
                         <button
                             type="button"
                             onClick={() => {

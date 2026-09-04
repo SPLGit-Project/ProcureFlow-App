@@ -111,9 +111,12 @@ export const WorkflowNodeCard: React.FC<WorkflowNodeCardProps> = ({
                     : `${style.border} hover:shadow-2xl hover:border-[var(--color-brand)]/50 z-10`
             } ${isSimActive ? 'ring-4 ring-amber-400 border-amber-400 shadow-amber-400/20 scale-[1.03] z-40' : ''}`}
         >
-            {/* Input Port Anchor (Top Center) */}
+            {/* Input Port Anchor (Left Center) */}
             {node.type !== 'TRIGGER' && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-white dark:bg-[#161821] border-2 border-gray-400 dark:border-gray-500 flex items-center justify-center shadow-md group-hover:border-[var(--color-brand)] transition-colors">
+                <div 
+                    title="Input Port"
+                    className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white dark:bg-[#161821] border-2 border-gray-400 dark:border-gray-500 flex items-center justify-center shadow-md group-hover:border-[var(--color-brand)] transition-colors z-20"
+                >
                     <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-400" />
                 </div>
             )}
@@ -286,24 +289,27 @@ export const WorkflowNodeCard: React.FC<WorkflowNodeCardProps> = ({
                 )}
             </div>
 
-            {/* Output Port Anchors (Bottom Center or Dual for Condition) */}
+            {/* Output Port Anchors (Right Center or Dual for Condition) */}
             {node.type === 'CONDITION' ? (
-                <div className="flex justify-between px-8 relative -bottom-3">
+                <>
                     <div 
                         title="Branch YES"
-                        className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-black shadow-md hover:scale-110 transition-transform"
+                        className="absolute -right-3 top-[32%] -translate-y-1/2 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-black shadow-md hover:scale-110 transition-transform z-20 cursor-pointer"
                     >
                         Y
                     </div>
                     <div 
                         title="Branch NO"
-                        className="w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] font-black shadow-md hover:scale-110 transition-transform"
+                        className="absolute -right-3 top-[68%] -translate-y-1/2 w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] font-black shadow-md hover:scale-110 transition-transform z-20 cursor-pointer"
                     >
                         N
                     </div>
-                </div>
+                </>
             ) : (
-                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-white dark:bg-[#161821] border-2 border-gray-400 dark:border-gray-500 flex items-center justify-center shadow-md hover:border-[var(--color-brand)] transition-colors">
+                <div 
+                    title="Output Port"
+                    className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white dark:bg-[#161821] border-2 border-gray-400 dark:border-gray-500 flex items-center justify-center shadow-md hover:border-[var(--color-brand)] transition-colors z-20"
+                >
                     <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-400" />
                 </div>
             )}
