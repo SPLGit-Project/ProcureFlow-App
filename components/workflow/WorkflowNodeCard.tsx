@@ -100,12 +100,13 @@ export const WorkflowNodeCard: React.FC<WorkflowNodeCardProps> = ({
 
     return (
         <div
+            data-node-id={node.id}
             style={{ transform: `translate3d(${node.x}px, ${node.y}px, 0)` }}
             onClick={(e) => {
                 e.stopPropagation();
                 onSelect(node);
             }}
-            className={`absolute w-80 rounded-2xl bg-white/95 dark:bg-[#161821]/95 backdrop-blur-xl border transition-all duration-200 select-none shadow-xl ${
+            className={`workflow-node-card pointer-events-auto absolute w-80 rounded-2xl bg-white/95 dark:bg-[#161821]/95 backdrop-blur-xl border transition-all duration-200 select-none shadow-xl ${
                 isSelected 
                     ? 'ring-2 ring-[var(--color-brand)] border-transparent shadow-2xl scale-[1.02] z-30' 
                     : `${style.border} hover:shadow-2xl hover:border-[var(--color-brand)]/50 z-10`

@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { 
     Zap, GitBranch, UserCheck, Bell, Play, Plus, 
     ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, Save, 
-    Sparkles, CheckCircle2, ArrowRight, Eye, Layout, Shield
+    Sparkles, CheckCircle2, ArrowRight, Eye, Layout, Shield,
+    ArrowLeft, X, AlertTriangle, ChevronLeft, ChevronRight, Crosshair, Move
 } from 'lucide-react';
 import { 
     CanvasNode, CanvasEdge, WorkflowCanvasData, 
@@ -53,20 +54,48 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
     // Fullscreen / Expanded View State
     const [isExpanded, setIsExpanded] = useState(false);
 
-    // Unsaved Changes
+    // Unsaved Changes & Warning Modal State
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
 
-    // Listen for Escape key to exit fullscreen
+    // Safe Exit Handlers
+    const handleRequestExitExpand = () => {
+        if (hasUnsavedChanges) {
+            setShowUnsavedChangesModal(true);
+        } else {
+            setIsExpanded(false);
+        }
+    };
+
+    // Listen for Escape key to exit fullscreen (with unsaved changes check)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape' && isExpanded) {
-                setIsExpanded(false);
+                if (showUnsavedChangesModal) {
+                    setShowUnsavedChangesModal(false);
+                } else if (hasUnsavedChanges) {
+                    setShowUnsavedChangesModal(true);
+                } else {
+                    setIsExpanded(false);
+                }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isExpanded]);
+    }, [isExpanded, hasUnsavedChanges, showUnsavedChangesModal]);
+
+    // Warn before browser tab close / refresh if unsaved changes exist
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [hasUnsavedChanges]);
 
     // Lock body scroll when expanded to prevent background scrolling
     useEffect(() => {
@@ -221,34 +250,79 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
 
     // Canvas Pan Handlers
     const handleMouseDownCanvas = (e: React.MouseEvent) => {
-        if (e.target === canvasRef.current || (e.target as HTMLElement).tagName === 'svg') {
-            setIsPanning(true);
-            setStartPan({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+        // Only trigger pan if left click
+        if (e.button !== 0) return;
+        const target = e.target as HTMLElement;
+        // Don't start pan if clicking inside a node card, button, input, or interactive waypoint
+        if (target.closest('.workflow-node-card, button, input, select, textarea, [data-interactive="true"]')) {
+            return;
         }
+        setIsPanning(true);
+        setStartPan({ x: e.clientX - pan.x, y: e.clientY - pan.y });
     };
 
-    const handleMouseMove = (e: React.MouseEvent) => {
-        if (isPanning) {
-            setPan({ x: e.clientX - startPan.x, y: e.clientY - startPan.y });
-        } else if (draggingNodeId) {
-            setNodes(prev => prev.map(n => {
-                if (n.id === draggingNodeId) {
-                    return {
-                        ...n,
-                        x: Math.round((e.clientX - dragOffset.x - pan.x) / (zoom * 10)) * 10,
-                        y: Math.round((e.clientY - dragOffset.y - pan.y) / (zoom * 10)) * 10
-                    };
-                }
-                return n;
-            }));
-            setHasUnsavedChanges(true);
-        }
-    };
+    // Global window listeners for butter-smooth panning and dragging anywhere across the screen
+    useEffect(() => {
+        if (!isPanning && !draggingNodeId) return;
 
-    const handleMouseUp = () => {
-        setIsPanning(false);
-        setDraggingNodeId(null);
-    };
+        const handleWindowMouseMove = (e: MouseEvent) => {
+            if (isPanning) {
+                setPan({ x: e.clientX - startPan.x, y: e.clientY - startPan.y });
+            } else if (draggingNodeId) {
+                setNodes(prev => prev.map(n => {
+                    if (n.id === draggingNodeId) {
+                        return {
+                            ...n,
+                            x: Math.round((e.clientX - dragOffset.x - pan.x) / (zoom * 10)) * 10,
+                            y: Math.round((e.clientY - dragOffset.y - pan.y) / (zoom * 10)) * 10
+                        };
+                    }
+                    return n;
+                }));
+                setHasUnsavedChanges(true);
+            }
+        };
+
+        const handleWindowMouseUp = () => {
+            setIsPanning(false);
+            setDraggingNodeId(null);
+        };
+
+        window.addEventListener('mousemove', handleWindowMouseMove);
+        window.addEventListener('mouseup', handleWindowMouseUp);
+
+        return () => {
+            window.removeEventListener('mousemove', handleWindowMouseMove);
+            window.removeEventListener('mouseup', handleWindowMouseUp);
+        };
+    }, [isPanning, draggingNodeId, startPan, pan.x, pan.y, dragOffset, zoom]);
+
+    // Non-passive wheel handler on canvasRef for smooth 2-finger touchpad panning and Shift/Ctrl scrolling
+    useEffect(() => {
+        const canvasEl = canvasRef.current;
+        if (!canvasEl) return;
+
+        const handleWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            if (e.ctrlKey || e.metaKey) {
+                // Smooth zoom centered around current zoom
+                const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+                setZoom(z => Math.min(1.8, Math.max(0.4, Number((z * zoomFactor).toFixed(2)))));
+            } else {
+                // Smooth pan horizontally and vertically
+                // Holding Shift or horizontal trackpad gestures move horizontally
+                const dx = e.shiftKey ? e.deltaY : e.deltaX;
+                const dy = e.shiftKey ? 0 : e.deltaY;
+                setPan(p => ({
+                    x: Math.round(p.x - dx),
+                    y: Math.round(p.y - dy)
+                }));
+            }
+        };
+
+        canvasEl.addEventListener('wheel', handleWheel, { passive: false });
+        return () => canvasEl.removeEventListener('wheel', handleWheel);
+    }, []);
 
     const handleStartDragNode = (e: React.MouseEvent, node: CanvasNode) => {
         e.stopPropagation();
@@ -304,9 +378,44 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
             x: startX + index * spacingX,
             y: baselineY
         })));
-        setPan({ x: 50, y: 50 });
+        setPan({ x: 50, y: 150 });
         setZoom(1);
         setHasUnsavedChanges(true);
+    };
+
+    // Center and Fit Entire Flow in Viewport
+    const handleCenterFlow = () => {
+        if (nodes.length === 0) {
+            setPan({ x: 50, y: 150 });
+            setZoom(1);
+            return;
+        }
+        const canvasEl = canvasRef.current;
+        const viewWidth = canvasEl ? canvasEl.clientWidth : 900;
+        const viewHeight = canvasEl ? canvasEl.clientHeight : 600;
+
+        const minX = Math.min(...nodes.map(n => n.x));
+        const maxX = Math.max(...nodes.map(n => n.x + 320));
+        const minY = Math.min(...nodes.map(n => n.y));
+        const maxY = Math.max(...nodes.map(n => n.y + 140));
+
+        const flowWidth = Math.max(100, maxX - minX);
+        const flowHeight = Math.max(100, maxY - minY);
+
+        const padding = 60;
+        const fitZoom = Math.min(
+            1,
+            Math.max(0.4, Math.min(
+                (viewWidth - padding * 2) / flowWidth,
+                (viewHeight - padding * 2) / flowHeight
+            ))
+        );
+
+        const targetX = Math.round((viewWidth - flowWidth * fitZoom) / 2 - minX * fitZoom);
+        const targetY = Math.round((viewHeight - flowHeight * fitZoom) / 2 - minY * fitZoom);
+
+        setZoom(Number(fitZoom.toFixed(2)));
+        setPan({ x: targetX, y: targetY });
     };
 
     // Add Node from Palette (Horizontal placement)
@@ -417,6 +526,21 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
         }
     };
 
+    const handleSaveAndExit = async () => {
+        await handleSave();
+        setShowUnsavedChangesModal(false);
+        setIsExpanded(false);
+    };
+
+    const handleConfirmDiscardAndExit = () => {
+        const fresh = initializeCanvasData();
+        setNodes(fresh.nodes);
+        setEdges(fresh.edges);
+        setHasUnsavedChanges(false);
+        setShowUnsavedChangesModal(false);
+        setIsExpanded(false);
+    };
+
     // Flow Simulation Engine
     const handleSimulateFlow = async () => {
         if (isSimulating || nodes.length === 0) return;
@@ -476,8 +600,21 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                 : 'h-[760px] rounded-3xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-xl relative'
         }`}>
             {/* Top Toolbar */}
-            <div className="h-14 px-5 bg-white/90 dark:bg-[#151722]/90 backdrop-blur-md border-b border-gray-200 dark:border-white/10 flex items-center justify-between z-20 shrink-0">
+            <div className="h-14 px-5 bg-white/95 dark:bg-[#151722]/95 backdrop-blur-md border-b border-gray-200 dark:border-white/10 flex items-center justify-between z-20 shrink-0">
                 <div className="flex items-center gap-3">
+                    {/* Back / Close Button (Available in Expanded View) */}
+                    {isExpanded && (
+                        <button
+                            type="button"
+                            onClick={handleRequestExitExpand}
+                            className="px-3 py-1.5 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-800 dark:text-gray-100 rounded-xl font-bold text-xs flex items-center gap-1.5 border border-gray-300 dark:border-white/10 transition-all shadow-sm group mr-1 shrink-0"
+                            title="Back to Workflow Hub (Esc)"
+                        >
+                            <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" />
+                            <span>Back to Hub</span>
+                        </button>
+                    )}
+
                     <div className="p-2 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
                         <GitBranch size={18} />
                     </div>
@@ -502,7 +639,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                             )}
                         </div>
                         <p className="text-[11px] text-gray-400">
-                            Horizontal node flow • Connect actions from left to right • Click (+) to insert
+                            Click and drag canvas to pan • Shift+Scroll to navigate • Connect actions left to right
                         </p>
                     </div>
                 </div>
@@ -522,7 +659,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                     {/* Expand / Fullscreen Canvas */}
                     <button
                         type="button"
-                        onClick={() => setIsExpanded(!isExpanded)}
+                        onClick={isExpanded ? handleRequestExitExpand : () => setIsExpanded(true)}
                         className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 border transition-all shadow-sm ${
                             isExpanded 
                                 ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-700 shadow-purple-500/20' 
@@ -570,6 +707,18 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                         <Save size={14} />
                         {isSaving ? 'Saving...' : 'Save Flow'}
                     </button>
+
+                    {/* Dedicated Close Button in Fullscreen Mode */}
+                    {isExpanded && (
+                        <button
+                            type="button"
+                            onClick={handleRequestExitExpand}
+                            className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors ml-1"
+                            title="Close Fullscreen (Esc)"
+                        >
+                            <X size={18} />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -584,9 +733,9 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                 <div
                     ref={canvasRef}
                     onMouseDown={handleMouseDownCanvas}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    className="flex-1 h-full relative overflow-hidden cursor-crosshair"
+                    className={`flex-1 h-full relative overflow-hidden select-none transition-colors ${
+                        isPanning ? 'cursor-grabbing' : 'cursor-grab'
+                    }`}
                     style={{
                         backgroundImage: `radial-gradient(circle, rgba(150, 150, 150, 0.25) 1px, transparent 1px)`,
                         backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
@@ -635,7 +784,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                                 const midY = (startY + endY) / 2;
 
                                 return (
-                                    <g key={edge.id} className="group pointer-events-auto">
+                                    <g key={edge.id} className="group pointer-events-none">
                                         {/* Connector Shadow / Glow */}
                                         <path
                                             d={pathData}
@@ -657,12 +806,13 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
 
                                         {/* Inline Quick-Add (+) Button on Connector */}
                                         <g 
+                                            data-interactive="true"
                                             transform={`translate(${midX}, ${midY})`}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleInsertNodeOnEdge(edge);
                                             }}
-                                            className="cursor-pointer hover:scale-125 transition-transform"
+                                            className="cursor-pointer hover:scale-125 transition-transform pointer-events-auto"
                                         >
                                             <circle
                                                 r={12}
@@ -683,7 +833,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                         </svg>
 
                         {/* Interactive Nodes Layer */}
-                        <div className="absolute inset-0 pointer-events-auto">
+                        <div className="absolute inset-0 pointer-events-none">
                             {nodes.map(node => (
                                 <WorkflowNodeCard
                                     key={node.id}
@@ -704,9 +854,44 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
 
                     {/* Canvas Floating Zoom / Pan Controls */}
                     <div className="absolute bottom-5 right-5 z-20 flex items-center gap-1.5 p-1.5 rounded-2xl bg-white/90 dark:bg-[#151722]/90 backdrop-blur-md border border-gray-200 dark:border-white/10 shadow-xl">
+                        {/* Pan Left */}
                         <button
                             type="button"
-                            onClick={() => setZoom(z => Math.max(0.5, z - 0.1))}
+                            onClick={() => setPan(p => ({ ...p, x: p.x + 250 }))}
+                            className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                            title="Pan Left (Shift + Scroll Left)"
+                        >
+                            <ChevronLeft size={16} />
+                        </button>
+
+                        {/* Pan Right */}
+                        <button
+                            type="button"
+                            onClick={() => setPan(p => ({ ...p, x: p.x - 250 }))}
+                            className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                            title="Pan Right (Shift + Scroll Right)"
+                        >
+                            <ChevronRight size={16} />
+                        </button>
+
+                        <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+
+                        {/* Fit & Center Entire Flow */}
+                        <button
+                            type="button"
+                            onClick={handleCenterFlow}
+                            className="p-2 rounded-xl text-gray-500 hover:text-[var(--color-brand)] hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                            title="Fit & Center Entire Flow"
+                        >
+                            <Crosshair size={16} />
+                        </button>
+
+                        <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+
+                        {/* Zoom Out */}
+                        <button
+                            type="button"
+                            onClick={() => setZoom(z => Math.max(0.4, Number((z - 0.1).toFixed(2))))}
                             className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                             title="Zoom Out"
                         >
@@ -717,7 +902,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                         </span>
                         <button
                             type="button"
-                            onClick={() => setZoom(z => Math.min(1.5, z + 0.1))}
+                            onClick={() => setZoom(z => Math.min(1.8, Number((z + 0.1).toFixed(2))))}
                             className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                             title="Zoom In"
                         >
@@ -736,13 +921,19 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                             type="button"
                             onClick={() => {
                                 setZoom(1);
-                                setPan({ x: 50, y: 50 });
+                                setPan({ x: 50, y: 150 });
                             }}
                             className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                             title="Reset View"
                         >
                             <RotateCcw size={16} />
                         </button>
+                    </div>
+
+                    {/* Canvas Interaction Hint Pill */}
+                    <div className="absolute bottom-5 left-80 z-20 hidden lg:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/85 dark:bg-[#151722]/85 backdrop-blur-md border border-gray-200 dark:border-white/10 shadow-md text-[11px] text-gray-500 dark:text-gray-400 select-none pointer-events-none">
+                        <Move size={13} className="text-[var(--color-brand)] shrink-0" />
+                        <span>Click & drag to pan • Shift+Scroll to navigate • Ctrl+Scroll to zoom</span>
                     </div>
                 </div>
 
@@ -761,6 +952,52 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
         </div>
     );
 
+    const unsavedChangesModalElement = showUnsavedChangesModal ? (
+        <div className="fixed inset-0 z-[1000000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm select-none">
+            <div className="bg-white dark:bg-[#161821] border border-gray-200 dark:border-white/10 rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-scale-in">
+                <div className="flex items-start gap-4">
+                    <div className="p-3.5 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                        <AlertTriangle size={24} />
+                    </div>
+                    <div className="space-y-1">
+                        <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                            Unsaved Workflow Changes
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                            You have unsaved changes to <strong className="text-gray-800 dark:text-gray-200">{workflow.name}</strong>. If you exit without saving, your modifications to stages, conditions, or connectors will be lost.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-2 border-t border-gray-100 dark:border-white/5">
+                    <button
+                        type="button"
+                        onClick={() => setShowUnsavedChangesModal(false)}
+                        className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors order-3 sm:order-1"
+                    >
+                        Keep Editing
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleConfirmDiscardAndExit}
+                        className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition-colors order-2"
+                    >
+                        Discard & Exit
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSaveAndExit}
+                        disabled={isSaving}
+                        className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-white bg-[var(--color-brand)] hover:opacity-90 active:scale-95 rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 order-1 sm:order-3"
+                    >
+                        <Save size={14} />
+                        {isSaving ? 'Saving...' : 'Save & Exit'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    ) : null;
+
     return (
         <>
             {isExpanded ? (
@@ -778,7 +1015,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                         </div>
                         <button
                             type="button"
-                            onClick={() => setIsExpanded(false)}
+                            onClick={handleRequestExitExpand}
                             className="mt-2 px-5 py-2.5 bg-white dark:bg-[#151722] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-all shadow-sm flex items-center gap-2"
                         >
                             <Minimize2 size={14} />
@@ -787,10 +1024,24 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                     </div>
 
                     {/* Portal directly to document.body bypassing ancestor CSS transforms */}
-                    {typeof document !== 'undefined' ? createPortal(canvasWorkspace, document.body) : canvasWorkspace}
+                    {typeof document !== 'undefined' ? createPortal(
+                        <>
+                            {canvasWorkspace}
+                            {unsavedChangesModalElement}
+                        </>,
+                        document.body
+                    ) : (
+                        <>
+                            {canvasWorkspace}
+                            {unsavedChangesModalElement}
+                        </>
+                    )}
                 </>
             ) : (
-                canvasWorkspace
+                <>
+                    {canvasWorkspace}
+                    {typeof document !== 'undefined' && unsavedChangesModalElement ? createPortal(unsavedChangesModalElement, document.body) : unsavedChangesModalElement}
+                </>
             )}
         </>
     );
