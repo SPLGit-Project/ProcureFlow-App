@@ -5,7 +5,8 @@ import { supabase } from '../lib/supabaseClient.ts';
 import {
   BookOpen, Search, RefreshCw, Package,
   Cpu, CheckCircle2, XCircle, SlidersHorizontal, X,
-  Download, Edit2, History, Archive, CheckCircle, Plus,
+  Download, Edit2, History, Archive, CheckCircle, Plus, RotateCcw,
+  Tag, ChevronDown, DollarSign,
 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { generateItemCode } from '../utils/itemNameGenerator';
@@ -13,7 +14,7 @@ import { ItemWizard } from './ItemWizard.tsx';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { useToast } from './ToastNotification';
-import { Item } from '../types.ts';
+import { Item, ItemPriceOption } from '../types.ts';
 
 // ── Raw DB row type (snake_case from Supabase) ────────────────────────────────
 
@@ -96,20 +97,230 @@ function getDisplayWeight(item: ItemRow): string | null {
   return null;
 }
 
+function getItemPriceOptions(item: ItemRow): ItemPriceOption[] {
+  const specs = item.specs && typeof item.specs === 'object' ? item.specs : {};
+  const rawOpts = (
+    Array.isArray(specs.priceOptions) ? specs.priceOptions :
+    Array.isArray(specs.price_options) ? specs.price_options :
+    Array.isArray(specs.priceOptionsList) ? specs.priceOptionsList :
+    Array.isArray((item as any).priceOptions) ? (item as any).priceOptions :
+    []
+  ) as ItemPriceOption[];
+
+  const validOpts = rawOpts
+    .filter(o => o && typeof o === 'object' && o.activeFlag !== false)
+    .map((o, idx) => ({
+      id: String(o.id || `opt-${idx + 1}`),
+      label: String(o.label || `Option ${idx + 1}`).trim(),
+      price: typeof o.price === 'number' ? o.price : parseFloat(String(o.price || 0)) || 0,
+      isDefault: Boolean(o.isDefault),
+      activeFlag: true,
+    }));
+
+  if (validOpts.length > 0) {
+    return validOpts;
+  }
+
+  if (item.unit_price != null) {
+    return [{
+      id: 'standard',
+      label: 'Standard',
+      price: item.unit_price,
+      isDefault: true,
+      activeFlag: true,
+    }];
+  }
+
+  return [];
+}
+
+function SmartPriceCell({ item }: { item: ItemRow }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const options = useMemo(() => getItemPriceOptions(item), [item]);
+
+  if (options.length === 0) {
+    return <span className="text-gray-300 dark:text-gray-700">—</span>;
+  }
+
+  if (options.length === 1) {
+    return (
+      <span className="font-mono text-xs font-semibold text-gray-800 dark:text-gray-200">
+        ${options[0].price.toFixed(2)}
+      </span>
+    );
+  }
+
+  const defaultOpt = options.find(o => o.isDefault) || options[0];
+  const prices = options.map(o => o.price);
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  const isRange = minP !== maxP;
+
+  return (
+    <div className="relative inline-block text-left" onMouseLeave={() => setIsOpen(false)}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(v => !v)}
+        onMouseEnter={() => setIsOpen(true)}
+        className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/60 dark:border-emerald-800/60 transition-all cursor-pointer shadow-2xs"
+      >
+        <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-300">
+          ${defaultOpt.price.toFixed(2)}
+        </span>
+        <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-white dark:bg-emerald-900/80 px-1.5 py-0.5 rounded-md border border-emerald-200/50 dark:border-emerald-700/50">
+          +{options.length - 1} more
+          <ChevronDown size={10} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-1 z-30 w-60 p-3 bg-white dark:bg-[#1a1d24] rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 text-xs animate-in fade-in zoom-in-95 duration-100">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 dark:border-gray-800">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-1">
+              <Tag size={12} className="text-emerald-500" /> Price Options ({options.length})
+            </span>
+            {isRange && (
+              <span className="text-[10px] font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                ${minP.toFixed(2)} – ${maxP.toFixed(2)}
+              </span>
+            )}
+          </div>
+          <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+            {options.map((opt, idx) => (
+              <div
+                key={opt.id || idx}
+                className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl transition-colors ${
+                  opt.isDefault
+                    ? 'bg-emerald-50/80 dark:bg-emerald-900/30 text-emerald-900 dark:text-emerald-200 font-semibold border border-emerald-200/50 dark:border-emerald-800/50'
+                    : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                  <span className="truncate" title={opt.label}>{opt.label}</span>
+                  {opt.isDefault && (
+                    <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/80 px-1.5 py-0.2 rounded shrink-0">
+                      Default
+                    </span>
+                  )}
+                </div>
+                <span className="font-mono text-xs font-bold text-gray-900 dark:text-white shrink-0">
+                  ${opt.price.toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function doesItemMatchSearch(item: ItemRow, rawQuery: string): boolean {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return true;
+
+  const cleanQ = q.replace(/[$]/g, '').trim();
+
+  // 1. Core Names & Codes
+  if (item.name.toLowerCase().includes(q)) return true;
+  if (item.short_name?.toLowerCase().includes(q)) return true;
+  if ((item.sku ?? '').toLowerCase().includes(q)) return true;
+  if ((item.sap_item_code_raw ?? '').toLowerCase().includes(q)) return true;
+  if ((item.range_name ?? '').toLowerCase().includes(q)) return true;
+  if (getProposedMdCode(item).toLowerCase().includes(q)) return true;
+
+  // 2. Taxonomy & Categorization
+  if ((item.category ?? '').toLowerCase().includes(q)) return true;
+  if ((item.sub_category ?? '').toLowerCase().includes(q)) return true;
+  if ((item.item_pool ?? '').toLowerCase().includes(q)) return true;
+  if ((item.item_catalog ?? '').toLowerCase().includes(q)) return true;
+  if ((item.item_type ?? '').toLowerCase().includes(q)) return true;
+
+  // 3. Product Attributes & UOM
+  if ((item.item_colour ?? '').toLowerCase().includes(q)) return true;
+  if ((item.item_material ?? '').toLowerCase().includes(q)) return true;
+  if ((item.item_size ?? '').toLowerCase().includes(q)) return true;
+  if ((item.uom ?? '').toLowerCase().includes(q)) return true;
+  if (item.upq != null && item.upq.toString().includes(cleanQ)) return true;
+
+  // 4. Unit Price & Multi-Price Options
+  const priceOpts = getItemPriceOptions(item);
+  for (const opt of priceOpts) {
+    const priceNum = opt.price.toString();
+    const priceFixed = opt.price.toFixed(2);
+    const priceFormatted = `$${priceFixed}`;
+    if (
+      priceNum.includes(cleanQ) ||
+      priceFixed.includes(cleanQ) ||
+      priceFormatted.toLowerCase().includes(q) ||
+      opt.label.toLowerCase().includes(q)
+    ) {
+      return true;
+    }
+  }
+
+  // 5. Weight & GSM
+  const weight = item.item_weight;
+  const specGsm = item.specs?.gsm ?? item.specs?.weight;
+  if (weight != null) {
+    const wStr = weight.toString();
+    if (
+      wStr.includes(cleanQ) ||
+      `${wStr} g/m²`.toLowerCase().includes(q) ||
+      `${wStr} gsm`.toLowerCase().includes(q) ||
+      `${wStr}gsm`.toLowerCase().includes(q)
+    ) {
+      return true;
+    }
+  }
+  if (specGsm != null) {
+    const gStr = String(specGsm).toLowerCase();
+    if (
+      gStr.includes(cleanQ) ||
+      `${gStr} gsm`.includes(q) ||
+      `${gStr}gsm`.includes(q) ||
+      `${gStr} g/m²`.includes(q)
+    ) {
+      return true;
+    }
+  }
+
+  // 6. Generic specs JSON recursive search
+  if (item.specs && typeof item.specs === 'object') {
+    for (const [key, val] of Object.entries(item.specs)) {
+      if (val != null) {
+        const valStr = String(val).toLowerCase();
+        if (valStr.includes(q) || (cleanQ && valStr.includes(cleanQ))) return true;
+        if (key.toLowerCase().includes(q)) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 type TabType = 'all' | 'workflow' | 'legacy';
 
 // ── Stat card ──────────────────────────────────────────────────────────────────
 
 function StatCard({
-  label, value, sub, highlight,
-}: { label: string; value: number; sub?: string; highlight?: boolean }) {
+  label, value, sub, highlight, onClick, clickable
+}: { label: string; value: number; sub?: string; highlight?: boolean; onClick?: () => void; clickable?: boolean }) {
   return (
-    <div className={`border rounded-2xl px-5 py-4 flex flex-col gap-1 transition-colors ${
-      highlight
-        ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
-        : 'bg-white dark:bg-nocturne border-gray-100 dark:border-gray-800'
-    }`}>
-      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</span>
+    <div
+      onClick={onClick}
+      className={`border rounded-2xl px-5 py-4 flex flex-col gap-1 transition-all ${
+        clickable ? 'cursor-pointer hover:border-[var(--color-brand)] hover:shadow-md hover:-translate-y-0.5 group' : ''
+      } ${
+        highlight
+          ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
+          : 'bg-white dark:bg-nocturne border-gray-100 dark:border-gray-800'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</span>
+        {clickable && <RotateCcw size={14} className="text-gray-400 group-hover:text-[var(--color-brand)] transition-colors" />}
+      </div>
       <span className={`text-2xl font-black ${highlight ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}`}>
         {value.toLocaleString()}
       </span>
@@ -147,7 +358,14 @@ export default function ItemCatalogue() {
   const [search, setSearch] = useState('');
   const [filterPool, setFilterPool] = useState('');
   const [filterCatalog, setFilterCatalog] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterMaterial, setFilterMaterial] = useState('');
+  const [filterColour, setFilterColour] = useState('');
   const [filterRfid, setFilterRfid] = useState<boolean | null>(null);
+  const [filterMinPrice, setFilterMinPrice] = useState('');
+  const [filterMaxPrice, setFilterMaxPrice] = useState('');
+  const [filterMinGsm, setFilterMinGsm] = useState('');
+  const [filterMaxGsm, setFilterMaxGsm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
   // ── Admin gate ────────────────────────────────────────────────────────────
@@ -160,6 +378,11 @@ export default function ItemCatalogue() {
   const [confirmArchive, setConfirmArchive] = useState<ItemRow | null>(null);
   const [confirmReactivate, setConfirmReactivate] = useState<ItemRow | null>(null);
 
+  // ── Archived items modal state ───────────────────────────────────────────
+  const [isArchivedModalOpen, setIsArchivedModalOpen] = useState(false);
+  const [archivedSearch, setArchivedSearch] = useState('');
+  const [reinstatingId, setReinstatingId] = useState<string | null>(null);
+
   // ── Load data ─────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async (silent = false) => {
@@ -167,8 +390,11 @@ export default function ItemCatalogue() {
     else setIsLoading(true);
 
     try {
-      const [itemsRes, workflowRes] = await Promise.all([
-        supabase
+      let allItems: any[] = [];
+      let from = 0;
+      const step = 1000;
+      while (true) {
+        const { data, error } = await supabase
           .from('items')
           .select(
             'id, sku, name, short_name, category, sub_category, ' +
@@ -177,19 +403,25 @@ export default function ItemCatalogue() {
             'sap_item_code_raw, range_name, specs, created_at, ' +
             'unit_price, uom, upq, min_level, max_level'
           )
-          .order('name'),
-        supabase
-          .from('item_requests')
-          .select('resulting_item_id')
-          .not('resulting_item_id', 'is', null),
-      ]);
+          .order('name')
+          .range(from, from + step - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allItems.push(...data);
+        if (data.length < step) break;
+        from += step;
+      }
 
-      if (itemsRes.error) throw itemsRes.error;
-      if (workflowRes.error) throw workflowRes.error;
+      const { data: workflowData, error: workflowErr } = await supabase
+        .from('item_requests')
+        .select('resulting_item_id')
+        .not('resulting_item_id', 'is', null);
 
-      setItems((itemsRes.data ?? []) as unknown as ItemRow[]);
+      if (workflowErr) throw workflowErr;
+
+      setItems(allItems as unknown as ItemRow[]);
       setWorkflowItemIds(
-        new Set((workflowRes.data ?? []).map((r: { resulting_item_id: string }) => r.resulting_item_id))
+        new Set((workflowData ?? []).map((r: { resulting_item_id: string }) => r.resulting_item_id))
       );
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load items');
@@ -209,6 +441,18 @@ export default function ItemCatalogue() {
   );
   const allCatalogs = useMemo(() =>
     [...new Set(items.map(i => i.item_catalog).filter(Boolean))].sort() as string[],
+    [items]
+  );
+  const allCategories = useMemo(() =>
+    [...new Set(items.map(i => i.category).filter(Boolean))].sort() as string[],
+    [items]
+  );
+  const allMaterials = useMemo(() =>
+    [...new Set(items.map(i => i.item_material).filter(Boolean))].sort() as string[],
+    [items]
+  );
+  const allColours = useMemo(() =>
+    [...new Set(items.map(i => i.item_colour).filter(Boolean))].sort() as string[],
     [items]
   );
 
@@ -235,30 +479,74 @@ export default function ItemCatalogue() {
   // ── Filtered rows ─────────────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
     return baseSet.filter(item => {
       if (activeTab === 'workflow' && !workflowItemIds.has(item.id)) return false;
       if (activeTab === 'legacy' && workflowItemIds.has(item.id)) return false;
       if (filterPool && item.item_pool !== filterPool) return false;
       if (filterCatalog && item.item_catalog !== filterCatalog) return false;
+      if (filterCategory && item.category !== filterCategory) return false;
+      if (filterMaterial && item.item_material !== filterMaterial) return false;
+      if (filterColour && item.item_colour !== filterColour) return false;
       if (filterRfid !== null && !!item.rfid_flag !== filterRfid) return false;
-      if (q) {
-        const nameHit = item.name.toLowerCase().includes(q);
-        const sapHit = (item.sap_item_code_raw ?? '').toLowerCase().includes(q);
-        const skuHit = (item.sku ?? '').toLowerCase().includes(q);
-        if (!nameHit && !sapHit && !skuHit) return false;
+
+      if (filterMinPrice !== '' || filterMaxPrice !== '') {
+        const minP = filterMinPrice !== '' ? parseFloat(filterMinPrice) : -Infinity;
+        const maxP = filterMaxPrice !== '' ? parseFloat(filterMaxPrice) : Infinity;
+        const priceOpts = getItemPriceOptions(item);
+        if (priceOpts.length === 0) return false;
+        const hasMatchingPrice = priceOpts.some(
+          o => !isNaN(o.price) && o.price >= minP && o.price <= maxP
+        );
+        if (!hasMatchingPrice) return false;
       }
+
+      const itemGsm = item.item_weight ?? (typeof item.specs?.gsm === 'number' ? item.specs.gsm : (parseFloat(String(item.specs?.gsm ?? '')) || null));
+      if (filterMinGsm !== '') {
+        const minG = parseFloat(filterMinGsm);
+        if (!isNaN(minG) && (itemGsm == null || itemGsm < minG)) return false;
+      }
+      if (filterMaxGsm !== '') {
+        const maxG = parseFloat(filterMaxGsm);
+        if (!isNaN(maxG) && (itemGsm == null || itemGsm > maxG)) return false;
+      }
+
+      if (search && !doesItemMatchSearch(item, search)) return false;
+
       return true;
     });
-  }, [baseSet, workflowItemIds, activeTab, search, filterPool, filterCatalog, filterRfid]);
+  }, [
+    baseSet, workflowItemIds, activeTab, search,
+    filterPool, filterCatalog, filterCategory, filterMaterial, filterColour,
+    filterRfid, filterMinPrice, filterMaxPrice, filterMinGsm, filterMaxGsm,
+  ]);
 
-  const hasSubFilters = !!(search || filterPool || filterCatalog || filterRfid !== null);
+  const hasSubFilters = !!(
+    search || filterPool || filterCatalog || filterCategory ||
+    filterMaterial || filterColour || filterRfid !== null ||
+    filterMinPrice || filterMaxPrice || filterMinGsm || filterMaxGsm
+  );
+
+  const activeFilterCount = (filterPool ? 1 : 0) +
+    (filterCatalog ? 1 : 0) +
+    (filterCategory ? 1 : 0) +
+    (filterMaterial ? 1 : 0) +
+    (filterColour ? 1 : 0) +
+    (filterRfid !== null ? 1 : 0) +
+    (filterMinPrice || filterMaxPrice ? 1 : 0) +
+    (filterMinGsm || filterMaxGsm ? 1 : 0);
 
   const clearSubFilters = () => {
     setSearch('');
     setFilterPool('');
     setFilterCatalog('');
+    setFilterCategory('');
+    setFilterMaterial('');
+    setFilterColour('');
     setFilterRfid(null);
+    setFilterMinPrice('');
+    setFilterMaxPrice('');
+    setFilterMinGsm('');
+    setFilterMaxGsm('');
   };
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -362,7 +650,35 @@ export default function ItemCatalogue() {
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Archived Items List & Reinstate Handler ─────────────────────────────
+
+  const archivedItems = useMemo(() => {
+    return items.filter(i => i.active_flag === false);
+  }, [items]);
+
+  const filteredArchivedItems = useMemo(() => {
+    const q = archivedSearch.toLowerCase().trim();
+    if (!q) return archivedItems;
+    return archivedItems.filter(i =>
+      i.name.toLowerCase().includes(q) ||
+      (i.sku ?? '').toLowerCase().includes(q) ||
+      (i.sap_item_code_raw ?? '').toLowerCase().includes(q) ||
+      (i.category ?? '').toLowerCase().includes(q)
+    );
+  }, [archivedItems, archivedSearch]);
+
+  const handleReinstateSingle = async (item: ItemRow) => {
+    setReinstatingId(item.id);
+    try {
+      await reactivateItem(item.id);
+      success(`"${item.name}" reinstated and restored to active catalogue`);
+      await Promise.all([loadData(true), reloadData(true)]);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to reinstate item');
+    } finally {
+      setReinstatingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-page-entry max-w-7xl mx-auto">
@@ -438,7 +754,13 @@ export default function ItemCatalogue() {
           <StatCard
             label={filterActiveOnly ? 'Archived (hidden)' : 'Active'}
             value={stats.fifth}
-            sub={filterActiveOnly ? 'not shown above' : undefined}
+            sub={filterActiveOnly ? (stats.fifth > 0 ? 'Click to view & reinstate' : 'No hidden items') : undefined}
+            clickable={filterActiveOnly && stats.fifth > 0}
+            onClick={() => {
+              if (filterActiveOnly && stats.fifth > 0) {
+                setIsArchivedModalOpen(true);
+              }
+            }}
           />
         </div>
       )}
@@ -471,28 +793,30 @@ export default function ItemCatalogue() {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-initial">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search name or SAP code…"
+              placeholder="Search name, code, price, GSM, attributes…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30 w-56"
+              className="pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30 w-full sm:w-72"
             />
           </div>
           <button
             onClick={() => setShowFilters(v => !v)}
             className={`flex items-center gap-2 px-3 py-2 text-xs font-black uppercase tracking-widest rounded-xl border transition-all ${
-              showFilters || (filterPool || filterCatalog || filterRfid !== null)
+              showFilters || activeFilterCount > 0
                 ? 'bg-[var(--color-brand)]/10 border-[var(--color-brand)]/30 text-[var(--color-brand)]'
                 : 'border-gray-200 dark:border-gray-700 text-gray-500 bg-white dark:bg-nocturne hover:bg-gray-50 dark:hover:bg-white/5'
             }`}
           >
             <SlidersHorizontal size={14} />
             Filters
-            {(filterPool || filterCatalog || filterRfid !== null) && (
-              <span className="w-2 h-2 rounded-full bg-[var(--color-brand)]" />
+            {activeFilterCount > 0 && (
+              <span className="flex items-center justify-center w-4 h-4 rounded-full bg-[var(--color-brand)] text-white text-[9px] font-bold">
+                {activeFilterCount}
+              </span>
             )}
           </button>
           {hasSubFilters && (
@@ -506,9 +830,9 @@ export default function ItemCatalogue() {
         </div>
       </div>
 
-      {/* Filter panel — all options always rendered when open */}
+      {/* Filter panel — structured controls */}
       {showFilters && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-5 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-5 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800">
           <div className="space-y-1.5">
             <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Item Pool</label>
             <select
@@ -520,6 +844,7 @@ export default function ItemCatalogue() {
               {allPools.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
+
           <div className="space-y-1.5">
             <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Catalogue</label>
             <select
@@ -531,6 +856,43 @@ export default function ItemCatalogue() {
               {allCatalogs.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Category</label>
+            <select
+              value={filterCategory}
+              onChange={e => setFilterCategory(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300"
+            >
+              <option value="">All Categories</option>
+              {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Material</label>
+            <select
+              value={filterMaterial}
+              onChange={e => setFilterMaterial(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300"
+            >
+              <option value="">All Materials</option>
+              {allMaterials.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Colour</label>
+            <select
+              value={filterColour}
+              onChange={e => setFilterColour(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300"
+            >
+              <option value="">All Colours</option>
+              {allColours.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
           <div className="space-y-1.5">
             <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">RFID</label>
             <select
@@ -543,6 +905,115 @@ export default function ItemCatalogue() {
               <option value="no">Non-RFID Only</option>
             </select>
           </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Price Range ($)</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                placeholder="Min $"
+                value={filterMinPrice}
+                onChange={e => setFilterMinPrice(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300"
+              />
+              <span className="text-gray-400 text-xs">-</span>
+              <input
+                type="number"
+                placeholder="Max $"
+                value={filterMaxPrice}
+                onChange={e => setFilterMaxPrice(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Weight / GSM</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                placeholder="Min GSM"
+                value={filterMinGsm}
+                onChange={e => setFilterMinGsm(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300"
+              />
+              <span className="text-gray-400 text-xs">-</span>
+              <input
+                type="number"
+                placeholder="Max GSM"
+                value={filterMaxGsm}
+                onChange={e => setFilterMaxGsm(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-nocturne text-gray-700 dark:text-gray-300"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active filter chips */}
+      {hasSubFilters && (
+        <div className="flex items-center gap-2 flex-wrap text-xs pt-1">
+          <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Active Filters:</span>
+          {search && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--color-brand)]/10 text-[var(--color-brand)] font-medium">
+              Search: "{search}"
+              <button onClick={() => setSearch('')} className="hover:opacity-75"><X size={12} /></button>
+            </span>
+          )}
+          {filterPool && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 font-medium">
+              Pool: {filterPool}
+              <button onClick={() => setFilterPool('')} className="hover:opacity-75"><X size={12} /></button>
+            </span>
+          )}
+          {filterCatalog && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 font-medium">
+              Catalogue: {filterCatalog}
+              <button onClick={() => setFilterCatalog('')} className="hover:opacity-75"><X size={12} /></button>
+            </span>
+          )}
+          {filterCategory && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 font-medium">
+              Category: {filterCategory}
+              <button onClick={() => setFilterCategory('')} className="hover:opacity-75"><X size={12} /></button>
+            </span>
+          )}
+          {filterMaterial && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 font-medium">
+              Material: {filterMaterial}
+              <button onClick={() => setFilterMaterial('')} className="hover:opacity-75"><X size={12} /></button>
+            </span>
+          )}
+          {filterColour && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 font-medium">
+              Colour: {filterColour}
+              <button onClick={() => setFilterColour('')} className="hover:opacity-75"><X size={12} /></button>
+            </span>
+          )}
+          {filterRfid !== null && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 font-medium">
+              RFID: {filterRfid ? 'Yes' : 'No'}
+              <button onClick={() => setFilterRfid(null)} className="hover:opacity-75"><X size={12} /></button>
+            </span>
+          )}
+          {(filterMinPrice || filterMaxPrice) && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 font-medium">
+              Price: ${filterMinPrice || '0'} - ${filterMaxPrice || '∞'}
+              <button onClick={() => { setFilterMinPrice(''); setFilterMaxPrice(''); }} className="hover:opacity-75"><X size={12} /></button>
+            </span>
+          )}
+          {(filterMinGsm || filterMaxGsm) && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 font-medium">
+              GSM: {filterMinGsm || '0'} - {filterMaxGsm || '∞'}
+              <button onClick={() => { setFilterMinGsm(''); setFilterMaxGsm(''); }} className="hover:opacity-75"><X size={12} /></button>
+            </span>
+          )}
+          <button
+            onClick={clearSubFilters}
+            className="text-xs text-[var(--color-brand)] hover:underline ml-1 font-semibold"
+          >
+            Clear All
+          </button>
         </div>
       )}
 
@@ -590,7 +1061,101 @@ export default function ItemCatalogue() {
           </div>
         ) : (
           <div className="overflow-auto max-h-[60vh]">
-            <table className="w-full text-left text-sm border-collapse">
+            {/* Mobile Card View */}
+            <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-800">
+              {filtered.map(item => {
+                const isWorkflow = workflowItemIds.has(item.id);
+                const proposedCode = getProposedMdCode(item);
+                const displayWeight = getDisplayWeight(item);
+                const attrs = [item.item_size, item.item_colour, item.item_material].filter(Boolean).join(' · ');
+                const isInactive = item.active_flag === false;
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`p-4 space-y-2.5 transition-colors ${
+                      isInactive ? 'opacity-60 bg-gray-50/50 dark:bg-black/20' : 'bg-white dark:bg-nocturne'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-gray-900 dark:text-white text-sm leading-snug truncate" title={item.name}>
+                          {item.name}
+                        </h4>
+                        {item.category && (
+                          <p className="text-[10px] text-gray-400 mt-0.5 truncate">{item.category}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setEditingItem(item)}
+                          title="Edit item"
+                          className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAuditItem(item)}
+                          title="View audit history"
+                          className="p-2 rounded-xl text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                        >
+                          <History size={16} />
+                        </button>
+                        {!isInactive ? (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmArchive(item)}
+                            title="Archive item"
+                            className="p-2 rounded-xl text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          >
+                            <Archive size={16} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmReactivate(item)}
+                            title="Restore item"
+                            className="p-2 rounded-xl text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                          >
+                            <RefreshCw size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-mono font-bold text-[11px] bg-gray-100 dark:bg-white/5 px-2 py-0.5 rounded text-gray-700 dark:text-gray-300">
+                        {isWorkflow ? proposedCode : (item.sap_item_code_raw || item.sku || proposedCode)}
+                      </span>
+                      {item.item_pool && (
+                        <span className="text-[11px] text-gray-500 font-medium">
+                          Pool: {item.item_pool}
+                        </span>
+                      )}
+                      {item.rfid_flag && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wider text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40 px-1.5 py-0.5 rounded">
+                          <Cpu size={10} /> RFID
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-800 text-xs">
+                      <span className="text-gray-500 truncate max-w-[200px]">
+                        {attrs || displayWeight || 'Standard specs'}
+                      </span>
+                      <div className="shrink-0">
+                        <SmartPriceCell item={item} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table View */}
+            <table className="hidden md:table w-full text-left text-sm border-collapse">
               <thead className="bg-gray-50 dark:bg-[#15171e] text-[10px] uppercase tracking-wider text-gray-400 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Name</th>
@@ -599,6 +1164,7 @@ export default function ItemCatalogue() {
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Pool / Catalogue</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Attributes</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Weight</th>
+                  <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Unit Price</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">RFID</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800">Status</th>
                   <th className="px-4 py-3 font-black border-b border-gray-100 dark:border-gray-800 text-right sticky right-0 bg-gray-50 dark:bg-[#15171e] shadow-[-8px_0_10px_-8px_rgba(0,0,0,0.06)]">
@@ -677,6 +1243,11 @@ export default function ItemCatalogue() {
                       {/* Weight */}
                       <td className="px-4 py-3 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
                         {displayWeight ?? <span className="text-gray-300 dark:text-gray-700">—</span>}
+                      </td>
+
+                      {/* Unit Price */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <SmartPriceCell item={item} />
                       </td>
 
                       {/* RFID */}
@@ -831,6 +1402,122 @@ export default function ItemCatalogue() {
         onConfirm={handleReactivateConfirm}
         onCancel={() => setConfirmReactivate(null)}
       />
+      {/* Archived (Hidden) Items Modal */}
+      {isArchivedModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white dark:bg-nocturne rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Archive size={22} className="text-amber-500" /> Archived (Hidden) Items
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {archivedItems.length} items currently archived. Search and reinstate any item to restore it across ProcureFlow.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsArchivedModalOpen(false);
+                  setArchivedSearch('');
+                }}
+                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors text-gray-500"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800/60 bg-white dark:bg-nocturne">
+              <div className="relative">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={archivedSearch}
+                  onChange={e => setArchivedSearch(e.target.value)}
+                  placeholder="Search archived SKU, SAP Code, Name or Category (e.g. BM1R)..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-medium focus:outline-none focus:border-[var(--color-brand)] dark:text-white"
+                />
+                {archivedSearch && (
+                  <button
+                    onClick={() => setArchivedSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 font-semibold"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {filteredArchivedItems.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <Package size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm font-semibold">
+                    {archivedSearch ? 'No archived items match your search.' : 'No archived items found.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {filteredArchivedItems.map(item => (
+                    <div
+                      key={item.id}
+                      className="py-3 px-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl flex items-center justify-between gap-4 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                            {item.name}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-mono text-xs font-semibold">
+                            {item.sku || item.sap_item_code_raw || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
+                          {item.category && <span>Category: {item.category}</span>}
+                          {item.item_pool && <span>Pool: {item.item_pool}</span>}
+                          {item.item_catalog && <span>Catalogue: {item.item_catalog}</span>}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleReinstateSingle(item)}
+                        disabled={reinstatingId === item.id}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm shrink-0"
+                      >
+                        {reinstatingId === item.id ? (
+                          <>
+                            <RefreshCw size={14} className="animate-spin" /> Reinstating...
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw size={14} /> Reinstate Item
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-white/5 text-xs text-gray-500 dark:text-gray-400">
+              <span>Showing {filteredArchivedItems.length} of {archivedItems.length} archived items</span>
+              <button
+                onClick={() => {
+                  setIsArchivedModalOpen(false);
+                  setArchivedSearch('');
+                }}
+                className="px-5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

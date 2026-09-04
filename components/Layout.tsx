@@ -29,6 +29,7 @@ import {
   MapPin,
   Menu,
   Moon,
+  Plus,
   PlusCircle,
   Save,
   Settings,
@@ -45,7 +46,11 @@ import VersionBadge from './VersionBadge.tsx';
 import { MultiSiteSelector } from './MultiSiteSelector.tsx';
 import TaskDrawer from './TaskDrawer.tsx';
 import AccountDrawer from './AccountDrawer.tsx';
+import NotificationDrawer from './NotificationDrawer.tsx';
+import NotificationPreferencesModal from './NotificationPreferencesModal.tsx';
+import InAppNotificationPopupContainer from './InAppNotificationPopup.tsx';
 import { BrandLogo } from './BrandLogo.tsx';
+import procureFlowLogo from '../docs/Logo Branding/LOGO-NEW/Procureflow_Logo.png';
 
 const SIDEBAR_COLLAPSED_KEY = 'pf-sidebar-collapsed';
 const REVAMP_EXPANDED_KEY = 'pf-revamp-sidebar-expanded';
@@ -67,7 +72,16 @@ const Layout = () => {
     activeSiteIds,
     setActiveSiteIds,
     userSites,
-    featureFlags
+    featureFlags,
+    notifications,
+    unreadNotificationCount,
+    isNotificationDrawerOpen,
+    setIsNotificationDrawerOpen,
+    isNotificationPrefsOpen,
+    setIsNotificationPrefsOpen,
+    refreshNotifications,
+    notificationPopups,
+    dismissNotificationPopup
   } = useApp();
   const uiRevamp = featureFlags?.uiRevampEnabled ?? false;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -262,6 +276,7 @@ const Layout = () => {
   // ─── REVAMPED LAYOUT (floating rail) ────────────────────────────────────────
   if (uiRevamp) {
     const sidebarW = isRevampExpanded ? '212px' : '64px';
+    const isWorkflowRoute = location.pathname === '/create' || location.pathname.startsWith('/items/requests/new') || Boolean(pageMeta.wizardActions);
 
     return (
       <PageMetaContext.Provider value={{ registerMeta, unregisterMeta }}>
@@ -290,14 +305,35 @@ const Layout = () => {
             className="hidden md:flex fixed left-4 top-4 bottom-4 z-50 flex-col rounded-2xl shadow-xl overflow-hidden transition-all duration-300 bg-nocturne text-white"
             style={{ width: sidebarW }}
           >
-            {/* Logo / app name */}
+            {/* Logo */}
             <div
-              className={`pt-4 pb-3 shrink-0 flex items-center transition-all duration-300 ${isRevampExpanded ? 'px-2 gap-3' : 'px-2 justify-center'}`}
+              className={`pt-4 pb-3 shrink-0 flex items-center transition-all duration-300 ${
+                isRevampExpanded ? 'px-3 justify-center' : 'px-2 justify-center'
+              }`}
             >
-              <BrandLogo appName={branding.appName} logoUrl={branding.logoUrl} size="md" />
-              {isRevampExpanded && (
-                <span className="text-white font-bold text-sm truncate">{branding.appName}</span>
-              )}
+              <Link
+                to="/"
+                className="w-full flex items-center justify-center transition-opacity hover:opacity-90"
+                title={branding.appName || 'ProcureFlow'}
+              >
+                {isRevampExpanded ? (
+                  <div className="w-full h-11 bg-white rounded-xl p-1.5 flex items-center justify-center shadow-md border border-white/10 overflow-hidden">
+                    <img
+                      src={procureFlowLogo}
+                      alt="ProcureFlow logo"
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-11 h-11 bg-white rounded-xl p-1.5 flex items-center justify-center shadow-md border border-white/10 overflow-hidden shrink-0">
+                    <img
+                      src={procureFlowLogo}
+                      alt="ProcureFlow logo"
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                )}
+              </Link>
             </div>
 
             {/* Nav items + scroll indicator */}
@@ -429,41 +465,54 @@ const Layout = () => {
           </aside>
 
           {/* ── Bottom tab bar — mobile ── */}
-          <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-nocturne/95 backdrop-blur border-t border-white/5 flex items-center justify-around px-2 pb-safe pt-2">
-            {navItems.slice(0, 5).map(item => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all text-[10px] font-bold uppercase tracking-wide
-                    ${isActive ? 'text-tranquil' : 'text-white/40 hover:text-white'}`
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <Icon size={20} className={isActive ? 'text-tranquil' : ''} />
-                      <span className="truncate max-w-[48px]">{item.label.split(' ')[0]}</span>
-                    </>
-                  )}
-                </NavLink>
-              );
-            })}
-            <button type="button"
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-white/40 hover:text-white text-[10px] font-bold uppercase tracking-wide"
-            >
-              <Menu size={20} />
-              More
-            </button>
-          </nav>
+          {!isWorkflowRoute && (
+            <nav aria-label="Mobile navigation" className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-nocturne/95 backdrop-blur border-t border-white/5 flex items-center justify-around px-2 pb-safe pt-2">
+              {navItems.slice(0, 5).map(item => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={({ isActive }) =>
+                      `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all text-[10px] font-bold uppercase tracking-wide
+                      ${isActive ? 'text-tranquil' : 'text-white/40 hover:text-white'}`
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <Icon size={20} className={isActive ? 'text-tranquil' : ''} />
+                        <span className="truncate max-w-[48px]">{item.label.split(' ')[0]}</span>
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
+              <button type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-white/40 hover:text-white text-[10px] font-bold uppercase tracking-wide"
+              >
+                <Menu size={20} />
+                More
+              </button>
+            </nav>
+          )}
 
           {/* Mobile drawer (all nav items) */}
           {isMobileMenuOpen && (
             <div className="md:hidden fixed inset-y-0 left-0 w-64 z-50 bg-nocturne flex flex-col shadow-2xl rounded-r-2xl animate-slide-in-right">
-              <div className="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
-                <span className="text-white font-bold text-sm">{branding.appName}</span>
+              <div className="flex items-center justify-between p-4 border-b border-white/10 shrink-0">
+                <Link
+                  to="/"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="h-10 px-2.5 py-1 bg-white rounded-xl flex items-center justify-center shadow-sm max-w-[150px] overflow-hidden"
+                  title={branding.appName || 'ProcureFlow'}
+                >
+                  <img
+                    src={procureFlowLogo}
+                    alt="ProcureFlow logo"
+                    className="h-full w-auto object-contain"
+                  />
+                </Link>
                 <button type="button" onClick={() => setIsMobileMenuOpen(false)} className="text-white/50 hover:text-white p-1">
                   <X size={20} />
                 </button>
@@ -588,7 +637,7 @@ const Layout = () => {
                   <div className="flex-1 flex items-center min-w-0 pr-2 gap-3">
                     {/* Site selector lives outside the overflow container so its dropdown isn't clipped */}
                     {userSites.length > 0 && (
-                      <div className="hidden sm:block w-[230px] md:w-[300px] shrink-0">
+                      <div className="hidden sm:block w-[180px] md:w-[240px] lg:w-[280px] shrink min-w-0">
                         <MultiSiteSelector
                           sites={userSites}
                           selectedSiteIds={activeSiteIds}
@@ -650,18 +699,20 @@ const Layout = () => {
                         </button>
                       </>
                     )}
-                    {location.pathname === '/requests' && hasPermission('create_request') && (
+                    {['/', '/dashboard', '/procurement', '/procurement/dashboard', '/smart-buying', '/requests', '/active-requests'].includes(location.pathname) && hasPermission('create_request') && (
                       <Link
                         to="/create"
-                        className="bg-tranquil text-white h-8 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest hover:opacity-90 active:scale-95 shadow-sm shadow-tranquil/30 transition-all flex items-center gap-1.5 shrink-0 mr-1"
+                        className="bg-tranquil text-white p-2 md:p-2.5 sm:px-3 sm:py-2 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95 flex items-center justify-center gap-1.5 shrink-0"
+                        title="Create New Request"
                       >
-                        + New Request
+                        <Plus size={18} />
+                        <span className="hidden lg:inline text-[11px] font-black uppercase tracking-widest">New Request</span>
                       </Link>
                     )}
                     <NavLink
                       to="/"
                       className={({ isActive }) =>
-                        `relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95 ${
+                        `hidden sm:inline-flex relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95 ${
                           isActive ? 'ring-2 ring-white/40 dark:ring-white/20' : ''
                         }`
                       }
@@ -671,17 +722,22 @@ const Layout = () => {
                     </NavLink>
                     <button type="button"
                       onClick={() => setIsTaskDrawerOpen(true)}
-                      className="relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
+                      className="hidden sm:inline-flex relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
                       title="Task Center"
                     >
                       <TaskIcon size={18} />
-                      <span className="absolute top-1 right-1 w-2 h-2 bg-red-400 rounded-full border-2 border-tranquil animate-pulse" />
                     </button>
                     <button type="button"
-                      className="bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
+                      onClick={() => setIsNotificationDrawerOpen(true)}
+                      className="relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all"
                       title="Notifications"
                     >
                       <Bell size={18} />
+                      {unreadNotificationCount > 0 && (
+                        <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-[18px] text-[10px] font-black rounded-full bg-red-500 text-white flex items-center justify-center animate-pulse border-2 border-tranquil">
+                          {unreadNotificationCount}
+                        </span>
+                      )}
                     </button>
                     <button type="button"
                       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -716,6 +772,29 @@ const Layout = () => {
 
           <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
           <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
+
+          <InAppNotificationPopupContainer
+            popups={notificationPopups}
+            onDismiss={dismissNotificationPopup}
+            onOpenDrawer={() => setIsNotificationDrawerOpen(true)}
+            onRefresh={refreshNotifications}
+          />
+
+          <NotificationDrawer
+            isOpen={isNotificationDrawerOpen}
+            onClose={() => setIsNotificationDrawerOpen(false)}
+            notifications={notifications}
+            onRefresh={refreshNotifications}
+            onOpenPreferences={() => setIsNotificationPrefsOpen(true)}
+          />
+
+          {currentUser?.id && (
+            <NotificationPreferencesModal
+              isOpen={isNotificationPrefsOpen}
+              onClose={() => setIsNotificationPrefsOpen(false)}
+              userId={currentUser.id}
+            />
+          )}
         </div>
       </PageMetaContext.Provider>
     );
@@ -743,18 +822,29 @@ const Layout = () => {
         <div
           className={`p-4 md:py-5 flex items-center gap-3 shrink-0 ${isCollapsed ? 'md:px-3' : 'md:px-5'}`}
         >
-          <BrandLogo
-            appName={branding.appName}
-            logoUrl={branding.logoUrl}
-            size="sm"
-            fallbackClassName={isSidebarDark ? 'bg-white text-[var(--color-brand)]' : 'bg-gradient-to-br from-[var(--color-brand)] to-purple-600 text-white'}
-          />
-
-          {!isCollapsed && (
-            <h1 className="text-lg font-bold tracking-tight truncate flex-1" title={branding.appName}>
-              {branding.appName}
-            </h1>
-          )}
+          <Link
+            to="/"
+            className="flex items-center gap-3 overflow-hidden"
+            title={branding.appName || 'ProcureFlow'}
+          >
+            {isCollapsed ? (
+              <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-sm shrink-0 border border-gray-200 dark:border-white/10 overflow-hidden">
+                <img
+                  src={procureFlowLogo}
+                  alt="ProcureFlow logo"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+            ) : (
+              <div className="h-11 px-2.5 py-1 bg-white rounded-xl flex items-center justify-center shadow-sm border border-gray-200 dark:border-white/10 overflow-hidden max-w-[170px]">
+                <img
+                  src={procureFlowLogo}
+                  alt="ProcureFlow logo"
+                  className="h-full w-auto object-contain"
+                />
+              </div>
+            )}
+          </Link>
 
           <div className="ml-auto flex items-center gap-1">
             <button
@@ -962,12 +1052,14 @@ const Layout = () => {
                 </button>
               </>
             )}
-            {location.pathname === '/requests' && hasPermission('create_request') && (
+            {['/', '/dashboard', '/procurement', '/procurement/dashboard', '/smart-buying', '/requests', '/active-requests'].includes(location.pathname) && hasPermission('create_request') && (
               <Link
                 to="/create"
-                className="bg-[var(--color-brand)] text-white h-9 px-4 rounded-xl text-xs font-bold hover:opacity-90 active:scale-95 shadow-sm shadow-[var(--color-brand)]/20 transition-all flex items-center gap-1.5 shrink-0 mr-2"
+                className="bg-[var(--color-brand)] text-white p-2 md:p-2.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold hover:opacity-90 active:scale-95 shadow-sm shadow-[var(--color-brand)]/20 transition-all flex items-center justify-center gap-1.5 shrink-0"
+                title="Create New Request"
               >
-                + New Request
+                <Plus size={18} />
+                <span className="hidden lg:inline">New Request</span>
               </Link>
             )}
             <NavLink
@@ -987,14 +1079,19 @@ const Layout = () => {
               title="Task Center"
             >
               <TaskIcon size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#15171e] animate-pulse" />
             </button>
 
             <button type="button"
+              onClick={() => setIsNotificationDrawerOpen(true)}
               className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"
               title="Notifications"
             >
               <Bell size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 px-1.5 py-0.2 min-w-[16px] text-[9px] font-black rounded-full bg-red-500 text-white flex items-center justify-center animate-pulse">
+                  {unreadNotificationCount}
+                </span>
+              )}
             </button>
 
             <button type="button"
@@ -1043,6 +1140,29 @@ const Layout = () => {
       <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
 
       <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
+
+      <InAppNotificationPopupContainer
+        popups={notificationPopups}
+        onDismiss={dismissNotificationPopup}
+        onOpenDrawer={() => setIsNotificationDrawerOpen(true)}
+        onRefresh={refreshNotifications}
+      />
+
+      <NotificationDrawer
+        isOpen={isNotificationDrawerOpen}
+        onClose={() => setIsNotificationDrawerOpen(false)}
+        notifications={notifications}
+        onRefresh={refreshNotifications}
+        onOpenPreferences={() => setIsNotificationPrefsOpen(true)}
+      />
+
+      {currentUser?.id && (
+        <NotificationPreferencesModal
+          isOpen={isNotificationPrefsOpen}
+          onClose={() => setIsNotificationPrefsOpen(false)}
+          userId={currentUser.id}
+        />
+      )}
     </div>
     </PageMetaContext.Provider>
   );

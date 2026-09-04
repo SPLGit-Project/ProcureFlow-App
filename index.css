@@ -153,6 +153,30 @@
   animation: slide-down 0.3s ease-out;
 }
 
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 /* ============================================
    TRANSITION HELPERS
    ============================================ */
@@ -217,41 +241,171 @@ select.input-field {
 .dark select.input-field {
   color: #ffffff !important;
 }
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+
+/* ============================================
+   AUTOFADE / INVISIBLE SCROLLBAR SYSTEM
+   - Default: Completely invisible thumb
+   - Desktop Hover: Smoothly fades in when mouse hovers over scrollable container
+   - Active Scrolling: Visible on mobile & desktop during scroll/wheel/touch
+   - Idle State: Gently transitions back to invisible
+   ============================================ */
+
+/* Global sleek scrollbar defaults */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.animate-fade-in {
-  animation: fade-in 0.4s ease-out forwards;
+/* On hover over any scrollable element (Desktop) */
+*:hover {
+  scrollbar-color: rgba(0, 0, 0, 0.24) transparent;
 }
 
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(40px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+.dark *:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
 }
 
-.animate-slide-in-right {
-  animation: slide-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+/* Active scrolling on mobile and desktop */
+body.is-scrolling *,
+*.is-scrolling {
+  scrollbar-color: rgba(0, 0, 0, 0.3) transparent !important;
 }
 
-/* Custom Scrollbar */
+.dark body.is-scrolling *,
+.dark *.is-scrolling {
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent !important;
+}
+
+/* WebKit & Chromium Browsers */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Default state: invisible */
+*::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Desktop: reveal thumb when mouse hovers over the container */
+*:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.22);
+}
+
+.dark *:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+/* High-contrast when hovering directly on the scrollbar thumb */
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Reveal thumb while actively scrolling (mobile touch & desktop wheel) */
+body.is-scrolling *::-webkit-scrollbar-thumb,
+*.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.28) !important;
+}
+
+.dark body.is-scrolling *::-webkit-scrollbar-thumb,
+.dark *.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.28) !important;
+}
+
+/* Utilities for hiding scrollbars completely while retaining scroll behavior */
+.no-scrollbar,
+.hide-scrollbar,
+.scrollbar-hide {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.no-scrollbar::-webkit-scrollbar,
+.hide-scrollbar::-webkit-scrollbar,
+.scrollbar-hide::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Custom Scrollbar Utility */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.custom-scrollbar:hover {
+  scrollbar-color: rgba(0, 0, 0, 0.24) transparent;
+}
+.dark .custom-scrollbar:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+}
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: 10px;
+  background-color: transparent;
+  border-radius: 9999px;
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.22);
+}
+.dark .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.22);
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--border-strong);
+  background-color: rgba(0, 0, 0, 0.45) !important;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* In-App Notification Responsive Popup Animations */
+@keyframes notif-enter-mobile {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes notif-enter-desktop {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-notif-enter {
+  animation: notif-enter-mobile 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (min-width: 640px) {
+  .animate-notif-enter {
+    animation: notif-enter-desktop 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
 }

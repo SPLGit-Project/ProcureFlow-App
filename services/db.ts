@@ -3,6 +3,7 @@ import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, 
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { normalizeSupplierContacts } from '../utils/suppliers.ts';
+import { calculateLinePricing, calculatePOTotals, roundCurrency } from '../utils/taxCalculations.ts';
 
 
 
@@ -13,7 +14,7 @@ type DbSupplierProductMapRow = { id: string; supplier_id: string; product_id: st
 type DbProductAvailabilityRow = { id: string; product_id: string; supplier_id: string; available_units: number; available_order_qty: number; updated_at: string };
 type DbCatalogItemRow = { id: string; item_id: string; supplier_id: string; supplier_sku: string; price: number };
 type DbStockSnapshotRow = { id: string; supplier_id: string; supplier_sku: string; product_name: string; available_qty: number; stock_on_hand: number; committed_qty: number; back_ordered_qty: number; total_stock_qty: number; snapshot_date: string; source_report_name: string; customer_stock_code: string; range_name: string; category: string; sub_category: string; stock_type: string; carton_qty: number; soh_value_at_sell: number; sell_price: number; incoming_stock: SupplierStockSnapshot['incomingStock']; customer_stock_code_raw: string; customer_stock_code_norm: string; customer_stock_code_alt_norm: string };
-type DbPORequestRow = { id: string; display_id: string; request_date: string; requester_id: string; requester: { name: string }; site_id: string; site: { name: string }; supplier_id: string; supplier: { name: string }; status: PORequest['status']; total_amount: number; approvals: { id: string; action: ApprovalEvent['action']; date: string; approver_name: string; comments: string }[]; lines: { id: string; item_id: string; item_name: string; sku: string; quantity_ordered: number; quantity_received: number; unit_price: number; total_price: number; concur_po_number: string }[]; deliveries: { id: string; date: string; docket_number: string; received_by: string; received_by_id: string; lines: { id: string; po_line_id: string; quantity: number; invoice_number: string; is_capitalised: boolean; capitalised_date: string; freight_amount: number }[] }[]; reason_for_request: PORequest['reasonForRequest']; customer_name: string; concur_request_number: string; po_lines: { concur_po_number: string }[]; comments: string };
+type DbPORequestRow = { id: string; display_id: string; request_date: string; requester_id: string; requester: { name: string }; site_id: string; site: { name: string }; supplier_id: string; supplier: { name: string }; status: PORequest['status']; total_amount: number; subtotal_amount?: number; tax_total_amount?: number; total_amount_inc_gst?: number; approvals: { id: string; action: ApprovalEvent['action']; date: string; approver_name: string; comments: string }[]; lines: { id: string; item_id: string; item_name: string; sku: string; quantity_ordered: number; quantity_received: number; unit_price: number; total_price: number; tax_code?: string; tax_rate?: number; tax_amount?: number; total_price_inc_gst?: number; concur_po_number: string; need_by_date?: string }[]; deliveries: { id: string; date: string; docket_number: string; received_by: string; received_by_id: string; lines: { id: string; po_line_id: string; quantity: number; invoice_number: string; is_capitalised: boolean; capitalised_date: string; freight_amount: number }[] }[]; reason_for_request: PORequest['reasonForRequest']; customer_name: string; concur_request_number: string; po_lines: { concur_po_number: string }[]; comments: string };
 type DbWorkflowStepRow = { id: string; step_name: string; approver_role: string; approver_type: WorkflowStep['approverType']; approver_id: string; condition_type: WorkflowStep['conditionType']; condition_value: number; order: number; is_active: boolean };
 type DbNotificationRuleRow = { id: string; event_type: NotificationRule['eventType']; label: string; is_active: boolean; recipients: NotificationRule['recipients'] };
 type DbAppNotificationRow = { id: string; user_id: string; title: string; message: string; is_read: boolean; link: string; created_at: string };
@@ -559,14 +560,22 @@ export const db = {
 
     upsertProductAvailability: async (availabilities: ProductAvailability[]): Promise<void> => {
         if (availabilities.length === 0) return;
-        const { error } = await supabase.from('product_availability').upsert(availabilities.map(a => ({
-             id: a.id,
-             product_id: a.productId,
-             supplier_id: a.supplierId,
-             available_units: a.availableUnits,
-             available_order_qty: a.availableOrderQty,
-             updated_at: new Date().toISOString()
-        })));
+        const dedupedMap = new Map<string, any>();
+        availabilities.forEach(a => {
+            const key = `${a.productId}:${a.supplierId}`;
+            if (!dedupedMap.has(key)) {
+                dedupedMap.set(key, {
+                    id: a.id,
+                    product_id: a.productId,
+                    supplier_id: a.supplierId,
+                    available_units: a.availableUnits,
+                    available_order_qty: a.availableOrderQty,
+                    updated_at: new Date().toISOString()
+                });
+            }
+        });
+        const payload = Array.from(dedupedMap.values());
+        const { error } = await supabase.from('product_availability').upsert(payload, { onConflict: 'product_id,supplier_id' });
         if (error) throw error;
     },
 
@@ -708,6 +717,9 @@ export const db = {
             supplierName: p.supplier?.name || 'Unknown',
             status: p.status,
             totalAmount: p.total_amount || 0,
+            subtotalAmount: p.subtotal_amount !== undefined && p.subtotal_amount !== null ? Number(p.subtotal_amount) : (p.total_amount || 0),
+            taxTotalAmount: p.tax_total_amount !== undefined && p.tax_total_amount !== null ? Number(p.tax_total_amount) : Number((Number(p.total_amount || 0) * 0.10).toFixed(2)),
+            totalAmountIncGst: p.total_amount_inc_gst !== undefined && p.total_amount_inc_gst !== null ? Number(p.total_amount_inc_gst) : Number(((p.total_amount || 0) * 1.10).toFixed(2)),
             approvalHistory: (p.approvals || []).map((a: DbPORequestRow['approvals'][0]) => ({
                 id: a.id,
                 action: a.action,
@@ -724,7 +736,12 @@ export const db = {
                 quantityReceived: l.quantity_received || 0,
                 unitPrice: l.unit_price || 0,
                 totalPrice: l.total_price || 0,
-                concurPoNumber: l.concur_po_number
+                taxCode: l.tax_code || 'GST',
+                taxRate: l.tax_rate !== undefined && l.tax_rate !== null ? Number(l.tax_rate) : 10.0,
+                taxAmount: l.tax_amount !== undefined && l.tax_amount !== null ? Number(l.tax_amount) : Number((Number(l.total_price || 0) * 0.10).toFixed(2)),
+                totalPriceIncGst: l.total_price_inc_gst !== undefined && l.total_price_inc_gst !== null ? Number(l.total_price_inc_gst) : Number(((l.total_price || 0) * 1.10).toFixed(2)),
+                concurPoNumber: l.concur_po_number,
+                needByDate: l.need_by_date || (p.request_date ? p.request_date.split('T')[0] : undefined)
             })),
             deliveries: (p.deliveries || []).map((d: DbPORequestRow['deliveries'][0]) => ({
                 id: d.id,
@@ -863,31 +880,54 @@ export const db = {
     },
 
     createPO: async (po: PORequest): Promise<string> => {
-        // Use the atomic RPC to ensure all parts of the PO are created in a single transaction (Fix F2).
-        // This also bypasses RLS restrictions on po_lines for non-admin users via SECURITY DEFINER.
+        // Calculate standard totals and line pricing to guarantee integrity
+        const linesWithPricing = po.lines.map(l => {
+            const pricing = calculateLinePricing(
+                l.quantityOrdered,
+                l.unitPrice,
+                l.taxCode || 'GST',
+                l.taxRate ?? 10.0
+            );
+            return {
+                id: l.id,
+                item_id: l.itemId,
+                sku: l.sku,
+                item_name: l.itemName,
+                quantity_ordered: pricing.quantityOrdered,
+                quantity_received: l.quantityReceived || 0,
+                unit_price: pricing.unitPrice,
+                total_price: pricing.totalPrice,
+                tax_code: pricing.taxCode,
+                tax_rate: pricing.taxRate,
+                tax_amount: pricing.taxAmount,
+                total_price_inc_gst: pricing.totalPriceIncGst,
+                concur_po_number: l.concurPoNumber,
+                need_by_date: l.needByDate || (po.requestDate ? po.requestDate.split('T')[0] : null)
+            };
+        });
+
+        const totals = calculatePOTotals(linesWithPricing.map(l => ({
+            totalPrice: l.total_price,
+            taxAmount: l.tax_amount,
+            totalPriceIncGst: l.total_price_inc_gst,
+            taxCode: l.tax_code,
+            taxRate: l.tax_rate
+        })));
+
         const header = {
             request_date: po.requestDate,
             requester_id: po.requesterId,
             site_id: po.siteId,
             supplier_id: po.supplierId,
             status: po.status,
-            total_amount: po.totalAmount,
+            total_amount: totals.subtotalAmount,
+            subtotal_amount: totals.subtotalAmount,
+            tax_total_amount: totals.taxTotalAmount,
+            total_amount_inc_gst: totals.totalAmountIncGst,
             customer_name: po.customerName,
             reason_for_request: po.reasonForRequest,
             comments: po.comments
         };
-
-        const lines_data = po.lines.map(l => ({
-            id: l.id,
-            item_id: l.itemId,
-            sku: l.sku,
-            item_name: l.itemName,
-            quantity_ordered: l.quantityOrdered,
-            quantity_received: l.quantityReceived || 0,
-            unit_price: l.unitPrice,
-            total_price: l.totalPrice,
-            concur_po_number: l.concurPoNumber
-        }));
 
         const approval = po.approvalHistory && po.approvalHistory.length > 0 ? {
             approver_id: po.requesterId, 
@@ -900,7 +940,7 @@ export const db = {
         const { data, error } = await supabase.rpc('create_po_atomic', {
             p_request_id: po.id,
             p_header: header,
-            p_lines: lines_data,
+            p_lines: linesWithPricing,
             p_approval: approval
         });
 
@@ -913,12 +953,13 @@ export const db = {
     },
     
 
-    updatePODetails: async (id: string, details: { clientName?: string, reasonForRequest?: string, comments?: string }): Promise<void> => {
-        const { error } = await supabase.from('po_requests').update({
-            customer_name: details.clientName,
-            reason_for_request: details.reasonForRequest,
-            comments: details.comments
-        }).eq('id', id);
+    updatePODetails: async (id: string, details: { clientName?: string, reasonForRequest?: string, comments?: string, siteId?: string }): Promise<void> => {
+        const updates: Record<string, unknown> = {};
+        if (details.clientName !== undefined) updates.customer_name = details.clientName;
+        if (details.reasonForRequest !== undefined) updates.reason_for_request = details.reasonForRequest;
+        if (details.comments !== undefined) updates.comments = details.comments;
+        if (details.siteId !== undefined) updates.site_id = details.siteId;
+        const { error } = await supabase.from('po_requests').update(updates).eq('id', id);
         if (error) throw error;
     },
 
@@ -931,6 +972,7 @@ export const db = {
             comments?: string;
             concurRequestNumber?: string;
             concurPoNumber?: string;
+            siteId?: string;
             lines: POLineItem[];
         }
     ): Promise<void> => {
@@ -955,13 +997,22 @@ export const db = {
             .map((line) => {
                 const quantityOrdered = Math.max(1, Math.floor(Number(line.quantityOrdered) || 0));
                 const unitPrice = Math.max(0, Number(line.unitPrice) || 0);
-                const totalPrice = Number((quantityOrdered * unitPrice).toFixed(2));
+                const pricing = calculateLinePricing(
+                    quantityOrdered,
+                    unitPrice,
+                    line.taxCode || 'GST',
+                    line.taxRate ?? 10.0
+                );
 
                 return {
                     ...line,
-                    quantityOrdered,
-                    unitPrice,
-                    totalPrice
+                    quantityOrdered: pricing.quantityOrdered,
+                    unitPrice: pricing.unitPrice,
+                    totalPrice: pricing.totalPrice,
+                    taxCode: pricing.taxCode,
+                    taxRate: pricing.taxRate,
+                    taxAmount: pricing.taxAmount,
+                    totalPriceIncGst: pricing.totalPriceIncGst
                 };
             })
             .filter((line) => Boolean(line.itemId));
@@ -970,8 +1021,14 @@ export const db = {
             throw new Error('A request must contain at least one item.');
         }
 
-        const totalAmount = normalizedLines.reduce((sum, line) => sum + line.totalPrice, 0);
-        // Wait! Let's ensure normalizedLines maps `concurPoNumber` to `concur_po_number` if it exists.
+        const totals = calculatePOTotals(normalizedLines.map(l => ({
+            totalPrice: l.totalPrice,
+            taxAmount: l.taxAmount,
+            totalPriceIncGst: l.totalPriceIncGst,
+            taxCode: l.taxCode,
+            taxRate: l.taxRate
+        })));
+
         const lineRows = normalizedLines.map((line) => ({
             id: line.id,
             item_id: line.itemId,
@@ -980,17 +1037,28 @@ export const db = {
             quantity_ordered: line.quantityOrdered,
             unit_price: line.unitPrice,
             total_price: line.totalPrice,
-            concur_po_number: line.concurPoNumber || updates.concurPoNumber
+            tax_code: line.taxCode || 'GST',
+            tax_rate: line.taxRate ?? 10.0,
+            tax_amount: line.taxAmount ?? Number((line.totalPrice * 0.10).toFixed(2)),
+            total_price_inc_gst: line.totalPriceIncGst ?? Number((line.totalPrice * 1.10).toFixed(2)),
+            concur_po_number: updates.concurPoNumber !== undefined
+                ? (updates.concurPoNumber.trim() || null)
+                : (line.concurPoNumber || null),
+            need_by_date: line.needByDate ? line.needByDate.split('T')[0] : null
         }));
 
         const { error: rpcError } = await supabase.rpc('update_pending_po_request', {
             p_request_id: poId,
             p_header: {
-                total_amount: Number(totalAmount.toFixed(2)),
+                total_amount: totals.subtotalAmount,
+                subtotal_amount: totals.subtotalAmount,
+                tax_total_amount: totals.taxTotalAmount,
+                total_amount_inc_gst: totals.totalAmountIncGst,
                 reason_for_request: updates.reasonForRequest,
                 comments: updates.comments,
                 customer_name: updates.customerName,
-                concur_request_number: updates.concurRequestNumber
+                concur_request_number: updates.concurRequestNumber,
+                site_id: updates.siteId || null
             },
             p_lines: lineRows
         });
@@ -1870,6 +1938,7 @@ export const db = {
         if (updates.quantityOrdered !== undefined) payload.quantity_ordered = updates.quantityOrdered;
         if (updates.unitPrice !== undefined) payload.unit_price = updates.unitPrice;
         if (updates.totalPrice !== undefined) payload.total_price = updates.totalPrice;
+        if (updates.needByDate !== undefined) payload.need_by_date = updates.needByDate ? updates.needByDate.split('T')[0] : null;
 
         const { error, count } = await (supabase
             .from('po_lines')

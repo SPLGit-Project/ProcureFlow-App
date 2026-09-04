@@ -22,7 +22,9 @@ export const normalizeItemPriceOptions = (item?: Partial<Item> | null): ItemPric
         ? item?.priceOptions
         : Array.isArray((specs as Record<string, unknown>)?.priceOptions)
             ? ((specs as Record<string, unknown>).priceOptions as ItemPriceOption[])
-            : [];
+            : Array.isArray((specs as Record<string, unknown>)?.price_options)
+                ? ((specs as Record<string, unknown>).price_options as ItemPriceOption[])
+                : [];
 
     const mapped = rawOptions
         .map((opt, index) => ({

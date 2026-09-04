@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext.tsx';
 import Layout from './components/Layout.tsx';
@@ -21,6 +21,36 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Global active-scroll detector for auto-fading invisible scrollbars
+const GlobalScrollbarHandler: React.FC = () => {
+  useEffect(() => {
+    let scrollTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    const handleScrollActivity = () => {
+      if (!document.body.classList.contains('is-scrolling')) {
+        document.body.classList.add('is-scrolling');
+      }
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        document.body.classList.remove('is-scrolling');
+      }, 1000);
+    };
+
+    window.addEventListener('scroll', handleScrollActivity, { capture: true, passive: true });
+    window.addEventListener('wheel', handleScrollActivity, { capture: true, passive: true });
+    window.addEventListener('touchmove', handleScrollActivity, { capture: true, passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScrollActivity, { capture: true });
+      window.removeEventListener('wheel', handleScrollActivity, { capture: true });
+      window.removeEventListener('touchmove', handleScrollActivity, { capture: true });
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  }, []);
+
+  return null;
+};
+
 // Lazy Load Heavy Components
 const Home = lazy(() => import('./components/Home.tsx'));
 const Dashboard = lazy(() => import('./components/Dashboard.tsx'));
@@ -30,7 +60,6 @@ const PODetail = lazy(() => import('./components/PODetail.tsx'));
 const FinanceView = lazy(() => import('./components/FinanceView.tsx'));
 const Settings = lazy(() => import('./components/Settings.tsx'));
 const HelpGuide = lazy(() => import('./components/HelpGuide.tsx'));
-const AboutPage  = lazy(() => import('./components/AboutPage.tsx'));
 const ReportingView = lazy(() => import('./components/ReportingView.tsx'));
 const HistoryView = lazy(() => import('./components/HistoryView.tsx'));
 const ActiveRequestsView = lazy(() => import('./components/ActiveRequestsView.tsx'));
@@ -46,7 +75,7 @@ const ApprovalReviewWizard = lazy(() => import('./components/wizards/ApprovalRev
 const MyItemRequests      = lazy(() => import('./components/MyItemRequests.tsx'));
 const MasterDataQueue     = lazy(() => import('./components/MasterDataQueue.tsx'));
 const PricingReviewQueue  = lazy(() => import('./components/PricingReviewQueue.tsx'));
-const ItemRequestDetail   = lazy(() => import('./components/ItemRequestDetail.tsx')); // Placeholder
+const ItemRequestDetail   = lazy(() => import('./components/ItemRequestDetail.tsx'));
 const ApprovalRulesConfig = lazy(() => import('./components/ApprovalRulesConfig.tsx'));
 const PricingSchedulesList = lazy(() => import('./components/PricingSchedulesList.tsx'));
 const PricingScheduleForm = lazy(() => import('./components/PricingScheduleForm.tsx'));
@@ -56,9 +85,8 @@ const CutoverReadinessChecker = lazy(() => import('./components/CutoverReadiness
 const ColourPaletteAdmin = lazy(() => import('./components/ColourPaletteAdmin.tsx'));
 const ProcurementReviewWizard = lazy(() => import('./components/wizards/ProcurementReviewWizard.tsx'));
 const ProcurementQueue = lazy(() => import('./components/ProcurementQueue.tsx'));
-
-
-
+const NotificationCenter = lazy(() => import('./components/NotificationCenter.tsx'));
+const WorkflowNotificationHub = lazy(() => import('./components/WorkflowNotificationHub.tsx'));
 
 const LoadingSpinner = () => (
     <div className="h-full w-full flex items-center justify-center p-20">
@@ -91,6 +119,7 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <AppProvider>
+      <GlobalScrollbarHandler />
       <ErrorBoundary>
         <BrowserRouter>
           <Routes>
@@ -115,7 +144,8 @@ function App() {
               <Route path="reports" element={<Suspense fallback={<LoadingSpinner />}><ReportingView /></Suspense>} />
               <Route path="history" element={<Suspense fallback={<LoadingSpinner />}><HistoryView /></Suspense>} />
               <Route path="help"  element={<Suspense fallback={<LoadingSpinner />}><HelpGuide /></Suspense>} />
-              <Route path="about" element={<Suspense fallback={<LoadingSpinner />}><AboutPage /></Suspense>} />
+              <Route path="notifications" element={<Suspense fallback={<LoadingSpinner />}><NotificationCenter /></Suspense>} />
+              <Route path="admin/workflows" element={<Suspense fallback={<LoadingSpinner />}><WorkflowNotificationHub /></Suspense>} />
               <Route path="smart-buying" element={<Suspense fallback={<LoadingSpinner />}><SmartBuyingDashboard /></Suspense>} />
               <Route path="data-ingest" element={<Suspense fallback={<LoadingSpinner />}><DataIngestion /></Suspense>} />
               <Route path="item-creation-preview" element={<Navigate to="/items/new-request" replace />} />

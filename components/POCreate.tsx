@@ -2,9 +2,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
-import { Item, ItemPriceOption, POLineItem, PORequest } from '../types.ts';
+import { Item, ItemPriceOption, POLineItem, PORequest, SpendCategory } from '../types.ts';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
-import { dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
+import { canonicalSupplierName, dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
 import {
   ShoppingCart,
   Search,
@@ -23,23 +23,44 @@ import {
   Calendar,
   ChevronRight,
   Save,
+  Filter,
+  AlertTriangle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp.tsx';
 import PageHeader from './PageHeader';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
+import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations.ts';
 
 const PRICE_MATCH_TOLERANCE = 0.0001;
 const PO_CREATE_DRAFT_VERSION = 1;
 const PO_CREATE_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 const REQUEST_REASON_OPTIONS = ['Depletion', 'New Customer', 'Other'] as const;
 
+// ── Pack Size / Carton Multiple Validation ──────────────────────────────────
+const getLineCartonSize = (line: POLineItem, itemsList: Item[]): number => {
+  const matchedItem = itemsList.find(i => i.id === line.itemId);
+  const upq = matchedItem?.cartonQty || matchedItem?.upq || line.upq || 1;
+  return upq > 0 ? upq : 1;
+};
+
+const getCartonMultiples = (qty: number, cartonSize: number) => {
+  if (cartonSize <= 1) return { isValid: true, lower: qty, upper: qty, cartonCount: qty };
+  const isValid = qty % cartonSize === 0;
+  const lower = Math.max(cartonSize, Math.floor(qty / cartonSize) * cartonSize);
+  const upper = Math.ceil(qty / cartonSize) * cartonSize;
+  const cartonCount = Math.ceil(qty / cartonSize);
+  return { isValid, lower, upper, cartonCount };
+};
+
+
 interface POCreateDraft {
   selectedSiteId: string;
   selectedSupplierId: string;
   isHeaderExpanded: boolean;
   customerName: string;
+  sector?: SpendCategory;
   reasonForRequest: 'Depletion' | 'New Customer' | 'Other';
   comments: string;
   requestDate: string;
@@ -115,15 +136,71 @@ const POCreate = () => {
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(initialDraft?.isHeaderExpanded ?? true);
   
   const [customerName, setCustomerName] = useState(initialDraft?.customerName || '');
+  const [sector, setSector] = useState<SpendCategory>(initialDraft?.sector || 'ACCOMMODATION');
   const [reasonForRequest, setReasonForRequest] = useState<'Depletion' | 'New Customer' | 'Other'>(initialDraft?.reasonForRequest || 'Depletion');
   const [comments, setComments] = useState(initialDraft?.comments || '');
   const [requestDate, setRequestDate] = useState(initialDraft?.requestDate || getLocalDateInputValue());
+
+  const inferCategoryFromCustomer = (cust: string): SpendCategory | null => {
+    const upper = cust.toUpperCase();
+    if (
+      upper.includes('CIVEO') ||
+      upper.includes('HOMEGROUND') ||
+      upper.includes('MINING') ||
+      upper.includes('BHP') ||
+      upper.includes('RIO') ||
+      upper.includes('FMG') ||
+      upper.includes('CAMP') ||
+      upper.includes('SODEXO') ||
+      upper.includes('COMPASS')
+    ) {
+      return 'MINING';
+    }
+    if (
+      upper.includes('RAMSAY') ||
+      upper.includes('RHC') ||
+      upper.includes('HSV') ||
+      upper.includes('HEALTH') ||
+      upper.includes('HOSPITAL') ||
+      upper.includes('CLINIC') ||
+      upper.includes('AGED CARE')
+    ) {
+      return 'HEALTHCARE';
+    }
+    if (
+      upper.includes('HOTEL') ||
+      upper.includes('RESORT') ||
+      upper.includes('CROWN') ||
+      upper.includes('ACCOR') ||
+      upper.includes('MARRIOTT') ||
+      upper.includes('HILTON') ||
+      upper.includes('STAR') ||
+      upper.includes('OAKS')
+    ) {
+      return 'ACCOMMODATION';
+    }
+    if (
+      upper.includes('LINEN HUB') ||
+      upper.includes('HOLDINGS') ||
+      upper.includes('AIRLIE BEACH')
+    ) {
+      return 'LINEN_HUB';
+    }
+    return null;
+  };
+
+  const handleCustomerNameChange = (val: string) => {
+    setCustomerName(val);
+    const inferred = inferCategoryFromCustomer(val);
+    if (inferred) setSector(inferred);
+  };
 
   const [cart, setCart] = useState<POLineItem[]>(initialDraft?.cart || []);
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>(initialDraft?.quantityDrafts || {});
   const [isCartExpanded, setIsCartExpanded] = useState(initialDraft?.isCartExpanded ?? true);
   const [isCatalogExpanded, setIsCatalogExpanded] = useState(initialDraft?.isCatalogExpanded ?? true);
   const [searchTerm, setSearchTerm] = useState(initialDraft?.searchTerm || '');
+  const [onlyAvailableStock, setOnlyAvailableStock] = useState(false);
   
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   
@@ -133,6 +210,7 @@ const POCreate = () => {
   const [modalUpq, setModalUpq] = useState(1);
   const [modalPriceOptionId, setModalPriceOptionId] = useState('');
   const [modalPriceOptions, setModalPriceOptions] = useState<ItemPriceOption[]>([]);
+  const [modalNeedByDate, setModalNeedByDate] = useState('');
 
   useEffect(() => {
     if (selectedSiteId && sites.some(site => site.id === selectedSiteId)) return;
@@ -165,6 +243,7 @@ const POCreate = () => {
     selectedSupplierId,
     isHeaderExpanded,
     customerName,
+    sector,
     reasonForRequest,
     comments,
     requestDate,
@@ -177,6 +256,7 @@ const POCreate = () => {
     cart,
     comments,
     customerName,
+    sector,
     isCartExpanded,
     isCatalogExpanded,
     isHeaderExpanded,
@@ -224,17 +304,24 @@ const POCreate = () => {
         (item.sku?.toLowerCase() || '').includes(searchTerm.toLowerCase())
     );
 
-    return effectiveItems.map(internalItem => {
+    const mappedItems = effectiveItems.map(internalItem => {
         let supplierSku = 'N/A';
         let supplierCode = 'N/A';
         const priceOptions = normalizeItemPriceOptions(internalItem);
         const defaultPriceOption = getDefaultItemPriceOption({ ...internalItem, priceOptions });
-        let estimatedPrice = defaultPriceOption.price || internalItem.unitPrice || 0;
+        const cleanMasterUnitPrice = (internalItem.unitPrice && internalItem.unitPrice > 0 && internalItem.unitPrice < 500) ? internalItem.unitPrice : 0;
+        let estimatedPrice = (defaultPriceOption.price && defaultPriceOption.price < 500) ? defaultPriceOption.price : cleanMasterUnitPrice;
         let effectiveStock = 0;
         let isMapped = false;
 
         if (selectedSupplierId && mappings) {
-             const mapping = mappings.find(m => m.supplierId === selectedSupplierId && m.productId === internalItem.id && m.mappingStatus === 'CONFIRMED');
+             const targetSupplier = suppliers.find(s => s.id === selectedSupplierId);
+             const targetCanonical = targetSupplier ? canonicalSupplierName(targetSupplier.name) : '';
+             const equivalentSupplierIds = targetCanonical
+                 ? suppliers.filter(s => canonicalSupplierName(s.name) === targetCanonical).map(s => s.id)
+                 : [selectedSupplierId];
+
+             const mapping = mappings.find(m => equivalentSupplierIds.includes(m.supplierId) && m.productId === internalItem.id && m.mappingStatus === 'CONFIRMED');
              
              if (mapping) {
                  isMapped = true;
@@ -242,12 +329,22 @@ const POCreate = () => {
                  supplierCode = mapping.supplierCustomerStockCode || 'N/A';
 
                  const safeSnapshots = Array.isArray(stockSnapshots) ? stockSnapshots : [];
-                 const latestSnapshot = safeSnapshots
-                    .filter(s => s.supplierId === selectedSupplierId && s.supplierSku === mapping.supplierSku)
+                 const targetSkus = new Set([mapping.supplierSku, mapping.supplierCustomerStockCode, internalItem.sku].filter(Boolean));
+
+                 // 1. Try selected supplier's snapshot
+                 let latestSnapshot = safeSnapshots
+                    .filter(s => equivalentSupplierIds.includes(s.supplierId) && (targetSkus.has(s.supplierSku) || (s.customerStockCode && targetSkus.has(s.customerStockCode))))
                     .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime())[0];
+
+                 // 2. Fallback to any supplier's snapshot with a valid unit price (< $500)
+                 if (!latestSnapshot || !latestSnapshot.sellPrice || latestSnapshot.sellPrice > 500) {
+                     latestSnapshot = safeSnapshots
+                        .filter(s => (targetSkus.has(s.supplierSku) || (s.customerStockCode && targetSkus.has(s.customerStockCode))) && s.sellPrice > 0 && s.sellPrice < 500)
+                        .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime())[0];
+                 }
                 
-                 if (latestSnapshot) {
-                     estimatedPrice = latestSnapshot.sellPrice || estimatedPrice;
+                 if (latestSnapshot && latestSnapshot.sellPrice > 0 && latestSnapshot.sellPrice < 500) {
+                     estimatedPrice = latestSnapshot.sellPrice;
                  }
                  
                  effectiveStock = getEffectiveStock(internalItem.id, selectedSupplierId);
@@ -265,7 +362,13 @@ const POCreate = () => {
             isMapped
         };
     });
-  }, [selectedSupplierId, mappings, activeMasterItems, stockSnapshots, searchTerm, getEffectiveStock]);
+
+    if (onlyAvailableStock) {
+        return mappedItems.filter(item => item.effectiveStock > 0);
+    }
+
+    return mappedItems;
+  }, [selectedSupplierId, mappings, activeMasterItems, stockSnapshots, searchTerm, getEffectiveStock, onlyAvailableStock]);
 
   const sanitizeQuantity = (value: string, fallback: number): number => {
     const digitsOnly = (value || '').replace(/\D/g, '');
@@ -294,7 +397,17 @@ const POCreate = () => {
           line.quantityOrdered
         );
         nextQty = Math.max(1, baseQty + delta);
-        return { ...line, quantityOrdered: nextQty, totalPrice: nextQty * line.unitPrice };
+        const pricing = calculateLinePricing(nextQty, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+        return {
+          ...line,
+          quantityOrdered: pricing.quantityOrdered,
+          unitPrice: pricing.unitPrice,
+          totalPrice: pricing.totalPrice,
+          taxCode: pricing.taxCode,
+          taxRate: pricing.taxRate,
+          taxAmount: pricing.taxAmount,
+          totalPriceIncGst: pricing.totalPriceIncGst
+        };
       }
       return line;
     }));
@@ -314,7 +427,17 @@ const POCreate = () => {
           quantityValue ?? quantityDrafts[lineId] ?? String(line.quantityOrdered),
           line.quantityOrdered
         );
-        return { ...line, quantityOrdered: parsedQty, totalPrice: parsedQty * line.unitPrice };
+        const pricing = calculateLinePricing(parsedQty, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+        return {
+          ...line,
+          quantityOrdered: pricing.quantityOrdered,
+          unitPrice: pricing.unitPrice,
+          totalPrice: pricing.totalPrice,
+          taxCode: pricing.taxCode,
+          taxRate: pricing.taxRate,
+          taxAmount: pricing.taxAmount,
+          totalPriceIncGst: pricing.totalPriceIncGst
+        };
       }
       return line;
     }));
@@ -326,7 +449,16 @@ const POCreate = () => {
     if (isNaN(newPrice)) return;
     setCart(prev => prev.map(line => {
         if (line.id === lineId) {
-            return { ...line, unitPrice: newPrice, totalPrice: line.quantityOrdered * newPrice };
+            const pricing = calculateLinePricing(line.quantityOrdered, newPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+            return {
+                ...line,
+                unitPrice: pricing.unitPrice,
+                totalPrice: pricing.totalPrice,
+                taxCode: pricing.taxCode,
+                taxRate: pricing.taxRate,
+                taxAmount: pricing.taxAmount,
+                totalPriceIncGst: pricing.totalPriceIncGst
+            };
         }
         return line;
     }));
@@ -335,11 +467,16 @@ const POCreate = () => {
   const removeFromCart = (lineId: string) => {
     setCart(prev => prev.filter(l => l.id !== lineId));
   };
+
+  const updateLineNeedByDate = (lineId: string, newDate: string) => {
+    setCart(prev => prev.map(line => line.id === lineId ? { ...line, needByDate: newDate } : line));
+  };
   
   // Modal Handlers
   const openItemDetail = (item: POCreateCatalogItem) => {
       setSelectedDetailItem(item);
       setModalQuantity(1);
+      setModalNeedByDate(requestDate ? requestDate.split('T')[0] : getLocalDateInputValue());
       
       const baseOptions = normalizeItemPriceOptions(item);
       const hasEstimatedMatch = baseOptions.some(opt => Math.abs(opt.price - Number(item.price || 0)) < 0.0001);
@@ -366,6 +503,8 @@ const POCreate = () => {
       
       if (qty <= 0) return;
 
+      const pricing = calculateLinePricing(qty, price, 'GST', 10.0);
+
       setCart(prev => {
           const existing = prev.find(line =>
               isSameCartPriceLine(
@@ -378,14 +517,21 @@ const POCreate = () => {
           );
           if (existing) {
               const newQty = existing.quantityOrdered + qty;
+              const mergedPricing = calculateLinePricing(newQty, price, existing.taxCode || 'GST', existing.taxRate ?? 10.0);
               return prev.map(line => 
                   line.id === existing.id
                   ? {
                       ...line,
-                      quantityOrdered: newQty,
-                      totalPrice: Number((newQty * line.unitPrice).toFixed(2)),
+                      quantityOrdered: mergedPricing.quantityOrdered,
+                      unitPrice: mergedPricing.unitPrice,
+                      totalPrice: mergedPricing.totalPrice,
+                      taxCode: mergedPricing.taxCode,
+                      taxRate: mergedPricing.taxRate,
+                      taxAmount: mergedPricing.taxAmount,
+                      totalPriceIncGst: mergedPricing.totalPriceIncGst,
                       priceOptionId: line.priceOptionId ?? selectedPriceOptionId,
-                      priceOptionLabel: line.priceOptionLabel ?? selectedPriceOptionLabel
+                      priceOptionLabel: line.priceOptionLabel ?? selectedPriceOptionLabel,
+                      needByDate: modalNeedByDate || line.needByDate || (requestDate ? requestDate.split('T')[0] : undefined)
                     }
                   : line
               );
@@ -395,13 +541,18 @@ const POCreate = () => {
               itemId: selectedDetailItem.id,
               itemName: selectedDetailItem.name,
               sku: selectedDetailItem.sku,
-              quantityOrdered: qty,
+              quantityOrdered: pricing.quantityOrdered,
               quantityReceived: 0,
-              unitPrice: price,
-              totalPrice: Number((price * qty).toFixed(2)),
+              unitPrice: pricing.unitPrice,
+              totalPrice: pricing.totalPrice,
+              taxCode: pricing.taxCode,
+              taxRate: pricing.taxRate,
+              taxAmount: pricing.taxAmount,
+              totalPriceIncGst: pricing.totalPriceIncGst,
               upq: upq,
               priceOptionId: selectedPriceOptionId,
-              priceOptionLabel: selectedPriceOptionLabel
+              priceOptionLabel: selectedPriceOptionLabel,
+              needByDate: modalNeedByDate || (requestDate ? requestDate.split('T')[0] : undefined)
           }];
       });
 
@@ -442,6 +593,8 @@ const POCreate = () => {
     setCart(finalCart);
     setQuantityDrafts({});
 
+    const totals = calculatePOTotals(finalCart);
+
     const newPO: PORequest = {
       id: currentSubmissionId,
       requestDate: requestDate,
@@ -452,13 +605,17 @@ const POCreate = () => {
       supplierId: selectedSupplier.id,
       supplierName: selectedSupplier.name,
       status: 'PENDING_APPROVAL',
-      totalAmount: finalCart.reduce((sum, line) => sum + line.totalPrice, 0),
+      totalAmount: totals.subtotalAmount,
+      subtotalAmount: totals.subtotalAmount,
+      taxTotalAmount: totals.taxTotalAmount,
+      totalAmountIncGst: totals.totalAmountIncGst,
       lines: finalCart,
       approvalHistory: [
         { id: uuidv4(), action: 'SUBMITTED', approverName: currentUser.name, date: getLocalDateInputValue() }
       ],
       deliveries: [],
       customerName,
+      sector,
       reasonForRequest,
       comments
     };
@@ -481,10 +638,20 @@ const POCreate = () => {
         const draft = quantityDrafts[line.id];
         if (draft !== undefined && draft !== String(line.quantityOrdered)) {
             const committedQty = sanitizeQuantity(draft, line.quantityOrdered);
-            return { ...line, quantityOrdered: committedQty, totalPrice: committedQty * line.unitPrice };
+            const pricing = calculateLinePricing(committedQty, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+            return {
+                ...line,
+                quantityOrdered: pricing.quantityOrdered,
+                totalPrice: pricing.totalPrice,
+                taxCode: pricing.taxCode,
+                taxRate: pricing.taxRate,
+                taxAmount: pricing.taxAmount,
+                totalPriceIncGst: pricing.totalPriceIncGst
+            };
         }
         return line;
     });
+    const totals = calculatePOTotals(finalCart);
     const draftPO: PORequest = {
         id: uuidv4(),
         requestDate,
@@ -495,7 +662,10 @@ const POCreate = () => {
         supplierId: selectedSupplier.id,
         supplierName: selectedSupplier.name,
         status: 'DRAFT',
-        totalAmount: finalCart.reduce((sum, line) => sum + line.totalPrice, 0),
+        totalAmount: totals.subtotalAmount,
+        subtotalAmount: totals.subtotalAmount,
+        taxTotalAmount: totals.taxTotalAmount,
+        totalAmountIncGst: totals.totalAmountIncGst,
         lines: finalCart,
         approvalHistory: [
             { id: uuidv4(), action: 'DRAFT_SAVED', approverName: currentUser.name, date: getLocalDateInputValue() }
@@ -517,7 +687,7 @@ const POCreate = () => {
     }
   };
 
-  const cartTotal = cart.reduce((s, l) => s + l.totalPrice, 0);
+  const cartTotals = useMemo(() => calculatePOTotals(cart), [cart]);
 
   // Cart Component (Used in Desktop Sidebar and Mobile Drawer)
   const CartContent = () => (
@@ -581,25 +751,86 @@ const POCreate = () => {
                                  <span className="text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">
                                      {line.quantityOrdered.toLocaleString()} x ${line.unitPrice.toFixed(2)}
                                  </span>
-                                 <span className="font-bold text-gray-900 dark:text-white">${line.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                 <div className="text-right">
+                                     <span className="font-bold text-gray-900 dark:text-white block">${line.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                     <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">(${Number(line.totalPriceIncGst ?? (line.totalPrice * 1.10)).toFixed(2)} inc GST)</span>
+                                 </div>
                              </div>
+                         </div>
+                         {(() => {
+                             const cartonSize = getLineCartonSize(line, items);
+                             const { isValid, upper } = getCartonMultiples(line.quantityOrdered, cartonSize);
+                             if (cartonSize > 1 && !isValid) {
+                                 return (
+                                     <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50 rounded-lg p-2 text-xs flex flex-col gap-1.5 animate-fade-in">
+                                         <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-300 font-bold text-[11px]">
+                                             <AlertTriangle size={13} className="shrink-0" />
+                                             <span>Carton multiple required (Carton = {cartonSize.toLocaleString()} units)</span>
+                                         </div>
+                                         <div className="flex items-center justify-between text-[11px]">
+                                             <span className="text-rose-600 dark:text-rose-400">Fix to nearest multiple:</span>
+                                             <button
+                                                 type="button"
+                                                 onClick={() => {
+                                                     const pricing = calculateLinePricing(upper, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+                                                     setCart(prev => prev.map(l => l.id === line.id ? { ...l, quantityOrdered: upper, totalPrice: pricing.totalPrice, totalPriceIncGst: pricing.totalPriceIncGst } : l));
+                                                     setQuantityDrafts(prev => ({ ...prev, [line.id]: String(upper) }));
+                                                 }}
+                                                 className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded shadow-xs transition-colors"
+                                             >
+                                                 Round to {upper.toLocaleString()} units
+                                             </button>
+                                         </div>
+                                     </div>
+                                 );
+                             }
+                             if (cartonSize > 1) {
+                                 return (
+                                     <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                                         <span>✓ Multiples of {cartonSize} ({Math.round(line.quantityOrdered / cartonSize)} cartons)</span>
+                                     </div>
+                                 );
+                             }
+                             return null;
+                         })()}
+                         <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800/60 text-xs text-gray-500 dark:text-gray-400">
+                             <span className="text-[11px] font-semibold">Need by:</span>
+                             <input 
+                                 type="date"
+                                 className="bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-0.5 text-xs text-gray-800 dark:text-gray-200 focus:border-[var(--color-brand)] outline-none"
+                                 value={line.needByDate || (requestDate ? requestDate.split('T')[0] : '')}
+                                 onChange={(e) => updateLineNeedByDate(line.id, e.target.value)}
+                             />
                          </div>
                     </div>
                 ))
             )}
          </div>
          <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#15171e] shrink-0 pb-safe-or-4">
-             <div className="flex justify-between items-center mb-4">
-                 <span className="text-gray-500 dark:text-gray-400 text-sm">Total Estimated</span>
-                 <span className="text-xl font-bold text-gray-900 dark:text-white">
-                     ${cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                 </span>
+             <div className="space-y-1.5 mb-4 text-xs">
+                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                     <span>Subtotal (Ex GST)</span>
+                     <span className="font-semibold text-gray-900 dark:text-gray-200">${cartTotals.subtotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                 </div>
+                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                     <span>GST (10%)</span>
+                     <span className="font-semibold text-gray-900 dark:text-gray-200">${cartTotals.taxTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                 </div>
+                 <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between items-baseline">
+                     <div>
+                         <span className="text-sm font-bold text-gray-900 dark:text-white">Order Total (Inc GST)</span>
+                         <span className="block text-[10px] text-blue-600 dark:text-blue-400 font-medium">SAP Concur Parity Total</span>
+                     </div>
+                     <span className="text-lg font-black text-gray-900 dark:text-white">
+                         ${cartTotals.totalAmountIncGst.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                     </span>
+                 </div>
              </div>
              <button
                type="button"
                onClick={handleSaveDraft}
                disabled={!selectedSupplier || isSavingDraft || isSubmitting}
-               className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 py-2.5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex justify-center items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+               className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 py-2.5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex justify-center items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed mb-2"
              >
                {isSavingDraft ? 'Saving...' : <><Save size={15} /> Save as Draft</>}
              </button>
@@ -607,7 +838,7 @@ const POCreate = () => {
                type="button"
                onClick={() => guardedSubmit(handleSubmit)}
                disabled={cart.length === 0 || isSubmitting}
-               className="w-full bg-[var(--color-brand)] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+               className="w-full bg-[var(--color-brand)] text-white py-3 rounded-xl font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
              >
                 {isSubmitting ? 'Submitting...' : <>Submit Request <ArrowRight size={18} /></>}
              </button>
@@ -747,11 +978,40 @@ const POCreate = () => {
                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Customer Name</label>
                              <input 
                                 type="text"
-                                placeholder="E.g. Hilton Hotel, Crown Casino"
+                                placeholder="E.g. Hilton Hotel, Crown Casino, Civeo"
                                 className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
                                 value={customerName}
-                                onChange={(e) => setCustomerName(e.target.value)}
+                                onChange={(e) => handleCustomerNameChange(e.target.value)}
                              />
+
+                             {/* Category / Sector Selector */}
+                             <div className="mt-3">
+                               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                                 Customer Category
+                               </label>
+                               <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                                 {[
+                                   { id: 'ACCOMMODATION', label: 'Accommodation' },
+                                   { id: 'HEALTHCARE', label: 'Healthcare' },
+                                   { id: 'MINING', label: 'Mining' },
+                                   { id: 'LINEN_HUB', label: 'Linen Hub' },
+                                   { id: 'OTHER', label: 'Other' },
+                                 ].map((cat) => (
+                                   <button
+                                     key={cat.id}
+                                     type="button"
+                                     onClick={() => setSector(cat.id as SpendCategory)}
+                                     className={`py-1.5 px-2 text-[11px] font-bold rounded-lg border transition-all ${
+                                       sector === cat.id
+                                         ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)] shadow-xs'
+                                         : 'bg-white dark:bg-[#15171e] text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                                     }`}
+                                   >
+                                     {cat.label}
+                                   </button>
+                                 ))}
+                               </div>
+                             </div>
                         </div>
                     </div>
 
@@ -805,20 +1065,44 @@ const POCreate = () => {
              className={`flex flex-col bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 min-h-0 transition-all duration-300 ${isCatalogExpanded ? 'flex-1' : 'w-20 py-6 items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5'}`}
              onClick={!isCatalogExpanded ? () => setIsCatalogExpanded(true) : undefined}
           >
-             <div className={`p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne flex items-center gap-3 shrink-0 rounded-t-2xl ${isCatalogExpanded ? '' : 'justify-center border-none bg-transparent p-0'}`}>
+             <div className={`p-3.5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne flex items-center justify-between gap-3 shrink-0 rounded-t-2xl ${isCatalogExpanded ? '' : 'justify-center border-none bg-transparent p-0'}`}>
                 {isCatalogExpanded ? (
                     <>
-                        <Search size={18} className="text-gray-400"/>
-                        <input 
-                          type="text" 
-                          placeholder="Search catalog items..." 
-                          className="flex-1 bg-transparent border-none outline-none text-sm text-gray-900 dark:text-white placeholder-gray-400"
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                        <button type="button" onClick={() => setIsCatalogExpanded(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
-                            <ChevronLeft size={18}/>
-                        </button>
+                        <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 px-3 py-1.5 rounded-xl w-64 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-all">
+                            <Search size={15} className="text-gray-400 shrink-0"/>
+                            <input 
+                              type="text" 
+                              placeholder="Search catalog items..." 
+                              className="w-full bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white placeholder-gray-400"
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                            {searchTerm && (
+                              <button type="button" onClick={() => setSearchTerm('')} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0">
+                                <X size={13} />
+                              </button>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setOnlyAvailableStock(prev => !prev)}
+                                className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all ${
+                                    onlyAvailableStock
+                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 shadow-xs'
+                                        : 'bg-gray-50 text-gray-600 dark:bg-white/5 dark:text-gray-400 border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-white/10'
+                                }`}
+                                title="Toggle to show only items with available inventory (> 0)"
+                            >
+                                <Filter size={13} className={onlyAvailableStock ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'} />
+                                Available stock only
+                            </button>
+
+                            <button type="button" onClick={() => setIsCatalogExpanded(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors" title="Collapse catalog panel">
+                                <ChevronLeft size={18}/>
+                            </button>
+                        </div>
                     </>
                 ) : (
                     <div className="flex flex-col items-center gap-6">
@@ -876,7 +1160,20 @@ const POCreate = () => {
                  ))}
                  {displayItems.length === 0 && (
                      <div className="py-10 text-center text-gray-400 space-y-3">
-                         <p className="text-sm">No items found matching your search.</p>
+                         <p className="text-sm">
+                             {onlyAvailableStock 
+                                 ? 'No items found with available inventory (> 0).' 
+                                 : 'No items found matching your search.'}
+                         </p>
+                         {onlyAvailableStock && (
+                             <button
+                                 type="button"
+                                 onClick={() => setOnlyAvailableStock(false)}
+                                 className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium block mx-auto"
+                             >
+                                 Show all items (clear available filter)
+                             </button>
+                         )}
                          {featureFlags?.previewEnabled && searchTerm && (
                              <div className="mx-auto max-w-xs text-xs text-amber-600 border border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 rounded-xl p-3">
                                  <p className="font-medium mb-1">Item not in the approved catalogue?</p>
@@ -1011,6 +1308,16 @@ const POCreate = () => {
                                 </div>
                              </div>
                         </div>
+
+                        <div className="mt-4">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Need by Date</label>
+                            <input 
+                                type="date" 
+                                className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] outline-none"
+                                value={modalNeedByDate}
+                                onChange={e => setModalNeedByDate(e.target.value)}
+                            />
+                        </div>
                     </div>
 
                     <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 grid grid-cols-2 gap-3">
@@ -1075,7 +1382,7 @@ const POCreate = () => {
                      </div>
 
                      <div className="shrink-0 font-bold text-xs text-gray-900 dark:text-white transform -rotate-90 whitespace-nowrap mb-2">
-                         ${cartTotal.toLocaleString(undefined, { notation: 'compact' })}
+                         ${cartTotals.totalAmountIncGst.toLocaleString(undefined, { notation: 'compact' })}
                      </div>
                  </div>
              )}
@@ -1092,37 +1399,42 @@ const POCreate = () => {
       )}
 
       {/* Mobile Sticky Bottom Bar */}
-      <div className="fixed inset-x-0 bottom-0 md:hidden z-30">
-          <div className="bg-white dark:bg-nocturne border-t border-gray-200 dark:border-gray-800 shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
-              <div className="mx-auto w-full max-w-screen-sm flex flex-col gap-2 px-3 pt-3 pb-safe">
+      <div className="fixed inset-x-0 bottom-0 md:hidden z-40">
+          <div className="bg-white/95 dark:bg-nocturne/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-[0_-5px_25px_rgba(0,0,0,0.15)]">
+              <div className="mx-auto w-full max-w-screen-sm flex flex-col gap-2 px-3.5 pt-3 pb-safe">
                   <button
                       type="button"
                       onClick={() => setIsMobileCartOpen(true)}
-                      className="w-full text-left rounded-xl px-2 py-1 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                      className="w-full text-left rounded-xl px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 active:scale-[0.99] transition-all"
                   >
                       <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mb-0.5">
-                          <ShoppingCart size={12}/> {cart.length} items <ChevronUp size={12}/>
+                          <ShoppingCart size={14}/> <span className="font-semibold">{cart.length} items in cart</span> <ChevronUp size={14} className="ml-auto text-gray-400" />
                       </div>
-                      <div className="font-bold text-xl text-gray-900 dark:text-white truncate">
-                          ${cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      <div className="flex items-baseline gap-2">
+                          <span className="font-bold text-xl text-gray-900 dark:text-white truncate">
+                              ${cartTotals.totalAmountIncGst.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                              (${cartTotals.subtotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} ex)
+                          </span>
                       </div>
                   </button>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2.5">
                       <button
                           type="button"
                           onClick={handleSaveDraft}
                           disabled={!selectedSupplier || isSavingDraft || isSubmitting}
-                          className="flex-1 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-3 py-3 rounded-xl font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5"
+                          className="flex-1 min-h-[44px] border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-3 py-3 rounded-xl font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-1.5 active:scale-95 transition-all"
                       >
-                          <Save size={15} /> {isSavingDraft ? 'Saving…' : 'Draft'}
+                          <Save size={16} /> {isSavingDraft ? 'Saving…' : 'Draft'}
                       </button>
                       <button
                           type="button"
                           onClick={() => guardedSubmit(handleSubmit)}
                           disabled={cart.length === 0 || isSubmitting}
-                          className="flex-[2] bg-[var(--color-brand)] text-white px-5 py-3 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none"
+                          className="flex-[2] min-h-[44px] bg-[var(--color-brand)] hover:opacity-90 active:scale-95 text-white px-5 py-3 rounded-xl font-black text-sm shadow-lg disabled:opacity-50 disabled:shadow-none transition-all"
                       >
-                          {isSubmitting ? 'Submitting...' : 'Submit'}
+                          {isSubmitting ? 'Submitting...' : 'Review & Submit'}
                       </button>
                   </div>
               </div>

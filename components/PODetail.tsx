@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, ShieldCheck, ShoppingCart, CheckCheck, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X, MapPin } from 'lucide-react';
 import { DeliveryHeader, Item, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
@@ -12,9 +12,21 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
+import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations.ts';
 
 const PO_DETAIL_EDIT_DRAFT_VERSION = 1;
 const PO_DETAIL_EDIT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
+const formatDisplayDate = (d?: string) => {
+  if (!d) return '-';
+  try {
+    const parsed = new Date(d);
+    if (isNaN(parsed.getTime())) return d;
+    return parsed.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch {
+    return d;
+  }
+};
 
 interface PODetailEditDraft {
   headerEdits: {
@@ -23,6 +35,7 @@ interface PODetailEditDraft {
     comments: string;
     concurRequestNumber: string;
     concurPoNumber: string;
+    siteId?: string;
   };
   editableLines: POLineItem[];
   addItemId: string;
@@ -36,7 +49,7 @@ interface PODetailEditDraft {
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, suppliers, items, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO } = useApp();
+  const { pos, suppliers, items, sites, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -51,7 +64,7 @@ const PODetail = () => {
   const [isEditing, setIsEditing] = useState(false);
   
   // Local state for edits
-  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: 'Depletion', comments: '', concurRequestNumber: '', concurPoNumber: '' });
+  const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: 'Depletion', comments: '', concurRequestNumber: '', concurPoNumber: '', siteId: '' });
   const [editableLines, setEditableLines] = useState<POLineItem[]>([]);
   const [addItemId, setAddItemId] = useState('');
   const [addItemQty, setAddItemQty] = useState('1');
@@ -107,7 +120,14 @@ const PODetail = () => {
 
     if (!draft) return;
 
-    setHeaderEdits(draft.headerEdits);
+    setHeaderEdits({
+      clientName: draft.headerEdits.clientName || '',
+      reason: draft.headerEdits.reason || 'Depletion',
+      comments: draft.headerEdits.comments || '',
+      concurRequestNumber: draft.headerEdits.concurRequestNumber || '',
+      concurPoNumber: draft.headerEdits.concurPoNumber || '',
+      siteId: draft.headerEdits.siteId || po.siteId || ''
+    });
     setEditableLines(draft.editableLines);
     setAddItemId(draft.addItemId);
     setAddItemQty(draft.addItemQty);
@@ -347,9 +367,9 @@ const PODetail = () => {
 
   const canApprove = hasPermission('approve_requests') && po?.status === 'PENDING_APPROVAL';
   const canLinkConcurRequest = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR_REQUEST';
-  const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR';
+  const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id || isAdmin) && ['APPROVED_PENDING_CONCUR', 'ACTIVE'].includes(po?.status || '');
   const canReceive = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
-  const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED');
+  const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
   // isAdmin is defined at the top of the component
   const canEditDeliveries = Boolean(
     po &&
@@ -413,12 +433,12 @@ const PODetail = () => {
   };
 
   const steps = [
-      { num: 1, label: 'Requested' },
-      { num: 2, label: 'Approved' },
-      { num: 3, label: 'Req. Logged' },
-      { num: 4, label: 'In Concur' },
-      { num: 5, label: 'Full' },
-      { num: 6, label: 'Complete' },
+      { num: 1, label: 'Requested', icon: FileText },
+      { num: 2, label: 'Approved', icon: ShieldCheck },
+      { num: 3, label: 'Req. Logged', icon: Link2 },
+      { num: 4, label: 'In Concur', icon: ShoppingCart },
+      { num: 5, label: 'Full', icon: Truck },
+      { num: 6, label: 'Complete', icon: CheckCheck },
   ];
 
 
@@ -480,13 +500,29 @@ const PODetail = () => {
       try {
           await addDelivery(po.id, delivery, closedLineIds, newLines);
           setIsDeliveryModalOpen(false);
-      } catch (_error) {
-          alert('Failed to save delivery. Please try again.');
+      } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Please try again.';
+          alert(`Failed to save delivery. ${msg}`);
       }
   };
 
   const handleCompletePO = async () => {
-      if (!globalThis.confirm('Are you sure you want to mark this order as complete? This will finalize all lines and move it to history.')) return;
+      // Mandatory Concur Reference Validation (System Governance Rule)
+      const hasConcurRef = Boolean(
+          (po.concurRequestNumber && po.concurRequestNumber.trim()) ||
+          (po.concurPoNumber && po.concurPoNumber.trim()) ||
+          po.lines.some(l => l.concurPoNumber && l.concurPoNumber.trim())
+      );
+      if (!hasConcurRef) {
+          alert('❌ CANNOT COMPLETE ORDER\n\nConcur Reference Number (Request PR # or Concur PO #) is required before this purchase order can be closed.\n\nPlease enter/link the Concur Reference Number to ensure data reconciliation between Concur and ProcureFlow.');
+          return;
+      }
+
+      const hasOutstanding = po.lines.some(line => line.quantityReceived < line.quantityOrdered);
+      const confirmMessage = hasOutstanding
+          ? 'Warning: There are outstanding delivery quantities on this order. Completing it will permanently close the PO request and this action cannot be undone. Are you sure you want to proceed?'
+          : 'Are you sure you want to mark this order as complete? This will finalize all lines and move it to history.';
+      if (!globalThis.confirm(confirmMessage)) return;
       
       try {
           await updatePOStatus(po.id, 'CLOSED', {
@@ -497,7 +533,7 @@ const PODetail = () => {
               comments: 'Order marked as complete by user'
           });
           globalThis.alert('Order completed successfully.');
-          navigate('/pos'); // Go back to list on success
+          navigate('/requests'); // Go back to list on success
       } catch (e: unknown) {
           console.error("Completion failed:", e);
           const msg = e instanceof Error ? e.message : 'Unknown error';
@@ -513,7 +549,8 @@ const PODetail = () => {
             reason: po.reasonForRequest || 'Depletion',
             comments: po.comments || '',
             concurRequestNumber: po.concurRequestNumber || '',
-            concurPoNumber: po.concurPoNumber || ''
+            concurPoNumber: po.concurPoNumber || '',
+            siteId: po.siteId || (sites.find(s => s.name === po.site)?.id || '')
         });
         setEditableLines(po.lines.map(line => ({ ...line })));
         setAddItemId('');
@@ -530,6 +567,7 @@ const PODetail = () => {
       clearDraft(editDraftKey);
       setIsEditing(false);
       setEditableLines([]);
+      setHeaderEdits({ clientName: '', reason: 'Depletion', comments: '', concurRequestNumber: '', concurPoNumber: '', siteId: '' });
       setAddItemId('');
       setAddItemPriceOptionId('');
       setAddItemQty('1');
@@ -544,22 +582,43 @@ const PODetail = () => {
       const parsed = Math.max(1, Math.floor(Number(rawValue) || 0));
       setEditableLines(prev => prev.map(line => {
           if (line.id !== lineId) return line;
+          const pricing = calculateLinePricing(parsed, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
           return {
               ...line,
-              quantityOrdered: parsed,
-              totalPrice: Number((parsed * line.unitPrice).toFixed(2))
+              quantityOrdered: pricing.quantityOrdered,
+              unitPrice: pricing.unitPrice,
+              totalPrice: pricing.totalPrice,
+              taxCode: pricing.taxCode,
+              taxRate: pricing.taxRate,
+              taxAmount: pricing.taxAmount,
+              totalPriceIncGst: pricing.totalPriceIncGst
           };
       }));
   };
 
-  const handleLinePriceChange = (lineId: string, rawValue: string) => {
-      const parsed = Math.max(0, Number(rawValue) || 0);
+  const handleLinePriceChange = (lineId: string, value: string) => {
+      const parsed = Math.max(0, Number(value) || 0);
+      setEditableLines(prev => prev.map(line => {
+          if (line.id !== lineId) return line;
+          const pricing = calculateLinePricing(line.quantityOrdered, parsed, line.taxCode || 'GST', line.taxRate ?? 10.0);
+          return {
+              ...line,
+              unitPrice: pricing.unitPrice,
+              totalPrice: pricing.totalPrice,
+              taxCode: pricing.taxCode,
+              taxRate: pricing.taxRate,
+              taxAmount: pricing.taxAmount,
+              totalPriceIncGst: pricing.totalPriceIncGst
+          };
+      }));
+  };
+
+  const handleLineNeedByDateChange = (lineId: string, value: string) => {
       setEditableLines(prev => prev.map(line => {
           if (line.id !== lineId) return line;
           return {
               ...line,
-              unitPrice: parsed,
-              totalPrice: Number((line.quantityOrdered * parsed).toFixed(2))
+              needByDate: value || undefined
           };
       }));
   };
@@ -579,19 +638,32 @@ const PODetail = () => {
 
       const quantityOrdered = Math.max(1, Math.floor(Number(addItemQty) || 0));
       const unitPrice = Math.max(0, Number(addItemPrice) || 0);
+      const cartonSize = selectedItem.cartonQty || selectedItem.upq || 1;
+      if (cartonSize > 1 && quantityOrdered % cartonSize !== 0) {
+          const lower = Math.max(cartonSize, Math.floor(quantityOrdered / cartonSize) * cartonSize);
+          const upper = Math.ceil(quantityOrdered / cartonSize) * cartonSize;
+          alert(`❌ CARTON SIZE MULTIPLE REQUIRED\n\nItem: ${selectedItem.name}\nCarton size is ${cartonSize.toLocaleString()} units.\n\nQuantity ordered (${quantityOrdered.toLocaleString()}) must be a multiple of ${cartonSize.toLocaleString()} (e.g. ${lower.toLocaleString()} or ${upper.toLocaleString()}).`);
+          return;
+      }
       const selectedPriceOption = normalizeItemPriceOptions(selectedItem).find(opt => opt.id === addItemPriceOptionId);
+      const pricing = calculateLinePricing(quantityOrdered, unitPrice, 'GST', 10.0);
 
       const newLine: POLineItem = {
           id: uuidv4(),
           itemId: selectedItem.id,
           itemName: selectedItem.name,
           sku: selectedItem.sku,
-          quantityOrdered,
+          quantityOrdered: pricing.quantityOrdered,
           quantityReceived: 0,
-          unitPrice,
-          totalPrice: Number((quantityOrdered * unitPrice).toFixed(2)),
+          unitPrice: pricing.unitPrice,
+          totalPrice: pricing.totalPrice,
+          taxCode: pricing.taxCode,
+          taxRate: pricing.taxRate,
+          taxAmount: pricing.taxAmount,
+          totalPriceIncGst: pricing.totalPriceIncGst,
           priceOptionId: selectedPriceOption?.id,
-          priceOptionLabel: selectedPriceOption?.label
+          priceOptionLabel: selectedPriceOption?.label,
+          needByDate: po?.requestDate ? po.requestDate.split('T')[0] : undefined
       };
 
       setEditableLines(prev => [...prev, newLine]);
@@ -612,13 +684,22 @@ const PODetail = () => {
                 ? (headerEdits.reason as 'Depletion' | 'New Customer' | 'Other')
                 : 'Depletion';
 
+            const trimmedConcurPo = headerEdits.concurPoNumber.trim();
+            const trimmedConcurReq = headerEdits.concurRequestNumber.trim();
+
+            const updatedLines = editableLines.map(line => ({
+                ...line,
+                concurPoNumber: trimmedConcurPo || undefined
+            }));
+
             await updatePendingPO(po.id, {
                 customerName: headerEdits.clientName,
                 reasonForRequest: validReason,
                 comments: headerEdits.comments,
-                concurRequestNumber: headerEdits.concurRequestNumber,
-                concurPoNumber: headerEdits.concurPoNumber,
-                lines: editableLines
+                concurRequestNumber: trimmedConcurReq,
+                concurPoNumber: trimmedConcurPo,
+                siteId: headerEdits.siteId || po.siteId,
+                lines: updatedLines
             });
             
             clearDraft(editDraftKey);
@@ -736,6 +817,17 @@ const PODetail = () => {
 
   const handleForceStatusUpdate = async (newStatus: string) => {
       if (!po) return;
+      if (newStatus === 'CLOSED') {
+          const hasConcurRef = Boolean(
+              (po.concurRequestNumber && po.concurRequestNumber.trim()) ||
+              (po.concurPoNumber && po.concurPoNumber.trim()) ||
+              po.lines.some(l => l.concurPoNumber && l.concurPoNumber.trim())
+          );
+          if (!hasConcurRef) {
+              alert('❌ CANNOT COMPLETE ORDER\n\nConcur Reference Number (Request PR # or Concur PO #) is required before this purchase order can be closed.\n\nPlease link the Concur Reference Number before closing.');
+              return;
+          }
+      }
       try {
             // Run side-effects first
             await ensureDeliveryRecord(newStatus);
@@ -879,9 +971,9 @@ const PODetail = () => {
                     </button>
               )}
               {canLinkConcur && (
-                    <button disabled={isSubmitting} type="button" onClick={() => setIsConcurModalOpen(true)} className="w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 animate-pulse font-medium disabled:opacity-50 disabled:animate-none">
-                       <LinkIcon size={18} /> Link Concur PO
-                    </button>
+                     <button disabled={isSubmitting} type="button" onClick={() => setIsConcurModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 font-medium disabled:opacity-50 ${po.status === 'APPROVED_PENDING_CONCUR' ? 'animate-pulse' : ''}`}>
+                        <LinkIcon size={18} /> {po.status === 'ACTIVE' ? 'Amend Concur PO' : 'Link Concur PO'}
+                     </button>
               )}
               {canReceive && (
                    <button disabled={isSubmitting} type="button" onClick={() => setIsDeliveryModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 rounded-xl flex items-center gap-2 font-medium shadow-lg transition-all disabled:opacity-50 ${
@@ -922,8 +1014,8 @@ const PODetail = () => {
         </div>
 
         {/* Additional Request Details */}
-        {(po.customerName || po.reasonForRequest || po.comments || isEditing) && (
-            <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl p-4 border border-gray-100 dark:border-gray-800 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        {(po.customerName || po.reasonForRequest || po.comments || po.site || po.siteId || isEditing) && (
+            <div className="bg-gray-50 dark:bg-[#15171e] rounded-xl p-4 border border-gray-100 dark:border-gray-800 mb-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="flex gap-3 items-start">
                     <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-secondary"><User size={16}/></div>
                     <div className="w-full">
@@ -936,6 +1028,31 @@ const PODetail = () => {
                             />
                         ) : (
                             <p className="text-sm font-medium text-primary dark:text-white">{po.customerName || '-'}</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex gap-3 items-start">
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg"><MapPin size={16}/></div>
+                    <div className="w-full">
+                        <p className="text-xs text-secondary uppercase font-bold">Site</p>
+                        {isEditing && isAdmin ? (
+                            <select 
+                                className="w-full mt-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                value={headerEdits.siteId || po.siteId || ''}
+                                onChange={e => setHeaderEdits({...headerEdits, siteId: e.target.value})}
+                            >
+                                {sites.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                                {headerEdits.siteId && !sites.some(s => s.id === headerEdits.siteId) && (
+                                    <option value={headerEdits.siteId}>{po.site || headerEdits.siteId}</option>
+                                )}
+                            </select>
+                        ) : (
+                            <p className="text-sm font-medium text-primary dark:text-white">
+                                {sites.find(s => s.id === (isEditing ? (headerEdits.siteId || po.siteId) : po.siteId))?.name || po.site || '-'}
+                            </p>
                         )}
                     </div>
                 </div>
@@ -1006,7 +1123,7 @@ const PODetail = () => {
                     </div>
                 </div>
 
-                <div className="flex gap-3 items-start md:col-span-1">
+                <div className="flex gap-3 items-start col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-2">
                     <div className="p-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-gray-500"><FileText size={16}/></div>
                     <div className="w-full">
                         <p className="text-xs text-gray-500 uppercase font-bold">Comments</p>
@@ -1033,18 +1150,21 @@ const PODetail = () => {
                      
                      {steps.map((step) => {
                          const status = getStepStatus(step.num);
+                         const StepIcon = step.icon;
                          return (
                              <div key={step.num} className="flex flex-col items-center px-4 bg-white dark:bg-nocturne">
-                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-300
+                                 <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-300
                                     ${status === 'complete' ? 'bg-green-500 border-green-500 text-white shadow-green-500/30 shadow-md' : 
-                                      status === 'current' ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white shadow-[var(--color-brand)]/30 shadow-md scale-110' : 
-                                      status === 'error' ? 'bg-red-500 border-red-500 text-white' :
+                                      status === 'current' ? 'bg-[var(--color-brand)] border-[var(--color-brand)] text-white shadow-[var(--color-brand)]/30 shadow-md scale-110 ring-4 ring-[var(--color-brand)]/20' : 
+                                      status === 'error' ? 'bg-red-500 border-red-500 text-white shadow-red-500/30 shadow-md' :
                                       status === 'warning' ? 'bg-amber-500 border-amber-500 text-white shadow-amber-500/30 shadow-md' :
-                                      'bg-white dark:bg-nocturne border-gray-200 dark:border-gray-700 text-gray-400'
-                                    }`}>
-                                     {status === 'complete' ? <CheckCircle size={16}/> : status === 'warning' ? <AlertTriangle size={16}/> : step.num}
+                                      'bg-white dark:bg-nocturne border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
+                                    }`}
+                                    title={`Stage ${step.num}: ${step.label}`}
+                                 >
+                                     {status === 'complete' ? <CheckCircle size={17}/> : status === 'warning' ? <AlertTriangle size={17}/> : <StepIcon size={16}/>}
                                  </div>
-                                 <span className={`text-xs mt-2 font-medium transition-colors ${status === 'pending' ? 'text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white'}`}>{step.label}</span>
+                                 <span className={`text-xs mt-2 font-medium transition-colors ${status === 'pending' ? 'text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white font-semibold'}`}>{step.label}</span>
                              </div>
                          )
                      })}
@@ -1237,96 +1357,305 @@ const PODetail = () => {
                           )}
                       </div>
                   )}
-                  <table className="w-full text-left text-sm text-secondary dark:text-gray-400">
-                      <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
-                          <tr>
-                              <th className="px-6 py-4">Item Details</th>
-                              <th className="px-6 py-4 text-center">Ordered</th>
-                              <th className="px-6 py-4 text-center">Received</th>
-                              <th className="px-6 py-4 text-right">Unit Price</th>
-                              <th className="px-6 py-4 text-right">Total</th>
-                              {isEditing && <th className="px-6 py-4 text-center">Actions</th>}
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                          {linesInView.map(line => (
-                              <tr key={line.id} className="hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors">
-                                  <td className="px-6 py-4">
-                                      <div className="font-bold text-primary dark:text-white">{line.itemName}</div>
-                                      <div className="text-xs text-tertiary dark:text-gray-500 font-mono mt-0.5">{line.sku}</div>
-                                      {line.priceOptionLabel && (
-                                          <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-1">{line.priceOptionLabel}</div>
-                                      )}
-                                  </td>
-                                  <td className="px-6 py-4 text-center font-medium text-primary dark:text-white">
-                                      {isEditing ? (
-                                          <input 
-                                              type="number" 
-                                              className="w-20 px-2 py-1 text-center border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                                              value={line.quantityOrdered}
-                                              min={1}
-                                              step={1}
-                                              onChange={(e) => handleLineQtyChange(line.id, e.target.value)}
-                                          />
-                                      ) : (
-                                          line.quantityOrdered
-                                      )}
-                                  </td>
-                                  <td className="px-6 py-4 text-center">
-                                      <div className="flex flex-col items-center justify-center">
-                                          <span className={line.quantityReceived >= line.quantityOrdered ? 'text-green-600 dark:text-green-500 font-bold' : 'text-secondary'}>
-                                              {line.quantityReceived}
-                                          </span>
-                                          {line.quantityReceived > line.quantityOrdered && (
-                                              <span className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-500/20 mt-1 whitespace-nowrap">
-                                                  +{line.quantityReceived - line.quantityOrdered} Over
-                                              </span>
-                                          )}
-                                      </div>
-                                  </td>
-                                  <td className="px-6 py-4 text-right">
-                                      {isEditing ? (
-                                          <div className="flex items-center justify-end gap-1">
-                                              <span className="text-gray-400">$</span>
-                                              <input 
-                                                  type="number" 
-                                                  className="w-24 px-2 py-1 text-right border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                                                  value={line.unitPrice}
-                                                  step="0.01"
-                                                  min="0"
-                                                  onChange={(e) => handleLinePriceChange(line.id, e.target.value)}
-                                              />
+
+                  {/* Financial Summary KPI Cards for Lines */}
+                  {linesInView.length > 0 && (() => {
+                      const viewTotals = calculatePOTotals(linesInView);
+                      return (
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-gray-50/70 dark:bg-white/5 border-b border-gray-200 dark:border-gray-800">
+                              <div className="p-3 bg-white dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-700/60 shadow-xs">
+                                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Subtotal (Ex GST)</p>
+                                  <p className="text-base font-bold text-gray-900 dark:text-white mt-0.5">{formatCurrency(viewTotals.subtotalAmount)}</p>
+                              </div>
+                              <div className="p-3 bg-white dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-700/60 shadow-xs">
+                                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">GST (10%)</p>
+                                  <p className="text-base font-bold text-gray-900 dark:text-white mt-0.5">{formatCurrency(viewTotals.taxTotalAmount)}</p>
+                              </div>
+                              <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-800/40 shadow-xs">
+                                  <div className="flex items-center justify-between">
+                                      <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">Order Total (Inc GST)</p>
+                                      <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300">SAP Concur</span>
+                                  </div>
+                                  <p className="text-base font-black text-blue-900 dark:text-blue-200 mt-0.5">{formatCurrency(viewTotals.totalAmountIncGst)}</p>
+                              </div>
+                          </div>
+                      );
+                  })()}
+
+                  {/* Mobile Card List View */}
+                  <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-800">
+                      {linesInView.map((line) => {
+                          const pricing = calculateLinePricing(
+                              line.quantityOrdered,
+                              line.unitPrice,
+                              line.taxCode || 'GST',
+                              line.taxRate ?? 10.0
+                          );
+                          const hasShortage = line.quantityReceived < line.quantityOrdered;
+                          const hasOver = line.quantityReceived > line.quantityOrdered;
+
+                          return (
+                              <div key={line.id} className="p-4 space-y-3 bg-white dark:bg-nocturne">
+                                  {/* Header: Item Name, SKU & Delete button */}
+                                  <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                          <div className="font-bold text-gray-900 dark:text-white text-sm leading-snug">
+                                              {line.itemName}
                                           </div>
-                                      ) : (
-                                          `$${line.unitPrice.toFixed(2)}`
-                                      )}
-                                  </td>
-                                  <td className="px-6 py-4 text-right font-bold text-primary dark:text-white">
-                                      ${(line.totalPrice ?? (line.quantityOrdered * line.unitPrice)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </td>
-                                  {isEditing && canEditRequest && (
-                                      <td className="px-6 py-4 text-center">
+                                          <div className="flex items-center gap-2 mt-0.5">
+                                              <span className="text-xs text-gray-400 font-mono">{line.sku}</span>
+                                              {line.priceOptionLabel && (
+                                                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
+                                                      {line.priceOptionLabel}
+                                                  </span>
+                                              )}
+                                          </div>
+                                      </div>
+                                      {isEditing && canEditRequest && (
                                           <button
                                               type="button"
                                               onClick={() => handleRemoveDraftLine(line.id)}
                                               disabled={linesInView.length <= 1}
-                                              className="p-2 text-red-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed"
+                                              className="p-2 text-red-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed shrink-0 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
                                               title={linesInView.length <= 1 ? 'At least one line is required' : 'Remove line'}
+                                              aria-label={`Remove ${line.itemName}`}
                                           >
                                               <Trash2 size={16} />
                                           </button>
+                                      )}
+                                  </div>
+
+                                  {/* Need by Date & Badges */}
+                                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                      <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Need by:</span>
+                                          {isEditing ? (
+                                              <input
+                                                  type="date"
+                                                  className="px-2 py-1 text-xs border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                  value={line.needByDate || (po?.requestDate ? po.requestDate.split('T')[0] : '')}
+                                                  onChange={(e) => handleLineNeedByDateChange(line.id, e.target.value)}
+                                              />
+                                          ) : (
+                                              <span className="font-medium text-gray-800 dark:text-gray-200">
+                                                  {formatDisplayDate(line.needByDate || po?.requestDate)}
+                                              </span>
+                                          )}
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5">
+                                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                              {line.taxCode || 'GST'}
+                                          </span>
+                                          {hasOver && (
+                                              <span className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-500/20">
+                                                  +{line.quantityReceived - line.quantityOrdered} Over
+                                              </span>
+                                          )}
+                                          {hasShortage && line.quantityReceived > 0 && (
+                                              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-500/20">
+                                                  {line.quantityOrdered - line.quantityReceived} Remaining
+                                              </span>
+                                          )}
+                                      </div>
+                                  </div>
+
+                                  {/* Quantities & Pricing Grid */}
+                                  <div className="grid grid-cols-3 gap-2 bg-gray-50 dark:bg-[#15171e] p-2.5 rounded-xl border border-gray-100 dark:border-gray-800 text-xs">
+                                      <div>
+                                          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Ordered</span>
+                                          {isEditing ? (
+                                              <input
+                                                  type="number"
+                                                  min={1}
+                                                  step={1}
+                                                  className="w-full mt-1 px-2 py-1 text-center font-bold border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                  value={line.quantityOrdered}
+                                                  onChange={(e) => handleLineQtyChange(line.id, e.target.value)}
+                                              />
+                                          ) : (
+                                              <span className="font-bold text-gray-900 dark:text-white text-sm">{line.quantityOrdered}</span>
+                                          )}
+                                      </div>
+
+                                      <div>
+                                          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Unit Price</span>
+                                          {isEditing ? (
+                                              <div className="flex items-center mt-1">
+                                                  <span className="text-gray-400 text-xs mr-0.5">$</span>
+                                                  <input
+                                                      type="number"
+                                                      step="0.01"
+                                                      min="0"
+                                                      className="w-full px-1.5 py-1 text-right font-bold border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white text-xs"
+                                                      value={line.unitPrice}
+                                                      onChange={(e) => handleLinePriceChange(line.id, e.target.value)}
+                                                  />
+                                              </div>
+                                          ) : (
+                                              <span className="font-medium text-gray-700 dark:text-gray-300 text-sm">{formatCurrency(line.unitPrice)}</span>
+                                          )}
+                                      </div>
+
+                                      <div className="text-right">
+                                          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Total (Inc)</span>
+                                          <span className="font-black text-[var(--color-brand)] text-sm">{formatCurrency(pricing.totalPriceIncGst)}</span>
+                                          <div className="text-[9px] text-gray-400">({formatCurrency(pricing.totalPrice)} ex)</div>
+                                      </div>
+                                  </div>
+                              </div>
+                          );
+                      })}
+                      {linesInView.length === 0 && (
+                          <div className="p-8 text-center text-gray-400 text-sm">
+                              No line items.
+                          </div>
+                      )}
+                  </div>
+
+                  <table className="hidden md:table w-full text-left text-sm text-secondary dark:text-gray-400">
+                      <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-bold border-b border-gray-200 dark:border-gray-800">
+                          <tr>
+                              <th className="px-6 py-4">Item Details</th>
+                              <th className="px-4 py-4 text-center">Need by Date</th>
+                              <th className="px-4 py-4 text-center">Ordered</th>
+                              <th className="px-4 py-4 text-center">Received</th>
+                              <th className="px-4 py-4 text-right">Unit Price (Ex)</th>
+                              <th className="px-3 py-4 text-center">Tax Code</th>
+                              <th className="px-4 py-4 text-right">GST (10%)</th>
+                              <th className="px-6 py-4 text-right">Total (Inc GST)</th>
+                              {isEditing && <th className="px-4 py-4 text-center">Actions</th>}
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                          {linesInView.map(line => {
+                              const pricing = calculateLinePricing(
+                                  line.quantityOrdered,
+                                  line.unitPrice,
+                                  line.taxCode || 'GST',
+                                  line.taxRate ?? 10.0
+                              );
+                              return (
+                                  <tr key={line.id} className="hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors">
+                                      <td className="px-6 py-4">
+                                          <div className="font-bold text-primary dark:text-white">{line.itemName}</div>
+                                          <div className="text-xs text-tertiary dark:text-gray-500 font-mono mt-0.5">{line.sku}</div>
+                                          {line.priceOptionLabel && (
+                                              <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-1">{line.priceOptionLabel}</div>
+                                          )}
                                       </td>
-                                  )}
-                              </tr>
-                          ))}
+                                      <td className="px-4 py-4 text-center">
+                                          {isEditing ? (
+                                              <input 
+                                                  type="date" 
+                                                  className="w-36 px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                  value={line.needByDate || (po?.requestDate ? po.requestDate.split('T')[0] : '')}
+                                                  onChange={(e) => handleLineNeedByDateChange(line.id, e.target.value)}
+                                              />
+                                          ) : (
+                                              <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">
+                                                  {formatDisplayDate(line.needByDate || po?.requestDate)}
+                                              </span>
+                                          )}
+                                      </td>
+                                      <td className="px-4 py-4 text-center font-medium text-primary dark:text-white">
+                                          {isEditing ? (
+                                              <input 
+                                                  type="number" 
+                                                  className="w-20 px-2 py-1 text-center border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                  value={line.quantityOrdered}
+                                                  min={1}
+                                                  step={1}
+                                                  onChange={(e) => handleLineQtyChange(line.id, e.target.value)}
+                                              />
+                                          ) : (
+                                              line.quantityOrdered
+                                          )}
+                                      </td>
+                                      <td className="px-4 py-4 text-center">
+                                          <div className="flex flex-col items-center justify-center">
+                                              <span className={line.quantityReceived >= line.quantityOrdered ? 'text-green-600 dark:text-green-500 font-bold' : 'text-secondary'}>
+                                                  {line.quantityReceived}
+                                              </span>
+                                              {line.quantityReceived > line.quantityOrdered && (
+                                                  <span className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-500/20 mt-1 whitespace-nowrap">
+                                                      +{line.quantityReceived - line.quantityOrdered} Over
+                                                  </span>
+                                              )}
+                                          </div>
+                                      </td>
+                                      <td className="px-4 py-4 text-right">
+                                          {isEditing ? (
+                                              <div className="flex items-center justify-end gap-1">
+                                                  <span className="text-gray-400">$</span>
+                                                  <input 
+                                                      type="number" 
+                                                      className="w-24 px-2 py-1 text-right border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                                      value={line.unitPrice}
+                                                      step="0.01"
+                                                      min="0"
+                                                      onChange={(e) => handleLinePriceChange(line.id, e.target.value)}
+                                                  />
+                                              </div>
+                                          ) : (
+                                              formatCurrency(line.unitPrice)
+                                          )}
+                                      </td>
+                                      <td className="px-3 py-4 text-center">
+                                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                              {line.taxCode || 'GST'}
+                                          </span>
+                                      </td>
+                                      <td className="px-4 py-4 text-right font-mono text-gray-600 dark:text-gray-300 text-xs">
+                                          {formatCurrency(pricing.taxAmount)}
+                                      </td>
+                                      <td className="px-6 py-4 text-right font-bold text-primary dark:text-white">
+                                          <div>{formatCurrency(pricing.totalPriceIncGst)}</div>
+                                          <div className="text-[10px] font-normal text-gray-400">({formatCurrency(pricing.totalPrice)} ex)</div>
+                                      </td>
+                                      {isEditing && canEditRequest && (
+                                          <td className="px-4 py-4 text-center">
+                                              <button
+                                                  type="button"
+                                                  onClick={() => handleRemoveDraftLine(line.id)}
+                                                  disabled={linesInView.length <= 1}
+                                                  className="p-2 text-red-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed"
+                                                  title={linesInView.length <= 1 ? 'At least one line is required' : 'Remove line'}
+                                              >
+                                                  <Trash2 size={16} />
+                                              </button>
+                                          </td>
+                                      )}
+                                  </tr>
+                              );
+                          })}
                           {linesInView.length === 0 && (
                               <tr>
-                                  <td colSpan={isEditing ? 6 : 5} className="px-6 py-10 text-center text-gray-400">
+                                  <td colSpan={isEditing ? 9 : 8} className="px-6 py-10 text-center text-gray-400">
                                       No line items.
                                   </td>
                               </tr>
                           )}
                       </tbody>
+                      {linesInView.length > 0 && (() => {
+                          const viewTotals = calculatePOTotals(linesInView);
+                          return (
+                              <tfoot className="bg-gray-50/80 dark:bg-[#15171e] border-t-2 border-gray-200 dark:border-gray-800 font-semibold text-xs">
+                                  <tr>
+                                      <td colSpan={6} className="py-2.5 px-6 text-right text-gray-500 uppercase text-[10px] font-bold">Subtotal (Ex GST):</td>
+                                      <td colSpan={isEditing ? 3 : 2} className="py-2.5 px-6 text-right font-mono text-gray-900 dark:text-white">{formatCurrency(viewTotals.subtotalAmount)}</td>
+                                  </tr>
+                                  <tr>
+                                      <td colSpan={6} className="py-2 px-6 text-right text-gray-500 uppercase text-[10px] font-bold">Total GST (10%):</td>
+                                      <td colSpan={isEditing ? 3 : 2} className="py-2 px-6 text-right font-mono text-gray-900 dark:text-white">{formatCurrency(viewTotals.taxTotalAmount)}</td>
+                                  </tr>
+                                  <tr className="border-t border-gray-200 dark:border-gray-700 bg-blue-50/40 dark:bg-blue-900/10">
+                                      <td colSpan={6} className="py-3 px-6 text-right font-bold text-gray-900 dark:text-white uppercase text-[11px]">SAP Concur Order Total (Inc GST):</td>
+                                      <td colSpan={isEditing ? 3 : 2} className="py-3 px-6 text-right font-black text-base text-[var(--color-brand)] font-mono">{formatCurrency(viewTotals.totalAmountIncGst)}</td>
+                                  </tr>
+                              </tfoot>
+                          );
+                      })()}
                   </table>
               </div>
           )}

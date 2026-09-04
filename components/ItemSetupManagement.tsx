@@ -11,6 +11,8 @@ import {
     ListChecks,
     Plus,
     Save,
+    Search,
+    Sparkles,
     Tag,
     Trash2,
     X
@@ -31,21 +33,21 @@ type ItemField = 'itemPool' | 'itemCatalog' | 'itemType' | 'category' | 'subCate
 interface SetupGroup {
     type: AttributeType;
     label: string;
+    description: string;
     itemField?: ItemField;
     icon: React.ElementType;
     defaults?: string[];
 }
 
 const TAXONOMY_GROUPS: SetupGroup[] = [
-    { type: 'POOL', label: 'Pools', itemField: 'itemPool', icon: Layers },
-    { type: 'CATALOG', label: 'Catalogues', itemField: 'itemCatalog', icon: BookOpen },
-    { type: 'TYPE', label: 'Types', itemField: 'itemType', icon: Tag },
-    { type: 'CATEGORY', label: 'Categories', itemField: 'category', icon: FolderTree },
-    { type: 'SUB_CATEGORY', label: 'Sub-categories', itemField: 'subCategory', icon: ListChecks },
-    { type: 'UOM', label: 'Units of measure', itemField: 'uom', icon: Database }
+    { type: 'POOL', label: 'Pools', description: 'Linen and inventory pooling classifications.', itemField: 'itemPool', icon: Layers },
+    { type: 'CATALOG', label: 'Catalogues', description: 'Master commercial catalogue classifications.', itemField: 'itemCatalog', icon: BookOpen },
+    { type: 'TYPE', label: 'Item Types', description: 'Primary product type categorization.', itemField: 'itemType', icon: Tag },
+    { type: 'CATEGORY', label: 'Categories', description: 'Broad item hierarchy categories.', itemField: 'category', icon: FolderTree },
+    { type: 'SUB_CATEGORY', label: 'Sub-categories', description: 'Granular product sub-classifications.', itemField: 'subCategory', icon: ListChecks },
+    { type: 'UOM', label: 'Units of Measure', description: 'Standard stock, order, and packaging units.', itemField: 'uom', icon: Database }
 ];
 
-// Workflow dropdowns (request form options)
 const WORKFLOW_DROPDOWN_TYPES: AttributeType[] = [
     'PREVIEW_REQUEST_TYPE', 'PREVIEW_DEPARTMENT', 'PREVIEW_BUSINESS_UNIT',
     'PREVIEW_BUSINESS_REASON', 'PREVIEW_PRICE_TYPE', 'PREVIEW_TAX_CODE'
@@ -56,11 +58,11 @@ const WORKFLOW_GROUPS: SetupGroup[] = ITEM_PREVIEW_OPTION_GROUPS
     .map(group => ({
         type: group.type,
         label: group.label,
+        description: group.description,
         icon: ListChecks,
         defaults: group.defaults
     }));
 
-// Item creation reference data (commercial + financial)
 const ITEM_CREATION_REF_TYPES: AttributeType[] = [
     'PREVIEW_CUSTOMER_PRICING_GROUP', 'PREVIEW_SAP_MAPPING', 'PREVIEW_SUPPLIER_EXT'
 ];
@@ -70,6 +72,7 @@ const ITEM_CREATION_GROUPS: SetupGroup[] = ITEM_PREVIEW_OPTION_GROUPS
     .map(group => ({
         type: group.type,
         label: group.label,
+        description: group.description,
         icon: group.type === 'PREVIEW_SAP_MAPPING' ? DollarSign
             : group.type === 'PREVIEW_CUSTOMER_PRICING_GROUP' ? Tag
             : Database,
@@ -78,10 +81,17 @@ const ITEM_CREATION_GROUPS: SetupGroup[] = ITEM_PREVIEW_OPTION_GROUPS
 
 const normalizeValue = (value: unknown) => String(value || '').trim();
 
-const ItemSetupManagement = ({ options, items, upsertOption, deleteOption }: ItemSetupManagementProps) => {
+export const ItemSetupManagement: React.FC<ItemSetupManagementProps> = ({
+    options,
+    items,
+    upsertOption,
+    deleteOption
+}) => {
     const { success, error } = useToast();
     const [activeSection, setActiveSection] = useState<'TAXONOMY' | 'DROPDOWNS' | 'ITEM_CREATION'>('TAXONOMY');
-    const [draftValues, setDraftValues] = useState<Record<string, string>>({});
+    const [selectedGroupType, setSelectedGroupType] = useState<AttributeType>('POOL');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [draftValue, setDraftValue] = useState('');
     const [editing, setEditing] = useState<AttributeOption | null>(null);
     const [editValue, setEditValue] = useState('');
     const [savingType, setSavingType] = useState<AttributeType | null>(null);
@@ -154,6 +164,24 @@ const ItemSetupManagement = ({ options, items, upsertOption, deleteOption }: Ite
         });
     }, [savedByType]);
 
+    const currentGroups = useMemo(() => {
+        if (activeSection === 'TAXONOMY') return taxonomyRows;
+        if (activeSection === 'DROPDOWNS') return dropdownRows;
+        return itemCreationRows;
+    }, [activeSection, taxonomyRows, dropdownRows, itemCreationRows]);
+
+    // Ensure selected group type is valid when switching tabs
+    React.useEffect(() => {
+        const firstGroup = currentGroups[0];
+        if (firstGroup && !currentGroups.some(g => g.group.type === selectedGroupType)) {
+            setSelectedGroupType(firstGroup.group.type);
+        }
+    }, [activeSection, currentGroups, selectedGroupType]);
+
+    const activeGroupData = useMemo(() => {
+        return currentGroups.find(g => g.group.type === selectedGroupType) || currentGroups[0];
+    }, [currentGroups, selectedGroupType]);
+
     const stats = useMemo(() => {
         const savedTaxonomy = taxonomyRows.reduce((sum, row) => sum + row.saved.length, 0);
         const discoveredTaxonomy = taxonomyRows.reduce((sum, row) => sum + row.discovered.length, 0);
@@ -163,12 +191,12 @@ const ItemSetupManagement = ({ options, items, upsertOption, deleteOption }: Ite
     }, [dropdownRows, taxonomyRows, itemCreationRows]);
 
     const handleAdd = async (type: AttributeType) => {
-        const value = normalizeValue(draftValues[type]);
+        const value = normalizeValue(draftValue);
         if (!value) return;
         setSavingType(type);
         try {
             await upsertOption({ type, value, activeFlag: true });
-            setDraftValues(prev => ({ ...prev, [type]: '' }));
+            setDraftValue('');
             success('Option saved.');
         } catch (err) {
             error((err as Error).message);
@@ -231,301 +259,432 @@ const ItemSetupManagement = ({ options, items, upsertOption, deleteOption }: Ite
         }
     };
 
-    const renderSavedOption = (option: AttributeOption) => (
-        <div key={option.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-2.5 dark:border-gray-800 dark:bg-[#15171e]">
-            {editing?.id === option.id ? (
-                <input
-                    className="input-field py-2"
-                    value={editValue}
-                    onChange={event => setEditValue(event.target.value)}
-                />
-            ) : (
-                <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-gray-800 dark:text-gray-200">{option.value}</div>
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">Saved</div>
-                </div>
-            )}
+    // Filter values based on search query
+    const filteredSaved = useMemo(() => {
+        if (!activeGroupData?.saved) return [];
+        if (!searchQuery.trim()) return activeGroupData.saved;
+        return activeGroupData.saved.filter(opt =>
+            opt.value.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [activeGroupData, searchQuery]);
 
-            <div className="flex shrink-0 gap-1">
-                {editing?.id === option.id ? (
-                    <>
-                        <button type="button" onClick={handleUpdate} disabled={savingType === option.type} className="icon-btn-blue" title="Save"><Check size={15} /></button>
-                        <button type="button" onClick={() => setEditing(null)} className="icon-btn-red" title="Cancel"><X size={15} /></button>
-                    </>
-                ) : (
-                    <>
-                        <button type="button" onClick={() => { setEditing(option); setEditValue(option.value); }} className="icon-btn-blue" title="Edit"><Edit2 size={15} /></button>
-                        <button type="button" onClick={() => handleDelete(option)} className="icon-btn-red" title="Remove"><Trash2 size={15} /></button>
-                    </>
-                )}
-            </div>
-        </div>
-    );
+    const filteredDiscovered = useMemo(() => {
+        if (!('discovered' in activeGroupData) || !activeGroupData.discovered) return [];
+        if (!searchQuery.trim()) return activeGroupData.discovered;
+        return activeGroupData.discovered.filter(d =>
+            d.value.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [activeGroupData, searchQuery]);
+
+    const filteredDefaults = useMemo(() => {
+        if (!('defaultOnly' in activeGroupData) || !activeGroupData.defaultOnly) return [];
+        if (!searchQuery.trim()) return activeGroupData.defaultOnly;
+        return activeGroupData.defaultOnly.filter(d =>
+            d.value.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [activeGroupData, searchQuery]);
+
+    const totalCountInActiveGroup = (activeGroupData?.saved?.length || 0) +
+        (('discovered' in activeGroupData ? activeGroupData.discovered?.length : 0) || 0) +
+        (('defaultOnly' in activeGroupData ? activeGroupData.defaultOnly?.length : 0) || 0);
 
     return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                    <div className="text-xs font-bold uppercase text-gray-500">Saved taxonomy</div>
-                    <div className="mt-1 text-2xl font-black text-gray-900 dark:text-white">{stats.savedTaxonomy}</div>
-                </div>
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                    <div className="text-xs font-bold uppercase text-gray-500">Found in items</div>
-                    <div className="mt-1 text-2xl font-black text-gray-900 dark:text-white">{stats.discoveredTaxonomy}</div>
-                </div>
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                    <div className="text-xs font-bold uppercase text-gray-500">Saved dropdowns</div>
-                    <div className="mt-1 text-2xl font-black text-gray-900 dark:text-white">{stats.savedDropdowns}</div>
-                </div>
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                    <div className="text-xs font-bold uppercase text-gray-500">Item creation ref</div>
-                    <div className="mt-1 text-2xl font-black text-gray-900 dark:text-white">{stats.savedItemCreation}</div>
-                </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-800">
-                {[
-                    { id: 'TAXONOMY', label: 'Item categorisation', icon: FolderTree },
-                    { id: 'DROPDOWNS', label: 'Shared dropdowns', icon: ListChecks },
-                    { id: 'ITEM_CREATION', label: 'Item creation reference', icon: FlaskConical }
-                ].map(section => {
-                    const Icon = section.icon;
-                    const isActive = activeSection === section.id;
-                    return (
-                        <button
-                            key={section.id}
-                            type="button"
-                            onClick={() => setActiveSection(section.id as 'TAXONOMY' | 'DROPDOWNS' | 'ITEM_CREATION')}
-                            className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition-colors ${
-                                isActive
-                                    ? 'border-[var(--color-brand)] text-[var(--color-brand)]'
-                                    : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'
-                            }`}
-                        >
-                            <Icon size={16} /> {section.label}
-                        </button>
-                    );
-                })}
-            </div>
-
-            {activeSection === 'TAXONOMY' && (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    {taxonomyRows.map(({ group, saved, discovered }) => {
-                        const Icon = group.icon;
-                        const isSaving = savingType === group.type;
+        <div className="space-y-4">
+            {/* Top Toolbar: Section Tabs & Compact Metric Pills */}
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+                {/* Main 3 Section Tabs */}
+                <div className="flex items-center gap-1.5 p-1 bg-gray-100/80 dark:bg-white/[0.04] rounded-xl border border-gray-200/70 dark:border-gray-800/80">
+                    {[
+                        { id: 'TAXONOMY', label: 'Item Categorisation', icon: FolderTree },
+                        { id: 'DROPDOWNS', label: 'Shared Dropdowns', icon: ListChecks },
+                        { id: 'ITEM_CREATION', label: 'Creation Reference', icon: FlaskConical }
+                    ].map(tab => {
+                        const Icon = tab.icon;
+                        const isActive = activeSection === tab.id;
                         return (
-                            <div key={group.type} className="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="rounded-lg bg-blue-50 p-2 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
-                                            <Icon size={18} />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-bold text-gray-900 dark:text-white">{group.label}</h3>
-                                            <div className="text-xs text-gray-500">{saved.length} saved, {discovered.length} found in items</div>
-                                        </div>
-                                    </div>
-                                    {discovered.length > 0 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSaveAll(group.type, discovered.map(row => row.value))}
-                                            disabled={isSaving}
-                                            className="shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300"
-                                        >
-                                            Save found
-                                        </button>
-                                    )}
-                                </div>
-
-                                <div className="mt-4 flex gap-2">
-                                    <input
-                                        className="input-field"
-                                        value={draftValues[group.type] || ''}
-                                        onChange={event => setDraftValues(prev => ({ ...prev, [group.type]: event.target.value }))}
-                                        placeholder={`Add ${group.label.toLowerCase()}`}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => handleAdd(group.type)}
-                                        disabled={isSaving || !normalizeValue(draftValues[group.type])}
-                                        className="inline-flex items-center gap-2 rounded-xl bg-[var(--color-brand)] px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-                                    >
-                                        <Plus size={16} /> Add
-                                    </button>
-                                </div>
-
-                                <div className="mt-4 max-h-80 space-y-2 overflow-y-auto pr-1">
-                                    {saved.map(renderSavedOption)}
-                                    {discovered.map(row => (
-                                        <div key={`${group.type}-${row.value}`} className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-500/20 dark:bg-amber-500/10">
-                                            <div className="min-w-0">
-                                                <div className="truncate text-sm font-semibold text-gray-800 dark:text-gray-200">{row.value}</div>
-                                                <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">{row.itemCount} item{row.itemCount === 1 ? '' : 's'} using this</div>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleSaveValue(group.type, row.value)}
-                                                disabled={isSaving}
-                                                className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
-                                            >
-                                                <Save size={13} /> Save
-                                            </button>
-                                        </div>
-                                    ))}
-                                    {saved.length === 0 && discovered.length === 0 && (
-                                        <div className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-500 dark:border-gray-700">
-                                            No values found yet.
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => {
+                                    setActiveSection(tab.id as 'TAXONOMY' | 'DROPDOWNS' | 'ITEM_CREATION');
+                                    setSearchQuery('');
+                                    setDraftValue('');
+                                }}
+                                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                    isActive
+                                        ? 'bg-white dark:bg-[#1e2029] text-[var(--color-brand)] shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                }`}
+                            >
+                                <Icon size={14} />
+                                <span>{tab.label}</span>
+                            </button>
                         );
                     })}
                 </div>
-            )}
 
-            {activeSection === 'ITEM_CREATION' && (
-                <div className="space-y-4">
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/10 p-4">
-                        <p className="text-sm text-blue-800 dark:text-blue-200">
-                            These reference values are used by the Item Creation workflow for commercial and financial classification. They drive customer pricing groups, SAP GL mapping, and supplier tier classification on item requests.
-                        </p>
+                {/* Sleek Compact Metric Pills */}
+                <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        <span>Saved Taxonomy:</span>
+                        <strong className="font-bold text-emerald-800 dark:text-emerald-200">{stats.savedTaxonomy}</strong>
                     </div>
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                        {itemCreationRows.map(({ group, saved, defaultOnly }) => {
+                    {stats.discoveredTaxonomy > 0 && (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                            <span>Unmapped in Items:</span>
+                            <strong className="font-bold text-amber-800 dark:text-amber-200">{stats.discoveredTaxonomy}</strong>
+                        </div>
+                    )}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-500/20">
+                        <span>Dropdowns:</span>
+                        <strong className="font-bold text-blue-800 dark:text-blue-200">{stats.savedDropdowns}</strong>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-500/20">
+                        <span>Ref Data:</span>
+                        <strong className="font-bold text-purple-800 dark:text-purple-200">{stats.savedItemCreation}</strong>
+                    </div>
+                </div>
+            </div>
+
+            {/* Main Desktop Optimized Workbench Layout */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start min-h-[460px]">
+                {/* Left Category Selector Rail (4 cols on desktop, full on mobile) */}
+                <div className="md:col-span-4 xl:col-span-3 space-y-1.5">
+                    <div className="text-[10px] font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 px-2 pb-1">
+                        Select Classification Tier
+                    </div>
+
+                    {/* Mobile horizontal ribbon / Desktop vertical column */}
+                    <div className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-x-visible no-scrollbar pb-1 md:pb-0">
+                        {currentGroups.map(item => {
+                            const group = item.group;
                             const Icon = group.icon;
-                            const isSaving = savingType === group.type;
+                            const isSelected = selectedGroupType === group.type;
+                            const savedCount = item.saved.length;
+                            const unmappedCount = 'discovered' in item ? item.discovered.length : ('defaultOnly' in item ? item.defaultOnly.length : 0);
+
                             return (
-                                <div key={group.type} className="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="rounded-lg bg-purple-50 p-2 text-purple-600 dark:bg-purple-500/10 dark:text-purple-300">
-                                                <Icon size={18} />
+                                <button
+                                    key={group.type}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedGroupType(group.type);
+                                        setSearchQuery('');
+                                        setDraftValue('');
+                                        setEditing(null);
+                                    }}
+                                    className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between gap-3 shrink-0 md:shrink ${
+                                        isSelected
+                                            ? 'bg-white dark:bg-[#1a1c24] border-[var(--color-brand)] shadow-md shadow-[var(--color-brand)]/5 ring-1 ring-[var(--color-brand)]'
+                                            : 'bg-white/60 dark:bg-white/[0.02] border-gray-200/70 dark:border-gray-800/80 hover:bg-gray-50 dark:hover:bg-white/[0.04] text-gray-600 dark:text-gray-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                                            isSelected
+                                                ? 'bg-[var(--color-brand)] text-white shadow-sm'
+                                                : 'bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400'
+                                        }`}>
+                                            <Icon size={16} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className={`text-xs font-bold truncate ${
+                                                isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'
+                                            }`}>
+                                                {group.label}
                                             </div>
-                                            <div>
-                                                <h3 className="font-bold text-gray-900 dark:text-white">{group.label}</h3>
-                                                <div className="text-xs text-gray-500">{saved.length > 0 ? `${saved.length} saved values` : 'Using fallback defaults'}</div>
+                                            <div className="text-[10px] text-gray-400 truncate">
+                                                {savedCount} configured
                                             </div>
                                         </div>
-                                        {defaultOnly.length > 0 && (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleSaveAll(group.type, defaultOnly.map(row => row.value))}
-                                                disabled={isSaving}
-                                                className="shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300"
-                                            >
-                                                Save defaults
-                                            </button>
+                                    </div>
+
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        {unmappedCount > 0 && (
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                                                +{unmappedCount}
+                                            </span>
                                         )}
+                                        <span className="text-[11px] font-semibold text-gray-400">
+                                            {savedCount}
+                                        </span>
                                     </div>
-
-                                    <div className="mt-4 flex gap-2">
-                                        <input
-                                            className="input-field"
-                                            value={draftValues[group.type] || ''}
-                                            onChange={event => setDraftValues(prev => ({ ...prev, [group.type]: event.target.value }))}
-                                            placeholder={`Add ${group.label.toLowerCase()}`}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => handleAdd(group.type)}
-                                            disabled={isSaving || !normalizeValue(draftValues[group.type])}
-                                            className="inline-flex items-center gap-2 rounded-xl bg-[var(--color-brand)] px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-                                        >
-                                            <Plus size={16} /> Add
-                                        </button>
-                                    </div>
-
-                                    <div className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
-                                        {saved.map(renderSavedOption)}
-                                        {defaultOnly.map(row => (
-                                            <div key={`${group.type}-${row.value}`} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-2.5 dark:border-gray-800 dark:bg-[#15171e]">
-                                                <div className="min-w-0">
-                                                    <div className="truncate text-sm font-semibold text-gray-800 dark:text-gray-200">{row.value}</div>
-                                                    <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Fallback active</div>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleSaveValue(group.type, row.value)}
-                                                    disabled={isSaving}
-                                                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200"
-                                                >
-                                                    <Save size={13} /> Save
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                </button>
                             );
                         })}
                     </div>
                 </div>
-            )}
 
-            {activeSection === 'DROPDOWNS' && (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    {dropdownRows.map(({ group, saved, defaultOnly }) => {
-                        const isSaving = savingType === group.type;
-                        return (
-                            <div key={group.type} className="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <h3 className="font-bold text-gray-900 dark:text-white">{group.label}</h3>
-                                        <div className="text-xs text-gray-500">{saved.length > 0 ? `${saved.length} saved options` : 'Using fallback defaults'}</div>
+                {/* Right Interactive Workbench Pane (8 cols on desktop) */}
+                <div className="md:col-span-8 xl:col-span-9 bg-white dark:bg-[#15171e] rounded-2xl border border-gray-200 dark:border-gray-800 p-5 space-y-4 shadow-sm">
+                    {/* Header with Title, Description, and Bulk Actions */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
+                        <div className="flex items-center gap-3">
+                            {(() => {
+                                const Icon = activeGroupData?.group?.icon || Layers;
+                                return (
+                                    <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                                        <Icon size={20} />
                                     </div>
-                                    {defaultOnly.length > 0 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSaveAll(group.type, defaultOnly.map(row => row.value))}
-                                            disabled={isSaving}
-                                            className="shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300"
+                                );
+                            })()}
+                            <div>
+                                <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    <span>{activeGroupData?.group?.label}</span>
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-300 font-semibold">
+                                        {totalCountInActiveGroup} total
+                                    </span>
+                                </h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {activeGroupData?.group?.description || 'Manage selectable values and taxonomy hierarchy.'}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Bulk Action Button if unmapped discovered or default fallback exists */}
+                        {'discovered' in activeGroupData && activeGroupData.discovered && activeGroupData.discovered.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => handleSaveAll(activeGroupData.group.type, activeGroupData.discovered.map(row => row.value))}
+                                disabled={savingType === activeGroupData.group.type}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-all shadow-sm shrink-0"
+                            >
+                                <Sparkles size={14} />
+                                <span>Save All Discovered ({activeGroupData.discovered.length})</span>
+                            </button>
+                        )}
+                        {'defaultOnly' in activeGroupData && activeGroupData.defaultOnly && activeGroupData.defaultOnly.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => handleSaveAll(activeGroupData.group.type, activeGroupData.defaultOnly.map(row => row.value))}
+                                disabled={savingType === activeGroupData.group.type}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm shrink-0"
+                            >
+                                <Sparkles size={14} />
+                                <span>Save All Defaults ({activeGroupData.defaultOnly.length})</span>
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Quick Add and Search Bar (Inline 2-column or flex) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                        {/* Add Input (7 cols) */}
+                        <div className="sm:col-span-7 flex gap-1.5">
+                            <input
+                                className="input-field py-2 text-xs"
+                                value={draftValue}
+                                onChange={e => setDraftValue(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' && draftValue.trim()) {
+                                        handleAdd(activeGroupData.group.type);
+                                    }
+                                }}
+                                placeholder={`Add new ${activeGroupData?.group?.label?.toLowerCase() || 'value'}...`}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => handleAdd(activeGroupData.group.type)}
+                                disabled={savingType === activeGroupData.group.type || !normalizeValue(draftValue)}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--color-brand)] hover:opacity-90 text-white text-xs font-bold transition-all shrink-0 disabled:opacity-40"
+                            >
+                                <Plus size={15} />
+                                <span>Add</span>
+                            </button>
+                        </div>
+
+                        {/* Search Filter (5 cols) */}
+                        <div className="sm:col-span-5 relative">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                                className="input-field pl-8 py-2 text-xs"
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                placeholder="Filter values..."
+                            />
+                            {searchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    <X size={13} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Value Tiles Grid */}
+                    <div className="max-h-[380px] overflow-y-auto pr-1 space-y-2.5">
+                        {/* 1. Saved Values Section */}
+                        {filteredSaved.length > 0 && (
+                            <div className="space-y-1.5">
+                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">
+                                    Configured & Active Values ({filteredSaved.length})
+                                </div>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                                    {filteredSaved.map(option => (
+                                        <div
+                                            key={option.id}
+                                            className="flex items-center justify-between gap-2.5 rounded-xl border border-gray-200/80 bg-gray-50/50 p-2.5 hover:bg-white dark:border-gray-800 dark:bg-white/[0.02] dark:hover:bg-white/[0.05] transition-all group"
                                         >
-                                            Save defaults
-                                        </button>
-                                    )}
-                                </div>
+                                            {editing?.id === option.id ? (
+                                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                                    <input
+                                                        className="input-field py-1 text-xs"
+                                                        value={editValue}
+                                                        onChange={e => setEditValue(e.target.value)}
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter') handleUpdate();
+                                                            if (e.key === 'Escape') setEditing(null);
+                                                        }}
+                                                        autoFocus
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleUpdate}
+                                                        disabled={savingType === option.type}
+                                                        className="p-1.5 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600"
+                                                        title="Save"
+                                                    >
+                                                        <Check size={13} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditing(null)}
+                                                        className="p-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                                                        title="Cancel"
+                                                    >
+                                                        <X size={13} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="min-w-0 flex items-center gap-2">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                                                        <span className="truncate text-xs font-bold text-gray-800 dark:text-gray-200">
+                                                            {option.value}
+                                                        </span>
+                                                        <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+                                                            Saved
+                                                        </span>
+                                                    </div>
 
-                                <div className="mt-4 flex gap-2">
-                                    <input
-                                        className="input-field"
-                                        value={draftValues[group.type] || ''}
-                                        onChange={event => setDraftValues(prev => ({ ...prev, [group.type]: event.target.value }))}
-                                        placeholder={`Add ${group.label.toLowerCase()}`}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => handleAdd(group.type)}
-                                        disabled={isSaving || !normalizeValue(draftValues[group.type])}
-                                        className="inline-flex items-center gap-2 rounded-xl bg-[var(--color-brand)] px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-                                    >
-                                        <Plus size={16} /> Add
-                                    </button>
+                                                    <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditing(option);
+                                                                setEditValue(option.value);
+                                                            }}
+                                                            className="p-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 text-gray-400 hover:text-blue-600 transition-colors"
+                                                            title="Edit"
+                                                        >
+                                                            <Edit2 size={13} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDelete(option)}
+                                                            className="p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-400 hover:text-red-600 transition-colors"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
+                            </div>
+                        )}
 
-                                <div className="mt-4 max-h-80 space-y-2 overflow-y-auto pr-1">
-                                    {saved.map(renderSavedOption)}
-                                    {defaultOnly.map(row => (
-                                        <div key={`${group.type}-${row.value}`} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-2.5 dark:border-gray-800 dark:bg-[#15171e]">
+                        {/* 2. Discovered Unmapped Values Section (Found in Item master) */}
+                        {filteredDiscovered.length > 0 && (
+                            <div className="space-y-1.5 pt-2">
+                                <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider px-1 flex items-center gap-1.5">
+                                    <Sparkles size={12} />
+                                    <span>Found in Existing Items ({filteredDiscovered.length})</span>
+                                </div>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                                    {filteredDiscovered.map(row => (
+                                        <div
+                                            key={`${activeGroupData.group.type}-${row.value}`}
+                                            className="flex items-center justify-between gap-2.5 rounded-xl border border-amber-200/80 bg-amber-50/60 p-2.5 dark:border-amber-500/20 dark:bg-amber-500/10"
+                                        >
                                             <div className="min-w-0">
-                                                <div className="truncate text-sm font-semibold text-gray-800 dark:text-gray-200">{row.value}</div>
-                                                <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{saved.length > 0 ? 'Default not saved' : 'Fallback active'}</div>
+                                                <div className="truncate text-xs font-bold text-gray-800 dark:text-gray-200">
+                                                    {row.value}
+                                                </div>
+                                                <div className="text-[9px] font-bold text-amber-700 dark:text-amber-300">
+                                                    Used by {row.itemCount} item{row.itemCount === 1 ? '' : 's'}
+                                                </div>
                                             </div>
+
                                             <button
                                                 type="button"
-                                                onClick={() => handleSaveValue(group.type, row.value)}
-                                                disabled={isSaving}
-                                                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200"
+                                                onClick={() => handleSaveValue(activeGroupData.group.type, row.value)}
+                                                disabled={savingType === activeGroupData.group.type}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition-all shrink-0"
                                             >
-                                                <Save size={13} /> Save
+                                                <Save size={12} />
+                                                <span>Save</span>
                                             </button>
                                         </div>
                                     ))}
                                 </div>
                             </div>
-                        );
-                    })}
+                        )}
+
+                        {/* 3. Default Fallbacks Section */}
+                        {filteredDefaults.length > 0 && (
+                            <div className="space-y-1.5 pt-2">
+                                <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider px-1">
+                                    Standard Defaults Available ({filteredDefaults.length})
+                                </div>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                                    {filteredDefaults.map(row => (
+                                        <div
+                                            key={`${activeGroupData.group.type}-${row.value}`}
+                                            className="flex items-center justify-between gap-2.5 rounded-xl border border-gray-200 bg-white p-2.5 dark:border-gray-800 dark:bg-white/[0.02]"
+                                        >
+                                            <div className="min-w-0">
+                                                <div className="truncate text-xs font-bold text-gray-800 dark:text-gray-200">
+                                                    {row.value}
+                                                </div>
+                                                <div className="text-[9px] text-gray-400 font-semibold">
+                                                    Standard Default
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveValue(activeGroupData.group.type, row.value)}
+                                                disabled={savingType === activeGroupData.group.type}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 hover:bg-blue-100 text-[11px] font-bold transition-all shrink-0"
+                                            >
+                                                <Plus size={12} />
+                                                <span>Save</span>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Empty State */}
+                        {filteredSaved.length === 0 && filteredDiscovered.length === 0 && filteredDefaults.length === 0 && (
+                            <div className="p-8 text-center rounded-xl border border-dashed border-gray-200 dark:border-gray-800 text-gray-400">
+                                <div className="text-xs font-semibold">
+                                    {searchQuery ? `No values matching "${searchQuery}"` : 'No values configured yet for this category.'}
+                                </div>
+                                <p className="text-[11px] text-gray-400 mt-1">Use the input above to create a new option.</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
-            )}
+            </div>
         </div>
     );
 };

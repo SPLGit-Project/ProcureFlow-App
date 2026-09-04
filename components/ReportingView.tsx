@@ -1,18 +1,27 @@
-import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import React, { useEffect, useMemo, useState, useRef, Fragment, type ComponentType } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import {
     AlertCircle,
+    AlignLeft,
     BarChart3,
+    Building2,
+    Check,
     CheckCircle2,
+    ChevronDown,
     Download,
     FileText,
+    Filter,
+    MapPin,
     Package,
+    PackageCheck,
     Search,
     TrendingUp,
     Layers,
+    ArrowRight,
     ArrowRightLeft,
     History,
-    Calendar
+    Calendar,
+    X
 } from 'lucide-react';
 import PageHeader from './PageHeader.tsx';
 import { useSetPageMeta } from '../context/PageMetaContext.tsx';
@@ -27,10 +36,57 @@ import {
     XAxis,
     YAxis
 } from 'recharts';
-import type { PORequest, POStatus } from '../types.ts';
+import type { Item, PORequest, POStatus, Site } from '../types.ts';
+import {
+    DEFAULT_FY27_BUDGETS,
+    buildEomReconciliation,
+    buildEomConcurCsv,
+    getBranchDisplayName,
+    LINEN_HUB_TOTAL_BUDGET,
+    TOTAL_DEPLETION_BUDGET,
+    TOTAL_NEW_BUSINESS_BUDGET,
+    GRAND_TOTAL_FY27_BUDGET
+} from '../utils/budgetTracking.ts';
 
-type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY' | 'SUPPLIER_INVENTORY' | 'SUPPLIER_ITEM_MAPPING' | 'SUPPLIER_PRICE_VARIANCE';
+
+type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY' | 'LINEN_INJECTION' | 'SUPPLIER_INVENTORY' | 'SUPPLIER_ITEM_MAPPING' | 'SUPPLIER_PRICE_VARIANCE' | 'EOM_BUDGET_RECONCILIATION';
 type ReportRow = Record<string, string | number>;
+
+interface LinenInjectionReportRow extends ReportRow {
+    id: string;
+    poNumber: string;
+    concurPoNumber: string;
+    requestNumber: string;
+    concurRequestNumber: string;
+    requestDate: string;
+    closedDate: string;
+    monthKey?: string;
+    month?: string;
+    latestDeliveryDate: string;
+    deliveryDates: string;
+    dockets: string;
+    invoices: string;
+    site: string;
+    siteId: string;
+    supplier: string;
+    supplierId: string;
+    itemId: string;
+    item: string;
+    sku: string;
+    category: string;
+    orderedQty: number;
+    injectedQty: number;
+    unitPrice: number;
+    injectedValue: number;
+    orderedValue: number;
+    injectedValueIncGst?: number;
+    orderedValueIncGst?: number;
+    requester: string;
+    status: POStatus;
+    reasonForRequest?: 'Depletion' | 'New Customer' | 'Other' | string;
+    customerName?: string;
+    comments?: string;
+}
 
 interface MonthlySummaryReportRow extends ReportRow {
     id: string;
@@ -41,6 +97,7 @@ interface MonthlySummaryReportRow extends ReportRow {
     requestNumber: string;
     concurRequestNumber: string;
     requestDate: string;
+    needByDate?: string;
     site: string;
     supplier: string;
     item: string;
@@ -55,6 +112,11 @@ interface MonthlySummaryReportRow extends ReportRow {
     orderedValue: number;
     receivedValue: number;
     openValue: number;
+    taxRate?: number;
+    taxAmount?: number;
+    orderedValueIncGst?: number;
+    receivedValueIncGst?: number;
+    openValueIncGst?: number;
     status: POStatus;
 }
 
@@ -62,11 +124,14 @@ interface MonthlySummaryAggregatedRow extends ReportRow {
     monthKey: string;
     month: string;
     totalPoAmount: number;
+    totalPoAmountIncGst?: number;
     grAmount: number;
+    grAmountIncGst?: number;
     openPoAmount: number;
+    openPoAmountIncGst?: number;
 }
 type ViewMode = 'CHART' | 'RAW_DATA';
-type ChartMetric = 'DATE' | 'SUPPLIER' | 'SITE' | 'ITEM';
+type ChartMetric = 'DATE' | 'SUPPLIER' | 'SITE' | 'ITEM' | 'REASON';
 type VarianceType = 'Pending' | 'Over delivered' | 'Short closed';
 
 interface OutstandingDeliveryReportRow extends ReportRow {
@@ -118,6 +183,10 @@ interface DeliveryReconciliationRow extends ReportRow {
     receivedValue: number;
     pendingValue: number;
     varianceValue: number;
+    orderedValueIncGst?: number;
+    receivedValueIncGst?: number;
+    pendingValueIncGst?: number;
+    varianceValueIncGst?: number;
     status: POStatus;
 }
 
@@ -156,9 +225,11 @@ const REPORT_TITLES: Record<ReportType, string> = {
     DELIVERY_RECONCILIATION: 'Full Delivery Reconciliation',
     ITEM_REQUEST_HISTORY: 'Item Request History by Site',
     MONTHLY_SUMMARY: 'Monthly PO & Receipting Summary',
+    LINEN_INJECTION: 'Linen Injection Report',
     SUPPLIER_INVENTORY: 'Available Supplier Inventory Report',
     SUPPLIER_ITEM_MAPPING: 'Supplier Item Mapping Report',
-    SUPPLIER_PRICE_VARIANCE: 'Supplier Price Sync Variance Report'
+    SUPPLIER_PRICE_VARIANCE: 'Supplier Price Sync Variance Report',
+    EOM_BUDGET_RECONCILIATION: 'EOM Spend & Budget Reconciliation'
 };
 
 const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
@@ -170,13 +241,15 @@ const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
     DELIVERY_RECONCILIATION: 'Complete picture of order fulfillment. Compare ordered vs. received quantities across all PO lines to identify pending amounts and value variances.',
     ITEM_REQUEST_HISTORY: 'Search and select an item to see its most recent request activity at each site, with a detailed line-level export for deeper review.',
     MONTHLY_SUMMARY: 'Reconcile PO requests since July 2025. Groups POs monthly, showing total issued PO values, goods received (GR) values, and remaining open values.',
+    LINEN_INJECTION: 'Comprehensive breakdown of all linen injected into circulation from closed purchase orders, detailing item quantities, unit pricing, and total injected value across sites and suppliers.',
     SUPPLIER_INVENTORY: 'Provides by supplier the most recent inventory stock data available within the app, including SOH, available quantities, and stock on backorder.',
     SUPPLIER_ITEM_MAPPING: 'Provides a complete overview of the mapping of supplier items to corresponding items in the internal catalogue.',
-    SUPPLIER_PRICE_VARIANCE: 'Compares supplier price reports against the internal catalogue prices for confirmed mappings, highlighting variations and sync status.'
+    SUPPLIER_PRICE_VARIANCE: 'Compares supplier price reports against the internal catalogue prices for confirmed mappings, highlighting variations and sync status.',
+    EOM_BUDGET_RECONCILIATION: 'Executive spend vs. budget reconciliation dashboard matching Concur EOM tracking. Cross-tabulates spend by branch, sector (Accommodation vs Healthcare), and spend category (Depletion vs New Business vs Linen Hub) against FY27 baseline budgets ($14.521M).'
 };
 
 const DELIVERY_REPORTS: ReportType[] = ['OUTSTANDING_DELIVERIES', 'DELIVERY_VARIANCE', 'DELIVERY_RECONCILIATION'];
-const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY', 'SUPPLIER_INVENTORY', 'SUPPLIER_ITEM_MAPPING', 'SUPPLIER_PRICE_VARIANCE'];
+const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY', 'LINEN_INJECTION', 'SUPPLIER_INVENTORY', 'SUPPLIER_ITEM_MAPPING', 'SUPPLIER_PRICE_VARIANCE', 'EOM_BUDGET_RECONCILIATION'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ACTIVE_DELIVERY_STATUSES: POStatus[] = ['ACTIVE', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST', 'VARIANCE_PENDING'];
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4'];
@@ -185,7 +258,7 @@ const currency = (value: number) => `$${value.toLocaleString(undefined, { minimu
 const numberValue = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 const percentValue = (value: number) => `${Math.round(value)}%`;
 const statusLabel = (status: string) => status.replaceAll('_', ' ');
-const reportFileName = (report: ReportType) => `${report === 'OUTSTANDING_DELIVERIES' ? 'outstanding-deliveries' : report === 'DELIVERY_VARIANCE' ? 'delivery-variance' : report.toLowerCase().replaceAll('_', '-')}-${new Date().toISOString().split('T')[0]}.csv`;
+const reportFileName = (report: ReportType) => `${report === 'OUTSTANDING_DELIVERIES' ? 'outstanding-deliveries' : report === 'DELIVERY_VARIANCE' ? 'delivery-variance' : report === 'LINEN_INJECTION' ? 'linen-injection' : report.toLowerCase().replaceAll('_', '-')}-${new Date().toISOString().split('T')[0]}.csv`;
 
 const getPoNumber = (po: PORequest, linePoNumber?: string) => linePoNumber || po.concurPoNumber || po.lines[0]?.concurPoNumber || 'Pending';
 
@@ -342,6 +415,10 @@ const buildFinanceRows = (pos: PORequest[]): ReportRow[] => {
         po.deliveries.forEach((delivery) => {
             delivery.lines.forEach((line) => {
                 const poLine = po.lines.find((candidate) => candidate.id === line.poLineId);
+                const amountEx = Number(line.quantity || 0) * Number(poLine?.unitPrice || 0);
+                const taxRate = poLine?.taxRate ?? 10.0;
+                const taxAmount = Number((amountEx * (taxRate / 100)).toFixed(2));
+                const amountIncGst = Number((amountEx + taxAmount).toFixed(2));
                 data.push({
                     id: line.id,
                     poNumber: getPoNumber(po, poLine?.concurPoNumber),
@@ -349,7 +426,9 @@ const buildFinanceRows = (pos: PORequest[]): ReportRow[] => {
                     invoice: line.invoiceNumber || '-',
                     docket: delivery.docketNumber,
                     receivedDate: delivery.date,
-                    amount: Number(line.quantity || 0) * Number(poLine?.unitPrice || 0),
+                    amount: amountEx,
+                    taxAmount,
+                    amountIncGst,
                     isCapitalised: line.isCapitalised ? 'Yes' : 'No',
                     capDate: line.capitalisedDate || '-'
                 });
@@ -360,22 +439,31 @@ const buildFinanceRows = (pos: PORequest[]): ReportRow[] => {
     return data;
 };
 
-const buildPoStatusRows = (pos: PORequest[]): ReportRow[] => pos.map((po) => ({
-    id: po.id,
-    displayId: po.displayId || '',
-    supplier: po.supplierName,
-    requester: po.requesterName,
-    date: po.requestDate,
-    total: po.totalAmount,
-    status: po.status,
-    lineCount: po.lines.length
-}));
+const buildPoStatusRows = (pos: PORequest[]): ReportRow[] => pos.map((po) => {
+    const subtotal = po.subtotalAmount ?? po.totalAmount;
+    const gst = po.taxTotalAmount ?? Number((subtotal * 0.10).toFixed(2));
+    const totalIncGst = po.totalAmountIncGst ?? Number((subtotal + gst).toFixed(2));
+    return {
+        id: po.id,
+        displayId: po.displayId || '',
+        supplier: po.supplierName,
+        requester: po.requesterName,
+        date: po.requestDate,
+        subtotalExGst: subtotal,
+        taxGst: gst,
+        totalIncGst: totalIncGst,
+        total: totalIncGst,
+        status: po.status,
+        lineCount: po.lines.length
+    };
+});
 
 const buildReconciliationRows = (pos: PORequest[]): DeliveryReconciliationRow[] => {
     return pos.flatMap((po) => po.lines.map((line) => {
         const ordered = Number(line.quantityOrdered || 0);
         const received = Number(line.quantityReceived || 0);
         const unitPrice = Number(line.unitPrice || 0);
+        const taxRate = line.taxRate ?? 10.0;
         
         const pendingQty = Math.max(0, ordered - received);
         const overQty = Math.max(0, received - ordered);
@@ -384,6 +472,11 @@ const buildReconciliationRows = (pos: PORequest[]): DeliveryReconciliationRow[] 
         const receivedValue = received * unitPrice;
         const pendingValue = pendingQty * unitPrice;
         const varianceValue = receivedValue - orderedValue;
+
+        const orderedValueIncGst = Number((orderedValue * (1 + taxRate / 100)).toFixed(2));
+        const receivedValueIncGst = Number((receivedValue * (1 + taxRate / 100)).toFixed(2));
+        const pendingValueIncGst = Number((pendingValue * (1 + taxRate / 100)).toFixed(2));
+        const varianceValueIncGst = Number((varianceValue * (1 + taxRate / 100)).toFixed(2));
 
         return {
             id: line.id,
@@ -400,6 +493,10 @@ const buildReconciliationRows = (pos: PORequest[]): DeliveryReconciliationRow[] 
             receivedValue,
             pendingValue,
             varianceValue,
+            orderedValueIncGst,
+            receivedValueIncGst,
+            pendingValueIncGst,
+            varianceValueIncGst,
             status: po.status
         };
     })).sort((a, b) => b.orderedValue - a.orderedValue);
@@ -446,7 +543,8 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
         if (isNaN(requestTime) || requestTime < startDate || requestTime > endDate) return;
 
         const dateObj = new Date(po.requestDate);
-        const year = dateObj.getFullYear();
+        let year = dateObj.getFullYear();
+        if (year < 100) year += 2000;
         const monthNum = dateObj.getMonth();
         const monthKey = `${year}-${String(monthNum + 1).padStart(2, '0')}`;
         const monthDisplay = `${MONTH_NAMES[monthNum]} ${year}`;
@@ -459,10 +557,16 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
             const received = Number(line.quantityReceived || 0);
             const remaining = line.isForceClosed ? 0 : Math.max(0, ordered - received);
             const unitPrice = Number(line.unitPrice || 0);
+            const taxRate = line.taxRate ?? 10.0;
 
             const orderedValue = ordered * unitPrice;
             const receivedValue = received * unitPrice;
             const openValue = remaining * unitPrice;
+
+            const taxAmount = Number((orderedValue * (taxRate / 100)).toFixed(2));
+            const orderedValueIncGst = Number((orderedValue + taxAmount).toFixed(2));
+            const receivedValueIncGst = Number((receivedValue * (1 + taxRate / 100)).toFixed(2));
+            const openValueIncGst = Number((openValue * (1 + taxRate / 100)).toFixed(2));
 
             const requestNumber = po.displayId || po.id.substring(0, 8);
             const concurRequestNumber = po.concurRequestNumber || '';
@@ -482,6 +586,7 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
                 requestNumber,
                 concurRequestNumber,
                 requestDate: po.requestDate,
+                needByDate: line.needByDate || (po.requestDate ? po.requestDate.split('T')[0] : ''),
                 supplier,
                 site,
                 item: line.itemName || 'Unknown Item',
@@ -496,12 +601,112 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
                 orderedValue,
                 receivedValue,
                 openValue,
+                taxRate,
+                taxAmount,
+                orderedValueIncGst,
+                receivedValueIncGst,
+                openValueIncGst,
                 status: po.status
             });
         });
     });
 
     return rows.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+};
+
+const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInjectionReportRow[] => {
+    const itemCategoryMap = new Map<string, string>();
+    (itemsList || []).forEach((item) => {
+        if (item.id && item.category) itemCategoryMap.set(item.id, item.category);
+        if (item.sku && item.category) itemCategoryMap.set(item.sku, item.category);
+    });
+
+    const rows: LinenInjectionReportRow[] = [];
+
+    pos.forEach((po) => {
+        // Strictly only include CLOSED PO requests (no pending, draft, active, or variance requests)
+        if (po.status !== 'CLOSED') return;
+
+        const site = po.site || 'Unknown Site';
+        const supplier = po.supplierName || 'Unknown Supplier';
+        const requestNumber = po.displayId || po.id.substring(0, 8);
+        const concurRequestNumber = po.concurRequestNumber || '';
+
+        const closedEvent = (po.approvalHistory || []).slice().reverse().find(
+            (e) => e.action === 'ADMIN_OVERRIDE' || e.comments?.toLowerCase().includes('complete') || e.comments?.toLowerCase().includes('closed')
+        );
+        const latestDelivery = (po.deliveries || []).map(d => d.date).filter(Boolean).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || '-';
+        const poClosedDate = closedEvent?.date || (latestDelivery !== '-' ? latestDelivery : po.requestDate);
+
+        po.lines.forEach((line) => {
+            const orderedQty = Number(line.quantityOrdered || 0);
+            const receivedQty = Number(line.quantityReceived || 0);
+            // In a closed PO, only include items that were physically receipted into circulation
+            if (receivedQty <= 0) return;
+
+            const injectedQty = receivedQty;
+            const unitPrice = Number(line.unitPrice || 0);
+            const injectedValue = injectedQty * unitPrice;
+            const orderedValue = orderedQty * unitPrice;
+            const taxRate = line.taxRate ?? 10.0;
+            const injectedValueIncGst = Number((injectedValue * (1 + taxRate / 100)).toFixed(2));
+            const orderedValueIncGst = Number((orderedValue * (1 + taxRate / 100)).toFixed(2));
+
+            const concurPoNumber = line.concurPoNumber || po.concurPoNumber || '';
+            const poNumber = getPoNumber(po, line.concurPoNumber);
+            const deliveryDates = getDeliveryDatesForLine(po, line.id);
+            const latestDeliveryDate = getLatestDeliveryDateForLine(po, line.id);
+            const dockets = getDocketsForLine(po, line.id);
+            const invoices = getInvoicesForLine(po, line.id);
+            const category = itemCategoryMap.get(line.itemId) || itemCategoryMap.get(line.sku) || 'Linen / Textiles';
+
+            const closedDate = latestDeliveryDate !== '-' ? latestDeliveryDate : poClosedDate;
+            const dateObj = new Date(closedDate);
+            let year = !isNaN(dateObj.getTime()) ? dateObj.getFullYear() : new Date(po.requestDate).getFullYear();
+            if (year < 100) year += 2000;
+            const monthNum = !isNaN(dateObj.getTime()) ? dateObj.getMonth() : new Date(po.requestDate).getMonth();
+            const monthKey = `${year}-${String(monthNum + 1).padStart(2, '0')}`;
+            const monthDisplay = `${MONTH_NAMES[monthNum]} ${year}`;
+
+            rows.push({
+                id: line.id,
+                poNumber,
+                concurPoNumber,
+                requestNumber,
+                concurRequestNumber,
+                requestDate: po.requestDate,
+                closedDate,
+                monthKey,
+                month: monthDisplay,
+                latestDeliveryDate,
+                deliveryDates,
+                dockets,
+                invoices,
+                site,
+                siteId: po.siteId || '',
+                supplier,
+                supplierId: po.supplierId || '',
+                itemId: line.itemId || '',
+                item: line.itemName || 'Unknown Item',
+                sku: line.sku || '',
+                category,
+                orderedQty,
+                injectedQty,
+                unitPrice,
+                injectedValue,
+                orderedValue,
+                injectedValueIncGst,
+                orderedValueIncGst,
+                requester: po.requesterName || 'Unknown',
+                status: po.status,
+                reasonForRequest: po.reasonForRequest || 'Depletion',
+                customerName: po.customerName || '',
+                comments: po.comments || ''
+            });
+        });
+    });
+
+    return rows.sort((a, b) => new Date(b.closedDate || b.requestDate).getTime() - new Date(a.closedDate || a.requestDate).getTime());
 };
 
 const buildSupplierInventoryRows = (
@@ -623,19 +828,25 @@ const getMonthlySummaryData = (rows: MonthlySummaryReportRow[]): MonthlySummaryA
     const summaryMap: Record<string, MonthlySummaryAggregatedRow> = {};
 
     rows.forEach((row) => {
-        const { monthKey, month, orderedValue, receivedValue, openValue } = row;
+        const { monthKey, month, orderedValue, receivedValue, openValue, orderedValueIncGst, receivedValueIncGst, openValueIncGst } = row;
         if (!summaryMap[monthKey]) {
             summaryMap[monthKey] = {
                 monthKey,
                 month,
                 totalPoAmount: 0,
+                totalPoAmountIncGst: 0,
                 grAmount: 0,
-                openPoAmount: 0
+                grAmountIncGst: 0,
+                openPoAmount: 0,
+                openPoAmountIncGst: 0
             };
         }
         summaryMap[monthKey].totalPoAmount += orderedValue;
+        summaryMap[monthKey].totalPoAmountIncGst = (summaryMap[monthKey].totalPoAmountIncGst || 0) + (orderedValueIncGst ?? orderedValue * 1.10);
         summaryMap[monthKey].grAmount += receivedValue;
+        summaryMap[monthKey].grAmountIncGst = (summaryMap[monthKey].grAmountIncGst || 0) + (receivedValueIncGst ?? receivedValue * 1.10);
         summaryMap[monthKey].openPoAmount += openValue;
+        summaryMap[monthKey].openPoAmountIncGst = (summaryMap[monthKey].openPoAmountIncGst || 0) + (openValueIncGst ?? openValue * 1.10);
     });
 
     return Object.values(summaryMap).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
@@ -689,10 +900,12 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'pendingQty', label: 'Pending Qty' },
             { key: 'overQty', label: 'Over Qty' },
             { key: 'unitPrice', label: 'Unit Price' },
-            { key: 'orderedValue', label: 'Ordered Value' },
-            { key: 'receivedValue', label: 'Delivered Value' },
-            { key: 'pendingValue', label: 'Pending Value' },
-            { key: 'varianceValue', label: 'Value Variance' },
+            { key: 'orderedValue', label: 'Ordered Value (Ex GST)' },
+            { key: 'orderedValueIncGst', label: 'Ordered Value (Inc GST)' },
+            { key: 'receivedValue', label: 'Delivered Value (Ex GST)' },
+            { key: 'receivedValueIncGst', label: 'Delivered Value (Inc GST)' },
+            { key: 'pendingValue', label: 'Pending Value (Ex GST)' },
+            { key: 'varianceValue', label: 'Value Variance (Ex GST)' },
             { key: 'status', label: 'PO Status' }
         ];
     }
@@ -717,6 +930,35 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
         ];
     }
 
+    if (report === 'FINANCE_SUMMARY') {
+        return [
+            { key: 'receivedDate', label: 'Received Date' },
+            { key: 'docket', label: 'Docket Number' },
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'poNumber', label: 'PO Number' },
+            { key: 'invoice', label: 'Invoice Number' },
+            { key: 'amount', label: 'Value (Ex GST)' },
+            { key: 'taxAmount', label: 'GST (10%)' },
+            { key: 'amountIncGst', label: 'Total (Inc GST)' },
+            { key: 'isCapitalised', label: 'Capitalised' },
+            { key: 'capDate', label: 'Capitalised Date' }
+        ];
+    }
+
+    if (report === 'PO_STATUS') {
+        return [
+            { key: 'displayId', label: 'Request / PO Number' },
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'requester', label: 'Requester' },
+            { key: 'date', label: 'Request Date' },
+            { key: 'subtotalExGst', label: 'Subtotal (Ex GST)' },
+            { key: 'taxGst', label: 'GST (10%)' },
+            { key: 'totalIncGst', label: 'Total (Inc GST / Concur)' },
+            { key: 'lineCount', label: 'Item Lines' },
+            { key: 'status', label: 'Status' }
+        ];
+    }
+
     if (report === 'MONTHLY_SUMMARY') {
         return [
             { key: 'month', label: 'Month' },
@@ -724,6 +966,7 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'concurRequestNumber', label: 'Concur Request Number' },
             { key: 'poNumber', label: 'PO Number' },
             { key: 'concurPoNumber', label: 'Concur PO Number' },
+            { key: 'needByDate', label: 'Need by Date' },
             { key: 'requestDate', label: 'Request Date' },
             { key: 'site', label: 'Site' },
             { key: 'supplier', label: 'Supplier' },
@@ -735,11 +978,43 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'deliveryDates', label: 'Delivery Dates' },
             { key: 'dockets', label: 'Delivery Dockets' },
             { key: 'invoices', label: 'Invoice Numbers' },
-            { key: 'unitPrice', label: 'Unit Price' },
-            { key: 'orderedValue', label: 'Ordered Value' },
-            { key: 'receivedValue', label: 'Received Value' },
-            { key: 'openValue', label: 'Open Value' },
+            { key: 'unitPrice', label: 'Unit Price (Ex GST)' },
+            { key: 'orderedValue', label: 'Ordered Value (Ex GST)' },
+            { key: 'taxAmount', label: 'GST (10%)' },
+            { key: 'orderedValueIncGst', label: 'Ordered Value (Inc GST)' },
+            { key: 'receivedValue', label: 'Received Value (Ex GST)' },
+            { key: 'receivedValueIncGst', label: 'Received Value (Inc GST)' },
+            { key: 'openValue', label: 'Open Value (Ex GST)' },
+            { key: 'openValueIncGst', label: 'Open Value (Inc GST)' },
             { key: 'status', label: 'PO Status' }
+        ];
+    }
+
+    if (report === 'LINEN_INJECTION') {
+        return [
+            { key: 'requestNumber', label: 'Request Number' },
+            { key: 'concurRequestNumber', label: 'Concur Request Number' },
+            { key: 'poNumber', label: 'PO Number' },
+            { key: 'concurPoNumber', label: 'Concur PO Number' },
+            { key: 'requestDate', label: 'Request Date' },
+            { key: 'closedDate', label: 'Completion / Closed Date' },
+            { key: 'site', label: 'Site' },
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'item', label: 'Item Name' },
+            { key: 'sku', label: 'SKU' },
+            { key: 'category', label: 'Category' },
+            { key: 'injectedQty', label: 'Injected QTY' },
+            { key: 'orderedQty', label: 'Ordered QTY' },
+            { key: 'unitPrice', label: 'Unit Price' },
+            { key: 'injectedValue', label: 'Injected Value ($)' },
+            { key: 'orderedValue', label: 'Ordered Value ($)' },
+            { key: 'deliveryDates', label: 'Delivery Dates' },
+            { key: 'dockets', label: 'Delivery Dockets' },
+            { key: 'invoices', label: 'Invoice Numbers' },
+            { key: 'reasonForRequest', label: 'Reason for Request' },
+            { key: 'customerName', label: 'Customer / Project' },
+            { key: 'requester', label: 'Requester' },
+            { key: 'status', label: 'Status' }
         ];
     }
 
@@ -798,8 +1073,235 @@ const buildCsv = (report: ReportType, data: ReportRow[]) => {
     return [headers, ...rows].join('\n');
 };
 
+interface MultiSiteSlicerProps {
+    availableSites: string[];
+    selectedSites: string[];
+    onChange: (sites: string[]) => void;
+    className?: string;
+}
+
+const MultiSiteSlicer: React.FC<MultiSiteSlicerProps> = ({
+    availableSites,
+    selectedSites,
+    onChange,
+    className = ''
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setIsOpen(false);
+        };
+        if (isOpen) document.addEventListener('keydown', handleEsc);
+        return () => document.removeEventListener('keydown', handleEsc);
+    }, [isOpen]);
+
+    const isAllSelected = selectedSites.length === 0 || selectedSites.includes('ALL') || selectedSites.length === availableSites.length;
+
+    const handleToggle = (site: string) => {
+        if (isAllSelected) {
+            const rest = availableSites.filter((s) => s !== site);
+            onChange(rest);
+        } else if (selectedSites.includes(site)) {
+            const next = selectedSites.filter((s) => s !== site);
+            onChange(next.length === 0 ? ['ALL'] : next);
+        } else {
+            const next = [...selectedSites, site];
+            if (next.length === availableSites.length) {
+                onChange(['ALL']);
+            } else {
+                onChange(next);
+            }
+        }
+    };
+
+    const handleSelectOnly = (site: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        onChange([site]);
+    };
+
+    const handleSelectAll = () => {
+        onChange(['ALL']);
+    };
+
+    const handleClearNone = () => {
+        onChange([]);
+    };
+
+    let label = 'All Sites';
+    if (selectedSites.length === 0) {
+        label = 'No Sites Selected';
+    } else if (isAllSelected) {
+        label = `All Sites (${availableSites.length})`;
+    } else if (selectedSites.length === 1) {
+        label = selectedSites[0];
+    } else {
+        label = `${selectedSites.length} Sites Selected`;
+    }
+
+    const filteredSites = availableSites.filter((s) =>
+        s.toLowerCase().includes(searchQuery.trim().toLowerCase())
+    );
+
+    const getInitials = (name: string) =>
+        name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+
+    const getColor = (index: number) => {
+        const colors = [
+            'bg-blue-500', 'bg-emerald-500', 'bg-violet-500',
+            'bg-amber-500', 'bg-rose-500', 'bg-cyan-500',
+            'bg-indigo-500', 'bg-orange-500', 'bg-teal-500', 'bg-pink-500'
+        ];
+        return colors[index % colors.length];
+    };
+
+    return (
+        <div className={`relative ${className}`} ref={containerRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm bg-white dark:bg-nocturne border rounded-lg transition-colors font-medium outline-none ${
+                    !isAllSelected && selectedSites.length > 0
+                        ? 'border-emerald-500 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20 bg-emerald-50/30 dark:bg-emerald-950/20'
+                        : 'border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white hover:border-gray-300 dark:hover:border-gray-700'
+                }`}
+                title="Filter by one or multiple sites"
+            >
+                <div className="flex items-center gap-2 min-w-0">
+                    <Building2 size={15} className={`shrink-0 ${!isAllSelected && selectedSites.length > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-tertiary dark:text-gray-500'}`} />
+                    <span className="truncate text-xs font-semibold">{label}</span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                    {!isAllSelected && selectedSites.length > 0 && (
+                        <span className="bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                            {selectedSites.length}
+                        </span>
+                    )}
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                </div>
+            </button>
+
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-1.5 w-72 md:w-80 bg-white dark:bg-[#181a24] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700/80 z-50 overflow-hidden animate-fade-in flex flex-col max-h-[380px]">
+                    {/* Header */}
+                    <div className="p-2.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-white/5 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900 dark:text-white">
+                            <Filter size={13} className="text-emerald-600" />
+                            <span>Site Slicer</span>
+                            <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 ml-1">
+                                {isAllSelected ? `${availableSites.length}/${availableSites.length}` : `${selectedSites.length}/${availableSites.length}`}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={handleSelectAll}
+                                className="px-2 py-0.5 text-[10px] font-bold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shadow-xs"
+                            >
+                                All
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleClearNone}
+                                className="px-2 py-0.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded hover:text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shadow-xs"
+                            >
+                                None
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Search box */}
+                    {availableSites.length > 5 && (
+                        <div className="p-2 border-b border-gray-100 dark:border-gray-800">
+                            <div className="relative">
+                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search sites..."
+                                    className="w-full pl-7 pr-2.5 py-1 text-xs bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                                />
+                                {searchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Scrollable list */}
+                    <div className="overflow-y-auto p-1.5 flex-1 divide-y divide-gray-50 dark:divide-gray-800/50">
+                        {filteredSites.map((site, index) => {
+                            const isChecked = isAllSelected || selectedSites.includes(site);
+                            return (
+                                <div
+                                    key={site}
+                                    onClick={() => handleToggle(site)}
+                                    className={`group flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
+                                        isChecked
+                                            ? 'bg-emerald-50/50 dark:bg-emerald-950/20 text-gray-900 dark:text-white'
+                                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        <div
+                                            className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                                                isChecked
+                                                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                                                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-transparent group-hover:border-emerald-500'
+                                            }`}
+                                        >
+                                            {isChecked && <Check size={11} strokeWidth={3} />}
+                                        </div>
+                                        <div className={`w-5 h-5 ${getColor(index)} rounded flex items-center justify-center font-bold text-[9px] text-white shrink-0 shadow-2xs`}>
+                                            {getInitials(site)}
+                                        </div>
+                                        <span className={`text-xs truncate ${isChecked ? 'font-bold text-gray-900 dark:text-white' : 'font-medium'}`}>
+                                            {site}
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleSelectOnly(site, e)}
+                                        className="opacity-0 group-hover:opacity-100 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline px-1.5 py-0.5 rounded transition-opacity"
+                                        title={`Filter strictly to ${site}`}
+                                    >
+                                        Only
+                                    </button>
+                                </div>
+                            );
+                        })}
+                        {filteredSites.length === 0 && (
+                            <div className="p-4 text-center text-xs text-gray-400 italic">No matching sites found</div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ReportingView = () => {
-    const { pos, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers, hasPermission } = useApp();
+    const { pos, allPos, sites, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers, hasPermission } = useApp();
+    const reportPos = (allPos && allPos.length > 0) ? allPos : pos;
     useSetPageMeta({ disableBodyScroll: true });
     const [activeReport, setActiveReport] = useState<ReportType>(() => {
         const saved = sessionStorage.getItem('pf_active_report');
@@ -809,10 +1311,15 @@ const ReportingView = () => {
     const [viewMode, setViewMode] = useState<ViewMode>('CHART');
     const [chartMetric, setChartMetric] = useState<ChartMetric>('SUPPLIER');
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedSite, setSelectedSite] = useState('ALL');
+    const [selectedSites, setSelectedSites] = useState<string[]>(['ALL']);
     const [selectedSupplier, setSelectedSupplier] = useState('ALL');
     const [selectedItemId, setSelectedItemId] = useState('ALL');
-    const [dateRangeType, setDateRangeType] = useState<'RECENT' | 'HISTORICAL' | 'ALL' | 'CUSTOM'>('RECENT');
+    const [selectedReason, setSelectedReason] = useState<string>('ALL');
+    const [dateRangeType, setDateRangeType] = useState<'RECENT' | 'HISTORICAL' | 'ALL' | 'CUSTOM' | 'MONTH'>(() => {
+        const saved = sessionStorage.getItem('pf_active_report');
+        return saved === 'LINEN_INJECTION' ? 'ALL' : 'RECENT';
+    });
+    const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [monthlyStartDate, setMonthlyStartDate] = useState('2025-07-01');
@@ -836,10 +1343,17 @@ const ReportingView = () => {
     const lastRun = cachedRunTimes[activeReport];
     const isDeliveryReport = DELIVERY_REPORTS.includes(activeReport);
     const isItemHistoryReport = activeReport === 'ITEM_REQUEST_HISTORY';
+    const isLinenInjectionReport = activeReport === 'LINEN_INJECTION';
+    const isDateFilterableReport = isItemHistoryReport || isLinenInjectionReport;
     const isFilterableReport = FILTERABLE_REPORTS.includes(activeReport);
-    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport || activeReport === 'MONTHLY_SUMMARY' || activeReport === 'SUPPLIER_INVENTORY' || activeReport === 'SUPPLIER_ITEM_MAPPING' || activeReport === 'SUPPLIER_PRICE_VARIANCE';
+    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport || activeReport === 'MONTHLY_SUMMARY' || isLinenInjectionReport || activeReport === 'SUPPLIER_INVENTORY' || activeReport === 'SUPPLIER_ITEM_MAPPING' || activeReport === 'SUPPLIER_PRICE_VARIANCE';
 
-    const siteOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.site || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
+    const siteOptions = useMemo(() => {
+        const fromData = reportData.map((row) => String(row.site || '')).filter(Boolean);
+        const fromContext = (sites || []).map((s) => s.name).filter(Boolean);
+        return Array.from(new Set([...fromData, ...fromContext])).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    }, [reportData, sites]);
+
     const supplierOptions = useMemo(() => ['ALL', ...Array.from(new Set(reportData.map((row) => String(row.supplier || '')).filter(Boolean))).sort((a, b) => a.localeCompare(b))], [reportData]);
 
     const itemOptions = useMemo(() => {
@@ -854,10 +1368,40 @@ const ReportingView = () => {
         return [{ id: 'ALL', label: 'All items' }, ...Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label))];
     }, [reportData]);
 
+    const availableMonths = useMemo(() => {
+        const monthsMap = new Map<string, { year: number; month: number; label: string }>();
+        reportData.forEach((row) => {
+            const rawDate = (activeReport === 'LINEN_INJECTION' ? (row.closedDate || row.latestDeliveryDate || row.requestDate) : row.requestDate) as string;
+            if (rawDate && rawDate !== '-') {
+                const d = new Date(rawDate);
+                if (!isNaN(d.getTime())) {
+                    let year = d.getFullYear();
+                    if (year < 100) year += 2000;
+                    if (year >= 2020 && year <= 2100) {
+                        const month = d.getMonth() + 1;
+                        const key = `${year}-${String(month).padStart(2, '0')}`;
+                        const label = `${MONTH_NAMES[month - 1]} ${year}`;
+                        monthsMap.set(key, { year, month, label });
+                    }
+                }
+            }
+        });
+        return Array.from(monthsMap.entries())
+            .sort((a, b) => {
+                const [yA, mA] = a[0].split('-').map(Number);
+                const [yB, mB] = b[0].split('-').map(Number);
+                if (yA !== yB) return yB - yA;
+                return mB - mA;
+            })
+            .map(([key, item]) => ({ key, label: item.label }));
+    }, [reportData, activeReport]);
+
     const visibleReportData = useMemo(() => {
         if (!isFilterableReport) return reportData;
 
         const query = searchTerm.trim().toLowerCase();
+        const isAllSites = selectedSites.length === 0 || selectedSites.includes('ALL');
+
         return reportData.filter((row) => {
             const matchesSearch = !query || [
                 row.poNumber,
@@ -871,46 +1415,67 @@ const ReportingView = () => {
                 row.site,
                 row.item,
                 row.sku,
+                row.category,
                 row.requester,
                 row.status,
                 row.exceptionType,
-                row.month
+                row.month,
+                row.reasonForRequest,
+                row.customerName,
+                row.comments
             ].some((value) => String(value || '').toLowerCase().includes(query));
-            const matchesSite = selectedSite === 'ALL' || row.site === selectedSite;
+
+            const matchesSite = isAllSites || selectedSites.includes(String(row.site || ''));
             const matchesSupplier = selectedSupplier === 'ALL' || row.supplier === selectedSupplier;
             const matchesItem = selectedItemId === 'ALL' || row.itemId === selectedItemId || row.item === selectedItemId;
+            const matchesReason = selectedReason === 'ALL' || (row.reasonForRequest || 'Depletion') === selectedReason;
 
             let matchesDate = true;
-            if (isItemHistoryReport && row.requestDate) {
-                const requestTime = new Date(row.requestDate as string).getTime();
-                if (!isNaN(requestTime)) {
-                    if (dateRangeType === 'RECENT') {
-                        const threshold = new Date();
-                        threshold.setDate(threshold.getDate() - 30);
-                        matchesDate = requestTime >= threshold.getTime();
-                    } else if (dateRangeType === 'HISTORICAL') {
-                        const startDate = new Date('2025-07-01T00:00:00');
-                        matchesDate = requestTime >= startDate.getTime();
-                    } else if (dateRangeType === 'CUSTOM') {
-                        if (customStartDate) {
-                            const start = new Date(customStartDate + 'T00:00:00');
-                            if (!isNaN(start.getTime())) {
-                                matchesDate = matchesDate && requestTime >= start.getTime();
-                            }
-                        }
-                        if (customEndDate) {
-                            const end = new Date(customEndDate + 'T23:59:59');
-                            if (!isNaN(end.getTime())) {
-                                matchesDate = matchesDate && requestTime <= end.getTime();
+            if (isDateFilterableReport) {
+                if (dateRangeType === 'ALL') {
+                    matchesDate = true;
+                } else {
+                    const rawDate = (activeReport === 'LINEN_INJECTION' ? (row.closedDate || row.latestDeliveryDate || row.requestDate) : row.requestDate) as string;
+                    if (rawDate && rawDate !== '-') {
+                        const dateTime = new Date(rawDate).getTime();
+                        if (!isNaN(dateTime)) {
+                            if (dateRangeType === 'MONTH') {
+                                if (selectedMonth && selectedMonth !== 'ALL') {
+                                    const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+                                    const d = new Date(rawDate);
+                                    matchesDate = d.getFullYear() === selYear && (d.getMonth() + 1) === selMonth;
+                                } else {
+                                    matchesDate = true;
+                                }
+                            } else if (dateRangeType === 'RECENT') {
+                                const threshold = new Date();
+                                threshold.setDate(threshold.getDate() - 30);
+                                matchesDate = dateTime >= threshold.getTime();
+                            } else if (dateRangeType === 'HISTORICAL') {
+                                const startDate = new Date('2025-07-01T00:00:00');
+                                matchesDate = dateTime >= startDate.getTime();
+                            } else if (dateRangeType === 'CUSTOM') {
+                                if (customStartDate) {
+                                    const start = new Date(customStartDate + 'T00:00:00');
+                                    if (!isNaN(start.getTime())) {
+                                        matchesDate = matchesDate && dateTime >= start.getTime();
+                                    }
+                                }
+                                if (customEndDate) {
+                                    const end = new Date(customEndDate + 'T23:59:59');
+                                    if (!isNaN(end.getTime())) {
+                                        matchesDate = matchesDate && dateTime <= end.getTime();
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate;
+            return matchesSearch && matchesSite && matchesSupplier && matchesItem && matchesDate && matchesReason;
         });
-    }, [isFilterableReport, isItemHistoryReport, activeReport, reportData, searchTerm, selectedItemId, selectedSite, selectedSupplier, dateRangeType, customStartDate, customEndDate]);
+    }, [isFilterableReport, isDateFilterableReport, activeReport, reportData, searchTerm, selectedItemId, selectedSites, selectedSupplier, selectedReason, dateRangeType, selectedMonth, customStartDate, customEndDate]);
 
     const outstandingRows = visibleReportData as OutstandingDeliveryReportRow[];
     const varianceRows = visibleReportData as DeliveryVarianceReportRow[];
@@ -922,6 +1487,7 @@ const ReportingView = () => {
     }, [outstandingRows]);
     const reconciliationRows = visibleReportData as DeliveryReconciliationRow[];
     const itemHistoryRows = visibleReportData as ItemRequestHistoryRow[];
+    const linenInjectionRows = visibleReportData as LinenInjectionReportRow[];
 
     const reconciliationSummary = useMemo(() => {
         const totalOrdered = reconciliationRows.reduce((sum, row) => sum + row.orderedValue, 0);
@@ -964,14 +1530,79 @@ const ReportingView = () => {
         };
     }, [itemHistoryRows]);
 
+    const linenInjectionSummary = useMemo(() => {
+        const totalInjectedValue = linenInjectionRows.reduce((sum, row) => sum + row.injectedValue, 0);
+        const totalInjectedUnits = linenInjectionRows.reduce((sum, row) => sum + row.injectedQty, 0);
+        const totalOrderedUnits = linenInjectionRows.reduce((sum, row) => sum + row.orderedQty, 0);
+        const totalOrderedValue = linenInjectionRows.reduce((sum, row) => sum + row.orderedValue, 0);
+        const uniquePos = new Set(linenInjectionRows.map((row) => row.poNumber || row.requestNumber));
+        const uniqueSites = new Set(linenInjectionRows.map((row) => row.site));
+        const uniqueSuppliers = new Set(linenInjectionRows.map((row) => row.supplier));
+        const uniqueItems = new Set(linenInjectionRows.map((row) => row.item));
+
+        return {
+            totalInjectedValue,
+            totalInjectedUnits,
+            totalOrderedUnits,
+            totalOrderedValue,
+            closedPoCount: uniquePos.size,
+            lineCount: linenInjectionRows.length,
+            siteCount: uniqueSites.size,
+            supplierCount: uniqueSuppliers.size,
+            itemCount: uniqueItems.size
+        };
+    }, [linenInjectionRows]);
+
+    const handleSitesChange = (newSites: string[]) => {
+        setSelectedSites(newSites.length === 0 ? ['ALL'] : newSites);
+        if (activeReport === 'LINEN_INJECTION') {
+            if (newSites.length === 1 && !newSites.includes('ALL') && chartMetric === 'SITE') {
+                setChartMetric('ITEM');
+            } else if ((newSites.length > 1 || newSites.includes('ALL')) && chartMetric === 'ITEM') {
+                setChartMetric('SITE');
+            }
+        }
+    };
+
+    const handleToggleSite = (siteName: string) => {
+        setSelectedSites((prev) => {
+            const cleaned = prev.filter((s) => s !== 'ALL');
+            if (cleaned.includes(siteName)) {
+                const next = cleaned.filter((s) => s !== siteName);
+                return next.length === 0 ? ['ALL'] : next;
+            } else {
+                const next = [...cleaned, siteName];
+                return next.length === siteOptions.length ? ['ALL'] : next;
+            }
+        });
+    };
+
+    const handleSelectOnlySite = (siteName: string) => {
+        setSelectedSites([siteName]);
+        if (activeReport === 'LINEN_INJECTION' && chartMetric === 'SITE') {
+            setChartMetric('ITEM');
+        }
+    };
+
+    const handleSelectAllSites = () => {
+        setSelectedSites(['ALL']);
+        if (activeReport === 'LINEN_INJECTION' && chartMetric === 'ITEM') {
+            setChartMetric('SITE');
+        }
+    };
+
     const switchReport = (report: ReportType) => {
         setActiveReport(report);
         setViewMode('CHART');
-        setChartMetric(report === 'ALL_DELIVERIES' ? 'DATE' : 'SUPPLIER');
+        setChartMetric(report === 'ALL_DELIVERIES' ? 'DATE' : report === 'LINEN_INJECTION' ? 'SITE' : 'SUPPLIER');
         setSearchTerm('');
-        setSelectedSite('ALL');
+        setSelectedSites(['ALL']);
         setSelectedSupplier('ALL');
         setSelectedItemId('ALL');
+        setDateRangeType(report === 'LINEN_INJECTION' ? 'ALL' : 'RECENT');
+        setSelectedMonth('ALL');
+        setCustomStartDate('');
+        setCustomEndDate('');
         setMonthlyStartDate('2025-07-01');
         setMonthlyEndDate(() => new Date().toISOString().split('T')[0]);
     };
@@ -983,27 +1614,34 @@ const ReportingView = () => {
             let data: ReportRow[] = [];
 
             if (activeReport === 'OUTSTANDING_DELIVERIES') {
-                data = buildOutstandingDeliveryRows(pos);
+                data = buildOutstandingDeliveryRows(reportPos);
             } else if (activeReport === 'DELIVERY_VARIANCE') {
-                data = buildDeliveryVarianceRows(pos);
+                data = buildDeliveryVarianceRows(reportPos);
             } else if (activeReport === 'FINANCE_SUMMARY') {
-                data = buildFinanceRows(pos);
+                data = buildFinanceRows(reportPos);
             } else if (activeReport === 'ALL_DELIVERIES') {
-                data = buildAllDeliveriesRows(pos);
+                data = buildAllDeliveriesRows(reportPos);
             } else if (activeReport === 'PO_STATUS') {
-                data = buildPoStatusRows(pos);
+                data = buildPoStatusRows(reportPos);
             } else if (activeReport === 'DELIVERY_RECONCILIATION') {
-                data = buildReconciliationRows(pos);
+                data = buildReconciliationRows(reportPos);
             } else if (activeReport === 'ITEM_REQUEST_HISTORY') {
-                data = buildItemRequestHistoryRows(pos);
+                data = buildItemRequestHistoryRows(reportPos);
             } else if (activeReport === 'MONTHLY_SUMMARY') {
-                data = buildMonthlySummaryRows(pos, monthlyStartDate, monthlyEndDate);
+                data = buildMonthlySummaryRows(reportPos, monthlyStartDate, monthlyEndDate);
+            } else if (activeReport === 'LINEN_INJECTION') {
+                data = buildLinenInjectionRows(reportPos, items);
             } else if (activeReport === 'SUPPLIER_INVENTORY') {
                 data = buildSupplierInventoryRows(stockSnapshots, suppliers);
             } else if (activeReport === 'SUPPLIER_ITEM_MAPPING') {
                 data = buildSupplierItemMappingRows(mappings, items, suppliers);
             } else if (activeReport === 'SUPPLIER_PRICE_VARIANCE') {
                 data = buildSupplierPriceVarianceRows(mappings, stockSnapshots, items, suppliers);
+            } else if (activeReport === 'EOM_BUDGET_RECONCILIATION') {
+                const targetM = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[1], 10) : 8;
+                const targetY = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[0], 10) : 2026;
+                const res = buildEomReconciliation(reportPos, { targetMonth: targetM, targetYear: targetY });
+                data = res.rawProcessedRows;
             }
 
             setReportCache(activeReport, data);
@@ -1012,6 +1650,23 @@ const ReportingView = () => {
     };
 
     const exportCSV = () => {
+        if (activeReport === 'EOM_BUDGET_RECONCILIATION') {
+            const targetM = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[1], 10) : 8;
+            const targetY = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[0], 10) : 2026;
+            const res = buildEomReconciliation(reportPos, { targetMonth: targetM, targetYear: targetY });
+            const csv = buildEomConcurCsv(res);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `SPL-EOM-Spend-Reconciliation-${res.month}-${res.year}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            return;
+        }
+
         if (visibleReportData.length === 0) return;
 
         const csv = buildCsv(activeReport, visibleReportData);
@@ -1105,20 +1760,67 @@ const ReportingView = () => {
         return Object.values(grouped).sort((a, b) => b.orderedQty - a.orderedQty).slice(0, 12);
     }, [itemHistoryRows, chartMetric]);
 
+    const linenInjectionChartData = useMemo(() => {
+        const grouped: Record<string, { name: string; injectedValue: number; orderedValue: number; injectedQty: number; orderedQty: number; lineCount: number }> = {};
+        linenInjectionRows.forEach((row) => {
+            let key = 'Unknown';
+            if (chartMetric === 'SITE') key = row.site || 'Unknown Site';
+            else if (chartMetric === 'SUPPLIER') key = row.supplier || 'Unknown Supplier';
+            else if (chartMetric === 'ITEM') {
+                const skuStr = row.sku ? ` (${row.sku})` : '';
+                key = `${row.item || 'Unknown'}${skuStr}`;
+            } else if (chartMetric === 'DATE') {
+                const targetDate = (row.closedDate || row.latestDeliveryDate || row.requestDate) as string;
+                const dateObj = new Date(targetDate);
+                if (!isNaN(dateObj.getTime())) {
+                    key = `${MONTH_NAMES[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
+                } else {
+                    key = targetDate || 'Unknown';
+                }
+            } else if (chartMetric === 'REASON') {
+                key = (row.reasonForRequest as string) || 'Depletion';
+            }
+
+            grouped[key] ||= { name: key, injectedValue: 0, orderedValue: 0, injectedQty: 0, orderedQty: 0, lineCount: 0 };
+            grouped[key].injectedValue += row.injectedValue;
+            grouped[key].orderedValue += row.orderedValue;
+            grouped[key].injectedQty += row.injectedQty;
+            grouped[key].orderedQty += row.orderedQty;
+            grouped[key].lineCount += 1;
+        });
+
+        if (chartMetric === 'REASON') {
+            const order = ['Depletion', 'New Customer', 'Other'];
+            return Object.values(grouped).sort((a, b) => {
+                const ai = order.indexOf(a.name);
+                const bi = order.indexOf(b.name);
+                if (ai !== -1 && bi !== -1) return ai - bi;
+                return b.injectedValue - a.injectedValue;
+            });
+        }
+
+        return Object.values(grouped).sort((a, b) => b.injectedValue - a.injectedValue).slice(0, 12);
+    }, [linenInjectionRows, chartMetric]);
+
+    const isAllSitesSelected = selectedSites.length === 0 || selectedSites.includes('ALL') || selectedSites.length === siteOptions.length;
+
+    const defaultDateRange = activeReport === 'LINEN_INJECTION' ? 'ALL' : 'RECENT';
+    const isDateRangeFiltered = (dateRangeType as string) !== defaultDateRange ||
+        ((dateRangeType as string) === 'MONTH' && selectedMonth !== 'ALL') ||
+        customStartDate !== '' ||
+        customEndDate !== '';
+
     const hasActiveFilters = Boolean(
         searchTerm.trim() ||
-        selectedSite !== 'ALL' ||
+        !isAllSitesSelected ||
         selectedSupplier !== 'ALL' ||
         selectedItemId !== 'ALL' ||
+        selectedReason !== 'ALL' ||
         (activeReport === 'MONTHLY_SUMMARY' && (
             monthlyStartDate !== '2025-07-01' ||
             monthlyEndDate !== new Date().toISOString().split('T')[0]
         )) ||
-        (isItemHistoryReport && (
-            dateRangeType !== 'RECENT' ||
-            customStartDate !== '' ||
-            customEndDate !== ''
-        ))
+        (isDateFilterableReport && isDateRangeFiltered)
     );
 
     if (!hasPermission('view_reports')) {
@@ -1145,10 +1847,12 @@ const ReportingView = () => {
                         <div className="flex flex-col sm:flex-row xl:flex-col gap-2">
                             <ReportButton active={activeReport === 'OUTSTANDING_DELIVERIES'} icon={AlertCircle} label="Outstanding Deliveries" onClick={() => switchReport('OUTSTANDING_DELIVERIES')} />
                             <ReportButton active={activeReport === 'ALL_DELIVERIES'} icon={Package} label="All Deliveries" onClick={() => switchReport('ALL_DELIVERIES')} />
+                            <ReportButton active={activeReport === 'LINEN_INJECTION'} icon={PackageCheck} label="Linen Injection" onClick={() => switchReport('LINEN_INJECTION')} />
                             <ReportButton active={activeReport === 'DELIVERY_VARIANCE'} icon={TrendingUp} label="Delivery Variance" onClick={() => switchReport('DELIVERY_VARIANCE')} />
                             <ReportButton active={activeReport === 'DELIVERY_RECONCILIATION'} icon={Layers} label="Full Reconciliation" onClick={() => switchReport('DELIVERY_RECONCILIATION')} />
                             <ReportButton active={activeReport === 'ITEM_REQUEST_HISTORY'} icon={History} label="Item Request History" onClick={() => switchReport('ITEM_REQUEST_HISTORY')} />
                             <ReportButton active={activeReport === 'MONTHLY_SUMMARY'} icon={Calendar} label="Monthly PO & GR Summary" onClick={() => switchReport('MONTHLY_SUMMARY')} />
+                            <ReportButton active={activeReport === 'EOM_BUDGET_RECONCILIATION'} icon={TrendingUp} label="EOM Budget & Spend Recon" onClick={() => switchReport('EOM_BUDGET_RECONCILIATION')} />
                             <ReportButton active={activeReport === 'FINANCE_SUMMARY'} icon={TrendingUp} label="Finance Summary" onClick={() => switchReport('FINANCE_SUMMARY')} />
                             <ReportButton active={activeReport === 'PO_STATUS'} icon={FileText} label="PO Status Report" onClick={() => switchReport('PO_STATUS')} />
                             <div className="border-t border-gray-200 dark:border-gray-800 my-2 pt-2 text-[10px] font-black text-gray-400 uppercase tracking-widest px-4">Supplier Insights</div>
@@ -1207,7 +1911,7 @@ const ReportingView = () => {
                                     {canUseChart && viewMode === 'CHART' && (
                                         <div className="flex flex-wrap items-center gap-3">
                                             <div className="text-sm font-bold text-gray-900 dark:text-white flex flex-wrap items-center gap-x-4 gap-y-1">
-                                                {activeReport !== 'MONTHLY_SUMMARY' && (
+                                                {activeReport !== 'MONTHLY_SUMMARY' && activeReport !== 'LINEN_INJECTION' && (
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="text-xs font-medium text-tertiary dark:text-gray-500">
                                                             {activeReport === 'OUTSTANDING_DELIVERIES' ? 'Total Outstanding:' : activeReport === 'DELIVERY_VARIANCE' ? 'Total Variance:' : activeReport === 'ITEM_REQUEST_HISTORY' ? 'Total Ordered Units:' : 'Total Value:'}
@@ -1224,24 +1928,46 @@ const ReportingView = () => {
                                                         {currency(itemHistorySummary.totalValue)}
                                                     </div>
                                                 )}
+                                                {activeReport === 'LINEN_INJECTION' && (
+                                                    <>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Injected Value:</span>
+                                                            {currency(linenInjectionSummary.totalInjectedValue)}
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
+                                                            <span className="text-xs font-medium text-tertiary dark:text-gray-500">Injected Units:</span>
+                                                            {numberValue(linenInjectionSummary.totalInjectedUnits)}
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
+                                                            <span className="text-xs font-medium text-tertiary dark:text-gray-500">Closed Orders:</span>
+                                                            {linenInjectionSummary.closedPoCount}
+                                                        </div>
+                                                    </>
+                                                )}
                                                 {activeReport === 'MONTHLY_SUMMARY' && (() => {
                                                     const summaryData = getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[]);
                                                     const totalPo = summaryData.reduce((sum, r) => sum + r.totalPoAmount, 0);
+                                                    const totalPoInc = summaryData.reduce((sum, r) => sum + (r.totalPoAmountIncGst || r.totalPoAmount * 1.10), 0);
                                                     const totalGr = summaryData.reduce((sum, r) => sum + r.grAmount, 0);
+                                                    const totalGrInc = summaryData.reduce((sum, r) => sum + (r.grAmountIncGst || r.grAmount * 1.10), 0);
                                                     const totalOpen = summaryData.reduce((sum, r) => sum + r.openPoAmount, 0);
+                                                    const totalOpenInc = summaryData.reduce((sum, r) => sum + (r.openPoAmountIncGst || r.openPoAmount * 1.10), 0);
                                                     return (
                                                         <>
                                                             <div className="flex items-center gap-1.5">
-                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total PO Issued:</span>
-                                                                {currency(totalPo)}
+                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total PO Issued (Inc GST):</span>
+                                                                <span className="font-bold">{currency(totalPoInc)}</span>
+                                                                <span className="text-[10px] text-gray-400">({currency(totalPo)} ex)</span>
                                                             </div>
                                                             <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
-                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Received (GR):</span>
-                                                                {currency(totalGr)}
+                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Received (Inc GST):</span>
+                                                                <span className="font-bold text-emerald-600 dark:text-emerald-400">{currency(totalGrInc)}</span>
+                                                                <span className="text-[10px] text-gray-400">({currency(totalGr)} ex)</span>
                                                             </div>
                                                             <div className="flex items-center gap-1.5 border-l border-gray-200 dark:border-gray-800 pl-4">
-                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Open Value:</span>
-                                                                {currency(totalOpen)}
+                                                                <span className="text-xs font-medium text-tertiary dark:text-gray-500">Total Open (Inc GST):</span>
+                                                                <span className="font-bold text-orange-500">{currency(totalOpenInc)}</span>
+                                                                <span className="text-[10px] text-gray-400">({currency(totalOpen)} ex)</span>
                                                             </div>
                                                         </>
                                                     );
@@ -1256,7 +1982,9 @@ const ReportingView = () => {
                                                         className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                                     >
                                                         {activeReport === 'ALL_DELIVERIES' && <option value="DATE">Delivery Date</option>}
-                                                        {activeReport === 'ITEM_REQUEST_HISTORY' && <option value="ITEM">Item</option>}
+                                                        {(activeReport === 'ITEM_REQUEST_HISTORY' || activeReport === 'LINEN_INJECTION') && <option value="ITEM">Item</option>}
+                                                        {activeReport === 'LINEN_INJECTION' && <option value="DATE">Month / Date</option>}
+                                                        {activeReport === 'LINEN_INJECTION' && <option value="REASON">Reason for Request</option>}
                                                         <option value="SUPPLIER">Supplier</option>
                                                         <option value="SITE">Site</option>
                                                     </select>
@@ -1269,7 +1997,7 @@ const ReportingView = () => {
                                 {isFilterableReport && (
                                     <div className="space-y-3">
                                         <div className={`grid grid-cols-1 gap-2 ${
-                                            isItemHistoryReport 
+                                            isDateFilterableReport 
                                                 ? 'md:grid-cols-[minmax(0,1fr)_minmax(180px,260px)_150px_170px_auto]' 
                                                 : activeReport === 'MONTHLY_SUMMARY'
                                                     ? 'md:grid-cols-[minmax(0,1fr)_130px_140px_180px_180px_auto]'
@@ -1280,27 +2008,16 @@ const ReportingView = () => {
                                                 <input
                                                     value={searchTerm}
                                                     onChange={(event) => setSearchTerm(event.target.value)}
-                                                    placeholder={isItemHistoryReport ? 'Search item, SKU, PO, site, supplier' : 'Search reports'}
+                                                    placeholder={isDateFilterableReport ? 'Search item, SKU, PO, site, supplier' : 'Search reports'}
                                                     className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                                 />
                                             </label>
-                                            {isItemHistoryReport && (
-                                                <select
-                                                    value={selectedItemId}
-                                                    onChange={(event) => setSelectedItemId(event.target.value)}
-                                                    className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                >
-                                                    {itemOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                                                </select>
-                                            )}
                                             {activeReport !== 'SUPPLIER_INVENTORY' && activeReport !== 'SUPPLIER_ITEM_MAPPING' && activeReport !== 'SUPPLIER_PRICE_VARIANCE' && (
-                                                <select
-                                                    value={selectedSite}
-                                                    onChange={(event) => setSelectedSite(event.target.value)}
-                                                    className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                >
-                                                    {siteOptions.map((site) => <option key={site} value={site}>{site === 'ALL' ? 'All sites' : site}</option>)}
-                                                </select>
+                                                <MultiSiteSlicer
+                                                    availableSites={siteOptions}
+                                                    selectedSites={selectedSites}
+                                                    onChange={handleSitesChange}
+                                                />
                                             )}
                                             <select
                                                 value={selectedSupplier}
@@ -1309,6 +2026,15 @@ const ReportingView = () => {
                                             >
                                                 {supplierOptions.map((supplier) => <option key={supplier} value={supplier}>{supplier === 'ALL' ? 'All suppliers' : supplier}</option>)}
                                             </select>
+                                            {isDateFilterableReport && (
+                                                <select
+                                                    value={selectedItemId}
+                                                    onChange={(event) => setSelectedItemId(event.target.value)}
+                                                    className="text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                >
+                                                    {itemOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                                                </select>
+                                            )}
                                             {activeReport === 'MONTHLY_SUMMARY' && (
                                                 <>
                                                     <div className="flex items-center gap-1.5 min-w-[140px]">
@@ -1335,10 +2061,12 @@ const ReportingView = () => {
                                                 type="button"
                                                 onClick={() => {
                                                     setSearchTerm('');
-                                                    setSelectedSite('ALL');
+                                                    setSelectedSites(['ALL']);
                                                     setSelectedSupplier('ALL');
                                                     setSelectedItemId('ALL');
-                                                    setDateRangeType('RECENT');
+                                                    setSelectedReason('ALL');
+                                                    setDateRangeType(activeReport === 'LINEN_INJECTION' ? 'ALL' : 'RECENT');
+                                                    setSelectedMonth('ALL');
                                                     setCustomStartDate('');
                                                     setCustomEndDate('');
                                                     setMonthlyStartDate('2025-07-01');
@@ -1352,35 +2080,87 @@ const ReportingView = () => {
                                             </button>
                                         </div>
 
-                                        {isItemHistoryReport && (
-                                            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-                                                <span className="text-xs font-semibold text-secondary dark:text-gray-400">Date Range:</span>
-                                                <select
-                                                    value={dateRangeType}
-                                                    onChange={(event) => setDateRangeType(event.target.value as any)}
-                                                    className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                >
-                                                    <option value="RECENT">Last 30 Days</option>
-                                                    <option value="HISTORICAL">Most Recent</option>
-                                                    <option value="ALL">All Time</option>
-                                                    <option value="CUSTOM">Custom Range...</option>
-                                                </select>
+                                        {isDateFilterableReport && (
+                                            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <span className="text-xs font-semibold text-secondary dark:text-gray-400">Date Range:</span>
+                                                    <select
+                                                        value={dateRangeType}
+                                                        onChange={(event) => setDateRangeType(event.target.value as any)}
+                                                        className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                    >
+                                                        <option value="ALL">All Time (Closed POs)</option>
+                                                        <option value="MONTH">Specific Month...</option>
+                                                        <option value="RECENT">Last 30 Days</option>
+                                                        <option value="HISTORICAL">Since July 2025</option>
+                                                        <option value="CUSTOM">Custom Range...</option>
+                                                    </select>
 
-                                                {dateRangeType === 'CUSTOM' && (
-                                                    <div className="flex items-center gap-2 animate-fade-in">
-                                                        <input
-                                                            type="date"
-                                                            value={customStartDate}
-                                                            onChange={(event) => setCustomStartDate(event.target.value)}
-                                                            className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                        />
-                                                        <span className="text-xs text-tertiary dark:text-gray-500">to</span>
-                                                        <input
-                                                            type="date"
-                                                            value={customEndDate}
-                                                            onChange={(event) => setCustomEndDate(event.target.value)}
-                                                            className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
-                                                        />
+                                                    {dateRangeType === 'MONTH' && (
+                                                        <div className="flex items-center gap-2 animate-fade-in">
+                                                            <select
+                                                                value={selectedMonth}
+                                                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                                                className="text-xs bg-white dark:bg-nocturne border border-emerald-500 rounded-lg px-2.5 py-1.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-emerald-500 outline-none font-bold"
+                                                            >
+                                                                <option value="ALL">All Recorded Months</option>
+                                                                {availableMonths.map((m) => (
+                                                                    <option key={m.key} value={m.key}>{m.label}</option>
+                                                                ))}
+                                                            </select>
+                                                            <input
+                                                                type="month"
+                                                                value={selectedMonth !== 'ALL' ? selectedMonth : ''}
+                                                                onChange={(e) => setSelectedMonth(e.target.value || 'ALL')}
+                                                                className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-emerald-500 outline-none"
+                                                                title="Pick any calendar month"
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {dateRangeType === 'CUSTOM' && (
+                                                        <div className="flex items-center gap-2 animate-fade-in">
+                                                            <input
+                                                                type="date"
+                                                                value={customStartDate}
+                                                                onChange={(event) => setCustomStartDate(event.target.value)}
+                                                                className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                            />
+                                                            <span className="text-xs text-tertiary dark:text-gray-500">to</span>
+                                                            <input
+                                                                type="date"
+                                                                value={customEndDate}
+                                                                onChange={(event) => setCustomEndDate(event.target.value)}
+                                                                className="text-xs bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {activeReport === 'LINEN_INJECTION' && (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Reason for Request:</span>
+                                                        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-0.5 shadow-2xs">
+                                                            {[
+                                                                { id: 'ALL', label: 'All' },
+                                                                { id: 'Depletion', label: 'Depletion' },
+                                                                { id: 'New Customer', label: 'New Customer' },
+                                                                { id: 'Other', label: 'Other' }
+                                                            ].map((opt) => (
+                                                                <button
+                                                                    key={opt.id}
+                                                                    type="button"
+                                                                    onClick={() => setSelectedReason(opt.id)}
+                                                                    className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${
+                                                                        selectedReason === opt.id
+                                                                            ? 'bg-[var(--color-brand)] text-white shadow-xs'
+                                                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                                                    }`}
+                                                                >
+                                                                    {opt.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
@@ -1414,6 +2194,23 @@ const ReportingView = () => {
                                 <DeliveryReconciliationVisual rows={reconciliationRows} summary={reconciliationSummary} />
                             ) : activeReport === 'ITEM_REQUEST_HISTORY' && viewMode === 'CHART' ? (
                                 <ItemRequestHistoryVisual summary={itemHistorySummary} chartData={itemHistoryChartData} selectedItemLabel={itemOptions.find((item) => item.id === selectedItemId)?.label || 'All items'} chartMetric={chartMetric} />
+                            ) : activeReport === 'LINEN_INJECTION' && viewMode === 'CHART' ? (
+                                <LinenInjectionVisual
+                                    rows={linenInjectionRows}
+                                    summary={linenInjectionSummary}
+                                    chartData={linenInjectionChartData}
+                                    chartMetric={chartMetric}
+                                    selectedSites={selectedSites}
+                                    onToggleSite={handleToggleSite}
+                                    onSelectOnlySite={handleSelectOnlySite}
+                                    onSelectAllSites={handleSelectAllSites}
+                                    availableSites={sites}
+                                    siteOptions={siteOptions}
+                                    selectedMonth={selectedMonth}
+                                    dateRangeType={dateRangeType}
+                                    selectedReason={selectedReason}
+                                    onSelectReason={setSelectedReason}
+                                />
                             ) : activeReport === 'MONTHLY_SUMMARY' && viewMode === 'CHART' ? (
                                 <MonthlySummaryVisual rows={getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])} />
                             ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
@@ -1424,6 +2221,13 @@ const ReportingView = () => {
                                 <SupplierItemMappingVisual rows={visibleReportData} chartMetric={chartMetric} />
                             ) : activeReport === 'SUPPLIER_PRICE_VARIANCE' && viewMode === 'CHART' ? (
                                 <SupplierPriceVarianceVisual rows={visibleReportData} chartMetric={chartMetric} />
+                            ) : activeReport === 'EOM_BUDGET_RECONCILIATION' && viewMode === 'CHART' ? (
+                                <EomBudgetReconciliationVisual
+                                    pos={reportPos}
+                                    selectedMonth={selectedMonth}
+                                    onSelectMonth={setSelectedMonth}
+                                    onExportConcurCsv={exportCSV}
+                                />
                             ) : (
                                 <ReportTable activeReport={activeReport} rows={visibleReportData} />
                             )}
@@ -1729,10 +2533,13 @@ const ItemRequestHistoryVisual = ({ summary, chartData, selectedItemLabel, chart
 const MonthlySummaryVisual = ({ rows }: { rows: MonthlySummaryAggregatedRow[] }) => {
     const summary = useMemo(() => {
         const totalPo = rows.reduce((sum, r) => sum + r.totalPoAmount, 0);
+        const totalPoInc = rows.reduce((sum, r) => sum + (r.totalPoAmountIncGst || r.totalPoAmount * 1.10), 0);
         const totalGr = rows.reduce((sum, r) => sum + r.grAmount, 0);
+        const totalGrInc = rows.reduce((sum, r) => sum + (r.grAmountIncGst || r.grAmount * 1.10), 0);
         const totalOpen = rows.reduce((sum, r) => sum + r.openPoAmount, 0);
+        const totalOpenInc = rows.reduce((sum, r) => sum + (r.openPoAmountIncGst || r.openPoAmount * 1.10), 0);
         const rate = totalPo > 0 ? (totalGr / totalPo) * 100 : 0;
-        return { totalPo, totalGr, totalOpen, rate, monthCount: rows.length };
+        return { totalPo, totalPoInc, totalGr, totalGrInc, totalOpen, totalOpenInc, rate, monthCount: rows.length };
     }, [rows]);
 
     const chartData = useMemo(() => {
@@ -1742,9 +2549,9 @@ const MonthlySummaryVisual = ({ rows }: { rows: MonthlySummaryAggregatedRow[] })
     return (
         <div data-testid="monthly-summary-report-visual" className="p-4 md:p-6 space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                <MetricCard label="Total PO Issued" value={currency(summary.totalPo)} sub={`Across ${summary.monthCount} month${summary.monthCount === 1 ? '' : 's'}`} icon={Package} color="bg-blue-600" />
-                <MetricCard label="Total Received (GR)" value={currency(summary.totalGr)} sub="Delivered goods value" icon={CheckCircle2} color="bg-emerald-600" />
-                <MetricCard label="Total Open Value" value={currency(summary.totalOpen)} sub="Outstanding unreceived value" icon={AlertCircle} color="bg-orange-500" />
+                <MetricCard label="Total PO Issued (Inc GST)" value={currency(summary.totalPoInc)} sub={`Ex GST: ${currency(summary.totalPo)} · ${summary.monthCount} mo`} icon={Package} color="bg-blue-600" />
+                <MetricCard label="Total Received (GR Inc GST)" value={currency(summary.totalGrInc)} sub={`Ex GST: ${currency(summary.totalGr)}`} icon={CheckCircle2} color="bg-emerald-600" />
+                <MetricCard label="Total Open Value (Inc GST)" value={currency(summary.totalOpenInc)} sub={`Ex GST: ${currency(summary.totalOpen)}`} icon={AlertCircle} color="bg-orange-500" />
                 <MetricCard label="Fulfillment Rate" value={percentValue(summary.rate)} sub="Goods Received vs PO Issued" icon={TrendingUp} color="bg-violet-600" />
             </div>
 
@@ -1770,6 +2577,901 @@ const MonthlySummaryVisual = ({ rows }: { rows: MonthlySummaryAggregatedRow[] })
                     </ResponsiveContainer>
                 </div>
             </div>
+        </div>
+    );
+};
+
+const LinenInjectionVisual = ({
+    rows,
+    summary,
+    chartData,
+    chartMetric,
+    selectedSites,
+    onToggleSite,
+    onSelectOnlySite,
+    onSelectAllSites,
+    availableSites,
+    siteOptions,
+    selectedMonth,
+    dateRangeType,
+    selectedReason = 'ALL',
+    onSelectReason
+}: {
+    rows: LinenInjectionReportRow[];
+    summary: {
+        totalInjectedValue: number;
+        totalInjectedUnits: number;
+        totalOrderedUnits: number;
+        totalOrderedValue: number;
+        closedPoCount: number;
+        lineCount: number;
+        siteCount: number;
+        supplierCount: number;
+        itemCount: number;
+    };
+    chartData: Array<{ name: string; injectedValue: number; orderedValue: number; injectedQty: number; orderedQty: number; lineCount: number }>;
+    chartMetric: ChartMetric;
+    selectedSites: string[];
+    onToggleSite: (site: string) => void;
+    onSelectOnlySite: (site: string) => void;
+    onSelectAllSites: () => void;
+    availableSites?: Site[];
+    siteOptions?: string[];
+    selectedMonth?: string;
+    dateRangeType?: string;
+    selectedReason?: string;
+    onSelectReason?: (reason: string) => void;
+}) => {
+    const allSiteNames = useMemo(() => {
+        if (siteOptions && siteOptions.length > 0) return siteOptions;
+        return (availableSites || []).map((s) => s.name).filter(Boolean);
+    }, [siteOptions, availableSites]);
+
+    const isAllSelected = selectedSites.length === 0 || selectedSites.includes('ALL') || selectedSites.length === allSiteNames.length;
+    const isSingleSite = selectedSites.length === 1 && !selectedSites.includes('ALL');
+    const singleSiteName = isSingleSite ? selectedSites[0] : '';
+    const isMultiSiteSubset = !isAllSelected && selectedSites.length > 1;
+
+    const metricLabel = chartMetric === 'ITEM' ? 'Item' : chartMetric === 'SUPPLIER' ? 'Supplier' : chartMetric === 'DATE' ? 'Month / Date' : chartMetric === 'REASON' ? 'Reason for Request' : 'Site';
+    const [chartViewType, setChartViewType] = useState<'VALUE' | 'QTY'>('VALUE');
+    const [chartOrientation, setChartOrientation] = useState<'HORIZONTAL_BAR' | 'VERTICAL_CLUSTERED'>('HORIZONTAL_BAR');
+    const [rightCardTab, setRightCardTab] = useState<'REASONS' | 'SUPPLIERS' | 'ITEMS'>('REASONS');
+
+    // Reason for Request breakdown
+    const reasonBreakdown = useMemo(() => {
+        const reasonMap = new Map<string, { reason: string; injectedValue: number; injectedQty: number; orderCount: Set<string>; lineCount: number }>();
+        ['Depletion', 'New Customer', 'Other'].forEach((reason) => {
+            reasonMap.set(reason, { reason, injectedValue: 0, injectedQty: 0, orderCount: new Set(), lineCount: 0 });
+        });
+
+        rows.forEach((r) => {
+            const reason = (r.reasonForRequest as string) || 'Depletion';
+            if (!reasonMap.has(reason)) {
+                reasonMap.set(reason, { reason, injectedValue: 0, injectedQty: 0, orderCount: new Set(), lineCount: 0 });
+            }
+            const entry = reasonMap.get(reason)!;
+            entry.injectedValue += r.injectedValue;
+            entry.injectedQty += r.injectedQty;
+            entry.lineCount += 1;
+            entry.orderCount.add(r.poNumber || r.requestNumber);
+        });
+
+        return Array.from(reasonMap.values())
+            .map((item) => ({
+                ...item,
+                orderCount: item.orderCount.size,
+                spendPct: summary.totalInjectedValue > 0 ? (item.injectedValue / summary.totalInjectedValue) * 100 : 0
+            }))
+            .sort((a, b) => b.injectedValue - a.injectedValue);
+    }, [rows, summary.totalInjectedValue]);
+
+    // Multi-site comparison metrics
+    const siteComparison = useMemo(() => {
+        const siteMap = new Map<string, {
+            site: string;
+            injectedValue: number;
+            injectedQty: number;
+            orderCount: Set<string>;
+            itemCount: Set<string>;
+            topItem: { name: string; value: number };
+            itemsMap: Map<string, { name: string; value: number }>;
+        }>();
+
+        // Seed available operating sites based on current selection scope
+        const seedSites = isMultiSiteSubset ? selectedSites : allSiteNames;
+        seedSites.forEach((s) => {
+            if (s && s !== 'ALL') {
+                siteMap.set(s, {
+                    site: s,
+                    injectedValue: 0,
+                    injectedQty: 0,
+                    orderCount: new Set(),
+                    itemCount: new Set(),
+                    topItem: { name: '', value: 0 },
+                    itemsMap: new Map()
+                });
+            }
+        });
+
+        rows.forEach((r) => {
+            const site = r.site || 'Unknown Site';
+            if (!siteMap.has(site)) {
+                siteMap.set(site, {
+                    site,
+                    injectedValue: 0,
+                    injectedQty: 0,
+                    orderCount: new Set(),
+                    itemCount: new Set(),
+                    topItem: { name: '', value: 0 },
+                    itemsMap: new Map()
+                });
+            }
+            const entry = siteMap.get(site)!;
+            entry.injectedValue += r.injectedValue;
+            entry.injectedQty += r.injectedQty;
+            entry.orderCount.add(r.poNumber || r.requestNumber);
+            entry.itemCount.add(r.item);
+
+            const currentItemVal = (entry.itemsMap.get(r.item)?.value || 0) + r.injectedValue;
+            entry.itemsMap.set(r.item, { name: r.item, value: currentItemVal });
+            if (currentItemVal > entry.topItem.value) {
+                entry.topItem = { name: r.item, value: currentItemVal };
+            }
+        });
+
+        return Array.from(siteMap.values())
+            .map((s) => ({
+                site: s.site,
+                injectedValue: s.injectedValue,
+                injectedQty: s.injectedQty,
+                orderCount: s.orderCount.size,
+                itemCount: s.itemCount.size,
+                topItemName: s.topItem.name,
+                spendPct: summary.totalInjectedValue > 0 ? (s.injectedValue / summary.totalInjectedValue) * 100 : 0
+            }))
+            .sort((a, b) => b.injectedValue - a.injectedValue || a.site.localeCompare(b.site));
+    }, [rows, summary.totalInjectedValue, isMultiSiteSubset, selectedSites, allSiteNames]);
+
+    const activeSitesCount = siteComparison.filter((s) => s.injectedValue > 0 || s.injectedQty > 0).length;
+
+    // Single-site item & cost breakdown
+    const siteItemBreakdown = useMemo(() => {
+        const itemMap = new Map<string, {
+            item: string;
+            sku: string;
+            category: string;
+            supplier: string;
+            unitPrice: number;
+            injectedQty: number;
+            orderedQty: number;
+            injectedValue: number;
+            latestDate: string;
+        }>();
+
+        rows.forEach((r) => {
+            const key = r.sku ? `${r.item}__${r.sku}` : r.item;
+            if (!itemMap.has(key)) {
+                itemMap.set(key, {
+                    item: r.item,
+                    sku: r.sku,
+                    category: r.category,
+                    supplier: r.supplier,
+                    unitPrice: r.unitPrice,
+                    injectedQty: 0,
+                    orderedQty: 0,
+                    injectedValue: 0,
+                    latestDate: (r.closedDate || r.latestDeliveryDate || r.requestDate) as string
+                });
+            }
+            const entry = itemMap.get(key)!;
+            entry.injectedQty += r.injectedQty;
+            entry.orderedQty += r.orderedQty;
+            entry.injectedValue += r.injectedValue;
+            if (r.unitPrice) entry.unitPrice = r.unitPrice;
+            const rowDate = (r.closedDate || r.latestDeliveryDate || r.requestDate) as string;
+            if (rowDate && (!entry.latestDate || new Date(rowDate).getTime() > new Date(entry.latestDate).getTime())) {
+                entry.latestDate = rowDate;
+            }
+        });
+
+        return Array.from(itemMap.values())
+            .map((item) => ({
+                ...item,
+                spendPct: summary.totalInjectedValue > 0 ? (item.injectedValue / summary.totalInjectedValue) * 100 : 0
+            }))
+            .sort((a, b) => b.injectedValue - a.injectedValue);
+    }, [rows, summary.totalInjectedValue]);
+
+    // Single-site supplier breakdown
+    const siteSupplierBreakdown = useMemo(() => {
+        const supplierMap = new Map<string, { supplier: string; injectedValue: number; injectedQty: number }>();
+        rows.forEach((r) => {
+            const supp = r.supplier || 'Unknown Supplier';
+            if (!supplierMap.has(supp)) {
+                supplierMap.set(supp, { supplier: supp, injectedValue: 0, injectedQty: 0 });
+            }
+            const entry = supplierMap.get(supp)!;
+            entry.injectedValue += r.injectedValue;
+            entry.injectedQty += r.injectedQty;
+        });
+
+        return Array.from(supplierMap.values())
+            .map((supp) => ({
+                ...supp,
+                spendPct: summary.totalInjectedValue > 0 ? (supp.injectedValue / summary.totalInjectedValue) * 100 : 0
+            }))
+            .sort((a, b) => b.injectedValue - a.injectedValue);
+    }, [rows, summary.totalInjectedValue]);
+
+    // Top network items (for multi-site mode)
+    const topItems = useMemo(() => {
+        const itemMap = new Map<string, { item: string; sku: string; supplier: string; totalQty: number; totalValue: number; siteCount: Set<string> }>();
+        rows.forEach((r) => {
+            const key = r.sku ? `${r.item}__${r.sku}` : r.item;
+            if (!itemMap.has(key)) {
+                itemMap.set(key, { item: r.item, sku: r.sku, supplier: r.supplier, totalQty: 0, totalValue: 0, siteCount: new Set() });
+            }
+            const existing = itemMap.get(key)!;
+            existing.totalQty += r.injectedQty;
+            existing.totalValue += r.injectedValue;
+            existing.siteCount.add(r.site);
+        });
+        return Array.from(itemMap.values()).sort((a, b) => b.totalValue - a.totalValue).slice(0, 5);
+    }, [rows]);
+
+    const formattedMonth = useMemo(() => {
+        if (dateRangeType === 'MONTH' && selectedMonth && selectedMonth !== 'ALL') {
+            const [y, m] = selectedMonth.split('-').map(Number);
+            if (y && m) return `${MONTH_NAMES[m - 1]} ${y}`;
+        }
+        return '';
+    }, [dateRangeType, selectedMonth]);
+
+    return (
+        <div data-testid="linen-injection-report-visual" className="p-4 md:p-6 space-y-6">
+            {/* Focus Context Banner */}
+            {isSingleSite ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                            <Building2 size={16} />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300 uppercase tracking-wider">Site Focus</span>
+                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-600 text-white">{singleSiteName}</span>
+                                {formattedMonth && (
+                                    <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-700 text-emerald-100">{formattedMonth}</span>
+                                )}
+                            </div>
+                            <p className="text-xs text-emerald-800/80 dark:text-emerald-400 mt-0.5">
+                                Showing item-level unit cost, receipted quantities, and closed PO expenditure for <strong>{singleSiteName}</strong> {formattedMonth ? `in ${formattedMonth}` : ''}.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onSelectAllSites}
+                        className="px-3 py-1.5 bg-white dark:bg-nocturne border border-emerald-300 dark:border-emerald-800 text-xs font-bold text-emerald-700 dark:text-emerald-300 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shrink-0 shadow-xs"
+                    >
+                        ← View All Sites Comparison
+                    </button>
+                </div>
+            ) : isMultiSiteSubset ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-sky-50/80 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/40 rounded-xl">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                            <Filter size={16} />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-sky-900 dark:text-sky-300 uppercase tracking-wider">Multi-Site Subset Active</span>
+                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-sky-600 text-white">{selectedSites.length} Sites Selected</span>
+                                {formattedMonth && (
+                                    <span className="px-2 py-0.5 rounded text-xs font-bold bg-sky-700 text-sky-100">{formattedMonth}</span>
+                                )}
+                            </div>
+                            <p className="text-xs text-sky-800/80 dark:text-sky-400 mt-0.5">
+                                Comparing receipted &amp; closed linen injection expenditure across {selectedSites.join(', ')} {formattedMonth ? `for ${formattedMonth}` : ''}.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onSelectAllSites}
+                        className="px-3 py-1.5 bg-white dark:bg-nocturne border border-sky-300 dark:border-sky-800 text-xs font-bold text-sky-700 dark:text-sky-300 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors shrink-0 shadow-xs"
+                    >
+                        ← Reset to All Sites
+                    </button>
+                </div>
+            ) : (
+                <div className="flex items-center justify-between gap-3 p-3 bg-blue-50/70 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs text-blue-800 dark:text-blue-300">
+                    <div className="flex items-center gap-2">
+                        <Building2 size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                        <span>
+                            <strong>Closed PO Network View:</strong> Comparing linen injection spend across <strong>{activeSitesCount} active sites</strong> ({siteComparison.length} facilities total) {formattedMonth ? `for ${formattedMonth}` : ''}. Only receipted &amp; closed orders are included.
+                        </span>
+                    </div>
+                    <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium shrink-0 hidden md:inline">Use the slicer above to select single or multiple sites</span>
+                </div>
+            )}
+
+            {/* Reason for Request Quick Toggle Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Reason for Request:</span>
+                    <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-0.5 shadow-2xs">
+                        {[
+                            { id: 'ALL', label: 'All Reasons' },
+                            { id: 'Depletion', label: 'Depletion' },
+                            { id: 'New Customer', label: 'New Customer' },
+                            { id: 'Other', label: 'Other' }
+                        ].map((opt) => (
+                            <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => onSelectReason && onSelectReason(opt.id)}
+                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                                    selectedReason === opt.id
+                                        ? 'bg-[var(--color-brand)] text-white shadow-xs'
+                                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                }`}
+                            >
+                                <span>{opt.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap text-xs text-secondary dark:text-gray-400">
+                    <button
+                        type="button"
+                        onClick={() => onSelectReason && onSelectReason('Depletion')}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-colors ${
+                            selectedReason === 'Depletion'
+                                ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-300 dark:border-teal-700 text-teal-800 dark:text-teal-200 font-bold'
+                                : 'bg-transparent border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                        }`}
+                        title="Filter report to Depletion requests only"
+                    >
+                        <span className="w-2 h-2 rounded-full bg-teal-500 inline-block" />
+                        <span>Depletion:</span>
+                        <strong className="text-gray-900 dark:text-white">{currency(reasonBreakdown.find(r => r.reason === 'Depletion')?.injectedValue || 0)}</strong>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onSelectReason && onSelectReason('New Customer')}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-colors ${
+                            selectedReason === 'New Customer'
+                                ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-300 dark:border-purple-700 text-purple-800 dark:text-purple-200 font-bold'
+                                : 'bg-transparent border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                        }`}
+                        title="Filter report to New Customer requests only"
+                    >
+                        <span className="w-2 h-2 rounded-full bg-purple-500 inline-block" />
+                        <span>New Customer:</span>
+                        <strong className="text-gray-900 dark:text-white">{currency(reasonBreakdown.find(r => r.reason === 'New Customer')?.injectedValue || 0)}</strong>
+                    </button>
+                    {((reasonBreakdown.find(r => r.reason === 'Other')?.injectedValue || 0) > 0) && (
+                        <button
+                            type="button"
+                            onClick={() => onSelectReason && onSelectReason('Other')}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-colors ${
+                                selectedReason === 'Other'
+                                    ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-bold'
+                                    : 'bg-transparent border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                            }`}
+                            title="Filter report to Other requests only"
+                        >
+                            <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                            <span>Other:</span>
+                            <strong className="text-gray-900 dark:text-white">{currency(reasonBreakdown.find(r => r.reason === 'Other')?.injectedValue || 0)}</strong>
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <MetricCard
+                    label={isSingleSite ? `${singleSiteName} Injected Spend` : isMultiSiteSubset ? 'Selected Sites Injected Spend' : 'Total Linen Injected Spend'}
+                    value={currency(summary.totalInjectedValue)}
+                    sub={`${numberValue(summary.totalInjectedUnits)} units receipted & closed`}
+                    icon={TrendingUp}
+                    color="bg-emerald-600"
+                />
+                <MetricCard
+                    label={isSingleSite ? 'Site Receipted Units' : 'Total Receipted Units'}
+                    value={numberValue(summary.totalInjectedUnits)}
+                    sub={`Across ${summary.lineCount} closed line items`}
+                    icon={Package}
+                    color="bg-sky-500"
+                />
+                <MetricCard
+                    label={isSingleSite ? 'Site Closed POs' : 'Closed PO Orders'}
+                    value={String(summary.closedPoCount)}
+                    sub={`Avg ${currency(summary.closedPoCount ? summary.totalInjectedValue / summary.closedPoCount : 0)} per order`}
+                    icon={CheckCircle2}
+                    color="bg-blue-600"
+                />
+                <MetricCard
+                    label={isSingleSite ? 'Site Item Varieties' : 'Operating Facilities'}
+                    value={isSingleSite ? `${summary.itemCount} Items` : `${summary.siteCount} Sites`}
+                    sub={isSingleSite ? `Supplied by ${summary.supplierCount} partner${summary.supplierCount === 1 ? '' : 's'}` : `Across ${summary.itemCount} items from ${summary.supplierCount} suppliers`}
+                    icon={Layers}
+                    color="bg-violet-600"
+                />
+            </div>
+
+            {/* Upper Chart & Breakdown Cards */}
+            <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+                {/* Left Bar Chart Card */}
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                        <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                                    {isSingleSite
+                                        ? `Item Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} for ${singleSiteName}`
+                                        : chartMetric === 'REASON'
+                                            ? `Reason for Request Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'}`
+                                            : `Site Injected ${chartViewType === 'VALUE' ? 'Spend ($)' : 'Units (QTY)'} Comparison`}
+                                </h3>
+                                {/* Orientation Toggle */}
+                                <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-0.5 shadow-xs">
+                                    <button
+                                        type="button"
+                                        onClick={() => setChartOrientation('HORIZONTAL_BAR')}
+                                        className={`px-2 py-0.5 text-[11px] font-bold rounded-md transition-all flex items-center gap-1 ${
+                                            chartOrientation === 'HORIZONTAL_BAR'
+                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                        }`}
+                                        title="Horizontal Bar Chart (optimal for long product names)"
+                                    >
+                                        <AlignLeft size={12} />
+                                        Horizontal Bar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setChartOrientation('VERTICAL_CLUSTERED')}
+                                        className={`px-2 py-0.5 text-[11px] font-bold rounded-md transition-all flex items-center gap-1 ${
+                                            chartOrientation === 'VERTICAL_CLUSTERED'
+                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                        }`}
+                                        title="Vertical Bar Chart"
+                                    >
+                                        <BarChart3 size={12} />
+                                        Vertical Bar
+                                    </button>
+                                </div>
+                            </div>
+                            <p className="text-xs text-tertiary dark:text-gray-500 mt-1">
+                                {isSingleSite
+                                    ? `Ranking top injected items by receipted expenditure at this facility`
+                                    : chartMetric === 'REASON'
+                                        ? `Comparing closed injection expenditure between Depletion vs New Customer requests`
+                                        : `Comparing closed linen injection investment across operating locations`}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-900/50">
+                                <button
+                                    type="button"
+                                    onClick={() => setChartViewType('VALUE')}
+                                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                                        chartViewType === 'VALUE'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-xs font-bold'
+                                            : 'text-tertiary dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    Spend ($)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setChartViewType('QTY')}
+                                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                                        chartViewType === 'QTY'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-xs font-bold'
+                                            : 'text-tertiary dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    Units (Qty)
+                                </button>
+                            </div>
+                            <span className="text-xs text-tertiary dark:text-gray-500 hidden sm:inline">{chartData.length} {metricLabel.toLowerCase()}s</span>
+                        </div>
+                    </div>
+                    <div className="h-[360px] min-w-[560px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            {chartOrientation === 'HORIZONTAL_BAR' ? (
+                                <BarChart
+                                    layout="vertical"
+                                    data={chartData}
+                                    margin={{ top: 8, right: 30, left: 10, bottom: 10 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" opacity={0.18} horizontal={false} />
+                                    <XAxis
+                                        type="number"
+                                        tickFormatter={(val) => chartViewType === 'VALUE' ? `$${Number(val).toLocaleString()}` : Number(val).toLocaleString()}
+                                        tick={{ fontSize: 11, fill: '#888' }}
+                                    />
+                                    <YAxis
+                                        type="category"
+                                        dataKey="name"
+                                        width={170}
+                                        interval={0}
+                                        tick={{ fontSize: 11, fill: '#888' }}
+                                        tickFormatter={(val) => typeof val === 'string' && val.length > 24 ? `${val.substring(0, 24)}...` : val}
+                                    />
+                                    <RechartsTooltip
+                                        formatter={(value: number) => [
+                                            chartViewType === 'VALUE' ? currency(value) : `${numberValue(value)} units`,
+                                            chartViewType === 'VALUE' ? 'Injected Spend' : 'Injected Units'
+                                        ]}
+                                        labelFormatter={(label) => `${metricLabel}: ${label}`}
+                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Legend />
+                                    <Bar
+                                        dataKey={chartViewType === 'VALUE' ? 'injectedValue' : 'injectedQty'}
+                                        name={chartViewType === 'VALUE' ? 'Injected Spend ($)' : 'Injected Units (QTY)'}
+                                        fill="#10b981"
+                                        radius={[0, 4, 4, 0]}
+                                    />
+                                </BarChart>
+                            ) : (
+                                <BarChart
+                                    layout="horizontal"
+                                    data={chartData}
+                                    margin={{ top: 8, right: 20, left: 0, bottom: 70 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" opacity={0.18} vertical={false} />
+                                    <XAxis dataKey="name" angle={-35} textAnchor="end" height={88} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
+                                    <YAxis
+                                        tickFormatter={(val) => chartViewType === 'VALUE' ? `$${Number(val).toLocaleString()}` : Number(val).toLocaleString()}
+                                        tick={{ fontSize: 12, fill: '#888' }}
+                                    />
+                                    <RechartsTooltip
+                                        formatter={(value: number) => [
+                                            chartViewType === 'VALUE' ? currency(value) : `${numberValue(value)} units`,
+                                            chartViewType === 'VALUE' ? 'Injected Spend' : 'Injected Units'
+                                        ]}
+                                        labelFormatter={(label) => `${metricLabel}: ${label}`}
+                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Legend />
+                                    <Bar
+                                        dataKey={chartViewType === 'VALUE' ? 'injectedValue' : 'injectedQty'}
+                                        name={chartViewType === 'VALUE' ? 'Injected Spend ($)' : 'Injected Units (QTY)'}
+                                        fill="#10b981"
+                                        radius={[4, 4, 0, 0]}
+                                    />
+                                </BarChart>
+                            )}
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Right Summary Card (Tabbed: Reasons, Suppliers, Top Items) */}
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 dark:border-gray-800 pb-2.5">
+                            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setRightCardTab('REASONS')}
+                                    className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all ${
+                                        rightCardTab === 'REASONS'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-xs'
+                                            : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    Request Reason
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setRightCardTab('SUPPLIERS')}
+                                    className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all ${
+                                        rightCardTab === 'SUPPLIERS'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-xs'
+                                            : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    Suppliers
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setRightCardTab('ITEMS')}
+                                    className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all ${
+                                        rightCardTab === 'ITEMS'
+                                            ? 'bg-white dark:bg-[#1f222e] text-gray-900 dark:text-white shadow-xs'
+                                            : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    Top Items
+                                </button>
+                            </div>
+                        </div>
+
+                        {rightCardTab === 'REASONS' && (
+                            <div className="space-y-3">
+                                {reasonBreakdown.map((item) => {
+                                    const isSelected = selectedReason === item.reason;
+                                    const badgeColor = item.reason === 'New Customer'
+                                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                                        : item.reason === 'Other'
+                                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                                            : 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300';
+                                    const barColor = item.reason === 'New Customer'
+                                        ? 'bg-purple-500'
+                                        : item.reason === 'Other'
+                                            ? 'bg-amber-500'
+                                            : 'bg-teal-500';
+
+                                    return (
+                                        <div
+                                            key={item.reason}
+                                            onClick={() => onSelectReason && onSelectReason(selectedReason === item.reason ? 'ALL' : item.reason)}
+                                            className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
+                                                isSelected
+                                                    ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 ring-1 ring-emerald-500/20'
+                                                    : 'border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/5'
+                                            }`}
+                                            title={`Click to filter by ${item.reason}`}
+                                        >
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${badgeColor}`}>
+                                                    {item.reason}
+                                                </span>
+                                                <span className="font-bold text-xs text-gray-900 dark:text-white">
+                                                    {currency(item.injectedValue)}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[10px] text-tertiary dark:text-gray-500 mt-1">
+                                                <span>{numberValue(item.injectedQty)} units · {item.orderCount} PO{item.orderCount === 1 ? '' : 's'}</span>
+                                                <span className="font-bold text-gray-700 dark:text-gray-300">{percentValue(item.spendPct)}</span>
+                                            </div>
+                                            <div className="w-full bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden mt-1.5">
+                                                <div className={`${barColor} h-full rounded-full`} style={{ width: `${Math.min(100, item.spendPct)}%` }} />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {rightCardTab === 'SUPPLIERS' && (
+                            <div className="space-y-3">
+                                {siteSupplierBreakdown.map((supp, idx) => (
+                                    <div key={`${supp.supplier}-${idx}`} className="text-xs border-b border-gray-100 dark:border-gray-800 pb-2.5">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <p className="font-bold text-gray-900 dark:text-white truncate" title={supp.supplier}>{supp.supplier}</p>
+                                            <p className="font-bold text-emerald-600 dark:text-emerald-400 shrink-0">{currency(supp.injectedValue)}</p>
+                                        </div>
+                                        <div className="flex items-center justify-between text-[10px] text-tertiary dark:text-gray-500">
+                                            <span>{numberValue(supp.injectedQty)} units</span>
+                                            <span>{percentValue(supp.spendPct)}</span>
+                                        </div>
+                                        <div className="w-full bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden mt-1">
+                                            <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, supp.spendPct)}%` }} />
+                                        </div>
+                                    </div>
+                                ))}
+                                {siteSupplierBreakdown.length === 0 && (
+                                    <div className="text-center py-8 text-xs text-tertiary">No supplier data.</div>
+                                )}
+                            </div>
+                        )}
+
+                        {rightCardTab === 'ITEMS' && (
+                            <div className="space-y-3">
+                                {topItems.map((item, idx) => (
+                                    <div key={`${item.item}-${idx}`} className="flex justify-between items-center text-xs border-b border-gray-100 dark:border-gray-800 pb-2.5">
+                                        <div className="min-w-0 pr-2">
+                                            <p className="font-bold text-gray-900 dark:text-white truncate" title={item.item}>{item.item}</p>
+                                            <p className="text-[10px] text-tertiary dark:text-gray-500 font-mono">
+                                                {item.sku || 'No SKU'} • {item.siteCount.size} site{item.siteCount.size === 1 ? '' : 's'}
+                                            </p>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                            <p className="font-bold text-emerald-600 dark:text-emerald-400">{currency(item.totalValue)}</p>
+                                            <p className="text-[10px] text-tertiary dark:text-gray-500">{numberValue(item.totalQty)} units</p>
+                                        </div>
+                                    </div>
+                                ))}
+                                {topItems.length === 0 && (
+                                    <div className="text-center py-8 text-xs text-tertiary">No items in selected range.</div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-secondary dark:text-gray-400 flex items-center justify-between">
+                        <span>Total Volume:</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{numberValue(summary.totalInjectedUnits)} units</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Lower Section: Multi-Site Comparative Matrix OR Single-Site Item Cost Table */}
+            {!isSingleSite ? (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] overflow-hidden shadow-sm">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-gray-50/50 dark:bg-white/5">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <Building2 size={16} className="text-[var(--color-brand)]" />
+                                Site Expenditure Comparison Matrix
+                            </h3>
+                            <p className="text-xs text-tertiary dark:text-gray-500 mt-0.5">
+                                Comparative spend, receipted quantities, and top item for each operating location (closed POs only)
+                            </p>
+                        </div>
+                        <span className="text-xs font-semibold text-secondary dark:text-gray-400">
+                            {activeSitesCount} Active / {siteComparison.length} Filtered Sites
+                        </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-gray-50/80 dark:bg-gray-900/40 text-secondary dark:text-gray-400 uppercase text-[10px] font-bold border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="px-4 py-3">Site Location</th>
+                                    <th className="px-4 py-3 text-right">Injected Spend ($)</th>
+                                    <th className="px-4 py-3">% of Total Spend</th>
+                                    <th className="px-4 py-3 text-center">Injected Units</th>
+                                    <th className="px-4 py-3 text-center">Closed POs</th>
+                                    <th className="px-4 py-3">Top Injected Item</th>
+                                    <th className="px-4 py-3 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {siteComparison.map((site, idx) => {
+                                    const hasActivity = site.injectedValue > 0 || site.injectedQty > 0;
+                                    const isSiteSelected = isAllSelected || selectedSites.includes(site.site);
+                                    return (
+                                        <tr key={`${site.site}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                            <td className="px-4 py-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onToggleSite(site.site)}
+                                                    className={`w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0 ${
+                                                        isSiteSelected
+                                                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                                                            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-transparent'
+                                                    }`}
+                                                    title={`Toggle ${site.site} in comparative filter`}
+                                                >
+                                                    {isSiteSelected && <Check size={11} strokeWidth={3} />}
+                                                </button>
+                                                <div className={`w-6 h-6 rounded flex items-center justify-center font-black text-[10px] shrink-0 ${
+                                                    hasActivity ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                                                }`}>
+                                                    {idx + 1}
+                                                </div>
+                                                <span>{site.site}</span>
+                                            </td>
+                                            <td className={`px-4 py-3 text-right font-bold text-sm ${hasActivity ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-600'}`}>
+                                                {currency(site.injectedValue)}
+                                            </td>
+                                            <td className="px-4 py-3 min-w-[140px]">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex-1 bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
+                                                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, site.spendPct)}%` }} />
+                                                    </div>
+                                                    <span className="text-[11px] font-medium text-secondary dark:text-gray-400 w-10 text-right">{percentValue(site.spendPct)}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-center font-medium text-gray-800 dark:text-gray-200">
+                                                {numberValue(site.injectedQty)}
+                                            </td>
+                                            <td className="px-4 py-3 text-center text-secondary dark:text-gray-400 font-mono">
+                                                {site.orderCount}
+                                            </td>
+                                            <td className="px-4 py-3 text-secondary dark:text-gray-300 max-w-[200px] truncate" title={site.topItemName}>
+                                                {site.topItemName || (hasActivity ? '-' : <span className="italic text-tertiary dark:text-gray-500 text-[11px]">No injection in period</span>)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onSelectOnlySite(site.site)}
+                                                    className="px-2.5 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-[var(--color-brand)] hover:text-white dark:hover:bg-[var(--color-brand)] text-gray-700 dark:text-gray-300 rounded font-semibold text-[11px] transition-colors inline-flex items-center gap-1 shadow-xs"
+                                                    title={`View detailed item breakdown for ${site.site}`}
+                                                >
+                                                    Item Breakdown <ArrowRight size={12} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {siteComparison.length === 0 && (
+                                    <tr>
+                                        <td colSpan={7} className="text-center py-8 text-secondary dark:text-gray-400">No site activity found for selected filter.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ) : (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] overflow-hidden shadow-sm">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-gray-50/50 dark:bg-white/5">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <Package size={16} className="text-emerald-600" />
+                                Injected Linen Item &amp; Cost Breakdown for {singleSiteName}
+                            </h3>
+                            <p className="text-xs text-tertiary dark:text-gray-500 mt-0.5">
+                                Line item receipted quantities, unit prices, total cost, and delivery dates for this site (closed POs only)
+                            </p>
+                        </div>
+                        <span className="text-xs font-semibold text-secondary dark:text-gray-400">
+                            {siteItemBreakdown.length} Distinct Products
+                        </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-gray-50/80 dark:bg-gray-900/40 text-secondary dark:text-gray-400 uppercase text-[10px] font-bold border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="px-4 py-3">Item Name / SKU</th>
+                                    <th className="px-4 py-3">Category</th>
+                                    <th className="px-4 py-3">Supplier</th>
+                                    <th className="px-4 py-3 text-center text-emerald-600 dark:text-emerald-400">Injected QTY</th>
+                                    <th className="px-4 py-3 text-center">Ordered QTY</th>
+                                    <th className="px-4 py-3 text-right">Unit Price</th>
+                                    <th className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400 font-bold">Total Injected Cost</th>
+                                    <th className="px-4 py-3">% Site Spend</th>
+                                    <th className="px-4 py-3">Latest Activity</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {siteItemBreakdown.map((item, idx) => (
+                                    <tr key={`${item.item}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                        <td className="px-4 py-3">
+                                            <div className="font-bold text-gray-900 dark:text-white max-w-[240px] truncate" title={item.item}>{item.item}</div>
+                                            <div className="text-[10px] text-tertiary dark:text-gray-500 font-mono">{item.sku || '-'}</div>
+                                        </td>
+                                        <td className="px-4 py-3 text-secondary dark:text-gray-400">
+                                            <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[10px] font-medium">{item.category}</span>
+                                        </td>
+                                        <td className="px-4 py-3 text-secondary dark:text-gray-300 font-medium">
+                                            {item.supplier}
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">
+                                            {numberValue(item.injectedQty)}
+                                        </td>
+                                        <td className="px-4 py-3 text-center text-secondary dark:text-gray-400 font-medium">
+                                            {numberValue(item.orderedQty)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-secondary dark:text-gray-400 font-mono">
+                                            {currency(item.unitPrice)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20 text-sm">
+                                            {currency(item.injectedValue)}
+                                        </td>
+                                        <td className="px-4 py-3 min-w-[120px]">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                                                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, item.spendPct)}%` }} />
+                                                </div>
+                                                <span className="text-[10px] text-secondary dark:text-gray-400 w-8 text-right">{percentValue(item.spendPct)}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-secondary dark:text-gray-400 whitespace-nowrap text-[11px]">
+                                            {item.latestDate}
+                                        </td>
+                                    </tr>
+                                ))}
+                                {siteItemBreakdown.length === 0 && (
+                                    <tr>
+                                        <td colSpan={9} className="text-center py-8 text-secondary dark:text-gray-400">No items found for this site.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -1886,7 +3588,9 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-6 py-4">Received / Docket</th>
                         <th className="px-6 py-4">Supplier</th>
                         <th className="px-6 py-4">Invoice #</th>
-                        <th className="px-6 py-4 text-right">Value</th>
+                        <th className="px-6 py-4 text-right">Value (Ex GST)</th>
+                        <th className="px-6 py-4 text-right">GST (10%)</th>
+                        <th className="px-6 py-4 text-right">Total (Inc GST)</th>
                         <th className="px-6 py-4 text-center">Capitalised</th>
                         <th className="px-6 py-4">Date</th>
                     </>
@@ -1895,7 +3599,9 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                     <>
                         <th className="px-6 py-4">PO Details</th>
                         <th className="px-6 py-4">Requester</th>
-                        <th className="px-6 py-4 text-right">Total</th>
+                        <th className="px-6 py-4 text-right">Subtotal (Ex GST)</th>
+                        <th className="px-6 py-4 text-right">GST (10%)</th>
+                        <th className="px-6 py-4 text-right">Total (Inc GST)</th>
                         <th className="px-6 py-4 text-center">Lines</th>
                         <th className="px-6 py-4">Status</th>
                     </>
@@ -1908,10 +3614,25 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-5 py-4 text-center">Ordered</th>
                         <th className="px-5 py-4 text-center">Received</th>
                         <th className="px-5 py-4 text-center text-orange-500">Remaining</th>
-                        <th className="px-5 py-4 text-right">Unit Price</th>
-                        <th className="px-5 py-4 text-right">Ordered Value</th>
-                        <th className="px-5 py-4 text-right">Received Value</th>
-                        <th className="px-5 py-4 text-right text-orange-500">Open Value</th>
+                        <th className="px-5 py-4 text-right">Unit Price (Ex)</th>
+                        <th className="px-5 py-4 text-right">Ordered (Inc GST)</th>
+                        <th className="px-5 py-4 text-right">Received (Inc GST)</th>
+                        <th className="px-5 py-4 text-right text-orange-500">Open (Inc GST)</th>
+                        <th className="px-5 py-4">Status</th>
+                    </>
+                )}
+                {activeReport === 'LINEN_INJECTION' && (
+                    <>
+                        <th className="px-5 py-4">Request # / PO # / Date</th>
+                        <th className="px-5 py-4">Site / Requester</th>
+                        <th className="px-5 py-4">Supplier</th>
+                        <th className="px-5 py-4">Item / SKU</th>
+                        <th className="px-5 py-4 text-center text-emerald-600 dark:text-emerald-400">Injected QTY</th>
+                        <th className="px-5 py-4 text-center">Ordered QTY</th>
+                        <th className="px-5 py-4 text-right">Unit Price (Ex)</th>
+                        <th className="px-5 py-4 text-right text-emerald-600 dark:text-emerald-400">Injected (Inc GST)</th>
+                        <th className="px-5 py-4 text-right">Ordered (Inc GST)</th>
+                        <th className="px-5 py-4">Completion Date</th>
                         <th className="px-5 py-4">Status</th>
                     </>
                 )}
@@ -1934,10 +3655,17 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                             <td className="px-5 py-4 text-center font-medium">{numberValue(r.orderedQty)}</td>
                             <td className="px-5 py-4 text-center font-medium">{numberValue(r.receivedQty)}</td>
                             <td className="px-5 py-4 text-center font-bold text-orange-500">{numberValue(r.pendingQty)}</td>
-                            <td className="px-5 py-4 text-right font-medium">{currency(r.orderedValue)}</td>
-                            <td className="px-5 py-4 text-right font-medium">{currency(r.receivedValue)}</td>
-                            <td className={`px-5 py-4 text-right font-bold ${r.varianceValue > 0 ? 'text-red-500' : r.varianceValue < 0 ? 'text-orange-500' : 'text-emerald-500'}`}>
-                                {r.varianceValue > 0 ? '+' : ''}{currency(r.varianceValue)}
+                            <td className="px-5 py-4 text-right font-medium">
+                                <div>{currency(Number(r.orderedValueIncGst ?? (Number(r.orderedValue || 0) * 1.10)))}</div>
+                                <div className="text-[10px] text-gray-400">({currency(Number(r.orderedValue || 0))} ex)</div>
+                            </td>
+                            <td className="px-5 py-4 text-right font-medium">
+                                <div>{currency(Number(r.receivedValueIncGst ?? (Number(r.receivedValue || 0) * 1.10)))}</div>
+                                <div className="text-[10px] text-gray-400">({currency(Number(r.receivedValue || 0))} ex)</div>
+                            </td>
+                            <td className={`px-5 py-4 text-right font-bold ${Number(r.varianceValue || 0) > 0 ? 'text-red-500' : Number(r.varianceValue || 0) < 0 ? 'text-orange-500' : 'text-emerald-500'}`}>
+                                <div>{Number(r.varianceValue || 0) > 0 ? '+' : ''}{currency(Number(r.varianceValueIncGst ?? (Number(r.varianceValue || 0) * 1.10)))}</div>
+                                <div className="text-[10px] font-normal text-gray-400">({currency(Number(r.varianceValue || 0))} ex)</div>
                             </td>
                         </tr>
                     );
@@ -1949,6 +3677,7 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         {activeReport === 'ALL_DELIVERIES' && <AllDeliveryRow row={row} />}
                         {activeReport === 'DELIVERY_VARIANCE' && <DeliveryVarianceRow row={row as DeliveryVarianceReportRow} />}
                         {activeReport === 'ITEM_REQUEST_HISTORY' && <ItemRequestHistoryRowView row={row as ItemRequestHistoryRow} />}
+                        {activeReport === 'LINEN_INJECTION' && <LinenInjectionRowView row={row as LinenInjectionReportRow} />}
                         {activeReport === 'MONTHLY_SUMMARY' && <MonthlySummaryRow row={row as MonthlySummaryReportRow} />}
                         {activeReport === 'FINANCE_SUMMARY' && <FinanceRow row={row} />}
                         {activeReport === 'PO_STATUS' && <PoStatusRow row={row} />}
@@ -1980,8 +3709,80 @@ const ItemRequestHistoryRowView = ({ row }: { row: ItemRequestHistoryRow }) => (
         <td className="px-5 py-3 text-center font-medium">{numberValue(row.orderedQty)}</td>
         <td className="px-5 py-3 text-center text-green-600">{numberValue(row.receivedQty)}</td>
         <td className="px-5 py-3 text-center font-bold text-orange-500">{numberValue(row.remainingQty)}</td>
-        <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(row.totalValue)}</td>
+        <td className="px-5 py-3 text-right font-medium">{currency(row.totalValue)}</td>
         <td className="px-5 py-3"><StatusPill label={statusLabel(row.status)} /></td>
+    </>
+);
+
+const LinenInjectionRowView = ({ row }: { row: LinenInjectionReportRow }) => (
+    <>
+        <td className="px-5 py-3">
+            <div className="font-bold text-gray-900 dark:text-white">{row.requestNumber}</div>
+            {row.concurRequestNumber && (
+                <div className="text-[10px] text-tertiary dark:text-gray-500 font-mono">Concur Req: {row.concurRequestNumber}</div>
+            )}
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">PO: {row.poNumber || '-'}</div>
+            <div className="text-[10px] text-tertiary dark:text-gray-400">{row.requestDate}</div>
+            {row.dockets && row.dockets !== '-' && (
+                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[180px] mt-0.5" title={`Dockets: ${row.dockets}`}>Dockets: {row.dockets}</div>
+            )}
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white">{row.site}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500">{row.requester}</div>
+            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                    row.reasonForRequest === 'New Customer'
+                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                        : row.reasonForRequest === 'Other'
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                            : 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300'
+                }`}>
+                    {row.reasonForRequest || 'Depletion'}
+                </span>
+                {row.customerName && (
+                    <span className="text-[10px] text-gray-500 truncate max-w-[120px]" title={row.customerName}>
+                        {row.customerName}
+                    </span>
+                )}
+            </div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white">{row.supplier}</div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white max-w-[200px] truncate" title={row.item}>{row.item}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.sku || '-'}</div>
+            <div className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">{row.category}</div>
+            {row.invoices && row.invoices !== '-' && (
+                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[180px] mt-0.5" title={`Invoices: ${row.invoices}`}>Invoices: {row.invoices}</div>
+            )}
+        </td>
+        <td className="px-5 py-3 text-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-900/10">
+            <div>{numberValue(row.injectedQty)}</div>
+            {row.deliveryDates && row.deliveryDates !== '-' && (
+                <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[120px] mx-auto" title={`Delivered: ${row.deliveryDates}`}>Delivered: {row.deliveryDates}</div>
+            )}
+        </td>
+        <td className="px-5 py-3 text-center font-medium text-gray-600 dark:text-gray-400">{numberValue(row.orderedQty)}</td>
+        <td className="px-5 py-3 text-right text-secondary dark:text-gray-400">{currency(row.unitPrice)}</td>
+        <td className="px-5 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-900/10">
+            <div>{currency(row.injectedValueIncGst ?? row.injectedValue * 1.10)}</div>
+            <div className="text-[10px] font-normal text-gray-400">({currency(row.injectedValue)} ex)</div>
+        </td>
+        <td className="px-5 py-3 text-right font-medium text-gray-600 dark:text-gray-300">
+            <div>{currency(row.orderedValueIncGst ?? row.orderedValue * 1.10)}</div>
+            <div className="text-[10px] text-gray-400">({currency(row.orderedValue)} ex)</div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white text-xs">{row.closedDate}</div>
+            {row.latestDeliveryDate && row.latestDeliveryDate !== '-' && row.latestDeliveryDate !== row.closedDate && (
+                <div className="text-[10px] text-tertiary dark:text-gray-500">Delivered: {row.latestDeliveryDate}</div>
+            )}
+        </td>
+        <td className="px-5 py-3">
+            <StatusPill label="CLOSED" />
+        </td>
     </>
 );
 
@@ -2018,9 +3819,18 @@ const MonthlySummaryRow = ({ row }: { row: MonthlySummaryReportRow }) => (
         </td>
         <td className="px-5 py-3 text-center font-bold text-orange-500 bg-orange-50/50 dark:bg-orange-900/5">{numberValue(row.remainingQty)}</td>
         <td className="px-5 py-3 text-right text-secondary dark:text-gray-400">{currency(row.unitPrice)}</td>
-        <td className="px-5 py-3 text-right font-medium">{currency(row.orderedValue)}</td>
-        <td className="px-5 py-3 text-right font-medium text-green-600 dark:text-green-400">{currency(row.receivedValue)}</td>
-        <td className="px-5 py-3 text-right font-bold text-orange-500 bg-orange-50/50 dark:bg-orange-900/5">{currency(row.openValue)}</td>
+        <td className="px-5 py-3 text-right font-medium">
+            <div>{currency(row.orderedValueIncGst ?? row.orderedValue * 1.10)}</div>
+            <div className="text-[10px] text-gray-400">({currency(row.orderedValue)} ex)</div>
+        </td>
+        <td className="px-5 py-3 text-right font-medium text-green-600 dark:text-green-400">
+            <div>{currency(row.receivedValueIncGst ?? row.receivedValue * 1.10)}</div>
+            <div className="text-[10px] text-gray-400">({currency(row.receivedValue)} ex)</div>
+        </td>
+        <td className="px-5 py-3 text-right font-bold text-orange-500 bg-orange-50/50 dark:bg-orange-900/5">
+            <div>{currency(row.openValueIncGst ?? row.openValue * 1.10)}</div>
+            <div className="text-[10px] font-normal text-gray-400">({currency(row.openValue)} ex)</div>
+        </td>
         <td className="px-5 py-3"><StatusPill label={statusLabel(row.status)} /></td>
     </>
 );
@@ -2101,6 +3911,8 @@ const FinanceRow = ({ row }: { row: ReportRow }) => (
         </td>
         <td className="px-6 py-3 font-mono text-xs">{row.invoice}</td>
         <td className="px-6 py-3 text-right font-medium">{currency(Number(row.amount || 0))}</td>
+        <td className="px-6 py-3 text-right font-mono text-xs text-gray-500">{currency(Number(row.taxAmount || 0))}</td>
+        <td className="px-6 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(Number(row.amountIncGst || 0))}</td>
         <td className="px-6 py-3 text-center">
             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${row.isCapitalised === 'Yes' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-secondary dark:bg-white/10 dark:text-gray-400'}`}>
                 {row.isCapitalised}
@@ -2120,7 +3932,9 @@ const PoStatusRow = ({ row }: { row: ReportRow }) => (
             <div className="text-sm">{row.requester}</div>
             <div className="text-xs text-tertiary dark:text-gray-400">{row.date}</div>
         </td>
-        <td className="px-6 py-3 text-right font-medium">{currency(Number(row.total || 0))}</td>
+        <td className="px-6 py-3 text-right font-mono text-xs">{currency(Number(row.subtotalExGst ?? (row.total || 0)))}</td>
+        <td className="px-6 py-3 text-right font-mono text-xs text-gray-500">{currency(Number(row.taxGst || 0))}</td>
+        <td className="px-6 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(Number(row.totalIncGst ?? (row.total || 0)))}</td>
         <td className="px-6 py-3 text-center">{row.lineCount}</td>
         <td className="px-6 py-3"><StatusPill label={statusLabel(String(row.status))} /></td>
     </>
@@ -2417,5 +4231,339 @@ const SupplierPriceVarianceVisual = ({ rows, chartMetric }: { rows: any[]; chart
         </div>
     );
 };
+
+
+interface EomBudgetReconciliationVisualProps {
+    pos: PORequest[];
+    selectedMonth: string;
+    onSelectMonth: (m: string) => void;
+    onExportConcurCsv: () => void;
+}
+
+const EomBudgetReconciliationVisual: React.FC<EomBudgetReconciliationVisualProps> = ({
+    pos,
+    selectedMonth,
+    onSelectMonth,
+    onExportConcurCsv
+}) => {
+    const [subTab, setSubTab] = useState<'PIVOT' | 'BUDGET_VARIANCE' | 'CHARTS'>('PIVOT');
+
+    const targetMonth = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[1], 10) : 8;
+    const targetYear = selectedMonth !== 'ALL' ? parseInt(selectedMonth.split('-')[0], 10) : 2026;
+
+    const recon = useMemo(() => {
+        return buildEomReconciliation(pos, { targetMonth, targetYear });
+    }, [pos, targetMonth, targetYear]);
+
+    const monthOptions = [
+        { key: '2026-07', label: 'July 2026 (Jul-26)' },
+        { key: '2026-08', label: 'August 2026 (Aug-26)' },
+        { key: '2026-09', label: 'September 2026 (Sep-26)' },
+        { key: '2026-10', label: 'October 2026 (Oct-26)' },
+        { key: '2026-11', label: 'November 2026 (Nov-26)' },
+        { key: '2026-12', label: 'December 2026 (Dec-26)' },
+        { key: '2027-01', label: 'January 2027 (Jan-27)' },
+        { key: '2027-02', label: 'February 2027 (Feb-27)' },
+        { key: '2027-03', label: 'March 2027 (Mar-27)' },
+        { key: '2027-04', label: 'April 2027 (Apr-27)' },
+        { key: '2027-05', label: 'May 2027 (May-27)' },
+        { key: '2027-06', label: 'June 2027 (Jun-27)' }
+    ];
+
+    const chartData = useMemo(() => {
+        return recon.trackingRows.map(r => ({
+            name: r.siteName,
+            depletionActual: r.depletionCurrentMonth,
+            depletionBudget: r.monthlyBudgetDepletion,
+            newBusinessActual: r.newBusinessCurrentMonth,
+            newBusinessBudget: r.monthlyBudgetNewBusiness
+        }));
+    }, [recon]);
+
+    const totalDepMonth = recon.pivotTotals.depletion.total;
+    const totalNbMonth = recon.pivotTotals.newBusiness.total;
+    const totalMonthBudgetDep = 826750;
+    const totalMonthBudgetNb = 191666.67;
+    const depVariance = totalMonthBudgetDep - totalDepMonth;
+    const nbVariance = totalMonthBudgetNb - totalNbMonth;
+
+    return (
+        <div className="p-4 sm:p-6 space-y-6 overflow-y-auto flex-1 max-w-[1700px] mx-auto w-full">
+            {/* Header Controls & Month Selector */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-nocturne p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Reconciliation Period:</span>
+                    <select
+                        value={selectedMonth === 'ALL' ? '2026-08' : selectedMonth}
+                        onChange={(e) => onSelectMonth(e.target.value)}
+                        className="bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
+                    >
+                        {monthOptions.map(m => (
+                            <option key={m.key} value={m.key}>{m.label}</option>
+                        ))}
+                    </select>
+
+                    <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 p-1">
+                        <button
+                            type="button"
+                            onClick={() => setSubTab('PIVOT')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                subTab === 'PIVOT' ? 'bg-[var(--color-brand)] text-white shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            }`}
+                        >
+                            Pivot Reconciliation
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSubTab('BUDGET_VARIANCE')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                subTab === 'BUDGET_VARIANCE' ? 'bg-[var(--color-brand)] text-white shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            }`}
+                        >
+                            Budget vs Actuals Grid
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSubTab('CHARTS')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                subTab === 'CHARTS' ? 'bg-[var(--color-brand)] text-white shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            }`}
+                        >
+                            Visual Comparison
+                        </button>
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={onExportConcurCsv}
+                    className="btn-primary text-xs flex items-center gap-2 py-2 px-4 shadow-sm"
+                >
+                    <Download size={14} /> Download Concur EOM Excel CSV
+                </button>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div className="bg-white dark:bg-nocturne p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Depletion Spend ({recon.month})</span>
+                        <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${depVariance >= 0 ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300'}`}>
+                            {depVariance >= 0 ? `+${currency(depVariance)} under` : `${currency(Math.abs(depVariance))} over`}
+                        </span>
+                    </div>
+                    <div className="text-2xl font-black text-gray-900 dark:text-white mt-2">{currency(totalDepMonth)}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex justify-between">
+                        <span>Target: {currency(totalMonthBudgetDep)}/mo</span>
+                        <span>Burn: {((totalDepMonth / totalMonthBudgetDep) * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-nocturne p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">New Business ({recon.month})</span>
+                        <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${nbVariance >= 0 ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300'}`}>
+                            {nbVariance >= 0 ? `+${currency(nbVariance)} under` : `${currency(Math.abs(nbVariance))} over`}
+                        </span>
+                    </div>
+                    <div className="text-2xl font-black text-gray-900 dark:text-white mt-2">{currency(totalNbMonth)}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex justify-between">
+                        <span>Target: {currency(totalMonthBudgetNb)}/mo</span>
+                        <span>Burn: {((totalNbMonth / totalMonthBudgetNb) * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-nocturne p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Linen Hub Allocation</span>
+                        <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300">
+                            $2.30M Budget
+                        </span>
+                    </div>
+                    <div className="text-2xl font-black text-gray-900 dark:text-white mt-2">{currency(recon.contractSubtotals.linenHubRemaining)}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex justify-between">
+                        <span>Spent YTD: {currency(recon.contractSubtotals.linenHubYtd)}</span>
+                        <span>Rem: {((recon.contractSubtotals.linenHubRemaining / 2300000) * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-nocturne p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                    <div className="flex justify-between items-start">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Strategic Contracts YTD</span>
+                        <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300">
+                            HSV & RHC
+                        </span>
+                    </div>
+                    <div className="text-sm font-bold text-gray-900 dark:text-white mt-2 space-y-1">
+                        <div className="flex justify-between">
+                            <span className="text-gray-500 font-normal">HSV YTD:</span>
+                            <span>{currency(recon.contractSubtotals.hsvYtd)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500 font-normal">RHC Depletion:</span>
+                            <span>{currency(recon.contractSubtotals.rhcDepletionYtd)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500 font-normal">RHC New Business:</span>
+                            <span>{currency(recon.contractSubtotals.rhcNewBusinessYtd)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* TAB 1: Pivot Matrix View (Ash's Excel Format) */}
+            {subTab === 'PIVOT' && (
+                <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs overflow-hidden">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/[0.02]">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Spend Reconciliation Pivot Table (Excl. GST)</h3>
+                            <p className="text-xs text-gray-500">Cross-tabulation by Operating Branch, Spend Category, and Sector for {recon.month} {recon.year}.</p>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-gray-100/80 dark:bg-[#15171e] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="px-5 py-3.5">Branch / Site</th>
+                                    <th className="px-5 py-3.5">Category</th>
+                                    <th className="px-5 py-3.5 text-right">Accommodation ($)</th>
+                                    <th className="px-5 py-3.5 text-right">Healthcare ($)</th>
+                                    <th className="px-5 py-3.5 text-right">Subtotal ($ Excl. GST)</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {recon.pivotRows.map((row) => (
+                                    <React.Fragment key={row.branch}>
+                                        {row.depletion.total > 0 && (
+                                            <tr className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                                <td className="px-5 py-2.5 font-bold text-gray-900 dark:text-white">{row.siteName} ({row.branch})</td>
+                                                <td className="px-5 py-2.5 text-blue-600 dark:text-blue-400 font-semibold">Depletion</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.depletion.accommodation)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.depletion.healthcare)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono font-bold text-gray-900 dark:text-white">{currency(row.depletion.total)}</td>
+                                            </tr>
+                                        )}
+                                        {row.newBusiness.total > 0 && (
+                                            <tr className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                                <td className="px-5 py-2.5 font-bold text-gray-900 dark:text-white">{row.siteName} ({row.branch})</td>
+                                                <td className="px-5 py-2.5 text-purple-600 dark:text-purple-400 font-semibold">New Business</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.newBusiness.accommodation)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.newBusiness.healthcare)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono font-bold text-gray-900 dark:text-white">{currency(row.newBusiness.total)}</td>
+                                            </tr>
+                                        )}
+                                        {row.linenHub.total > 0 && (
+                                            <tr className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                                <td className="px-5 py-2.5 font-bold text-gray-900 dark:text-white">{row.siteName} ({row.branch})</td>
+                                                <td className="px-5 py-2.5 text-emerald-600 dark:text-emerald-400 font-semibold">Linen Hub</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.linenHub.accommodation)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono">{currency(row.linenHub.healthcare)}</td>
+                                                <td className="px-5 py-2.5 text-right font-mono font-bold text-gray-900 dark:text-white">{currency(row.linenHub.total)}</td>
+                                            </tr>
+                                        )}
+                                        {row.grandTotal.total > 0 && (
+                                            <tr className="bg-gray-50/80 dark:bg-white/[0.03] font-bold border-b border-gray-200 dark:border-gray-800">
+                                                <td className="px-5 py-2 text-gray-500 italic" colSpan={2}>{row.siteName} Total</td>
+                                                <td className="px-5 py-2 text-right font-mono">{currency(row.grandTotal.accommodation)}</td>
+                                                <td className="px-5 py-2 text-right font-mono">{currency(row.grandTotal.healthcare)}</td>
+                                                <td className="px-5 py-2 text-right font-mono text-[var(--color-brand)]">{currency(row.grandTotal.total)}</td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
+                                ))}
+                            </tbody>
+                            <tfoot className="bg-gray-100 dark:bg-[#15171e] font-black text-xs border-t-2 border-gray-300 dark:border-gray-700">
+                                <tr>
+                                    <td className="px-5 py-3 text-gray-900 dark:text-white" colSpan={2}>GRAND TOTAL (ALL BRANCHES)</td>
+                                    <td className="px-5 py-3 text-right font-mono text-gray-900 dark:text-white">{currency(recon.pivotTotals.grandTotal.accommodation)}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-gray-900 dark:text-white">{currency(recon.pivotTotals.grandTotal.healthcare)}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-emerald-600 dark:text-emerald-400 text-sm">{currency(recon.pivotTotals.grandTotal.total)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 2: Budget vs Actuals Grid */}
+            {subTab === 'BUDGET_VARIANCE' && (
+                <div className="bg-white dark:bg-nocturne rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs overflow-hidden">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/[0.02]">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Branch Spend vs Monthly & Annual Budgets (FY27)</h3>
+                            <p className="text-xs text-gray-500">Tracking monthly and YTD burn rates against the baseline $14.521M operating budget.</p>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-gray-100/80 dark:bg-[#15171e] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="px-4 py-3.5">Operating Branch</th>
+                                    <th className="px-4 py-3.5 text-right">Depletion Actual</th>
+                                    <th className="px-4 py-3.5 text-right">Monthly Budget</th>
+                                    <th className="px-4 py-3.5 text-right">Depletion Var</th>
+                                    <th className="px-4 py-3.5 text-right">New Business Actual</th>
+                                    <th className="px-4 py-3.5 text-right">NB Budget</th>
+                                    <th className="px-4 py-3.5 text-right">NB Var</th>
+                                    <th className="px-4 py-3.5 text-right">Annual Budget</th>
+                                    <th className="px-4 py-3.5 text-center">YTD Burn %</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {recon.trackingRows.map((r) => (
+                                    <tr key={r.branch} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                        <td className="px-4 py-3 font-bold text-gray-900 dark:text-white">{r.siteName}</td>
+                                        <td className="px-4 py-3 text-right font-mono">{currency(r.depletionCurrentMonth)}</td>
+                                        <td className="px-4 py-3 text-right font-mono text-gray-500">{currency(r.monthlyBudgetDepletion)}</td>
+                                        <td className={`px-4 py-3 text-right font-mono font-bold ${r.varianceDepletion >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                            {r.varianceDepletion >= 0 ? `+${currency(r.varianceDepletion)}` : currency(r.varianceDepletion)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-mono">{currency(r.newBusinessCurrentMonth)}</td>
+                                        <td className="px-4 py-3 text-right font-mono text-gray-500">{currency(r.monthlyBudgetNewBusiness)}</td>
+                                        <td className={`px-4 py-3 text-right font-mono font-bold ${r.varianceNewBusiness >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                            {r.varianceNewBusiness >= 0 ? `+${currency(r.varianceNewBusiness)}` : currency(r.varianceNewBusiness)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-mono font-bold text-gray-900 dark:text-white">{currency(r.totalAnnualBudget)}</td>
+                                        <td className="px-4 py-3 text-center">
+                                            <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300">
+                                                {r.spendYtdPercent}%
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 3: Visual Comparison Charts */}
+            {subTab === 'CHARTS' && (
+                <div className="bg-white dark:bg-nocturne p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Monthly Spend vs Monthly Budget by Branch</h3>
+                    <div className="h-[360px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                                <XAxis dataKey="name" stroke="#888888" fontSize={12} />
+                                <YAxis stroke="#888888" fontSize={12} tickFormatter={(v) => `$${Math.round(v / 1000)}k`} />
+                                <RechartsTooltip
+                                    formatter={(value: any) => [`$${Number(value).toLocaleString()}`, '']}
+                                    contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
+                                />
+                                <Legend />
+                                <Bar dataKey="depletionActual" name="Depletion Actual" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="depletionBudget" name="Depletion Budget" fill="#93c5fd" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="newBusinessActual" name="New Business Actual" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="newBusinessBudget" name="New Business Budget" fill="#d8b4fe" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 export default ReportingView;

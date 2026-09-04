@@ -52,7 +52,52 @@ test.describe('Item Catalogue', () => {
         await gotoAndWait(page, '/item-catalogue');
         const searchInput = page.locator('input[placeholder*="Search"]');
         await searchInput.fill('test');
-        await expect(page.locator('button:has-text("Clear filters")')).toBeVisible();
+        await expect(page.locator('button:has-text("Clear")').first()).toBeVisible();
+    });
+
+    test('supports quick search by price and GSM values', async ({ page }) => {
+        await injectTestUser(page, ['view_dashboard', 'view_items']);
+        await gotoAndWait(page, '/item-catalogue');
+        const searchInput = page.locator('input[placeholder*="Search"]');
+        
+        // Search by numeric GSM value
+        await searchInput.fill('250');
+        await page.waitForTimeout(300);
+        await expect(page.locator('text=/\\d+ items?/')).toBeVisible();
+
+        // Clear search
+        await searchInput.fill('');
+        await page.waitForTimeout(200);
+
+        // Search by dollar price
+        await searchInput.fill('$10');
+        await page.waitForTimeout(300);
+        await expect(page.locator('text=/\\d+ items?/')).toBeVisible();
+    });
+
+    test('opens filter drawer with price and GSM range controls', async ({ page }) => {
+        await injectTestUser(page, ['view_dashboard', 'view_items']);
+        await gotoAndWait(page, '/item-catalogue');
+        
+        const filterToggle = page.locator('button:has-text("Filters")');
+        await filterToggle.click();
+
+        await expect(page.locator('input[placeholder="Min $"]')).toBeVisible();
+        await expect(page.locator('input[placeholder="Max $"]')).toBeVisible();
+        await expect(page.locator('input[placeholder="Min GSM"]')).toBeVisible();
+        await expect(page.locator('input[placeholder="Max GSM"]')).toBeVisible();
+
+        // Fill Min Price
+        await page.locator('input[placeholder="Min $"]').fill('5');
+        await page.waitForTimeout(300);
+
+        // Active filter chip should appear
+        await expect(page.locator('text=Active Filters:')).toBeVisible();
+        await expect(page.locator('text=/Price: \\$5/')).toBeVisible();
+
+        // Clear all filters
+        await page.locator('button:has-text("Clear All")').click();
+        await expect(page.locator('text=Active Filters:')).not.toBeVisible();
     });
 
     test('refresh button works', async ({ page }) => {

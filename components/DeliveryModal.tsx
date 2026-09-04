@@ -10,7 +10,7 @@ interface Props {
     po: PORequest;
     currentUser: User;
     onClose: () => void;
-    onSubmit: (delivery: DeliveryHeader, closedLineIds: string[], newLines: POLineItem[]) => void;
+    onSubmit: (delivery: DeliveryHeader, closedLineIds: string[], newLines: POLineItem[]) => Promise<void>;
 }
 
 const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
@@ -120,9 +120,19 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
 
             if (deliveryLines.length === 0 && closedLines.size === 0) return;
 
+            let deliveryDate = date;
+            if (deliveryDate) {
+                const parts = deliveryDate.split('-');
+                if (parts.length === 3) {
+                    let y = parseInt(parts[0], 10);
+                    if (y < 100) y += 2000;
+                    deliveryDate = `${y}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                }
+            }
+
             const header: DeliveryHeader = {
                 id: uuidv4(),
-                date,
+                date: deliveryDate,
                 docketNumber,
                 receivedBy: currentUser.name,
                 receivedById: currentUser.id,
@@ -150,8 +160,9 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                     </div>
                     <button 
                         type="button"
-                        onClick={onClose} 
-                        className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors"
+                        onClick={onClose}
+                        disabled={isSubmitting} 
+                        className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <X size={20}/>
                     </button>
@@ -177,6 +188,8 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                                 <input 
                                     required
                                     type="date" 
+                                    min="2020-01-01"
+                                    max="2035-12-31"
                                     className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-300 dark:border-gray-700 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-[var(--color-brand)] outline-none"
                                     value={date} 
                                     onChange={e => setDate(e.target.value)} 
@@ -348,7 +361,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                     </div>
 
                     <div className="p-5 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#15171e] flex justify-end gap-3 rounded-b-2xl">
-                        <button type="button" onClick={onClose} className="px-5 py-2.5 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors">Cancel</button>
+                        <button type="button" onClick={onClose} disabled={isSubmitting} className="px-5 py-2.5 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
                         <button 
                             type="submit" 
                             disabled={isSubmitting || (Object.values(receipts).every(v => v === 0) && closedLines.size === 0)}

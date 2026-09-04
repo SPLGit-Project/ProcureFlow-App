@@ -1057,7 +1057,7 @@ const HelpGuide = () => {
             'On Desktop: Use the "Install App" button in the bottom right corner.',
             'On iOS: Tap "Share" and select "Add to Home Screen".',
             'On Android: Follow the browser prompt or go to settings -> Install App.',
-            'MercerFlow works offline and provides a faster, fullscreen experience when installed.'
+            'ProcureFlow works offline and provides a faster, fullscreen experience when installed.'
           ]
         }
       ]
@@ -1342,7 +1342,7 @@ const HelpGuide = () => {
   const faqs = [
     {
       q: 'How do I reset my password?',
-      a: 'MercerFlow integrates with your company single sign-on. Please reset your password via your corporate security portal (e.g., Azure AD/Office 365).'
+      a: 'ProcureFlow integrates with your company single sign-on. Please reset your password via your corporate security portal (e.g., Azure AD/Office 365).'
     },
     {
       q: 'What determines the approval threshold?',
@@ -1363,7 +1363,7 @@ const HelpGuide = () => {
     <div className="max-w-7xl mx-auto pb-20 animate-fade-in px-4">
       <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
         <div>
-          <PageHeader title="Help & Support" subtitle={`Master every feature of ${branding.appName || 'MercerFlow'}.`} />
+          <PageHeader title="Help & Support" subtitle={`Master every feature of ${branding.appName || 'ProcureFlow'}.`} />
         </div>
         <div className="relative w-full md:w-96 group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[var(--color-brand)] transition-colors" size={20} />

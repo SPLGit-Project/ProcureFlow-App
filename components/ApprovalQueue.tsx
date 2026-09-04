@@ -365,34 +365,37 @@ function ApprovalCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-6 shrink-0">
-            <SlaBadge deadline={approval.sla_deadline} breached={approval.sla_breached} />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-800">
+            <div className="shrink-0">
+              <SlaBadge deadline={approval.sla_deadline} breached={approval.sla_breached} />
+            </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <button 
                 onClick={() => onStartDecision('APPROVED')}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm shadow-emerald-600/20"
+                className="flex-1 sm:flex-initial px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-600/20 active:scale-95 text-center"
               >
                 Approve
               </button>
               <Link
                 to={`/items/requests/${approval.request_id}/approve`}
-                className="px-4 py-2 bg-[var(--color-brand)] hover:opacity-90 text-white rounded-xl text-xs font-bold transition-colors shadow-sm shadow-[var(--color-brand)]/20 flex items-center gap-1.5"
+                className="flex-1 sm:flex-initial px-3.5 py-2.5 bg-[var(--color-brand)] hover:opacity-90 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-[var(--color-brand)]/20 active:scale-95 flex items-center justify-center gap-1"
               >
                 <Eye size={14} />
                 Review
               </Link>
               <button 
                 onClick={() => onStartDecision('REJECTED')}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm shadow-rose-600/20"
+                className="flex-1 sm:flex-initial px-3.5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-rose-600/20 active:scale-95 text-center"
               >
                 Reject
               </button>
               <button 
                 onClick={onToggleExpand}
-                className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"
+                className="p-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors shrink-0"
+                aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
               >
-                {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
               </button>
             </div>
           </div>

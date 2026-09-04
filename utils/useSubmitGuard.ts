@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 /**
  * useSubmitGuard — prevents double-tap/double-click on async form submissions.
@@ -19,18 +19,21 @@ import { useState, useCallback } from 'react';
  */
 export function useSubmitGuard() {
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const submittingRef = useRef(false);
 
     const guardedSubmit = useCallback(
         async (fn: () => void | Promise<void>) => {
-            if (isSubmitting) return; // Drop concurrent/double-tap calls
+            if (submittingRef.current) return; // Drop concurrent/double-tap calls before React state commits
+            submittingRef.current = true;
             setIsSubmitting(true);
             try {
                 await fn();
             } finally {
+                submittingRef.current = false;
                 setIsSubmitting(false);
             }
         },
-        [isSubmitting]
+        []
     );
 
     return { isSubmitting, guardedSubmit };

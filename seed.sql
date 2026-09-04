@@ -43,12 +43,14 @@ ON CONFLICT (id) DO NOTHING;
 -- s2 -> bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
 -- s3 -> cccccccc-cccc-4ccc-8ccc-cccccccccccc
 -- s4 -> dddddddd-dddd-4ddd-8ddd-dddddddddddd
+-- s5 -> f5d47156-f404-411a-85d1-12c82d4999ab
 
 INSERT INTO suppliers (id, name, contact_email, key_contact, phone, address, categories) VALUES
 ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Global Textile', 'bianca@globaltextiles.net.au', 'Bianca Moses', '02 97592323', '22-24 Minnie St', ARRAY['Textiles', 'Bedding']),
 ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'HOST Supplies', 'anita@hostsupplies.com.au', 'Anita', '02 9516 4533', '104 Marrickville Road, Marrickville', ARRAY['Hospitality', 'Consumables']),
 ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'NCC Apparel Pty Ltd', 'jsmith@nccapparel.com.au', 'Julie Smith', '+61 416 035 998', '64-66 Cyber Loop, Dandenong South', ARRAY['Apparel', 'Uniforms']),
-('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'Simba Global', 'jcronin@simba.global', 'Janet Cronin', '+61 (3) 9020 3695', '289-311 Bayswater Road, Bayswater', ARRAY['Textiles', 'Sourcing'])
+('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'Simba Global', 'jcronin@simba.global', 'Janet Cronin', '+61 (3) 9020 3695', '289-311 Bayswater Road, Bayswater', ARRAY['Textiles', 'Sourcing']),
+('f5d47156-f404-411a-85d1-12c82d4999ab', 'FREUDENBERG HOME AND CLEANING SOLUTIONS PTY. LTD', 'vileda.enquiryaus@fhp-ww.com', 'Customer Service', '1300 669 686', '13-21 Maygar Boulevard, Broadmeadows VIC 3047', ARRAY['Consumables', 'Cleaning'])
 ON CONFLICT (id) DO NOTHING;
 
 -- ITEMS

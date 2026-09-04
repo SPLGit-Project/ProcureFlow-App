@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags, MarginThresholds, EmailIngestionQueueItem } from '../types.ts';
+import { User, UserPreferences, PORequest, Supplier, Item, ApprovalEvent, DeliveryHeader, DeliveryLineItem, POLineItem, POStatus, SupplierCatalogItem, SupplierStockSnapshot, AppBranding, Site, WorkflowStep, NotificationRule, UserRole, RoleDefinition, Permission, PermissionId, SupplierProductMap, ProductAvailability, NotificationEventType, AttributeOption, SystemAuditLog, FeatureFlags, MarginThresholds, EmailIngestionQueueItem, EnhancedAppNotification } from '../types.ts';
 import { db } from '../services/db.ts';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient.ts';
 import { Session } from '@supabase/supabase-js';
 import { DirectoryService } from '../services/graphService.ts';
+import { notificationEngineService } from '../services/notificationEngineService.ts';
+import { realtimeNotificationService } from '../services/realtimeNotificationService.ts';
 import { canonicalSupplierName, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import {
     getSessionActivityStorageKey,
@@ -12,6 +14,7 @@ import {
     SESSION_WARNING_WINDOW_MS,
     writeSessionLogoutNotice
 } from '../utils/sessionState.ts';
+import { resetSessionLinenFact } from '../constants/linenFacts.ts';
 
 interface DevelopmentFixtures {
   users: User[];
@@ -36,7 +39,7 @@ const DEFAULT_HOME_EXPERIENCE = {
 };
 
 const DEFAULT_BRANDING: AppBranding = {
-    appName: 'MercerFlow',
+    appName: 'ProcureFlow',
     logoUrl: '',
     primaryColor: '#2563eb',
     secondaryColor: '#1e2029',
@@ -68,18 +71,24 @@ const loadDevelopmentFixtures = async (): Promise<DevelopmentFixtures | null> =>
     return null;
 };
 
-const normalizeBranding = (value?: Partial<AppBranding> | null): AppBranding => ({
-    appName: value?.appName || DEFAULT_BRANDING.appName,
-    logoUrl: value?.logoUrl || DEFAULT_BRANDING.logoUrl,
-    primaryColor: value?.primaryColor || DEFAULT_BRANDING.primaryColor,
-    secondaryColor: value?.secondaryColor || DEFAULT_BRANDING.secondaryColor,
-    fontFamily: value?.fontFamily || DEFAULT_BRANDING.fontFamily,
-    sidebarTheme: value?.sidebarTheme || DEFAULT_BRANDING.sidebarTheme,
-    homeExperience: {
-        ...DEFAULT_HOME_EXPERIENCE,
-        ...(value?.homeExperience || {}),
-    },
-});
+const normalizeBranding = (value?: Partial<AppBranding> | null): AppBranding => {
+    const rawAppName = value?.appName?.trim();
+    const appName = (!rawAppName || rawAppName.toLowerCase() === 'mercerflow') ? 'ProcureFlow' : rawAppName;
+    const rawLogoUrl = value?.logoUrl?.trim();
+    const logoUrl = (rawLogoUrl && !rawLogoUrl.toLowerCase().includes('spl') && !rawLogoUrl.toLowerCase().includes('mercer')) ? rawLogoUrl : '';
+    return {
+        appName,
+        logoUrl,
+        primaryColor: value?.primaryColor || DEFAULT_BRANDING.primaryColor,
+        secondaryColor: value?.secondaryColor || DEFAULT_BRANDING.secondaryColor,
+        fontFamily: value?.fontFamily || DEFAULT_BRANDING.fontFamily,
+        sidebarTheme: value?.sidebarTheme || DEFAULT_BRANDING.sidebarTheme,
+        homeExperience: {
+            ...DEFAULT_HOME_EXPERIENCE,
+            ...(value?.homeExperience || {}),
+        },
+    };
+};
 
 type DbUserAuthRow = {
   id: string;
@@ -260,12 +269,24 @@ interface AppContextType {
   notificationRules: NotificationRule[];
   upsertNotificationRule: (rule: NotificationRule) => Promise<void>;
   deleteNotificationRule: (id: string) => Promise<void>;
+
+  // Real-Time Notification System
+  notifications: EnhancedAppNotification[];
+  unreadNotificationCount: number;
+  isNotificationDrawerOpen: boolean;
+  setIsNotificationDrawerOpen: (open: boolean) => void;
+  isNotificationPrefsOpen: boolean;
+  setIsNotificationPrefsOpen: (open: boolean) => void;
+  refreshNotifications: () => Promise<void>;
+  notificationPopups: EnhancedAppNotification[];
+  dismissNotificationPopup: (id: string) => void;
+  triggerNotificationPopup: (notif: EnhancedAppNotification) => void;
   
   // Core Actions
   createPO: (po: PORequest) => Promise<boolean>;
   saveDraftPO: (po: PORequest) => Promise<boolean>;
   submitDraftPO: (poId: string) => Promise<void>;
-  updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; concurRequestNumber?: string; concurPoNumber?: string; lines: POLineItem[]; }) => Promise<void>;
+  updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; concurRequestNumber?: string; concurPoNumber?: string; siteId?: string; lines: POLineItem[]; }) => Promise<void>;
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
   linkConcurRequest: (poId: string, concurRequestNumber: string) => void;
   linkConcurPO: (poId: string, concurPoNumber: string) => void;
@@ -479,6 +500,56 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [inboundEmailAddress, setInboundEmailAddress] = useState('reports@procureflow.com');
   const [idleSecondsRemaining, setIdleSecondsRemaining] = useState<number | null>(null);
 
+  // Real-Time In-App Notifications State
+  const [notifications, setNotifications] = useState<EnhancedAppNotification[]>([]);
+  const [notificationPopups, setNotificationPopups] = useState<EnhancedAppNotification[]>([]);
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
+  const [isNotificationPrefsOpen, setIsNotificationPrefsOpen] = useState(false);
+
+  const unreadNotificationCount = React.useMemo(() => {
+    return notifications.filter(n => !n.is_read).length;
+  }, [notifications]);
+
+  const dismissNotificationPopup = useCallback((id: string) => {
+    setNotificationPopups(prev => prev.filter(p => p.id !== id));
+  }, []);
+
+  const triggerNotificationPopup = useCallback((notif: EnhancedAppNotification) => {
+    setNotificationPopups(prev => {
+      if (prev.some(p => p.id === notif.id || (p.title === notif.title && p.message === notif.message))) return prev;
+      return [notif, ...prev].slice(0, 3);
+    });
+  }, []);
+
+  const refreshNotifications = useCallback(async () => {
+    if (!currentUser?.id) return;
+    try {
+      const data = await notificationEngineService.getUserNotifications(currentUser.id);
+      setNotifications(data);
+    } catch (e) {
+      console.warn('Failed to refresh user notifications:', e);
+    }
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setNotifications([]);
+      setNotificationPopups([]);
+      realtimeNotificationService.unsubscribe();
+      return;
+    }
+
+    refreshNotifications();
+    realtimeNotificationService.subscribe(currentUser.id, (newNotif) => {
+      setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
+      triggerNotificationPopup(newNotif);
+    });
+
+    return () => {
+      realtimeNotificationService.unsubscribe();
+    };
+  }, [currentUser?.id, refreshNotifications, triggerNotificationPopup]);
+
   const currentUserRef = React.useRef<User | null>(currentUser);
   const rolesRef = React.useRef<RoleDefinition[]>(roles);
   const sessionRoleOverrideRef = React.useRef<UserRole | null>(null);
@@ -682,6 +753,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       hydrateDevelopmentData(fixtures);
       setRoles([...fixtures.roles]);
       clearRoleOverride();
+      resetSessionLinenFact();
       setCurrentUser(fixtures.adminUser);
       setIsAuthenticated(true);
       setIsPendingApproval(false);
@@ -692,6 +764,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // Data Loading
   const lastFetchTime = React.useRef<number>(0);
+  const deliverySubmitLocksRef = React.useRef<Set<string>>(new Set());
   const reloadData = useCallback(async (silent: boolean = false, force: boolean = false) => {
 
         if (qaMode) {
@@ -945,6 +1018,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             } else if (eventType === 'SIGNED_OUT') {
                 console.log("Auth: Signed out");
                 clearRoleOverride();
+                resetSessionLinenFact();
                 setCurrentUser(null);
                 setIsAuthenticated(false);
                 setIsPendingApproval(false);
@@ -1052,11 +1126,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
         if (!silent) setIsLoadingAuth(true);
         try {
-            const email = session.user.email?.toLowerCase();
+            const email = (
+                session.user.email || 
+                session.user.user_metadata?.preferred_username || 
+                session.user.user_metadata?.email || 
+                session.user.user_metadata?.custom_claims?.upn || 
+                ''
+            ).toLowerCase().trim();
             console.log("Auth: Handling user auth for", email);
 
             // 1. Security: Domain Lock
-            if (!email?.toLowerCase().endsWith('@splservices.com.au')) {
+            const allowedDomains = ['splservices.com.au', 'splaundry.com.au', 'southpacificlaundry.com.au', 'southpacificlaundry.onmicrosoft.com', 'procureflow.dev'];
+            const userDomain = email.includes('@') ? email.split('@')[1] : '';
+            if (!email || !userDomain || !allowedDomains.includes(userDomain)) {
                 console.error("Auth: Unauthorized domain:", email);
                 alert("Access Restricted: Only @splservices.com.au accounts are allowed.");
                 await supabase.auth.signOut();
@@ -1181,7 +1263,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     const isFirstUser = finalCount === 0;
 
                     // Check for pre-provisioned user (by email) with different ID
-                    const { data: preUser } = await supabase.from('users').select('*, user_roles(role_id)').ilike('email', session.user.email || '').maybeSingle();
+                    const { data: preUser } = await supabase.from('users').select('*, user_roles(role_id)').ilike('email', email).maybeSingle();
                     
                     let roleToUse = isFirstUser ? 'ADMIN' : 'SITE_USER';
                     let statusToUse = isFirstUser ? 'APPROVED' : 'PENDING_APPROVAL';
@@ -1205,8 +1287,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     const dbUser = {
                         id: session.user.id,
                         auth_user_id: session.user.id,
-                        email: session.user.email || '',
-                        name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'Unknown User',
+                        email: email,
+                        name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0] || 'Unknown User',
                         role_id: roleToUse,
                         status: statusToUse,
                         avatar: session.user.user_metadata.avatar_url || session.user.user_metadata.picture || '',
@@ -1360,7 +1442,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 const { data: { session } } = await supabase.auth.getSession();
                 
                 if (session) {
-                     if (!currentUser || session.user.email !== currentUser.email) {
+                     const sessEmail = (
+                         session.user.email || 
+                         session.user.user_metadata?.preferred_username || 
+                         session.user.user_metadata?.email || 
+                         session.user.user_metadata?.custom_claims?.upn || 
+                         ''
+                     ).toLowerCase().trim();
+                     if (!currentUser || sessEmail !== currentUser.email.toLowerCase()) {
                          await handleUserAuth(session, true); 
                      } else {
                          await handleUserAuth(session, true);
@@ -1425,19 +1514,26 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       root.style.setProperty('--color-secondary-rgb', hexToRgb(branding.secondaryColor));
 
       localStorage.setItem('app-branding', JSON.stringify(branding));
+      const effectiveAppName = (branding.appName && branding.appName.toLowerCase() !== 'mercerflow') ? branding.appName : 'ProcureFlow';
+      document.title = effectiveAppName;
 
       // --- Dynamic Manifest & Favicon Injection ---
       // 1. Favicon
-      const linkFavicon = document.querySelector("link[rel*='icon']") as HTMLLinkElement || document.createElement('link');
-      linkFavicon.type = 'image/x-icon';
+      const effectiveFavicon = (branding.logoUrl && !branding.logoUrl.includes('mercer') && !branding.logoUrl.includes('spl')) ? branding.logoUrl : '/favicon.svg';
+      const linkFavicon = document.querySelector("link[rel='icon'][type='image/svg+xml']") as HTMLLinkElement
+          || document.querySelector("link[rel*='icon']") as HTMLLinkElement
+          || document.createElement('link');
+      linkFavicon.type = effectiveFavicon.endsWith('.svg') ? 'image/svg+xml' : (effectiveFavicon.endsWith('.ico') ? 'image/x-icon' : 'image/png');
       linkFavicon.rel = 'icon';
-      linkFavicon.href = branding.logoUrl;
-      document.getElementsByTagName('head')[0].appendChild(linkFavicon);
+      linkFavicon.href = effectiveFavicon;
+      if (!linkFavicon.parentNode) {
+          document.getElementsByTagName('head')[0].appendChild(linkFavicon);
+      }
 
       // 2. Apple Touch Icon
       const linkApple = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement || document.createElement('link');
       linkApple.rel = 'apple-touch-icon';
-      linkApple.href = '/mercer-m-logo.png';
+      linkApple.href = '/icons/apple-touch-icon.png';
       document.getElementsByTagName('head')[0].appendChild(linkApple);
 
       // 3. Meta Theme Color
@@ -1448,8 +1544,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       // 4. Dynamic Manifest
       const manifest = {
-          name: branding.appName,
-          short_name: branding.appName.length > 12 ? branding.appName.substring(0, 12) : branding.appName,
+          name: effectiveAppName,
+          short_name: effectiveAppName.length > 12 ? effectiveAppName.substring(0, 12) : effectiveAppName,
           start_url: ".",
           display: "standalone",
           background_color: "#ffffff",
@@ -1457,25 +1553,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           orientation: "portrait",
           icons: [
               {
-                  src: "/mercer-m-logo.png",
+                  src: "/icons/icon-192x192.png",
                   sizes: "192x192",
                   type: "image/png",
                   purpose: "any"
               },
               {
-                  src: "/mercer-m-logo.png",
+                  src: "/icons/icon-512x512.png",
                   sizes: "512x512",
                   type: "image/png",
                   purpose: "any"
               },
               {
-                  src: "/mercer-m-logo.png",
+                  src: "/icons/icon-maskable-192x192.png",
                   sizes: "192x192",
                   type: "image/png",
                   purpose: "maskable"
               },
               {
-                  src: "/mercer-m-logo.png",
+                  src: "/icons/icon-maskable-512x512.png",
                   sizes: "512x512",
                   type: "image/png",
                   purpose: "maskable"
@@ -1531,6 +1627,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           provider: 'azure',
           options: {
               scopes: 'openid profile email User.Read User.ReadBasic.All Mail.Send offline_access',
+              queryParams: {
+                  prompt: 'select_account'
+              },
               redirectTo: globalThis.location.origin
           }
       });
@@ -1597,10 +1696,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
 
       clearRoleOverride();
+      resetSessionLinenFact();
+
+      // Immediately clear local state so the UI instantly resets to the login screen
+      setCurrentUser(null);
+      setIsAuthenticated(false);
+      setIsPendingApproval(false);
 
       if (qaMode) {
-          setIsAuthenticated(false);
-          setCurrentUser(null);
           logoutInProgressRef.current = false;
           return;
       }
@@ -1608,9 +1711,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       try {
           await supabase.auth.signOut();
       } catch (error) {
+          console.error("Logout failed:", error);
+      } finally {
           logoutInProgressRef.current = false;
           logoutReasonRef.current = null;
-          throw error;
       }
   };
 
@@ -2084,7 +2188,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         // Teams (Global Check)
         const sendTeams = Array.from(targets.values()).some(t => t.teams);
         if (sendTeams && teamsWebhookUrl) {
-             const message = `**MercerFlow Notification**\n\nEvent: ${event}\nData: ${JSON.stringify(data, null, 2)}`;
+             const message = `**ProcureFlow Notification**\n\nEvent: ${event}\nData: ${JSON.stringify(data, null, 2)}`;
              try {
                 await fetch(teamsWebhookUrl, { method: 'POST', body: JSON.stringify({ text: message }) });
                 logAction('NOTIFICATION_SENT_TEAMS', { event, data });
@@ -2120,7 +2224,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                      await svc.sendMail({
                          to: target.emailAddress,
                          from: currentUser?.email || '',
-                         subject: `MercerFlow Notification: ${event}`,
+                         subject: `ProcureFlow Notification: ${event}`,
                          html: `<p>Event: ${event}</p><p>Details:</p><pre>${JSON.stringify(data, null, 2)}</pre>`,
                          siteId,
                          invitedByName: 'System Notification'
@@ -2206,6 +2310,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           comments?: string;
           concurRequestNumber?: string;
           concurPoNumber?: string;
+          siteId?: string;
           lines: POLineItem[];
       }
   ) => {
@@ -2229,7 +2334,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               ...line,
               quantityOrdered,
               unitPrice,
-              totalPrice: Number((quantityOrdered * unitPrice).toFixed(2))
+              totalPrice: Number((quantityOrdered * unitPrice).toFixed(2)),
+              concurPoNumber: updates.concurPoNumber !== undefined
+                  ? (updates.concurPoNumber.trim() || undefined)
+                  : line.concurPoNumber
           };
       });
 
@@ -2249,18 +2357,28 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               comments: updates.comments,
               concurRequestNumber: updates.concurRequestNumber,
               concurPoNumber: updates.concurPoNumber,
+              siteId: updates.siteId,
               lines: normalizedLines
           });
 
           setPos(prev => prev.map(p => {
               if (p.id !== poId) return p;
+              const nextConcurPo = updates.concurPoNumber !== undefined
+                  ? (updates.concurPoNumber.trim() || undefined)
+                  : p.concurPoNumber;
+              const nextConcurReq = updates.concurRequestNumber !== undefined
+                  ? (updates.concurRequestNumber.trim() || undefined)
+                  : p.concurRequestNumber;
+              const matchedSite = updates.siteId ? sites.find(s => s.id === updates.siteId) : undefined;
               return {
                   ...p,
                   customerName: updates.customerName,
                   reasonForRequest: updates.reasonForRequest,
                   comments: updates.comments,
-                  concurRequestNumber: updates.concurRequestNumber ?? p.concurRequestNumber,
-                  concurPoNumber: updates.concurPoNumber ?? p.concurPoNumber,
+                  concurRequestNumber: nextConcurReq,
+                  concurPoNumber: nextConcurPo,
+                  siteId: updates.siteId !== undefined ? updates.siteId : p.siteId,
+                  site: matchedSite ? matchedSite.name : p.site,
                   totalAmount: Number(totalAmount.toFixed(2)),
                   lines: normalizedLines
               };
@@ -2402,6 +2520,25 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     const p = pos.find(req => req.id === poId);
     if (!p) return;
 
+    const incomingDocket = delivery.docketNumber.trim().toLowerCase();
+    const incomingDate = delivery.date.split('T')[0];
+    const duplicateDelivery = incomingDocket
+      ? p.deliveries.find(existing =>
+          existing.docketNumber.trim().toLowerCase() === incomingDocket &&
+          existing.date.split('T')[0] === incomingDate
+        )
+      : undefined;
+
+    if (duplicateDelivery) {
+      throw new Error(`Delivery docket ${delivery.docketNumber} has already been recorded for this PO on ${incomingDate}. Edit the existing delivery instead of recording it again.`);
+    }
+
+    if (deliverySubmitLocksRef.current.has(poId)) {
+      console.warn(`Delivery submission already in progress for PO ${poId}. Dropping duplicate request.`);
+      return;
+    }
+    deliverySubmitLocksRef.current.add(poId);
+
     let varianceTriggered = false;
 
     const processedExistingLines = p.lines.map(line => {
@@ -2494,10 +2631,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         logAction('DELIVERY_ADDED', { poId, deliveryId: delivery.id, receivedBy: delivery.receivedBy, newStatus });
         
         await reloadData(true, true);
+        deliverySubmitLocksRef.current.delete(poId);
     } catch (e) {
         console.error("Failed to add delivery", e);
         reloadData();
         logAction('DELIVERY_ADD_FAILED', { poId, deliveryId: delivery.id, error: (e as Error).message });
+        deliverySubmitLocksRef.current.delete(poId);
         throw e;
     }
   };
@@ -2597,12 +2736,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const getEffectiveStock = (itemId: string, supplierId: string): number => {
-      // 1. Find the confirmed mapping
-      const mapping = mappings.find(m => m.productId === itemId && m.supplierId === supplierId && m.mappingStatus === 'CONFIRMED');
+      // Find all supplier IDs matching the same canonical supplier name
+      const targetSupplier = suppliers.find(s => s.id === supplierId);
+      const targetCanonical = targetSupplier ? canonicalSupplierName(targetSupplier.name) : '';
+      const equivalentSupplierIds = targetCanonical
+          ? suppliers.filter(s => canonicalSupplierName(s.name) === targetCanonical).map(s => s.id)
+          : [supplierId];
+
+      // 1. Find the confirmed mapping across equivalent supplier IDs
+      const mapping = mappings.find(m => m.productId === itemId && equivalentSupplierIds.includes(m.supplierId) && m.mappingStatus === 'CONFIRMED');
       if (!mapping) return 0; 
       
       const relevantSnapshots = stockSnapshots
-        .filter(s => s.supplierId === supplierId && s.supplierSku === mapping.supplierSku)
+        .filter(s => equivalentSupplierIds.includes(s.supplierId) && s.supplierSku === mapping.supplierSku)
         .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime());
 
       if (relevantSnapshots.length === 0) return 0; 
@@ -2658,7 +2804,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
         });
         
-        const newAvailability: ProductAvailability[] = [];
+        const newAvailabilityMap = new Map<string, ProductAvailability>();
         confirmed.forEach(map => {
             const snapshot = latestStockMap.get(`${map.supplierId}:${map.supplierSku}`);
             if (snapshot) {
@@ -2667,32 +2813,27 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                    const availableUnits = snapshot.availableQty * (map.packConversionFactor || 1);
                    const orderMult = item.defaultOrderMultiple || 1;
                    const availableOrderQty = Math.floor(availableUnits / orderMult) * orderMult;
+                   const key = `${map.productId}:${map.supplierId}`;
                    
-                   newAvailability.push({
-                       id: `avail-${item.id}-${map.supplierId}`, 
-                       productId: item.id,
-                       supplierId: map.supplierId,
-                       availableUnits,
-                       availableOrderQty,
-                       updatedAt: new Date().toISOString()
-                   } as ProductAvailability);
+                   if (!newAvailabilityMap.has(key)) {
+                       const existing = availability.find(a => a.productId === map.productId && a.supplierId === map.supplierId);
+                       newAvailabilityMap.set(key, {
+                           id: existing ? existing.id : crypto.randomUUID(), 
+                           productId: item.id,
+                           supplierId: map.supplierId,
+                           availableUnits,
+                           availableOrderQty,
+                           updatedAt: new Date().toISOString()
+                       } as ProductAvailability);
+                   }
                 }
             }
         });
         
-        // Merge with existing IDs if needed (db upsert handles PK, but here we generate ID based on product+supplier)
-        // Actually, if we use a deterministic ID like `avail-prod-supp`, upsert handles it.
-        // But UUID is required by schema. `avail-prod-supp` is not valid UUID. 
-        // We must fetch existing ID or generate new UUID if not exists.
-        // For simplicity in this step, we'll try to match existing in state.
-        
-        const finalPayload = newAvailability.map(n => {
-            const existing = availability.find(a => a.productId === n.productId && a.supplierId === n.supplierId);
-            return { ...n, id: existing ? existing.id : crypto.randomUUID() };
-        });
+        const finalPayload = Array.from(newAvailabilityMap.values());
 
         await db.upsertProductAvailability(finalPayload);
-        setAvailability(finalPayload); // Ideal: Refetch from DB to get canonical IDs
+        setAvailability(finalPayload);
         logAction('PRODUCT_AVAILABILITY_REFRESHED', { count: finalPayload.length });
     } catch (e) {
         console.error('Failed to refresh availability', e);
@@ -2988,6 +3129,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     importMasterProducts, generateMappings, updateMapping: upsertMapping, refreshAvailability, runDataBackfill,
     workflowSteps, updateWorkflowStep, addWorkflowStep, deleteWorkflowStep,
     notificationRules, upsertNotificationRule, deleteNotificationRule,
+    notifications, unreadNotificationCount, isNotificationDrawerOpen, setIsNotificationDrawerOpen, isNotificationPrefsOpen, setIsNotificationPrefsOpen, refreshNotifications,
+    notificationPopups, dismissNotificationPopup, triggerNotificationPopup,
     theme, setTheme, branding, updateBranding,
     createPO, saveDraftPO, submitDraftPO, updatePendingPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
     updateProfile, switchRole,
@@ -3046,6 +3189,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     users, roles, teamsWebhookUrl, inboundEmailAddress, theme, branding,
     filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
+    notifications, unreadNotificationCount, isNotificationDrawerOpen, isNotificationPrefsOpen, refreshNotifications,
+    notificationPopups, dismissNotificationPopup, triggerNotificationPopup,
     reloadData, siteName, featureFlags, marginThresholds, cachedReports, cachedRunTimes, setReportCache
   ]);
 

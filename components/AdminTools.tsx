@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Play, Loader2, CheckCircle } from 'lucide-react';
+import { Play, Loader2, CheckCircle, ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.ts';
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { useApp } from '../context/AppContext.tsx';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import PageHeader from './PageHeader.tsx';
 
 const AdminTools = () => {
     const { hasPermission } = useApp();
+    const navigate = useNavigate();
     const [isRunning, setIsRunning] = useState(false);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
     const { toasts, dismissToast, success, error } = useToast();
@@ -85,12 +86,24 @@ const AdminTools = () => {
                     </button>
                 </div>
 
-                <div className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-3xl shadow-sm p-8 flex flex-col justify-center items-center text-center border-dashed border-2">
-                    <div className="w-14 h-14 bg-gray-100 dark:bg-white/5 rounded-2xl flex items-center justify-center mb-6">
-                        <CheckCircle className="text-gray-300" size={28} />
+                <div className="bg-white dark:bg-nocturne border border-gray-100 dark:border-gray-800 rounded-3xl shadow-sm p-8 flex flex-col justify-between group hover:shadow-xl transition-all border-b-4 border-b-emerald-500">
+                    <div>
+                        <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                            <ShieldCheck className="text-emerald-500" size={28} />
+                        </div>
+                        <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-2">Month-End P&amp;L Reconciliation</h3>
+                        <p className="text-sm text-gray-500 mb-8 leading-relaxed">
+                            Audit verification and General Ledger alignment across Concur and SAP B1 records. Features the live 2D cross-tabulation pivot matrix separating operating depletion from capital growth.
+                        </p>
                     </div>
-                    <h3 className="text-lg font-black text-gray-300 uppercase tracking-tight mb-2">Scheduled Maintenance</h3>
-                    <p className="text-xs text-gray-400">Additional system diagnostics and batch operations will appear here as more maintenance tooling is introduced.</p>
+
+                    <button
+                        onClick={() => navigate('/reporting?tab=EOM_BUDGET_RECONCILIATION')}
+                        className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-emerald-500 dark:hover:bg-emerald-500 hover:text-white transition-all shadow-lg"
+                    >
+                        <ShieldCheck size={16} />
+                        <span>Open Reconciliation Matrix</span>
+                    </button>
                 </div>
             </div>
 

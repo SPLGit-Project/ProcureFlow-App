@@ -2,9 +2,10 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
-import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin, Download, CalendarRange, FunnelX } from 'lucide-react';
+import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin, Download, CalendarRange, FunnelX, Edit2 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { PORequest, POStatus } from '../types.ts';
+import { formatCurrency, calculatePOTotals } from '../utils/taxCalculations.ts';
 import {
     buildActiveRequestsCsv,
     filterActiveRequests,
@@ -29,8 +30,13 @@ const ACTIVE_REQUEST_STATUS_OPTIONS: StatusOption[] = [
 const toDateInputValue = (value: string | null) => value ?? '';
 
 const ActiveRequestsView = () => {
-    const { pos, isLoadingData, linkConcurPO, linkConcurRequest, currentUser: _currentUser } = useApp();
+    const { pos, isLoadingData, linkConcurPO, linkConcurRequest, currentUser, hasPermission } = useApp();
     const navigate = useNavigate();
+
+    const canUserLinkPO = (po: PORequest) => {
+        const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
+        return isAdmin || hasPermission('link_concur') || po.requesterId === currentUser?.id;
+    };
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMode, setFilterMode] = useState<ActiveRequestFilterMode>('ALL');
     const [selectedSite, setSelectedSite] = useState('ALL');
@@ -377,8 +383,13 @@ const ActiveRequestsView = () => {
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
                                         {po.requesterName}
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white text-right">
-                                        ${po.totalAmount.toLocaleString()}
+                                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                                        <div className="text-sm font-bold text-gray-900 dark:text-white">
+                                            {formatCurrency(po.totalAmountIncGst ?? (po.totalAmount * 1.10))}
+                                        </div>
+                                        <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                                            ({formatCurrency(po.subtotalAmount ?? po.totalAmount)} ex)
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center">
                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border
@@ -404,6 +415,14 @@ const ActiveRequestsView = () => {
                                             >
                                                 <LinkIcon size={14} /> Link ID
                                             </button>
+                                        ) : canUserLinkPO(po) ? (
+                                             <button 
+                                                 onClick={() => handleOpenConcurModal(po)}
+                                                 className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1 ml-auto"
+                                                 title="Amend Concur PO Number"
+                                             >
+                                                 <Edit2 size={14} /> Amend PO
+                                             </button>
                                         ) : (
                                             <button 
                                                 className="px-3 py-1.5 text-gray-400 text-xs font-bold rounded-lg border border-transparent hover:border-gray-200 dark:hover:border-gray-700 flex items-center gap-1 ml-auto"
@@ -474,10 +493,13 @@ const ActiveRequestsView = () => {
                                             <p className="uppercase tracking-wide text-[10px] font-bold text-gray-400">Requester</p>
                                             <p className="text-gray-700 dark:text-gray-300 truncate">{po.requesterName}</p>
                                         </div>
-                                        <div className="space-y-1">
-                                            <p className="uppercase tracking-wide text-[10px] font-bold text-gray-400">Amount</p>
+                                        <div className="space-y-0.5">
+                                            <p className="uppercase tracking-wide text-[10px] font-bold text-gray-400">Total (Inc GST)</p>
                                             <p className="text-sm font-bold text-gray-900 dark:text-white">
-                                                ${po.totalAmount.toLocaleString()}
+                                                {formatCurrency(po.totalAmountIncGst ?? (po.totalAmount * 1.10))}
+                                            </p>
+                                            <p className="text-[10px] text-gray-400">
+                                                ({formatCurrency(po.subtotalAmount ?? po.totalAmount)} ex)
                                             </p>
                                         </div>
                                     </div>
@@ -532,9 +554,24 @@ const ActiveRequestsView = () => {
                 <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setIsConcurRequestModalOpen(false)}>
                      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Link Concur Request</h2>
-                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
                             Enter the SAP Concur Request Number for <b>{selectedPO.displayId || selectedPO.id}</b>.
                         </p>
+
+                        <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-3 mb-4 text-xs space-y-1 border border-gray-100 dark:border-gray-800">
+                            <div className="flex justify-between text-gray-500">
+                                <span>Subtotal (Ex-GST):</span>
+                                <span className="font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(selectedPO.subtotalAmount ?? selectedPO.totalAmount)}</span>
+                            </div>
+                            <div className="flex justify-between text-gray-500">
+                                <span>GST (10%):</span>
+                                <span className="font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(selectedPO.taxTotalAmount ?? (selectedPO.totalAmount * 0.10))}</span>
+                            </div>
+                            <div className="border-t border-gray-200 dark:border-gray-700 pt-1 flex justify-between font-bold text-gray-900 dark:text-white">
+                                <span>Concur Order Total (Inc-GST):</span>
+                                <span className="text-blue-600 dark:text-blue-400">{formatCurrency(selectedPO.totalAmountIncGst ?? (selectedPO.totalAmount * 1.10))}</span>
+                            </div>
+                        </div>
                         
                         <form onSubmit={(e) => {
                             e.preventDefault();
@@ -557,25 +594,26 @@ const ActiveRequestsView = () => {
              )}
              {isConcurModalOpen && selectedPO && (
                 <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setIsConcurModalOpen(false)}>
-                    {/* Render standard component manually wrapping logic or creating a prop-friendly version. 
-                        Since ConcurExportModal handles everything internally for 'po' prop but triggers 'linkConcurPO' from context itself, 
-                        we can just render it. But wait, ConcurExportModal in PODetail handles close/submit.
-                        
-                        Let's check ConcurExportModal's expected props.
-                        It expects: onClose, po (optional?), confirm?
-                        Usually these modals are built to be somewhat standalone or controlled.
-                        
-                        Let's look at ConcurExportModal.tsx briefly in my mind or assumption.
-                        Actually, I'll assume I can just use a simple inline modal here or reuse if it's generic.
-                        
-                        But for speed and consistency, I'll use a simple input modal here or refactor ConcurExportModal to be usable here.
-                        Actually, let's just create a simpler inline modal right here for entering the ID, same as PODetail does.
-                    */}
                      <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Link Concur PO</h2>
-                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
                             Enter the SAP Concur PO Number for <b>{selectedPO.displayId || selectedPO.id}</b>.
                         </p>
+
+                        <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-3 mb-4 text-xs space-y-1 border border-gray-100 dark:border-gray-800">
+                            <div className="flex justify-between text-gray-500">
+                                <span>Subtotal (Ex-GST):</span>
+                                <span className="font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(selectedPO.subtotalAmount ?? selectedPO.totalAmount)}</span>
+                            </div>
+                            <div className="flex justify-between text-gray-500">
+                                <span>GST (10%):</span>
+                                <span className="font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(selectedPO.taxTotalAmount ?? (selectedPO.totalAmount * 0.10))}</span>
+                            </div>
+                            <div className="border-t border-gray-200 dark:border-gray-700 pt-1 flex justify-between font-bold text-gray-900 dark:text-white">
+                                <span>Concur Order Total (Inc-GST):</span>
+                                <span className="text-blue-600 dark:text-blue-400">{formatCurrency(selectedPO.totalAmountIncGst ?? (selectedPO.totalAmount * 1.10))}</span>
+                            </div>
+                        </div>
                         
                         <form onSubmit={(e) => {
                             e.preventDefault();

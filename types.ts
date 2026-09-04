@@ -201,6 +201,7 @@ export interface Item {
   unitPrice: number; // Default/Internal Price
   uom: string; // Unit of Measure
   upq?: number; // Unit per Quantity
+  cartonQty?: number; // Carton / Pack Size Multiple
   category: string;
   subCategory?: string; // New field for hierarchy
   categoryId?: string; // Foreign key for category
@@ -375,6 +376,78 @@ export interface ProductAvailability {
 
 
 
+export type SpendType = 'DEPLETION' | 'NEW_BUSINESS' | 'LINEN_HUB' | 'CAPEX' | 'MAINTENANCE';
+export type SpendSector = 'ACCOMMODATION' | 'HEALTHCARE' | 'MINING' | 'LINEN_HUB' | 'OTHER' | 'COMBINED';
+export type SpendCategory = 'ACCOMMODATION' | 'HEALTHCARE' | 'MINING' | 'LINEN_HUB' | 'OTHER';
+export type ContractStream = 'BAU' | 'RHC' | 'HSV' | 'DEFENCE' | 'MINING' | 'OTHER';
+
+export interface SiteBudgetConfig {
+  siteName: string;
+  branchCode: string;
+  annualDepletionBudget: number;
+  monthlyDepletionBudget: number;
+  annualNewBusinessBudget: number;
+  monthlyNewBusinessBudget: number;
+  annualTotalBudget: number;
+}
+
+export interface EomPivotCell {
+  accommodation: number;
+  healthcare: number;
+  total: number;
+}
+
+export interface EomPivotRow {
+  branch: string;
+  siteName: string;
+  depletion: EomPivotCell;
+  newBusiness: EomPivotCell;
+  linenHub: EomPivotCell;
+  grandTotal: EomPivotCell;
+}
+
+export interface EomTrackingRow {
+  branch: string;
+  siteName: string;
+  depletionYtd: number;
+  newBusinessYtd: number;
+  depletionCurrentMonth: number;
+  newBusinessCurrentMonth: number;
+  monthlyBudgetDepletion: number;
+  monthlyBudgetNewBusiness: number;
+  varianceDepletion: number;
+  varianceNewBusiness: number;
+  spendYtdPercent: number;
+  totalAnnualBudget: number;
+}
+
+export interface EomContractSubtotals {
+  hsvYtd: number;
+  rhcDepletionYtd: number;
+  rhcNewBusinessYtd: number;
+  linenHubBudgetTotal: number;
+  linenHubYtd: number;
+  linenHubCurrentMonth: number;
+  linenHubRemaining: number;
+  grandTotalBudget: number;
+  grandTotalActualsYtd: number;
+}
+
+export interface EomReconciliationResult {
+  month: string;
+  year: number;
+  pivotRows: EomPivotRow[];
+  pivotTotals: {
+    depletion: EomPivotCell;
+    newBusiness: EomPivotCell;
+    linenHub: EomPivotCell;
+    grandTotal: EomPivotCell;
+  };
+  trackingRows: EomTrackingRow[];
+  contractSubtotals: EomContractSubtotals;
+  rawProcessedRows: Record<string, any>[];
+}
+
 export type POStatus = 
   | 'DRAFT' 
   | 'PENDING_APPROVAL' 
@@ -397,12 +470,19 @@ export interface PORequest {
   supplierId: string;
   supplierName: string;
   status: POStatus;
-  totalAmount: number;
+  totalAmount: number; // Stored subtotal (Ex-GST) for backwards compatibility
+  subtotalAmount?: number; // Explicit Ex-GST subtotal
+  taxTotalAmount?: number; // Total GST amount
+  totalAmountIncGst?: number; // Gross total amount including GST
   approvalHistory: ApprovalEvent[];
   lines: POLineItem[];
   deliveries: DeliveryHeader[];
   
-  // New Fields
+  // Categorisation & EOM Tracking Fields
+  spendType?: SpendType;
+  sector?: SpendSector;
+  contractStream?: ContractStream;
+  concurPrNumber?: string;
   concurRequestNumber?: string;
   concurPoNumber?: string;
   customerName?: string;
@@ -422,10 +502,18 @@ export interface POLineItem {
   upq?: number; // Units Per Quantity (Pack Size)
   priceOptionId?: string;
   priceOptionLabel?: string;
+  // GST and Tax Calculation
+  taxCode?: string; // e.g. 'GST', 'FRE'
+  taxRate?: number; // percentage, e.g. 10.00
+  taxAmount?: number; // calculated GST amount
+  totalPriceIncGst?: number; // gross total amount (totalPrice + taxAmount)
   // Concur Linkage
   concurPoNumber?: string; // The external PO number from Concur
   isForceClosed?: boolean; // If true, line is considered complete even if qty < ordered
   
+  // Delivery Timing
+  needByDate?: string; // Requested delivery date / Need by date for this line item
+
   // Governed Pricing
   sellPriceRecordId?: string; // Links to the specific item_sell_prices record used
   priceAtOrderTime?: number; // Snapshot of the price at the time of order creation
@@ -797,6 +885,12 @@ export interface InAppNotification {
     relatedPoId?: string;
     isRead: boolean;
     createdAt: string;
+    category?: NotificationCategory;
+    severity?: NotificationSeverity;
+    action_url?: string;
+    action_label?: string;
+    entity_type?: string;
+    entity_id?: string;
 }
 
 export interface WorkflowPreviewData {
@@ -833,6 +927,211 @@ export interface WorkflowPreviewData {
     
     // Additional context
     reason_for_request: string;
+}
+
+// ── Unified Modern Workflow & Notification System Types ───────────────────────
+
+export type WorkflowCategory = 'PROCUREMENT' | 'ITEM_LIFECYCLE' | 'PRICING' | 'SYSTEM';
+
+export type WorkflowConditionOperator =
+  | 'EQUALS'
+  | 'NOT_EQUALS'
+  | 'GREATER_THAN'
+  | 'GREATER_THAN_OR_EQUAL'
+  | 'LESS_THAN'
+  | 'LESS_THAN_OR_EQUAL'
+  | 'CONTAINS'
+  | 'IN_LIST';
+
+export interface WorkflowCondition {
+  field: string;
+  operator: WorkflowConditionOperator;
+  value: string | number | boolean | string[];
+}
+
+export interface WorkflowStageDefinition {
+  stage_id: string;
+  stage_name: string;
+  description?: string;
+  approver_type: 'ROLE' | 'USER' | 'BOTH' | 'AUTO' | 'REQUESTER_MANAGER';
+  approver_id: string; // Role name/ID or User UUID
+  approver_role?: string; // Designated or fallback role ID
+  approver_user_id?: string; // Designated specific individual UUID
+  sla_hours: number;
+  condition?: WorkflowCondition;
+  escalate_to_type?: 'ROLE' | 'USER';
+  escalate_to_role?: string;
+  escalate_to_user_id?: string;
+  escalate_after_hours?: number;
+  auto_action?: 'APPROVE' | 'REJECT' | 'ESCALATE';
+}
+
+export interface WorkflowStageNotificationTrigger {
+  trigger: 'ON_STAGE_ENTER' | 'ON_APPROVED' | 'ON_REJECTED' | 'ON_SLA_WARNING' | 'ON_SLA_BREACH';
+  template_key: string;
+  channels: {
+    in_app: boolean;
+    email: boolean;
+    teams: boolean;
+  };
+  custom_recipients?: Array<{
+    type: 'ROLE' | 'USER' | 'REQUESTER' | 'CUSTOM_EMAIL';
+    id: string;
+  }>;
+}
+
+export type CanvasNodeType = 'TRIGGER' | 'CONDITION' | 'APPROVAL' | 'NOTIFICATION' | 'ACTION';
+
+export interface CanvasNode {
+  id: string;
+  type: CanvasNodeType;
+  title: string;
+  subtitle?: string;
+  x: number;
+  y: number;
+  data: {
+    trigger_event?: string;
+    approver_type?: 'ROLE' | 'USER' | 'BOTH' | 'AUTO' | 'REQUESTER_MANAGER';
+    approver_id?: string;
+    approver_role?: string;
+    approver_user_id?: string;
+    sla_hours?: number;
+    escalate_to_role?: string;
+    escalate_to_user_id?: string;
+    escalate_after_hours?: number;
+    condition?: WorkflowCondition;
+    channel?: 'IN_APP' | 'TEAMS' | 'EMAIL' | 'ALL';
+    severity?: NotificationSeverity;
+    notification_title?: string;
+    notification_body?: string;
+    action_label?: string;
+    action_url?: string;
+    site_id?: string;
+    auto_action?: 'AUTO_APPROVE' | 'READY_TO_CLOSE' | 'SYNC_CONCUR' | 'LOG_AUDIT' | string;
+    [key: string]: unknown;
+  };
+}
+
+export interface CanvasEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: 'default' | 'yes' | 'no';
+  targetHandle?: 'default';
+  label?: string;
+}
+
+export interface WorkflowCanvasData {
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  zoom?: number;
+  pan?: { x: number; y: number };
+}
+
+export interface UnifiedWorkflowDefinition {
+  id: string;
+  workflow_key: string;
+  name: string;
+  description?: string;
+  category: WorkflowCategory;
+  trigger_event: string;
+  is_enabled: boolean;
+  conditions: WorkflowCondition[];
+  stages: WorkflowStageDefinition[];
+  notification_rules: WorkflowStageNotificationTrigger[];
+  canvas_data?: WorkflowCanvasData;
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+}
+
+export type NotificationCategory = 'APPROVAL' | 'STATUS_CHANGE' | 'ITEM_LIFECYCLE' | 'PRICING' | 'DELIVERY' | 'ALERT' | 'SYSTEM' | 'GENERAL';
+export type NotificationSeverity = 'INFO' | 'SUCCESS' | 'WARNING' | 'CRITICAL';
+
+export interface NotificationChannelInApp {
+  enabled: boolean;
+  title: string;
+  body: string;
+  severity: NotificationSeverity;
+  action_label?: string;
+}
+
+export interface NotificationChannelEmail {
+  enabled: boolean;
+  subject: string;
+  html_body: string;
+  cta_label?: string;
+}
+
+export interface NotificationChannelTeams {
+  enabled: boolean;
+  title: string;
+  subtitle?: string;
+  color?: string;
+  cta_label?: string;
+}
+
+export interface NotificationTemplate {
+  id: string;
+  template_key: string;
+  name: string;
+  description?: string;
+  event_type: string;
+  category: NotificationCategory;
+  channels: {
+    in_app?: NotificationChannelInApp;
+    email?: NotificationChannelEmail;
+    teams?: NotificationChannelTeams;
+  };
+  variables: string[];
+  is_system: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface UserNotificationPreferences {
+  user_id: string;
+  email_enabled: boolean;
+  in_app_enabled: boolean;
+  teams_enabled: boolean;
+  sound_enabled: boolean;
+  digest_frequency: 'INSTANT' | 'DAILY_DIGEST' | 'WEEKLY';
+  quiet_hours_enabled: boolean;
+  quiet_hours_start?: string; // e.g. "22:00"
+  quiet_hours_end?: string;   // e.g. "07:00"
+  category_overrides: Record<string, { email: boolean; in_app: boolean; teams: boolean }>;
+  updated_at?: string;
+}
+
+export interface EnhancedAppNotification {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: string;
+  category: NotificationCategory;
+  severity: NotificationSeverity;
+  action_url?: string;
+  action_label?: string;
+  entity_type?: 'PO' | 'ITEM_REQUEST' | 'PRICING_SCHEDULE' | 'SYSTEM' | string;
+  entity_id?: string;
+  is_read: boolean;
+  read_at?: string;
+  is_archived?: boolean;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface NotificationDeliveryLog {
+  id: string;
+  event_type: string;
+  channel: 'IN_APP' | 'EMAIL' | 'TEAMS';
+  recipient: string;
+  status: 'DELIVERED' | 'FAILED' | 'SKIPPED' | 'QUEUED';
+  title?: string;
+  payload: Record<string, unknown>;
+  error_message?: string;
+  created_at: string;
 }
 
 

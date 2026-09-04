@@ -285,6 +285,21 @@ function detectSupplierFromContent(
         });
     }
 
+    // ── Freudenberg ────────────────────────────────────────────────────────────
+    if (fileNameLower.includes('freudenberg') || fileNameLower.includes('vileda') || fileNameLower.includes('oates')) {
+        candidates.push({
+            name: 'FREUDENBERG HOME AND CLEANING SOLUTIONS PTY. LTD',
+            confidence: 0.95,
+            evidence: ['Filename contains Freudenberg, Vileda, or Oates']
+        });
+    } else if (includesAll(text, ['freudenberg', 'cleaning'])) {
+        candidates.push({
+            name: 'FREUDENBERG HOME AND CLEANING SOLUTIONS PTY. LTD',
+            confidence: 0.90,
+            evidence: ['Content contains Freudenberg and cleaning']
+        });
+    }
+
     // ── Simba (segment-aware) ──────────────────────────────────────────────────
     // Simba sends two separate files: one for Healthcare customers and one for
     // Accommodation customers. The segment is identified from body text, headers,
@@ -365,6 +380,14 @@ function createMapping(headers: string[], rawDataRows?: any[][]): { mapping: Col
         
         // Find best field match for this header
         Object.entries(FIELD_DEFINITIONS).forEach(([fieldName, fieldDef]) => {
+            // Prevent SOH total value headers (e.g. "SOH $ @ Sell") from matching unit sellPrice
+            if (fieldName === 'sellPrice') {
+                const hLower = header.toLowerCase();
+                if (hLower.includes('soh') || hLower.includes('value') || hLower.includes('@')) {
+                    return;
+                }
+            }
+
             let maxSimilarity = 0;
             
             fieldDef.aliases.forEach(alias => {
@@ -379,12 +402,10 @@ function createMapping(headers: string[], rawDataRows?: any[][]): { mapping: Col
             
             // If this is a better match than previous mapping for this field
             if (weightedScore > 0.4 && weightedScore > mapping[fieldName].confidence) {
-                // If this header was previously used by another field, we don't handle that here
-                // We just want the BEST header for EACH field.
                 mapping[fieldName] = {
                     sourceColumn: header,
                     confidence: weightedScore,
-                    alternatives: [] // Computed later if needed
+                    alternatives: []
                 };
             }
         });
@@ -474,38 +495,38 @@ function findHeaderRow(data: any[][]): { index: number; dataStartIndex: number; 
     }
 
     let dataStartIndex = bestRowIndex + 1;
+    const mergedHeaders = [...bestHeaders];
 
     // Some supplier reports, notably Simba, use staggered multi-row headers:
-    // row A has SKU/Product while a lower row has SPL Item Code/Product Description.
-    // Merge strong lower header labels into blank columns and start data below them.
-    for (let i = bestRowIndex + 1; i < Math.min(data.length, bestRowIndex + 4); i++) {
+    // e.g. row 5 has SOH/Available/Committed while row 8 has SKU/Product.
+    // Search both upwards and downwards around bestRowIndex to merge strong header labels.
+    const searchStart = Math.max(0, bestRowIndex - 5);
+    const searchEnd = Math.min(data.length - 1, bestRowIndex + 3);
+
+    for (let i = searchStart; i <= searchEnd; i++) {
+        if (i === bestRowIndex) continue;
         const row = data[i];
         if (!row || !Array.isArray(row)) continue;
 
-        let mergedAny = false;
-        const mergedHeaders = [...bestHeaders];
         row.forEach((cell, idx) => {
             const label = String(cell || '').trim();
             if (!label) return;
-            const existing = mergedHeaders[idx] || '';
-            if (existing && !existing.startsWith('Column_')) return;
 
-            const matchesKnownField = Object.values(FIELD_DEFINITIONS).some(fieldDef =>
-                fieldDef.aliases.some(alias => calculateSimilarity(label, alias) > 0.85)
-            );
-            if (matchesKnownField) {
-                mergedHeaders[idx] = label;
-                mergedAny = true;
+            const existing = mergedHeaders[idx] || '';
+            const isExistingInvalid = !existing || existing.startsWith('Column_') || !isNaN(Number(existing));
+            
+            if (isExistingInvalid) {
+                const matchesKnownField = Object.values(FIELD_DEFINITIONS).some(fieldDef =>
+                    fieldDef.aliases.some(alias => calculateSimilarity(label, alias) > 0.8)
+                );
+                if (matchesKnownField) {
+                    mergedHeaders[idx] = label;
+                }
             }
         });
-
-        if (mergedAny) {
-            bestHeaders = mergedHeaders;
-            dataStartIndex = i + 1;
-        }
     }
 
-    return { index: bestRowIndex, dataStartIndex, headers: bestHeaders };
+    return { index: bestRowIndex, dataStartIndex, headers: mergedHeaders };
 }
 
 /**
@@ -753,73 +774,93 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
                 const data = new Uint8Array(e.target?.result as ArrayBuffer);
                 const workbook = XLSX.read(data, { type: 'array' });
                 
-                // Get first sheet
-                const sheetName = workbook.SheetNames[0];
-                const sheet = workbook.Sheets[sheetName];
+                // Process all non-empty sheets in the workbook
+                let allRawRows: any[][] = [];
+                let primaryHeaders: string[] = [];
+                let primaryHeaderIndex = 0;
+                let primaryDataStartIndex = 0;
+                let combinedJsonData: Record<string, any>[] = [];
+                let combinedParsedData: Partial<SupplierStockSnapshot>[] = [];
+                let primaryMapping: ColumnMapping = {} as ColumnMapping;
+                let primaryDateColumns: DateColumn[] = [];
+                let primaryConfidence: MappingConfidence = { overall: 0, hasErrors: true, missingRequired: ['supplierSku'] };
+
+                workbook.SheetNames.forEach((sName, sIdx) => {
+                    const sheet = workbook.Sheets[sName];
+                    if (!sheet) return;
+                    const sheetRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
+                    if (sheetRows.length === 0) return;
+
+                    const { index: hIndex, dataStartIndex: dStartIndex, headers: sHeaders } = findHeaderRow(sheetRows);
+                    const sheetDataRows = sheetRows.slice(dStartIndex);
+                    if (sheetDataRows.length === 0) return;
+
+                    const { mapping: sMapping, dateColumns: sDateCols } = createMapping(sHeaders, sheetDataRows);
+                    const sConf = calculateConfidence(sMapping);
+
+                    const sheetJsonData = sheetDataRows.map(row => {
+                        const obj: Record<string, any> = {};
+                        sHeaders.forEach((header, i) => {
+                            if (header) obj[header] = row[i];
+                        });
+                        return obj;
+                    });
+
+                    if (!sConf.hasErrors) {
+                        const parsed = parseDataRows(sheetJsonData, sMapping, sDateCols);
+                        if (parsed.length > 0) {
+                            combinedParsedData.push(...parsed);
+                            combinedJsonData.push(...sheetJsonData);
+                        }
+                    }
+
+                    if (sIdx === 0 || (!sConf.hasErrors && primaryConfidence.hasErrors)) {
+                        allRawRows = sheetRows;
+                        primaryHeaders = sHeaders;
+                        primaryHeaderIndex = hIndex;
+                        primaryDataStartIndex = dStartIndex;
+                        primaryMapping = sMapping;
+                        primaryDateColumns = sDateCols;
+                        primaryConfidence = sConf;
+                    }
+                });
                 
-                // Read as 2D array first to find headers
-                const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
-                
-                if (rawRows.length === 0) {
+                if (allRawRows.length === 0 || (combinedParsedData.length === 0 && primaryConfidence.hasErrors)) {
                     resolve({
                         success: false,
                         mapping: {} as ColumnMapping,
                         confidence: { overall: 0, hasErrors: true, missingRequired: ['supplierSku'] },
-                        errors: ['The file appears to be empty or has no data rows'],
+                        errors: ['The file appears to be empty or has no valid data rows across any sheet'],
                         warnings: [],
                         allColumns: [],
                         dateColumns: []
                     });
                     return;
                 }
-                
-                // Find the intelligent header row
-                const { index: headerIndex, dataStartIndex, headers } = findHeaderRow(rawRows);
-                
-                // Slice data starting from below headers
-                const dataRows = rawRows.slice(dataStartIndex);
-                
-                // Convert to objects based on detected headers for current mapping logic compatibility
-                const jsonData = dataRows.map(row => {
-                    const obj: Record<string, any> = {};
-                    headers.forEach((header, i) => {
-                        if (header) obj[header] = row[i];
-                    });
-                    return obj;
-                });
 
-                // Create mapping
-                const { mapping, dateColumns } = createMapping(headers, dataRows);
-                const detectedSupplier = detectSupplierFromContent(rawRows, headers, file.name);
-                const reportDate = extractReportDate(file.name, rawRows);
-                const confidence = calculateConfidence(mapping);
+                const detectedSupplier = detectSupplierFromContent(allRawRows, primaryHeaders, file.name);
+                const reportDate = extractReportDate(file.name, allRawRows);
                 
                 const errors: string[] = [];
                 const warnings: string[] = [];
                 
-                if (headerIndex > 0) {
-                    warnings.push(`Skipped ${headerIndex} header/metadata rows at the top of the file.`);
+                if (primaryHeaderIndex > 0) {
+                    warnings.push(`Skipped ${primaryHeaderIndex} header/metadata rows at the top of the file.`);
                 }
 
                 // Check for required fields
-                if (confidence.missingRequired.length > 0) {
+                if (primaryConfidence.missingRequired.length > 0 && combinedParsedData.length === 0) {
                     errors.push(
-                        `Missing required fields: ${confidence.missingRequired.join(', ')}`
+                        `Missing required fields: ${primaryConfidence.missingRequired.join(', ')}`
                     );
                 }
                 
-                // Parse data if we have minimum requirements
-                let parsedData: Partial<SupplierStockSnapshot>[] | undefined;
-                if (!confidence.hasErrors) {
-                    parsedData = parseDataRows(jsonData, mapping, dateColumns);
-                    
-                    if (parsedData.length === 0) {
-                        warnings.push('No valid data rows found after parsing');
-                    }
+                if (combinedParsedData.length === 0) {
+                    warnings.push('No valid data rows found after parsing');
                 }
                 
                 // Add warnings about confidence
-                const lowConfidenceMappings = Object.entries(mapping)
+                const lowConfidenceMappings = Object.entries(primaryMapping)
                     .filter(([_, m]) => m.sourceColumn && m.confidence < 0.7)
                     .map(([field, m]) => `${field} → ${m.sourceColumn} (${Math.round(m.confidence * 100)}%)`);
                 
@@ -828,15 +869,15 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
                 }
                 
                 resolve({
-                    success: !confidence.hasErrors,
-                    data: parsedData,
-                    mapping,
-                    confidence,
+                    success: combinedParsedData.length > 0 || !primaryConfidence.hasErrors,
+                    data: combinedParsedData,
+                    mapping: primaryMapping,
+                    confidence: primaryConfidence,
                     errors,
                     warnings,
-                    allColumns: headers,
-                    dateColumns,
-                    rawData: jsonData,  // Full data for processing
+                    allColumns: primaryHeaders,
+                    dateColumns: primaryDateColumns,
+                    rawData: combinedJsonData,  // Full data for processing
                     detectedSupplier,
                     reportDate
                 });

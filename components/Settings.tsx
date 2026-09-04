@@ -14,14 +14,17 @@ import {
     GitMerge, Fingerprint, Palette, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
     Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3, Sparkles,
-    Building2, Files, FileSpreadsheet
+    Building2, Files, FileSpreadsheet, Volume2, Moon, Sliders
 } from 'lucide-react';
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
 import { supabase } from '../lib/supabaseClient.ts';
-import { SupplierStockSnapshot, SupplierProductMap, Item, Supplier, SupplierContact, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType } from '../types.ts';
+import { SupplierStockSnapshot, SupplierProductMap, Item, Supplier, SupplierContact, Site, IncomingStock, UserRole, WorkflowStep, RoleDefinition, PermissionId, PORequest, POStatus, NotificationRule, NotificationRecipient, SystemAuditLog, AppBranding, WorkflowConfiguration, WorkflowType, UserNotificationPreferences } from '../types.ts';
+import { notificationEngineService, buildTeamsAdaptiveCard } from '../services/notificationEngineService.ts';
+import { playNotificationChime } from '../services/realtimeNotificationService.ts';
+import { NOTIFICATION_SCENARIOS, getUserEligibleScenarios, isScenarioAllowedForRoles, NotificationScenarioConfig } from '../utils/notificationScenarios.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
-import { canonicalSupplierName, dedupeSuppliersForDisplay, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
+import { canonicalSupplierName, dedupeSuppliersForDisplay, findSupplierByContactEmail, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import { useLocation } from 'react-router-dom';
 import { BrandLogo } from './BrandLogo.tsx';
 // AdminAccessHub removed — access approvals no longer used
@@ -41,8 +44,10 @@ import MenuEditor from './MenuEditor.tsx';
 import { ItemWizard } from './ItemWizard.tsx';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { HierarchyManager } from '../utils/hierarchyManager.ts';
-import { seedCatalogData } from '../utils/catalogSeeder.ts';
 import SimpleWorkflowConfig from './SimpleWorkflowConfig.tsx';
+import WorkflowNotificationHub from './WorkflowNotificationHub.tsx';
+import EOMReconciliationAdminPanel from './EOMReconciliationAdminPanel.tsx';
+import { ShieldCheck } from 'lucide-react';
 
 
 import RoleTreeManager from './RoleTreeManager.tsx';
@@ -82,7 +87,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_development', label: 'Development Admin', description: 'Access to Smart Buying and Data Ingest tools', icon: Code, category: 'Development' }
 ];
 
-type AdminTab = 'PROFILE' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC' | 'SMART_BUYING' | 'ITEM_CREATION';
+type AdminTab = 'PROFILE' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC' | 'SMART_BUYING' | 'ITEM_CREATION' | 'EOM_RECONCILIATION';
 
 const MASTER_ITEM_COLUMNS = [
     { key: 'sku', label: 'SKU' },
@@ -798,13 +803,7 @@ const Settings = () => {
   const [candidateSearch, setCandidateSearch] = useState('');
 
   // --- Email Ingestion Hub State ---
-  const [isAutoIngestEnabled, setIsAutoIngestEnabled] = useState(() => {
-      const saved = localStorage.getItem('isAutoIngestEnabled');
-      return saved !== null ? saved === 'true' : false;
-  });
-  const [manualIngestSupplierId, setManualIngestSupplierId] = useState(AUTO_DETECT_SUPPLIER_VALUE);
-  const [manualIngestFile, setManualIngestFile] = useState<File | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const isAutoIngestEnabled = true;
   const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
   const [ingestEmailAddress, setIngestEmailAddress] = useState(inboundEmailAddress);
   const [ingestInterval, setIngestInterval] = useState('Hourly');
@@ -821,6 +820,20 @@ const Settings = () => {
   const [isSearchingEmail, setIsSearchingEmail] = useState(false);
   const [emailSearchResults, setEmailSearchResults] = useState<any[]>([]);
 
+  const [emailHubStatusTab, setEmailHubStatusTab] = useState<'QUEUE' | 'SUPPLIERS'>('QUEUE');
+  const [supplierStatusFilter, setSupplierStatusFilter] = useState<'ALL' | 'INGESTED' | 'AWAITING'>('ALL');
+
+  const unmappedCountBySupplier = React.useMemo(() => {
+      const counts: Record<string, number> = {};
+      stockSnapshots.forEach(snapshot => {
+          const mappingExists = mappings.some(mapping => mapping.supplierId === snapshot.supplierId && mapping.supplierSku === snapshot.supplierSku);
+          if (!mappingExists) {
+              counts[snapshot.supplierId] = (counts[snapshot.supplierId] || 0) + 1;
+          }
+      });
+      return counts;
+  }, [stockSnapshots, mappings]);
+
   const supplierInventoryUploads = React.useMemo(() => {
       return visibleSuppliers.map((supplier) => {
           const latestSnapshot = stockSnapshots
@@ -835,6 +848,41 @@ const Settings = () => {
           };
       }).sort((a, b) => a.supplier.name.localeCompare(b.supplier.name));
   }, [stockSnapshots, visibleSuppliers]);
+
+  const latestUpload = React.useMemo(() => {
+      const uploaded = supplierInventoryUploads.filter(u => !!u.uploadedAt);
+      if (uploaded.length === 0) return null;
+      return [...uploaded].sort((a, b) => new Date(b.uploadedAt!).getTime() - new Date(a.uploadedAt!).getTime())[0];
+  }, [supplierInventoryUploads]);
+
+  const sortedUploads = React.useMemo(() => {
+      return [...supplierInventoryUploads].sort((a, b) => {
+          const aUploaded = !!a.uploadedAt;
+          const bUploaded = !!b.uploadedAt;
+          
+          if (aUploaded && !bUploaded) return -1;
+          if (!aUploaded && bUploaded) return 1;
+          
+          if (aUploaded && bUploaded) {
+              return new Date(b.uploadedAt!).getTime() - new Date(a.uploadedAt!).getTime();
+          }
+          
+          return a.supplier.name.localeCompare(b.supplier.name);
+      });
+  }, [supplierInventoryUploads]);
+
+  const filteredUploads = React.useMemo(() => {
+      let list = sortedUploads;
+      if (supplierStatusFilter === 'INGESTED') {
+          list = list.filter(u => !!u.uploadedAt);
+      } else if (supplierStatusFilter === 'AWAITING') {
+          list = list.filter(u => !u.uploadedAt);
+      }
+      if (supplierSearchQuery) {
+          list = list.filter(u => u.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()));
+      }
+      return list;
+  }, [sortedUploads, supplierStatusFilter, supplierSearchQuery]);
 
   useEffect(() => {
       setIngestEmailAddress(inboundEmailAddress);
@@ -891,17 +939,270 @@ const Settings = () => {
   });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
+  // --- User Directory Notification Preferences State ---
+  const [userPrefsMap, setUserPrefsMap] = useState<Record<string, UserNotificationPreferences>>({});
+  const [isLoadingUserPrefs, setIsLoadingUserPrefs] = useState(false);
+  const [togglingUserChannel, setTogglingUserChannel] = useState<{ userId: string; channel: 'email' | 'teams' | 'in_app' } | null>(null);
+
+  // --- Current User Profile Notification Preferences ---
+  const [profileNotifPrefs, setProfileNotifPrefs] = useState<UserNotificationPreferences>({
+      user_id: currentUser?.id || '',
+      email_enabled: true,
+      in_app_enabled: true,
+      teams_enabled: true,
+      sound_enabled: true,
+      digest_frequency: 'INSTANT',
+      quiet_hours_enabled: false,
+      quiet_hours_start: '22:00',
+      quiet_hours_end: '07:00',
+      category_overrides: {
+          APPROVAL: { in_app: true, email: true, teams: true },
+          STATUS_CHANGE: { in_app: true, email: true, teams: true },
+          DELIVERY: { in_app: true, email: true, teams: true },
+          ITEM_LIFECYCLE: { in_app: true, email: true, teams: false },
+          PRICING: { in_app: true, email: true, teams: false },
+          ALERT: { in_app: true, email: true, teams: true }
+      }
+  });
+  const [isSavingProfileNotifPrefs, setIsSavingProfileNotifPrefs] = useState(false);
+  const [showAllScenariosInProfile, setShowAllScenariosInProfile] = useState(false);
+
+  // Load User Directory preferences
+  useEffect(() => {
+      if (activeTab === 'USERS') {
+          setIsLoadingUserPrefs(true);
+          notificationEngineService.getAllUserPreferences()
+              .then(prefs => setUserPrefsMap(prefs))
+              .catch(err => console.error('Failed to load user notification preferences:', err))
+              .finally(() => setIsLoadingUserPrefs(false));
+      }
+  }, [activeTab]);
+
+  // Load User Profile preferences
+  useEffect(() => {
+      if (currentUser?.id) {
+          notificationEngineService.getUserPreferences(currentUser.id)
+              .then(prefs => {
+                  if (prefs) {
+                      setProfileNotifPrefs(prefs);
+                  } else {
+                      setProfileNotifPrefs(prev => ({
+                          ...prev,
+                          user_id: currentUser.id
+                      }));
+                  }
+              })
+              .catch(err => console.error('Failed to load profile notification preferences:', err));
+      }
+  }, [currentUser?.id, activeTab]);
+
+  // Load Site Teams Webhooks
+  const [siteTeamsWebhooks, setSiteTeamsWebhooks] = useState<Record<string, string>>({});
+  const [siteTeamsWebhookInput, setSiteTeamsWebhookInput] = useState('');
+  const [isTestingSiteWebhook, setIsTestingSiteWebhook] = useState(false);
+
+  useEffect(() => {
+      if (activeTab === 'SITES') {
+          notificationEngineService.getSiteTeamsWebhooks()
+              .then(webhooks => setSiteTeamsWebhooks(webhooks))
+              .catch(err => console.error('Failed to load site teams webhooks:', err));
+      }
+  }, [activeTab]);
+
+  const handleTestSiteTeamsWebhook = async () => {
+      if (!siteTeamsWebhookInput.trim()) {
+          error('Please enter a webhook URL first');
+          return;
+      }
+      setIsTestingSiteWebhook(true);
+      try {
+          const testCard = buildTeamsAdaptiveCard({
+              title: `ProcureFlow Channel Verified — ${siteForm.name || 'Site Facility'}`,
+              subtitle: 'Specialised Linen Services Alerts Network',
+              colorHex: '059669',
+              facts: [
+                  { title: 'Facility:', value: siteForm.name || 'Facility' },
+                  { title: 'Location:', value: `${siteForm.suburb || ''}, ${siteForm.state || ''}`.trim() || 'N/A' },
+                  { title: 'Integration:', value: 'Power Automate Workflow' },
+                  { title: 'Status:', value: 'Connected & Operational' }
+              ],
+              actionLabel: 'Open ProcureFlow',
+              actionUrl: window.location.origin
+          });
+
+          const resp = await fetch(siteTeamsWebhookInput.trim(), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(testCard)
+          });
+
+          if (resp.ok) {
+              success(`Test alert posted successfully to Microsoft Teams channel for ${siteForm.name || 'site'}!`);
+          } else {
+              error(`Teams webhook responded with status ${resp.status}`);
+          }
+      } catch (err: any) {
+          error(`Failed to dispatch test card: ${err.message}`);
+      } finally {
+          setIsTestingSiteWebhook(false);
+      }
+  };
+
+  const handleToggleDirectoryChannel = async (userId: string, channel: 'email' | 'teams' | 'in_app', currentVal: boolean) => {
+      setTogglingUserChannel({ userId, channel });
+      const newVal = !currentVal;
+
+      // Optimistic update
+      setUserPrefsMap(prev => {
+          const existing = prev[userId] || {
+              user_id: userId,
+              email_enabled: true,
+              teams_enabled: true,
+              in_app_enabled: true,
+              sound_enabled: true,
+              digest_frequency: 'INSTANT',
+              quiet_hours_enabled: false,
+              quiet_hours_start: '22:00',
+              quiet_hours_end: '07:00',
+              category_overrides: {
+                  APPROVAL: { in_app: true, email: true, teams: true },
+                  STATUS_CHANGE: { in_app: true, email: true, teams: true },
+                  DELIVERY: { in_app: true, email: true, teams: true },
+                  ITEM_LIFECYCLE: { in_app: true, email: true, teams: false },
+                  PRICING: { in_app: true, email: true, teams: false },
+                  ALERT: { in_app: true, email: true, teams: true }
+              }
+          };
+          return {
+              ...prev,
+              [userId]: {
+                  ...existing,
+                  [`${channel}_enabled`]: newVal
+              }
+          };
+      });
+
+      try {
+          await notificationEngineService.setUserChannelPreference(userId, channel, newVal);
+          const channelName = channel === 'in_app' ? 'In-App' : channel === 'teams' ? 'Teams' : 'Email';
+          success(`${channelName} alerts ${newVal ? 'activated' : 'disabled'}`);
+      } catch (err) {
+          console.error('Failed to update channel preference:', err);
+          error(`Failed to update ${channel} setting`);
+          // Revert on error
+          setUserPrefsMap(prev => {
+              const existing = prev[userId];
+              if (!existing) return prev;
+              return {
+                  ...prev,
+                  [userId]: {
+                      ...existing,
+                      [`${channel}_enabled`]: currentVal
+                  }
+              };
+          });
+      } finally {
+          setTogglingUserChannel(null);
+      }
+  };
+
+  const handleToggleProfileScenarioChannel = (scenarioKey: string, channel: 'in_app' | 'email' | 'teams') => {
+      setProfileNotifPrefs(prev => {
+          const overrides = prev.category_overrides || {};
+          const current = overrides[scenarioKey] || { in_app: true, email: true, teams: true };
+          return {
+              ...prev,
+              category_overrides: {
+                  ...overrides,
+                  [scenarioKey]: {
+                      ...current,
+                      [channel]: !current[channel]
+                  }
+              }
+          };
+      });
+  };
+
+  const handleToggleUserScenarioChannel = (targetUserId: string, scenarioKey: string, channel: 'in_app' | 'email' | 'teams') => {
+      setUserPrefsMap(prev => {
+          const existing = prev[targetUserId] || {
+              user_id: targetUserId,
+              email_enabled: true,
+              teams_enabled: true,
+              in_app_enabled: true,
+              sound_enabled: true,
+              digest_frequency: 'INSTANT',
+              quiet_hours_enabled: false,
+              quiet_hours_start: '22:00',
+              quiet_hours_end: '07:00',
+              category_overrides: {
+                  APPROVAL: { in_app: true, email: true, teams: true },
+                  STATUS_CHANGE: { in_app: true, email: true, teams: true },
+                  DELIVERY: { in_app: true, email: true, teams: true },
+                  ITEM_LIFECYCLE: { in_app: true, email: true, teams: false },
+                  PRICING: { in_app: true, email: true, teams: false },
+                  ALERT: { in_app: true, email: true, teams: true }
+              }
+          };
+          const currentOverrides = existing.category_overrides || {};
+          const currentCat = currentOverrides[scenarioKey] || { in_app: true, email: true, teams: true };
+          const updatedCat = { ...currentCat, [channel]: !currentCat[channel] };
+          const updated = {
+              ...existing,
+              category_overrides: {
+                  ...currentOverrides,
+                  [scenarioKey]: updatedCat
+              }
+          };
+
+          // Optimistic async background sync to DB
+          notificationEngineService.saveUserPreferences(updated).catch(e => {
+              console.error('Failed to sync user scenario preference:', e);
+          });
+
+          return {
+              ...prev,
+              [targetUserId]: updated
+          };
+      });
+  };
+
+  const handleSaveProfileNotifPrefs = async () => {
+      if (!currentUser?.id) return;
+      setIsSavingProfileNotifPrefs(true);
+      try {
+          await notificationEngineService.saveUserPreferences({
+              ...profileNotifPrefs,
+              user_id: currentUser.id
+          });
+          success('Notification preferences & scenarios saved successfully!');
+      } catch (err) {
+          console.error('Failed to save profile notification preferences:', err);
+          error('Failed to save notification preferences');
+      } finally {
+          setIsSavingProfileNotifPrefs(false);
+      }
+  };
+
   const handleSaveProfile = async () => {
       setIsSavingProfile(true);
       try {
           await updateProfile(profileForm);
-          alert('Profile updated successfully!');
+          if (currentUser?.id) {
+              await notificationEngineService.saveUserPreferences({
+                  ...profileNotifPrefs,
+                  user_id: currentUser.id
+              });
+          }
+          success('Profile and notification preferences updated successfully!');
       } catch (e) {
-          alert('Failed to update profile.');
+          console.error('Failed to update profile:', e);
+          error('Failed to update profile.');
       } finally {
           setIsSavingProfile(false);
       }
   };
+
 
   // --- Supplier Form State ---
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false);
@@ -1195,71 +1496,9 @@ const Settings = () => {
       throw new Error('The supplier could not be identified from the file contents. Select an existing supplier or add the supplier before uploading.');
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-      setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragging(false);
-      
-      const file = e.dataTransfer.files?.[0];
-      if (file) {
-          const ext = file.name.split('.').pop()?.toLowerCase();
-          if (ext && ['xlsx', 'xls', 'csv'].includes(ext)) {
-              setManualIngestFile(file);
-          } else {
-              error('Invalid file type. Please upload an Excel or CSV file.');
-          }
-      }
-  };
-
-  const handleManualSupplierUpload = async () => {
-      if (!manualIngestFile) {
-          error('Upload an inventory file first.');
-          return;
-      }
-
-      const selectedSupplier = manualIngestSupplierId === AUTO_DETECT_SUPPLIER_VALUE
-          ? undefined
-          : visibleSuppliers.find(s => s.id === manualIngestSupplierId);
-
-      setIsImporting(true);
-      try {
-          const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
-          const parsed = await parseStockFileEnhanced(manualIngestFile);
-          if (!parsed.success) {
-              throw new Error(parsed.errors.join('\n'));
-          }
-
-          const supplier = await resolveSupplierForInventoryImport(parsed, selectedSupplier);
-          const result = await processSupplierInventoryFile(supplier, manualIngestFile, 'Manual Upload', parsed);
-          setManualIngestFile(null);
-          setManualIngestSupplierId(supplier.id);
-          setMappingSupplierId(supplier.id);
-          setStockSupplierId(supplier.id);
-          success(`${supplier.name} inventory replaced from manual upload (${result.recordsImported} records).`);
-      } catch (e: any) {
-          console.error('Manual supplier upload failed:', e);
-          const stale = parseStaleReportError(e?.message);
-          if (stale) {
-              error(`Upload ignored — this report is dated ${stale.incoming}, older than the inventory already on file (${stale.existing}). The newer data was kept.`);
-          } else {
-              error(`Manual upload failed: ${e.message}`);
-          }
-      } finally {
-          setIsImporting(false);
-      }
-  };
-
   // Drain the automated email queue: each PENDING attachment is run through the
-  // SAME parse → supplier detection → import (with stale guard) → auto-mapping
-  // path as a manual upload, then its queue row is marked with the outcome.
+  // parse → supplier detection → import (with stale guard) → auto-mapping
+  // path, then its queue row is marked with the outcome.
   const drainSupplierInbox = async () => {
       const pending = emailIngestionQueue.filter(item => item.status === 'PENDING');
       if (pending.length === 0) {
@@ -1286,17 +1525,109 @@ const Settings = () => {
                       continue;
                   }
 
-                  // Only ingest against a known supplier; never auto-create from
-                  // automation (matches the "pause for supplier creation" rule).
-                  const detectedSupplier = findVisibleSupplierByName(parsed.detectedSupplier?.name);
+                  // Multi-layered supplier detection:
+                  let detectedSupplier: Supplier | undefined = undefined;
+                  
+                  // A. Try direct sender email (if sent directly by supplier)
+                  if (item.fromAddress) {
+                      const domain = item.fromAddress.split('@').pop()?.toLowerCase();
+                      if (domain && domain !== 'splservices.com.au' && domain !== 'company.com') {
+                          detectedSupplier = findSupplierByContactEmail(visibleSuppliers, item.fromAddress);
+                      }
+                  }
+
+                  // B. Try parsing detected supplier name from file content
+                  if (!detectedSupplier && parsed.detectedSupplier?.name) {
+                      detectedSupplier = findVisibleSupplierByName(parsed.detectedSupplier.name);
+                      
+                      // Fuzzy match: if detected name is "Simba Healthcare" or "Simba Accommodation", 
+                      // try matching against "Simba Global - Healthcare" / "Simba Global - Accommodation"
+                      if (!detectedSupplier) {
+                          const detNameLower = parsed.detectedSupplier.name.toLowerCase();
+                          detectedSupplier = visibleSuppliers.find(s => {
+                              const sNameLower = s.name.toLowerCase();
+                              return (detNameLower.includes('simba') && sNameLower.includes('simba') && (
+                                  (detNameLower.includes('healthcare') && sNameLower.includes('healthcare')) ||
+                                  (detNameLower.includes('accommodation') && sNameLower.includes('accommodation'))
+                              ));
+                          });
+                      }
+                  }
+
+                  // C. Try matching by supplier keywords in filename or email subject (especially for forwarded reports)
+                  if (!detectedSupplier) {
+                      const filenameLower = (item.attachmentName || '').toLowerCase();
+                      const subjectLower = (item.subject || '').toLowerCase();
+                      const combined = `${filenameLower} ${subjectLower}`;
+
+                      let bestMatch: Supplier | undefined = undefined;
+                      let bestScore = 0;
+
+                      for (const s of visibleSuppliers) {
+                          const nameLower = s.name.toLowerCase();
+                          
+                          // Check if full name is present
+                          if (combined.includes(nameLower)) {
+                              bestMatch = s;
+                              break;
+                          }
+                          
+                          // Check for unique keywords
+                          let words = [canonicalSupplierName(s.name)];
+                          if (s.name.includes('NCC')) words.push('ncc');
+                          if (s.name.includes('HOST')) words.push('host');
+                          if (s.name.includes('Frenkel')) words.push('frenkel');
+                          if (s.name.includes('Simba')) words.push('simba');
+                          if (s.name.includes('Global')) words.push('global textile');
+                          if (s.name.includes('Freudenberg')) words.push('freudenberg');
+
+                          for (const w of words) {
+                              if (w && w.length > 2 && combined.includes(w)) {
+                                  // For Simba, resolve segment using filename/subject
+                                  if (w === 'simba') {
+                                      const isAccFilename = filenameLower.includes('accommodation') || filenameLower.includes('accom') || filenameLower.includes('hotel') || /\bacc\b/.test(filenameLower);
+                                      const isHcFilename = filenameLower.includes('healthcare') || filenameLower.includes('health') || /\bhc\b/.test(filenameLower);
+                                      
+                                      const isAcc = isAccFilename || (subjectLower.includes('accommodation') || subjectLower.includes('accom') || subjectLower.includes('hotel') || /\bacc\b/.test(subjectLower));
+                                      const isHc = isHcFilename || (subjectLower.includes('healthcare') || subjectLower.includes('health') || /\bhc\b/.test(subjectLower));
+                                      
+                                      if (isAccFilename && s.name.includes('Accommodation')) {
+                                          bestMatch = s;
+                                          bestScore = 110;
+                                          break;
+                                      } else if (isHcFilename && s.name.includes('Healthcare')) {
+                                          bestMatch = s;
+                                          bestScore = 110;
+                                          break;
+                                      } else if (isAcc && s.name.includes('Accommodation') && bestScore < 100) {
+                                          bestMatch = s;
+                                          bestScore = 100;
+                                      } else if (isHc && s.name.includes('Healthcare') && bestScore < 100) {
+                                          bestMatch = s;
+                                          bestScore = 100;
+                                      }
+                                  } else {
+                                      const score = w.length;
+                                      if (score > bestScore) {
+                                          bestScore = score;
+                                          bestMatch = s;
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                      
+                      if (bestMatch) {
+                          detectedSupplier = bestMatch;
+                      }
+                  }
+
                   if (!detectedSupplier) {
                       await updateEmailIngestionItem(item.id, {
                           status: 'NEEDS_SUPPLIER',
-                          detectedSupplierName: parsed.detectedSupplier?.name,
+                          detectedSupplierName: parsed.detectedSupplier?.name || null,
                           reportDate: parsed.reportDate,
-                          error: parsed.detectedSupplier?.name
-                              ? `Supplier "${parsed.detectedSupplier.name}" is not in the supplier master. Add it, then reprocess.`
-                              : 'Could not identify the supplier from the file contents.',
+                          error: 'Could not identify the supplier from the file name, subject, or contents.',
                           processedAt: new Date().toISOString()
                       });
                       needsSupplier++;
@@ -1339,16 +1670,21 @@ const Settings = () => {
   };
 
   // Auto-run the inbox drain the moment an admin opens the Mapping workbench, so
-  // emailed supplier files import + auto-map with no manual click. Guarded by a
-  // ref (once per visit) and the per-row claim (so it's safe across tabs).
-  const autoDrainedRef = useRef(false);
+  // emailed supplier files import + auto-map with no manual click. Guarded by
+  // the per-row claim so it is safe across tabs.
   useEffect(() => {
-      if (activeTab !== 'MAPPING') { autoDrainedRef.current = false; return; }
-      if (autoDrainedRef.current || isDrainingInbox) return;
+      if (activeTab !== 'MAPPING') return;
       if (!hasPermission('manage_items')) return;
-      if (!emailIngestionQueue.some(item => item.status === 'PENDING')) return;
-      autoDrainedRef.current = true;
-      drainSupplierInbox();
+      if (emailIngestionQueue.some(item => item.status === 'PENDING') && !isDrainingInbox) {
+          drainSupplierInbox();
+      }
+
+      // Automatically refresh the email ingestion queue every 30 seconds while on the Mapping tab
+      const pollInterval = setInterval(() => {
+          refreshEmailIngestionQueue();
+      }, 30000);
+
+      return () => clearInterval(pollInterval);
   }, [activeTab, emailIngestionQueue, isDrainingInbox]);
 
   // Create a brand-new master item from the manual-map modal and immediately
@@ -1888,13 +2224,7 @@ const Settings = () => {
   };
 
   // --- Email Ingestion Configuration ---
-
   const renderEmailIngestionHub = () => {
-      const isManualMode = !isAutoIngestEnabled;
-      const selectedManualSupplier = visibleSuppliers.find(supplier => supplier.id === manualIngestSupplierId);
-      const selectedInventoryUpload = manualIngestSupplierId && manualIngestSupplierId !== AUTO_DETECT_SUPPLIER_VALUE
-          ? supplierInventoryUploads.find(({ supplier }) => supplier.id === manualIngestSupplierId)
-          : null;
       return (
           <div className="p-6 space-y-6">
               {/* Header */}
@@ -1905,120 +2235,85 @@ const Settings = () => {
                           Supplier Inventory Ingestion Hub
                       </h3>
                       <p className="text-xs text-secondary dark:text-gray-400 mt-1">
-                          Update supplier inventory from either a manual upload or the automated inbound email pipeline. Both modes replace the supplier inventory and then run the same mapping and availability refresh process.
+                          Automated inbound email pipeline continuously ingests supplier inventory attachments, auto-detects suppliers, replaces stock levels, and refreshes availability in real time.
                       </p>
                   </div>
                   
                   <div className="flex items-center gap-3">
-                      <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-800">
-                          <button
-                              type="button"
-                              onClick={() => {
-                                  setIsAutoIngestEnabled(false);
-                                  localStorage.setItem('isAutoIngestEnabled', 'false');
-                                  success('Manual supplier upload mode enabled.');
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isManualMode ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
-                          >
-                              Manual Upload
-                          </button>
-                          <button
-                              type="button"
-                              onClick={() => {
-                                  setIsAutoIngestEnabled(true);
-                                  localStorage.setItem('isAutoIngestEnabled', 'true');
-                                  success('Automated email ingestion mode enabled.');
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isAutoIngestEnabled ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
-                          >
-                              Automated Email
-                          </button>
-                      </div>
+                      <span className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-bold border border-emerald-200 dark:border-emerald-800/50 shadow-xs">
+                          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                          Automated Pipeline Active
+                      </span>
                   </div>
               </div>
 
+              {/* Most Recent Ingestion Hero Banner */}
+              {latestUpload && (
+                  <div className="bg-gradient-to-r from-blue-500/10 via-indigo-500/5 to-transparent border border-blue-100 dark:border-blue-900/30 rounded-2xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in shadow-sm">
+                      <div className="flex items-start gap-4">
+                          <div className="p-3 bg-blue-500 text-white rounded-xl shadow-md shadow-blue-500/15 shrink-0">
+                              <Zap size={22} className="animate-pulse" />
+                          </div>
+                          <div>
+                              <div className="flex items-center gap-2">
+                                  <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 tracking-wider">Most Recent Ingestion</span>
+                                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
+                                  <span className="text-[9px] bg-green-500/10 text-green-600 dark:text-green-400 font-bold px-1.5 py-0.5 rounded-full">Active</span>
+                              </div>
+                              <h4 className="text-base font-bold text-gray-900 dark:text-white mt-1">
+                                  {latestUpload.supplier.name} Ingested
+                              </h4>
+                              <p className="text-xs text-secondary dark:text-gray-400 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <FileSpreadsheet size={13} className="text-gray-400 inline shrink-0" />
+                                  <span className="font-semibold text-gray-805 dark:text-gray-200">{latestUpload.sourceReportName}</span>
+                                  <span className="text-tertiary dark:text-gray-500">•</span>
+                                  <span>{latestUpload.recordCount} rows loaded</span>
+                                  <span className="text-tertiary dark:text-gray-500">•</span>
+                                  <span className="font-medium text-blue-600 dark:text-blue-400">
+                                      {new Date(latestUpload.uploadedAt!).toLocaleString(undefined, {
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                      })}
+                                  </span>
+                              </p>
+                          </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  setMappingSupplierId(latestUpload.supplier.id);
+                                  setMappingSubTab('SUPPLIER_ITEMS');
+                              }}
+                              className="text-xs font-bold text-blue-600 hover:text-blue-750 bg-blue-500/10 hover:bg-blue-500/15 dark:text-blue-400 dark:hover:text-blue-300 px-4 py-2.5 rounded-xl transition-all border border-blue-500/10"
+                          >
+                              Review Mappings
+                          </button>
+                      </div>
+                  </div>
+              )}
+
               {/* Grid Layout: Config on Left, Status/Inbox on Right */}
-              <div className={`grid grid-cols-1 gap-6 ${isManualMode ? 'lg:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]' : 'lg:grid-cols-3'}`}>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Left Column: Configuration Card */}
                   <div className="lg:col-span-1 space-y-5 bg-white dark:bg-nocturne p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm animate-fade-in">
                       <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
                           <SettingsIcon size={16} className="text-gray-400" />
-                          {isManualMode ? 'Manual Upload' : 'Daemon Configuration'}
+                          Daemon Configuration
                       </h4>
                       
                       <div className="space-y-4 text-xs">
-                          {isManualMode ? (
-                              <div className="space-y-4">
-                                  <div className="space-y-1.5">
-                                      <label className="font-bold text-secondary dark:text-gray-400 uppercase tracking-wider text-[10px]">
-                                          Supplier
-                                      </label>
-                                      <select
-                                          value={manualIngestSupplierId}
-                                          onChange={(e) => {
-                                              setManualIngestSupplierId(e.target.value);
-                                              setMappingSupplierId(e.target.value);
-                                          }}
-                                          className="w-full bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-850 px-3 py-2 rounded-xl text-primary font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                                      >
-                                          <option value={AUTO_DETECT_SUPPLIER_VALUE}>All Suppliers (Auto-detect)</option>
-                                          {visibleSuppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
-                                      </select>
-                                  </div>
-
-                                  <label
-                                      className={`block p-5 border border-dashed rounded-xl cursor-pointer transition-all ${
-                                          isDragging
-                                              ? 'bg-blue-100/70 border-blue-500 text-blue-700 dark:bg-blue-950/30'
-                                              : 'bg-blue-50/40 dark:bg-blue-950/10 border-blue-300 dark:border-blue-800 hover:border-blue-500'
-                                      }`}
-                                      onDragOver={handleDragOver}
-                                      onDragLeave={handleDragLeave}
-                                      onDrop={handleDrop}
-                                  >
-                                      <input
-                                          type="file"
-                                          accept=".xlsx,.xls,.csv"
-                                          className="hidden"
-                                          onChange={(e) => setManualIngestFile(e.target.files?.[0] || null)}
-                                      />
-                                      <div className="flex items-center gap-3">
-                                          <div className={`p-2 rounded-lg transition-colors ${isDragging ? 'bg-blue-200 text-blue-800 dark:bg-blue-900/40' : 'bg-blue-50 dark:bg-blue-950/20 text-blue-600'}`}>
-                                              <Upload size={18} className={isDragging ? 'animate-bounce' : ''} />
-                                          </div>
-                                          <div className="min-w-0">
-                                              <p className="font-bold text-gray-900 dark:text-white truncate">
-                                                  {manualIngestFile ? manualIngestFile.name : (isDragging ? 'Drop file here...' : 'Upload latest supplier file')}
-                                              </p>
-                                              <p className="text-[10px] text-tertiary dark:text-gray-500">Excel or CSV inventory report</p>
-                                          </div>
-                                      </div>
-                                  </label>
-
-                                  <button
-                                      type="button"
-                                      onClick={handleManualSupplierUpload}
-                                      disabled={isImporting || !manualIngestFile}
-                                      className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-50"
-                                  >
-                                      {isImporting ? <RefreshCw size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                                      Replace Supplier Inventory
-                                  </button>
-
-                                  <div className="p-3 bg-blue-50 dark:bg-blue-900/10 text-blue-800 dark:text-blue-300 rounded-xl border border-blue-100 dark:border-blue-900/20 text-[11px] leading-relaxed">
-                                      The uploaded file replaces the selected supplier inventory, then automatically runs item mapping and availability refresh.
-                                  </div>
-                              </div>
-                          ) : (
-                              <>
                           <div className="flex items-center justify-between p-3 bg-white dark:bg-nocturne rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
                               <div>
                                   <p className="font-bold text-gray-900 dark:text-white">Dedicated Mailbox Pipeline</p>
                                   <p className="text-[10px] text-tertiary">Ready for Microsoft Graph mailbox ingestion</p>
                               </div>
-                              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-full text-[10px] font-bold border border-blue-100 dark:border-blue-900/30">
-                                  <span className="w-2 h-2 bg-blue-500 rounded-full" />
-                                  Awaiting mailbox
+                              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 rounded-full text-[10px] font-bold border border-emerald-100 dark:border-emerald-900/30">
+                                  <span className="w-2 h-2 bg-emerald-500 rounded-full" />
+                                  Active Mailbox
                               </span>
                           </div>
                           <div className="space-y-1.5 relative">
@@ -2101,315 +2396,208 @@ const Settings = () => {
 
                           {/* Info panel */}
                           <div className="p-3 bg-blue-50 dark:bg-blue-900/10 text-blue-800 dark:text-blue-300 rounded-xl border border-blue-100 dark:border-blue-900/20 text-[11px] leading-relaxed">
-                              <p className="font-bold mb-1">Shared inventory parser</p>
-                              Automated attachments will use the same supplier detection, format normalization, inventory replacement, auto-mapping, and availability refresh path as manual uploads.
+                              <p className="font-bold mb-1">Automated Stock Synchronisation</p>
+                              Inbound emails from suppliers or forwarded reports are automatically parsed, matching against supplier profiles and refreshing live inventory stock levels without manual intervention.
                           </div>
-                              </>
-                          )}
                       </div>
                   </div>
 
-                  {/* Right Column: Inbound Inbox */}
-                  <div className={`${isManualMode ? 'space-y-4' : 'lg:col-span-2 space-y-4'}`}>
-                      {isManualMode ? (
-                          selectedInventoryUpload ? (
-                              <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col justify-center">
-                                  <div className="max-w-2xl">
-                                      <div className="flex items-start justify-between gap-4">
-                                          <div>
-                                              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Selected Supplier</p>
-                                              <h4 className="text-xl font-bold text-gray-900 dark:text-white mt-1">{selectedManualSupplier?.name}</h4>
-                                              <p className="text-sm text-secondary dark:text-gray-400 mt-2" title={selectedInventoryUpload.sourceReportName || undefined}>
-                                                  {selectedInventoryUpload.sourceReportName || 'No inventory document uploaded yet.'}
-                                              </p>
-                                          </div>
-                                          {selectedInventoryUpload.uploadedAt ? (
-                                              <CheckCircle2 size={22} className="text-emerald-500 shrink-0" />
-                                          ) : (
-                                              <AlertCircle size={22} className="text-gray-300 shrink-0" />
-                                          )}
-                                      </div>
-
-                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
-                                          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
-                                              <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Upload Status</p>
-                                              <p className={`mt-2 text-sm font-bold ${selectedInventoryUpload.uploadedAt ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                                                  {selectedInventoryUpload.uploadedAt ? 'Uploaded' : 'Awaiting File'}
-                                              </p>
-                                          </div>
-                                          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
-                                              <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Last Uploaded</p>
-                                              <p className="mt-2 text-sm font-bold text-gray-900 dark:text-white">
-                                                  {selectedInventoryUpload.uploadedAt ? new Date(selectedInventoryUpload.uploadedAt).toLocaleDateString() : '-'}
-                                              </p>
-                                          </div>
-                                          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-4">
-                                              <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Rows Loaded</p>
-                                              <p className="mt-2 text-sm font-bold text-gray-900 dark:text-white">{selectedInventoryUpload.recordCount || 0}</p>
-                                          </div>
-                                      </div>
-
-                                      <p className="text-xs text-secondary dark:text-gray-400 mt-5 leading-relaxed">
-                                          Uploading a new file replaces only this supplier's inventory, then continues through the same mapping, memory, and availability refresh process used by automated email ingestion.
-                                      </p>
-                                  </div>
+                  {/* Right Column: Inbound Inbox & Status */}
+                  <div className="lg:col-span-2 space-y-4">
+                      {/* Mailbox Status Card */}
+                      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5 animate-fade-in">
+                          <div className="flex items-start gap-3">
+                              <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600 shrink-0">
+                                  <Inbox size={18} />
                               </div>
-                          ) : (
-                              <div className="h-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[400px]">
+                              <div className="flex-1 min-w-0">
+                                  <h4 className="text-sm font-bold text-gray-900 dark:text-white">Automated Mailbox Pipeline</h4>
+                                  <p className="text-xs text-secondary dark:text-gray-400 mt-0.5 leading-relaxed">
+                                      Attachments received at the inbound mailbox flow through automatic supplier detection, normalization, inventory replacement, auto-mapping, and live availability refresh.
+                                  </p>
+                              </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-3 mt-4">
+                              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Mailbox</p>
+                                  <p className="mt-1.5 text-xs font-bold text-gray-900 dark:text-white truncate" title={ingestEmailAddress || undefined}>{ingestEmailAddress || 'Not configured'}</p>
+                              </div>
+                              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Polling</p>
+                                  <p className="mt-1.5 text-xs font-bold text-gray-900 dark:text-white">{ingestInterval}</p>
+                              </div>
+                              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Engine</p>
+                                  <p className="mt-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">Automated Pipeline</p>
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* Tabbed Ingestion Status Panel */}
+                      {(() => {
+                          const pendingCount = emailIngestionQueue.filter(i => i.status === 'PENDING').length;
+                          const statusMeta: Record<string, { label: string; cls: string }> = {
+                              PENDING:        { label: 'Pending',        cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border-blue-100 dark:border-blue-900/30' },
+                              PROCESSING:     { label: 'Processing…',    cls: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' },
+                              PROCESSED:      { label: 'Ingested',       cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30' },
+                              REJECTED_STALE: { label: 'Stale (skipped)', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' },
+                              NEEDS_SUPPLIER: { label: 'Needs supplier', cls: 'bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400 border-purple-100 dark:border-purple-900/30' },
+                              FAILED:         { label: 'Failed',         cls: 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-100 dark:border-red-900/30' },
+                              SKIPPED:        { label: 'Skipped',        cls: 'bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400 border-gray-200 dark:border-gray-800' }
+                          };
+                          return (
+                              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[420px] animate-fade-in">
+                                  {/* Tabs Header */}
                                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
-                                      <div>
-                                          <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                              <Files size={18} className="text-blue-500" />
-                                              All Suppliers Ingestion Status
-                                          </h4>
-                                          <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
-                                              Overview of latest uploaded files and record counts. Click a supplier to view.
-                                          </p>
+                                      <div className="flex bg-gray-50 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-800 self-start">
+                                          <button
+                                              type="button"
+                                              onClick={() => setEmailHubStatusTab('QUEUE')}
+                                              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                                  emailHubStatusTab === 'QUEUE'
+                                                      ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-sm'
+                                                      : 'text-secondary hover:text-primary dark:hover:text-white'
+                                              }`}
+                                          >
+                                              <Inbox size={14} />
+                                              Email Inbox Queue
+                                              {pendingCount > 0 && (
+                                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                                      {pendingCount}
+                                                  </span>
+                                              )}
+                                          </button>
+                                          <button
+                                              type="button"
+                                              onClick={() => setEmailHubStatusTab('SUPPLIERS')}
+                                              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                                  emailHubStatusTab === 'SUPPLIERS'
+                                                      ? 'bg-white dark:bg-[#15171e] text-gray-900 dark:text-white shadow-sm'
+                                                      : 'text-secondary hover:text-primary dark:hover:text-white'
+                                              }`}
+                                          >
+                                              <Building2 size={14} />
+                                              Supplier Ingestion Status
+                                          </button>
                                       </div>
-                                      <div className="relative min-w-[200px]">
-                                          <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
-                                          <input
-                                              type="text"
-                                              placeholder="Search suppliers..."
-                                              value={supplierSearchQuery}
-                                              onChange={e => setSupplierSearchQuery(e.target.value)}
-                                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-8 pr-3 py-1.5 rounded-xl text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                                          />
-                                      </div>
-                                  </div>
 
-                                  <div className="flex-1 overflow-y-auto max-h-[450px] pr-1">
-                                      <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                                          {supplierInventoryUploads
-                                              .filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()))
-                                              .map((upload) => {
-                                                  const isUploaded = !!upload.uploadedAt;
-                                                  return (
-                                                      <div
-                                                          key={upload.supplier.id}
-                                                          onClick={() => {
-                                                              setManualIngestSupplierId(upload.supplier.id);
-                                                              setMappingSupplierId(upload.supplier.id);
-                                                          }}
-                                                          className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl cursor-pointer transition-all"
-                                                      >
-                                                          <div className="flex items-center gap-3 min-w-0">
-                                                              <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
-                                                                  <Building2 size={16} className="group-hover:scale-110 transition-transform" />
-                                                              </div>
-                                                              <div className="min-w-0">
-                                                                  <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
-                                                                      {upload.supplier.name}
-                                                                  </div>
-                                                                  <div className="flex items-center gap-2 mt-0.5">
-                                                                      {isUploaded ? (
-                                                                          <>
-                                                                              <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
-                                                                              <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[200px] sm:max-w-[300px]" title={upload.sourceReportName}>
-                                                                                  {upload.sourceReportName}
-                                                                              </span>
-                                                                          </>
-                                                                      ) : (
-                                                                          <span className="text-xs text-tertiary dark:text-gray-500 italic">
-                                                                              No file uploaded yet
-                                                                          </span>
-                                                                      )}
-                                                                  </div>
-                                                              </div>
-                                                          </div>
-
-                                                          <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
-                                                              <div>
-                                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                                      isUploaded
-                                                                          ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30'
-                                                                          : 'bg-gray-100 dark:bg-white/5 text-gray-500 border border-gray-200 dark:border-gray-800'
-                                                                  }`}>
-                                                                      {isUploaded ? 'Uploaded' : 'Awaiting File'}
-                                                                  </span>
-                                                              </div>
-                                                              {isUploaded && (
-                                                                  <div className="text-xs">
-                                                                      <div className="font-semibold text-gray-900 dark:text-white">
-                                                                          {upload.recordCount} rows
-                                                                      </div>
-                                                                      <div className="text-[10px] text-tertiary dark:text-gray-500">
-                                                                          {new Date(upload.uploadedAt!).toLocaleDateString()}
-                                                                      </div>
-                                                                  </div>
-                                                              )}
-                                                          </div>
-                                                      </div>
-                                                  );
-                                              })}
-                                          {supplierInventoryUploads.filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase())).length === 0 && (
-                                              <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
-                                                  No suppliers match your search.
-                                              </div>
-                                          )}
-                                      </div>
-                                  </div>
-                              </div>
-                          )
-                      ) : (
-                          <div className="space-y-4">
-                              {/* Mailbox Status Card */}
-                              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-5">
-                                  <div className="flex items-start gap-3">
-                                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600 shrink-0">
-                                          <Inbox size={18} />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                          <h4 className="text-sm font-bold text-gray-900 dark:text-white">Automated Mailbox Pipeline</h4>
-                                          <p className="text-xs text-secondary dark:text-gray-400 mt-0.5 leading-relaxed">
-                                              Attachments received at the inbound mailbox flow through the same supplier detection, normalization, replacement, auto-mapping, and availability refresh process as manual uploads.
-                                          </p>
-                                      </div>
-                                  </div>
-                                  <div className="grid grid-cols-3 gap-3 mt-4">
-                                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
-                                          <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Mailbox</p>
-                                          <p className="mt-1.5 text-xs font-bold text-gray-900 dark:text-white truncate" title={ingestEmailAddress || undefined}>{ingestEmailAddress || 'Not configured'}</p>
-                                      </div>
-                                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
-                                          <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Polling</p>
-                                          <p className="mt-1.5 text-xs font-bold text-gray-900 dark:text-white">{ingestInterval}</p>
-                                      </div>
-                                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3">
-                                          <p className="text-[10px] font-bold uppercase tracking-wider text-tertiary dark:text-gray-500">Parser</p>
-                                          <p className="mt-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">Shared with manual</p>
-                                      </div>
-                                  </div>
-                              </div>
-
-                              {/* Email Inbox Queue */}
-                              {(() => {
-                                  const pendingCount = emailIngestionQueue.filter(i => i.status === 'PENDING').length;
-                                  const statusMeta: Record<string, { label: string; cls: string }> = {
-                                      PENDING:        { label: 'Pending',        cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border-blue-100 dark:border-blue-900/30' },
-                                      PROCESSING:     { label: 'Processing…',    cls: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' },
-                                      PROCESSED:      { label: 'Ingested',       cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30' },
-                                      REJECTED_STALE: { label: 'Stale (skipped)', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' },
-                                      NEEDS_SUPPLIER: { label: 'Needs supplier', cls: 'bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400 border-purple-100 dark:border-purple-900/30' },
-                                      FAILED:         { label: 'Failed',         cls: 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-100 dark:border-red-900/30' },
-                                      SKIPPED:        { label: 'Skipped',        cls: 'bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400 border-gray-200 dark:border-gray-800' }
-                                  };
-                                  return (
-                                      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6">
-                                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
-                                              <div>
-                                                  <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                                      <Inbox size={18} className="text-blue-500" />
-                                                      Email Inbox
-                                                      {pendingCount > 0 && (
-                                                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">{pendingCount} new</span>
-                                                      )}
-                                                  </h4>
-                                                  <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
-                                                      Attachments pulled from the mailbox. Processing runs the same parser, stale-file guard, and auto-mapping as manual uploads.
-                                                  </p>
-                                              </div>
-                                              <div className="flex items-center gap-2 shrink-0">
-                                                  <button type="button" onClick={refreshEmailIngestionQueue} className="btn-secondary flex items-center gap-2 text-xs" title="Refresh queue">
-                                                      <RefreshCw size={14} /> Refresh
-                                                  </button>
-                                                  <button
-                                                      type="button"
-                                                      onClick={drainSupplierInbox}
-                                                      disabled={isDrainingInbox || pendingCount === 0}
-                                                      className="btn-primary flex items-center gap-2 text-xs disabled:opacity-50"
-                                                  >
-                                                      {isDrainingInbox ? <RefreshCw size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                                                      Process inbox{pendingCount > 0 ? ` (${pendingCount})` : ''}
-                                                  </button>
-                                              </div>
+                                      {/* Search / Action controls based on active tab */}
+                                      {emailHubStatusTab === 'QUEUE' ? (
+                                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                                              <button type="button" onClick={refreshEmailIngestionQueue} className="btn-secondary flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg" title="Refresh queue">
+                                                  <RefreshCw size={13} /> Refresh
+                                              </button>
+                                              <button
+                                                  type="button"
+                                                  onClick={drainSupplierInbox}
+                                                  disabled={isDrainingInbox || pendingCount === 0}
+                                                  className="btn-primary flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg disabled:opacity-50"
+                                              >
+                                                  {isDrainingInbox ? <RefreshCw size={13} className="animate-spin" /> : <Wand2 size={13} />}
+                                                  Process inbox{pendingCount > 0 ? ` (${pendingCount})` : ''}
+                                              </button>
                                           </div>
-
-                                          {emailIngestionQueue.length === 0 ? (
-                                              <div className="py-10 text-center">
-                                                  <Inbox size={28} className="mx-auto text-gray-300 dark:text-gray-700 mb-2" />
-                                                  <p className="text-sm text-secondary dark:text-gray-400">No emails received yet.</p>
-                                                  <p className="text-xs text-tertiary dark:text-gray-500 mt-1">Forwarded supplier reports appear here after the next mailbox poll.</p>
-                                              </div>
-                                          ) : (
-                                              <div className="max-h-[320px] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800 pr-1">
-                                                  {emailIngestionQueue.map(item => {
-                                                      const meta = statusMeta[item.status] || statusMeta.SKIPPED;
+                                      ) : (
+                                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                                              {/* Filter Buttons */}
+                                              <div className="flex rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-0.5 text-xs font-medium">
+                                                  {(['ALL', 'INGESTED', 'AWAITING'] as const).map(filterType => {
+                                                      const count = filterType === 'ALL'
+                                                          ? sortedUploads.length
+                                                          : filterType === 'INGESTED'
+                                                              ? sortedUploads.filter(u => !!u.uploadedAt).length
+                                                              : sortedUploads.filter(u => !u.uploadedAt).length;
                                                       return (
-                                                          <div key={item.id} className="flex items-start justify-between gap-3 py-3">
-                                                              <div className="min-w-0">
-                                                                  <div className="flex items-center gap-2">
-                                                                      <FileSpreadsheet size={14} className="text-gray-400 shrink-0" />
-                                                                      <span className="font-semibold text-sm text-gray-900 dark:text-white truncate max-w-[260px]" title={item.attachmentName}>{item.attachmentName}</span>
-                                                                  </div>
-                                                                  <div className="text-[11px] text-secondary dark:text-gray-500 mt-0.5 truncate max-w-[340px]">
-                                                                      {item.detectedSupplierName || 'Supplier TBD'}
-                                                                      {item.reportDate ? ` · ${item.reportDate}` : ''}
-                                                                      {item.rowsImported != null ? ` · ${item.rowsImported} rows` : ''}
-                                                                      {item.fromAddress ? ` · from ${item.fromAddress}` : ''}
-                                                                  </div>
-                                                                  {item.error && (
-                                                                      <div className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 truncate max-w-[340px]" title={item.error}>{item.error}</div>
-                                                                  )}
-                                                              </div>
-                                                              <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.cls}`}>{meta.label}</span>
-                                                          </div>
+                                                          <button
+                                                              key={filterType}
+                                                              type="button"
+                                                              onClick={() => setSupplierStatusFilter(filterType)}
+                                                              className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all ${
+                                                                  supplierStatusFilter === filterType
+                                                                      ? 'bg-white dark:bg-nocturne text-gray-900 dark:text-white shadow-xs'
+                                                                      : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                                              }`}
+                                                          >
+                                                              {filterType.toLowerCase()} ({count})
+                                                          </button>
                                                       );
                                                   })}
                                               </div>
-                                          )}
-                                      </div>
-                                  );
-                              })()}
-
-                              {/* All Suppliers Ingestion Status */}
-                              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-nocturne p-6 flex flex-col min-h-[400px]">
-                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
-                                      <div>
-                                          <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                              <Files size={18} className="text-blue-500" />
-                                              All Suppliers Ingestion Status
-                                          </h4>
-                                          <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
-                                              Overview of suppliers picked up from email and their upload status per customer.
-                                          </p>
-                                      </div>
-                                      <div className="relative min-w-[200px]">
-                                          <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
-                                          <input
-                                              type="text"
-                                              placeholder="Search suppliers..."
-                                              value={supplierSearchQuery}
-                                              onChange={e => setSupplierSearchQuery(e.target.value)}
-                                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-8 pr-3 py-1.5 rounded-xl text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                                          />
-                                      </div>
+                                              
+                                              <div className="relative min-w-[180px]">
+                                                  <Search className="absolute left-2.5 top-2 text-gray-400" size={13} />
+                                                  <input
+                                                      type="text"
+                                                      placeholder="Search suppliers..."
+                                                      value={supplierSearchQuery}
+                                                      onChange={e => setSupplierSearchQuery(e.target.value)}
+                                                      className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 pl-7 pr-3 py-1 rounded-lg text-xs text-primary focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                                  />
+                                              </div>
+                                          </div>
+                                      )}
                                   </div>
 
-                                  <div className="flex-1 overflow-y-auto max-h-[450px] pr-1">
-                                      <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                                          {supplierInventoryUploads
-                                              .filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()))
-                                              .map((upload) => {
+                                  {/* Tab Contents */}
+                                  {emailHubStatusTab === 'QUEUE' ? (
+                                      /* Inbound Email Queue */
+                                      emailIngestionQueue.length === 0 ? (
+                                          <div className="py-14 text-center flex-1 flex flex-col justify-center">
+                                              <Inbox size={32} className="mx-auto text-gray-300 dark:text-gray-700 mb-2" />
+                                              <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">No emails received yet.</p>
+                                              <p className="text-xs text-tertiary dark:text-gray-500 mt-1 max-w-sm mx-auto">Forwarded supplier reports appear here after the next mailbox poll.</p>
+                                          </div>
+                                      ) : (
+                                          <div className="flex-1 overflow-y-auto max-h-[380px] divide-y divide-gray-150 dark:divide-gray-800 pr-1">
+                                              {emailIngestionQueue.map(item => {
+                                                  const meta = statusMeta[item.status] || statusMeta.SKIPPED;
+                                                  return (
+                                                      <div key={item.id} className="flex items-start justify-between gap-3 py-3 last:pb-0">
+                                                          <div className="min-w-0">
+                                                              <div className="flex items-center gap-2">
+                                                                  <FileSpreadsheet size={14} className="text-gray-400 shrink-0" />
+                                                                  <span className="font-semibold text-sm text-gray-900 dark:text-white truncate max-w-[280px]" title={item.attachmentName}>{item.attachmentName}</span>
+                                                              </div>
+                                                              <div className="text-[11px] text-secondary dark:text-gray-500 mt-0.5 truncate max-w-[380px]">
+                                                                  {item.detectedSupplierName || 'Supplier TBD'}
+                                                                  {item.reportDate ? ` · ${item.reportDate}` : ''}
+                                                                  {item.rowsImported != null ? ` · ${item.rowsImported} rows` : ''}
+                                                                  {item.fromAddress ? ` · from ${item.fromAddress}` : ''}
+                                                              </div>
+                                                              {item.error && (
+                                                                  <div className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 truncate max-w-[380px]" title={item.error}>{item.error}</div>
+                                                              )}
+                                                          </div>
+                                                          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.cls}`}>{meta.label}</span>
+                                                      </div>
+                                                  );
+                                              })}
+                                          </div>
+                                      )
+                                  ) : (
+                                      /* Supplier Ingestion Status */
+                                      <div className="flex-1 overflow-y-auto max-h-[380px] pr-1">
+                                          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                              {filteredUploads.map((upload) => {
                                                   const isUploaded = !!upload.uploadedAt;
                                                   return (
                                                       <div
                                                           key={upload.supplier.id}
-                                                          className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-all"
+                                                          className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 last:pb-0"
                                                       >
                                                           <div className="flex items-center gap-3 min-w-0">
                                                               <div className={`p-2 rounded-lg ${isUploaded ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : 'bg-gray-50 dark:bg-white/5 text-gray-400'}`}>
-                                                                  <Building2 size={16} className="group-hover:scale-110 transition-transform" />
+                                                                  <Building2 size={16} />
                                                               </div>
                                                               <div className="min-w-0">
-                                                                  <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
+                                                                  <div className="font-bold text-sm text-gray-900 dark:text-white transition-colors flex items-center gap-1.5">
                                                                       {upload.supplier.name}
                                                                   </div>
                                                                   <div className="flex items-center gap-2 mt-0.5">
                                                                       {isUploaded ? (
                                                                           <>
                                                                               <FileSpreadsheet size={12} className="text-gray-400 shrink-0" />
-                                                                              <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[200px] sm:max-w-[300px]" title={upload.sourceReportName}>
+                                                                              <span className="text-xs text-secondary dark:text-gray-400 truncate max-w-[220px] sm:max-w-[320px]" title={upload.sourceReportName}>
                                                                                   {upload.sourceReportName}
                                                                               </span>
                                                                           </>
@@ -2424,10 +2612,10 @@ const Settings = () => {
 
                                                           <div className="flex flex-wrap items-center gap-4 text-right sm:text-right shrink-0">
                                                               <div>
-                                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                                                                       isUploaded
-                                                                          ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30'
-                                                                          : 'bg-gray-100 dark:bg-white/5 text-gray-500 border border-gray-200 dark:border-gray-800'
+                                                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30'
+                                                                          : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-gray-800'
                                                                   }`}>
                                                                       {isUploaded ? 'Ingested' : 'Awaiting Email'}
                                                                   </span>
@@ -2446,16 +2634,17 @@ const Settings = () => {
                                                       </div>
                                                   );
                                               })}
-                                          {supplierInventoryUploads.filter(upload => upload.supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase())).length === 0 && (
-                                              <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
-                                                  No suppliers match your search.
-                                              </div>
-                                          )}
+                                              {filteredUploads.length === 0 && (
+                                                  <div className="py-8 text-center text-secondary dark:text-gray-500 text-xs italic">
+                                                      No suppliers match your filter/search.
+                                                  </div>
+                                              )}
+                                          </div>
                                       </div>
-                                  </div>
+                                  )}
                               </div>
-                          </div>
-                      )}
+                          );
+                      })()}
                   </div>
               </div>
           </div>
@@ -2646,10 +2835,9 @@ const Settings = () => {
       { id: 'MAPPING', label: 'Mapping', icon: GitMerge, permission: 'view_mapping' },
       { id: 'SUPPLIERS', label: 'Suppliers', icon: Truck, permission: 'view_suppliers' },
       { id: 'SITES', label: 'Sites', icon: MapPin, permission: 'view_sites' },
-      { id: 'WORKFLOW', label: 'Workflow', icon: GitMerge, permission: 'view_workflow' },
+      { id: 'WORKFLOW', label: 'Workflows & Notifications', icon: GitMerge, permission: 'view_workflow' },
       { id: 'USERS', label: 'User Directory', icon: User, permission: 'view_security' },
       { id: 'SECURITY', label: 'Security Roles', icon: Shield, permission: 'view_security' },
-      { id: 'NOTIFICATIONS', label: 'Notifications', icon: Bell, permission: 'view_notifications' },
       { id: 'BRANDING', label: 'Branding', icon: Palette, permission: 'view_branding' },
       { id: 'MENU', label: 'Menu Config', icon: ListFilter, permission: 'manage_settings' },
       { id: 'MIGRATION', label: 'Data Migration', icon: Upload, permission: 'manage_settings' },
@@ -2657,7 +2845,8 @@ const Settings = () => {
       { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'view_audit_logs' },
       { id: 'DATA_SYNC', label: 'Data Sync', icon: Database, permission: 'manage_settings' },
       { id: 'SMART_BUYING',    label: 'Smart Buying',   icon: BarChart3, permission: 'manage_settings' },
-      { id: 'ITEM_CREATION',   label: 'Item Creation',  icon: Package,   permission: 'manage_items' }
+      { id: 'ITEM_CREATION',   label: 'Item Creation',  icon: Package,   permission: 'manage_items' },
+      { id: 'EOM_RECONCILIATION', label: 'EOM P&L Reconciliation', icon: ShieldCheck, permission: 'manage_settings' }
   ];
 
   const visibleTabs: { id: AdminTab, icon: React.ElementType, label: string }[] = [
@@ -3013,8 +3202,38 @@ if __name__ == "__main__":
       setIsSupplierFormOpen(false);
   };
   const openSupplierForm = (s?: Supplier) => { if(s) { setEditingSupplier(s); setSupplierForm(createSupplierFormState(s)); } else { setEditingSupplier(null); setSupplierForm(createSupplierFormState()); } setIsSupplierFormOpen(true); };
-  const handleSiteFormSubmit = (e: React.FormEvent) => { e.preventDefault(); const newSite: Site = { id: editingSite ? editingSite.id : uuidv4(), name: siteForm.name, suburb: siteForm.suburb, address: siteForm.address, state: siteForm.state, zip: siteForm.zip, contactPerson: siteForm.contactPerson }; editingSite ? updateSite(newSite) : addSite(newSite); setIsSiteFormOpen(false); };
-  const openSiteForm = (s?: Site) => { if(s) { setEditingSite(s); setSiteForm({ name: s.name, suburb: s.suburb, address: s.address, state: s.state, zip: s.zip, contactPerson: s.contactPerson }); } else { setEditingSite(null); setSiteForm({ name: '', suburb: '', address: '', state: '', zip: '', contactPerson: '' }); } setIsSiteFormOpen(true); };
+  const handleSiteFormSubmit = async (e: React.FormEvent) => { 
+      e.preventDefault(); 
+      const siteId = editingSite ? editingSite.id : uuidv4();
+      const newSite: Site = { 
+          id: siteId, 
+          name: siteForm.name, 
+          suburb: siteForm.suburb, 
+          address: siteForm.address, 
+          state: siteForm.state, 
+          zip: siteForm.zip, 
+          contactPerson: siteForm.contactPerson 
+      }; 
+      editingSite ? updateSite(newSite) : addSite(newSite); 
+
+      if (siteTeamsWebhookInput !== undefined) {
+          await notificationEngineService.saveSiteTeamsWebhookUrl(siteId, siteTeamsWebhookInput);
+          setSiteTeamsWebhooks(prev => ({ ...prev, [siteId]: siteTeamsWebhookInput.trim() }));
+      }
+      setIsSiteFormOpen(false); 
+  };
+  const openSiteForm = (s?: Site) => { 
+      if(s) { 
+          setEditingSite(s); 
+          setSiteForm({ name: s.name, suburb: s.suburb, address: s.address, state: s.state, zip: s.zip, contactPerson: s.contactPerson }); 
+          setSiteTeamsWebhookInput(siteTeamsWebhooks[s.id] || '');
+      } else { 
+          setEditingSite(null); 
+          setSiteForm({ name: '', suburb: '', address: '', state: '', zip: '', contactPerson: '' }); 
+          setSiteTeamsWebhookInput('');
+      } 
+      setIsSiteFormOpen(true); 
+  };
   const handleWorkflowUpdate = (id: string, updates: Partial<WorkflowStep>) => { const step = workflowSteps.find(s => s.id === id); if (step) updateWorkflowStep({ ...step, ...updates }); };
 
   // --- Notification Logic ---
@@ -3198,7 +3417,7 @@ if __name__ == "__main__":
         </>
       )}
 
-      {/* Revamp mode: portal the tab bar into the floating header's center slot */}
+      {/* Revamp mode: portal the tab bar into the floating header's center slot (desktop lg+) */}
       {uiRevamp && adminTabSlot && createPortal(
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide py-0.5">
           {visibleTabs.map(tab => {
@@ -3227,10 +3446,37 @@ if __name__ == "__main__":
         adminTabSlot
       )}
 
-      <div className="mt-6 flex-1 overflow-y-auto min-h-0 pb-12">
+      {/* Revamp mode: in-page scrollable tab rail for mobile & tablet (< lg) */}
+      {uiRevamp && (
+        <div className="lg:hidden -mx-3 px-3 sm:mx-0 sm:px-0 pt-2 pb-1">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-1 px-1 bg-white/80 dark:bg-nocturne/80 backdrop-blur rounded-2xl border border-gray-200/80 dark:border-gray-800 shadow-2xs">
+            {visibleTabs.map(tab => {
+              const isActive = activeTab === tab.id;
+              const TabIcon = tab.icon;
+              return (
+                <button
+                  type="button"
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all text-xs font-bold shrink-0 ${
+                    isActive
+                      ? 'bg-tranquil text-white shadow-sm shadow-tranquil/30'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'
+                  }`}
+                >
+                  <TabIcon size={15} className="shrink-0" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 sm:mt-6 flex-1 overflow-y-auto min-h-0 pb-12">
 
       {activeTab === 'PROFILE' && (
-          <div className="animate-fade-in max-w-2xl">
+          <div className="animate-fade-in max-w-4xl space-y-8">
               <div className="bg-white dark:bg-nocturne rounded-2xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm">
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">User Profile</h2>
                   
@@ -3306,6 +3552,290 @@ if __name__ == "__main__":
                   </div>
               </div>
 
+              {/* Notification Channels & Scenario Matrix */}
+              <div className="bg-white dark:bg-nocturne rounded-2xl p-6 md:p-8 border border-gray-200 dark:border-gray-800 shadow-sm space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-gray-100 dark:border-gray-800">
+                      <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-[var(--color-brand)]/10 text-[var(--color-brand)] flex items-center justify-center">
+                              <Bell size={20} />
+                          </div>
+                          <div>
+                              <h3 className="text-lg font-black text-gray-900 dark:text-white tracking-tight">Notification Channels & Scenarios</h3>
+                              <p className="text-xs text-gray-500 mt-0.5">Control which channels you receive alerts on and configure notification rules for each procurement workflow scenario.</p>
+                          </div>
+                      </div>
+                      <button
+                          type="button"
+                          onClick={handleSaveProfileNotifPrefs}
+                          disabled={isSavingProfileNotifPrefs}
+                          className="btn-primary py-2.5 px-5 text-xs flex items-center gap-2 rounded-xl shadow-lg shadow-[var(--color-brand)]/20 self-start sm:self-auto shrink-0"
+                      >
+                          {isSavingProfileNotifPrefs ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                          <span>Save Preferences</span>
+                      </button>
+                  </div>
+
+                  {/* Master Channel Toggles */}
+                  <div className="space-y-3">
+                      <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Master Channels</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          {/* In-App Alerts */}
+                          <div className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                  <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-500">
+                                      <Bell size={18} />
+                                  </div>
+                                  <div>
+                                      <div className="text-xs font-bold text-gray-900 dark:text-white">In-App Live</div>
+                                      <div className="text-[10px] text-gray-400">Live action bell alerts</div>
+                                  </div>
+                              </div>
+                              <input
+                                  type="checkbox"
+                                  checked={profileNotifPrefs.in_app_enabled}
+                                  onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, in_app_enabled: e.target.checked })}
+                                  className="w-5 h-5 accent-[var(--color-brand)] rounded cursor-pointer"
+                              />
+                          </div>
+
+                          {/* Email Digest */}
+                          <div className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                  <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500">
+                                      <Mail size={18} />
+                                  </div>
+                                  <div>
+                                      <div className="text-xs font-bold text-gray-900 dark:text-white">Email Digest</div>
+                                      <div className="text-[10px] text-gray-400">Actionable emails</div>
+                                  </div>
+                              </div>
+                              <input
+                                  type="checkbox"
+                                  checked={profileNotifPrefs.email_enabled}
+                                  onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, email_enabled: e.target.checked })}
+                                  className="w-5 h-5 accent-[var(--color-brand)] rounded cursor-pointer"
+                              />
+                          </div>
+
+                          {/* MS Teams */}
+                          <div className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                  <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-500">
+                                      <MessageSquare size={18} />
+                                  </div>
+                                  <div>
+                                      <div className="text-xs font-bold text-gray-900 dark:text-white">MS Teams</div>
+                                      <div className="text-[10px] text-gray-400">Adaptive Card alerts</div>
+                                  </div>
+                              </div>
+                              <input
+                                  type="checkbox"
+                                  checked={profileNotifPrefs.teams_enabled}
+                                  onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, teams_enabled: e.target.checked })}
+                                  className="w-5 h-5 accent-[var(--color-brand)] rounded cursor-pointer"
+                              />
+                          </div>
+
+                          {/* Audio Chimes */}
+                          <div className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                  <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500">
+                                      <Volume2 size={18} />
+                                  </div>
+                                  <div>
+                                      <div className="text-xs font-bold text-gray-900 dark:text-white">Audio Chimes</div>
+                                      <button
+                                          type="button"
+                                          onClick={() => playNotificationChime('subtle')}
+                                          className="text-[10px] text-[var(--color-brand)] font-bold hover:underline"
+                                      >
+                                          Play test chime
+                                      </button>
+                                  </div>
+                              </div>
+                              <input
+                                  type="checkbox"
+                                  checked={profileNotifPrefs.sound_enabled}
+                                  onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, sound_enabled: e.target.checked })}
+                                  className="w-5 h-5 accent-[var(--color-brand)] rounded cursor-pointer"
+                              />
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Quiet Hours */}
+                  <div className="p-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-white/5 space-y-4">
+                      <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                              <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-500">
+                                  <Moon size={18} />
+                              </div>
+                              <div>
+                                  <div className="text-xs font-bold text-gray-900 dark:text-white">Quiet Hours Schedule</div>
+                                  <div className="text-[10px] text-gray-400">Mute non-urgent audio chimes and popups during set times</div>
+                              </div>
+                          </div>
+                          <input
+                              type="checkbox"
+                              checked={profileNotifPrefs.quiet_hours_enabled}
+                              onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, quiet_hours_enabled: e.target.checked })}
+                              className="w-5 h-5 accent-[var(--color-brand)] rounded cursor-pointer"
+                          />
+                      </div>
+
+                      {profileNotifPrefs.quiet_hours_enabled && (
+                          <div className="grid grid-cols-2 gap-4 pt-3 border-t border-gray-200 dark:border-gray-800">
+                              <div>
+                                  <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Quiet Hours Start</label>
+                                  <input
+                                      type="time"
+                                      value={profileNotifPrefs.quiet_hours_start || '22:00'}
+                                      onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, quiet_hours_start: e.target.value })}
+                                      className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                  />
+                              </div>
+                              <div>
+                                  <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Quiet Hours End</label>
+                                  <input
+                                      type="time"
+                                      value={profileNotifPrefs.quiet_hours_end || '07:00'}
+                                      onChange={e => setProfileNotifPrefs({ ...profileNotifPrefs, quiet_hours_end: e.target.value })}
+                                      className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                  />
+                              </div>
+                          </div>
+                      )}
+                  </div>
+
+                  {/* Scenario Matrix */}
+                  {(() => {
+                      const isCurrentUserAdmin = currentUser?.role === 'ADMIN' || (currentUser?.roleIds || []).includes('ADMIN') || hasPermission('manage_settings');
+                      const eligibleScenarios = getUserEligibleScenarios(currentUser, roles, hasPermission);
+                      const displayedScenarios = (isCurrentUserAdmin && showAllScenariosInProfile) ? NOTIFICATION_SCENARIOS : eligibleScenarios;
+                      const userRoleNames = (currentUser?.roleIds || [currentUser?.role]).filter(Boolean).map(rid => roles.find(r => r.id === rid)?.name || rid).join(', ') || 'Standard Member';
+
+                      return (
+                          <div className="space-y-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                  <div>
+                                      <div className="flex items-center gap-2">
+                                          <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Scenario Channel Routing Matrix</h4>
+                                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+                                              {displayedScenarios.length} Active
+                                          </span>
+                                      </div>
+                                      <p className="text-[11px] text-gray-500 mt-0.5">
+                                          Tied to workflows granted by your assigned roles: <span className="font-bold text-gray-700 dark:text-gray-300">{userRoleNames}</span>.
+                                      </p>
+                                  </div>
+                                  {isCurrentUserAdmin && (
+                                      <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-white/5 p-1 rounded-xl self-start sm:self-auto shrink-0">
+                                          <button
+                                              type="button"
+                                              onClick={() => setShowAllScenariosInProfile(false)}
+                                              className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                                                  !showAllScenariosInProfile ? 'bg-white dark:bg-nocturne text-[var(--color-brand)] shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                                              }`}
+                                          >
+                                              My Role Access ({eligibleScenarios.length})
+                                          </button>
+                                          <button
+                                              type="button"
+                                              onClick={() => setShowAllScenariosInProfile(true)}
+                                              className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                                                  showAllScenariosInProfile ? 'bg-white dark:bg-nocturne text-[var(--color-brand)] shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                                              }`}
+                                          >
+                                              All Scenarios ({NOTIFICATION_SCENARIOS.length})
+                                          </button>
+                                      </div>
+                                  )}
+                              </div>
+                              
+                              <div className="border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden bg-white dark:bg-nocturne">
+                                  <table className="w-full text-left">
+                                      <thead className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800 text-[10px] uppercase font-black tracking-widest text-gray-400">
+                                          <tr>
+                                              <th className="px-5 py-3.5">Procurement Scenario</th>
+                                              <th className="px-4 py-3.5 text-center w-28">In-App</th>
+                                              <th className="px-4 py-3.5 text-center w-28">Email</th>
+                                              <th className="px-4 py-3.5 text-center w-28">Teams</th>
+                                          </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                                          {displayedScenarios.length === 0 ? (
+                                              <tr>
+                                                  <td colSpan={4} className="px-6 py-12 text-center text-gray-400">
+                                                      <div className="flex flex-col items-center gap-2">
+                                                          <Lock size={24} className="text-gray-300 dark:text-gray-600" />
+                                                          <p className="font-bold text-sm text-gray-500">No active notification scenarios</p>
+                                                          <p className="text-xs max-w-sm">No procurement workflow scenarios are currently unlocked for your assigned roles ({userRoleNames}). Contact your administrator to request role permissions.</p>
+                                                      </div>
+                                                  </td>
+                                              </tr>
+                                          ) : (
+                                              displayedScenarios.map(scen => {
+                                                  const isGranted = isScenarioAllowedForRoles(scen, currentUser?.roleIds || [currentUser?.role || ''], roles, hasPermission);
+                                                  const current = profileNotifPrefs.category_overrides?.[scen.key] || { in_app: true, email: true, teams: true };
+                                                  return (
+                                                      <tr key={scen.key} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
+                                                          <td className="px-5 py-4">
+                                                              <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                                                                  <span className="font-bold text-gray-900 dark:text-white text-xs">{scen.title}</span>
+                                                                  <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-gray-100 dark:bg-gray-800 text-gray-500">
+                                                                      {scen.badge}
+                                                                  </span>
+                                                                  {isGranted ? (
+                                                                      <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
+                                                                          Role Granted
+                                                                      </span>
+                                                                  ) : (
+                                                                      <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 flex items-center gap-1">
+                                                                          <Lock size={8} /> {scen.roleExplanation}
+                                                                      </span>
+                                                                  )}
+                                                              </div>
+                                                              <p className="text-[11px] text-gray-400 font-medium leading-relaxed">{scen.desc}</p>
+                                                          </td>
+                                                          <td className="px-4 py-4 text-center">
+                                                              <input
+                                                                  type="checkbox"
+                                                                  checked={current.in_app !== false}
+                                                                  onChange={() => handleToggleProfileScenarioChannel(scen.key, 'in_app')}
+                                                                  className="w-4 h-4 accent-sky-500 rounded cursor-pointer"
+                                                                  title={`Toggle In-App alerts for ${scen.title}`}
+                                                              />
+                                                          </td>
+                                                          <td className="px-4 py-4 text-center">
+                                                              <input
+                                                                  type="checkbox"
+                                                                  checked={current.email !== false}
+                                                                  onChange={() => handleToggleProfileScenarioChannel(scen.key, 'email')}
+                                                                  className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                                                                  title={`Toggle Email alerts for ${scen.title}`}
+                                                              />
+                                                          </td>
+                                                          <td className="px-4 py-4 text-center">
+                                                              <input
+                                                                  type="checkbox"
+                                                                  checked={current.teams !== false}
+                                                                  onChange={() => handleToggleProfileScenarioChannel(scen.key, 'teams')}
+                                                                  className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
+                                                                  title={`Toggle Teams alerts for ${scen.title}`}
+                                                              />
+                                                          </td>
+                                                      </tr>
+                                                  );
+                                              })
+                                          )}
+                                      </tbody>
+                                  </table>
+                              </div>
+                          </div>
+                      );
+                  })()}
+              </div>
+
               <div className="mt-8 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 p-6 rounded-2xl flex items-start gap-4">
                   <div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-xl text-amber-600 dark:text-amber-400">
                       <Lock size={24}/>
@@ -3323,27 +3853,25 @@ if __name__ == "__main__":
 
 
 
-            {activeTab === 'CATALOG' && (
-        <div className="animate-fade-in space-y-6">
-            <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
-                <div className="mb-6 flex justify-between items-start">
+      {activeTab === 'CATALOG' && (
+        <div className="animate-fade-in space-y-4">
+            <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-5">
+                <div className="mb-4 flex justify-between items-start">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            <BookOpen className="text-blue-600" size={24} />
-                            Item Taxonomy & Preview Dropdowns
+                            <BookOpen className="text-blue-600" size={22} />
+                            Item Taxonomy & Classification Dropdowns
                         </h2>
-                        <p className="text-secondary dark:text-gray-400 mt-1">Manage item categorisation and the selectable values used by the item creation preview workflow.</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Manage master product categorisation, form dropdowns, and commercial reference data.</p>
                     </div>
                 </div>
                 
-                <div className="space-y-8">
-                    <ItemSetupManagement
-                        options={attributeOptions}
-                        items={items}
-                        upsertOption={upsertAttributeOption}
-                        deleteOption={deleteAttributeOption}
-                    />
-                </div>
+                <ItemSetupManagement
+                    options={attributeOptions}
+                    items={items}
+                    upsertOption={upsertAttributeOption}
+                    deleteOption={deleteAttributeOption}
+                />
             </div>
         </div>
       )}
@@ -3388,7 +3916,7 @@ if __name__ == "__main__":
                               Supplier Inventory Ingestion Hub
                           </h4>
                           <p className="text-xs text-secondary dark:text-gray-400 mt-1 max-w-xl">
-                              Upload a supplier file manually or switch to automated inbound email ingestion. Both paths replace the supplier inventory, auto-map products, and refresh available stock.
+                              Automated inbound email ingestion continuously receives supplier inventory reports, auto-maps products, and keeps available stock levels up to date in real time.
                           </p>
                       </div>
                       <button 
@@ -3589,8 +4117,17 @@ if __name__ == "__main__":
                               onChange={(e) => setMappingSupplierId(e.target.value)}
                               className="min-w-[240px] bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20"
                           >
-                              <option value="">All suppliers</option>
-                              {visibleSuppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                              <option value="">
+                                  All suppliers {Object.values(unmappedCountBySupplier).reduce((a, b) => a + b, 0) > 0 ? `(${Object.values(unmappedCountBySupplier).reduce((a, b) => a + b, 0)} left to map)` : ''}
+                              </option>
+                              {visibleSuppliers.map(supplier => {
+                                  const count = unmappedCountBySupplier[supplier.id] || 0;
+                                  return (
+                                      <option key={supplier.id} value={supplier.id}>
+                                          {supplier.name} {count > 0 ? `(${count} left to map)` : ''}
+                                      </option>
+                                  );
+                              })}
                           </select>
                           <span className="text-xs font-bold text-gray-500 dark:text-gray-400 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800">
                               {mappingReviewStats.totalSnapshotRows} stock rows
@@ -4056,7 +4593,7 @@ if __name__ == "__main__":
                  <div className="flex justify-end mb-4"><button type="button" onClick={() => openSiteForm()} className="btn-primary flex items-center gap-2"><Plus size={16}/> Add Site</button></div>
                  <div className="table-shell">
                     <table className="dense-admin-table text-secondary dark:text-gray-400 min-w-[700px]">
-                        <thead className="table-header"><tr><th className="px-6 py-4 table-sticky-left">Site Name</th><th className="px-6 py-4">Suburb</th><th className="px-6 py-4">Address</th><th className="px-6 py-4">State</th><th className="px-6 py-4">Contact</th><th className="px-6 py-4 text-center table-sticky-right">Action</th></tr></thead>
+                        <thead className="table-header"><tr><th className="px-6 py-4 table-sticky-left">Site Name</th><th className="px-6 py-4">Suburb</th><th className="px-6 py-4">Address</th><th className="px-6 py-4">State</th><th className="px-6 py-4">Contact</th><th className="px-6 py-4">Teams Channel</th><th className="px-6 py-4 text-center table-sticky-right">Action</th></tr></thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                             {sites.map(s => (
                                 <tr key={s.id} className="table-row">
@@ -4065,7 +4602,18 @@ if __name__ == "__main__":
                                     <td className="px-6 py-4">{s.address}</td>
                                     <td className="px-6 py-4"><span className="badge">{s.state}</span> <span className="text-xs text-gray-400">{s.zip}</span></td>
                                     <td className="px-6 py-4">{s.contactPerson}</td>
-                                    <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button type="button" onClick={() => openSiteForm(s)} className="icon-btn-blue"><Edit2 size={16}/></button><button type="button" onClick={() => deleteSite(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
+                                    <td className="px-6 py-4">
+                                        {siteTeamsWebhooks[s.id] ? (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                                <Check size={12} className="text-indigo-600 dark:text-indigo-400" /> Connected
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-400">
+                                                Not Configured
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4 text-center table-sticky-right"><div className="flex justify-center gap-2"><button type="button" onClick={() => openSiteForm(s)} className="icon-btn-blue" title="Edit Site & Webhook"><Edit2 size={16}/></button><button type="button" onClick={() => deleteSite(s.id)} className="icon-btn-red"><Trash2 size={16}/></button></div></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -4103,6 +4651,34 @@ if __name__ == "__main__":
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Contact person</label>
                                 <input required className="input-field" value={siteForm.contactPerson} onChange={e => setSiteForm({...siteForm, contactPerson: e.target.value})}/>
                             </div>
+                            <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-xl border border-indigo-100 dark:border-indigo-900/40 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+                                        <MessageSquare size={14} className="text-indigo-600"/> Microsoft Teams Channel Webhook
+                                    </label>
+                                    {siteTeamsWebhookInput && (
+                                        <button
+                                            type="button"
+                                            onClick={handleTestSiteTeamsWebhook}
+                                            disabled={isTestingSiteWebhook}
+                                            className="text-[11px] font-black uppercase text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1 hover:underline"
+                                        >
+                                            {isTestingSiteWebhook ? <Loader2 size={12} className="animate-spin" /> : <PlayCircle size={12} />}
+                                            Send Test Alert
+                                        </button>
+                                    )}
+                                </div>
+                                <input 
+                                    type="url"
+                                    className="input-field font-mono text-xs bg-white dark:bg-nocturne" 
+                                    placeholder="https://...powerautomate/.../invoke?..."
+                                    value={siteTeamsWebhookInput} 
+                                    onChange={e => setSiteTeamsWebhookInput(e.target.value)}
+                                />
+                                <p className="text-[10px] text-gray-500 leading-relaxed">
+                                    Power Automate workflow URL for this facility's Teams channel (e.g. <code>Site - {siteForm.name || 'Adelaide'}</code>). Alerts for this site will post directly here.
+                                </p>
+                            </div>
                             <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setIsSiteFormOpen(false)} className="px-4 py-2 text-secondary font-medium hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="btn-primary">Save Site</button></div>
                         </form>
                     </div>
@@ -4112,14 +4688,7 @@ if __name__ == "__main__":
       )}
 
       {activeTab === 'WORKFLOW' && (
-          <SimpleWorkflowConfig
-              workflows={workflowConfigs}
-              roles={roles}
-              users={users}
-              appName={branding.appName}
-              onSave={handleSaveWorkflows}
-              onTest={handleTestNotification}
-          />
+          <WorkflowNotificationHub />
       )}
 
       {activeTab === 'BRANDING' && (
@@ -4206,7 +4775,7 @@ if __name__ == "__main__":
                             <div>
                                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">Home Experience</h3>
                                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 leading-5">
-                                    Control the greeting and daily message shown on the MercerFlow home screen.
+                                    Control the greeting and daily message shown on the ProcureFlow home screen.
                                 </p>
                             </div>
                             <Sparkles size={20} className="text-[var(--color-brand)]" />
@@ -4291,11 +4860,11 @@ if __name__ == "__main__":
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    {(brandingForm.homeExperience?.messageType || 'quote') === 'announcement' ? 'Announcement source' : 'Daily quote source'}
+                                    {(brandingForm.homeExperience?.messageType || 'quote') === 'announcement' ? 'Announcement source' : 'Daily focus source'}
                                 </label>
                                 <div className="grid grid-cols-2 gap-2">
                                     {[
-                                        { id: 'random', label: 'Quote of today' },
+                                        { id: 'random', label: 'Linen & Industry facts' },
                                         { id: 'custom', label: 'Admin set' },
                                     ].map(option => (
                                         <button
@@ -4324,7 +4893,7 @@ if __name__ == "__main__":
                                     disabled={brandingForm.homeExperience?.quoteMode !== 'custom'}
                                     placeholder={(brandingForm.homeExperience?.messageType || 'quote') === 'announcement'
                                         ? 'System maintenance is scheduled for Friday at 4:00 PM.'
-                                        : 'Progress improves when the next best action is obvious.'}
+                                        : 'Flax requires virtually zero irrigation and minimal pesticides, making linen one of the most sustainable textiles.'}
                                     value={brandingForm.homeExperience?.quoteText || ''}
                                     onChange={e => setBrandingForm(prev => ({
                                         ...prev,
@@ -4337,7 +4906,7 @@ if __name__ == "__main__":
                                 <p className="mt-2 text-[10px] font-medium text-gray-400">
                                     {(brandingForm.homeExperience?.messageType || 'quote') === 'announcement'
                                         ? 'Announcements are fixed until an admin changes or switches them back to Quote.'
-                                        : 'Random mode rotates leadership and continuous-improvement messages daily.'}
+                                        : 'Random mode rotates bite-sized facts about linen creation, development, and industrial laundry processing each time you log in.'}
                                 </p>
                             </div>
                         </div>
@@ -4854,10 +5423,11 @@ if __name__ == "__main__":
                   </div>
 
                   <div className="table-shell">
-                      <table className="dense-admin-table text-left min-w-[760px]">
+                      <table className="dense-admin-table text-left min-w-[880px]">
                           <thead>
                               <tr className="bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800">
                                   <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest table-sticky-left">User Profile</th>
+                                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Notification Channels</th>
                                   <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right table-sticky-right">Actions</th>
                               </tr>
                           </thead>
@@ -4890,7 +5460,14 @@ if __name__ == "__main__":
 
                                   if (displayUsers.length === 0) return null;
 
-                                  return displayUsers.map(user => (
+                                  return displayUsers.map(user => {
+                                      const userPrefs = userPrefsMap[user.id];
+                                      const isEmailOn = userPrefs ? userPrefs.email_enabled : true;
+                                      const isTeamsOn = userPrefs ? userPrefs.teams_enabled : true;
+                                      const isInAppOn = userPrefs ? userPrefs.in_app_enabled : true;
+                                      const isToggling = togglingUserChannel?.userId === user.id;
+
+                                      return (
                                       <tr key={user.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
                                           <td className="px-6 py-4 table-sticky-left">
                                                <div className="flex items-center gap-4">
@@ -4933,6 +5510,66 @@ if __name__ == "__main__":
                                                       </div>
                                                   </div>
                                                </div>
+                                          </td>
+                                          <td className="px-6 py-4 text-center">
+                                              {user.status === 'APPROVED' ? (
+                                                  <div className="inline-flex items-center gap-1.5 p-1 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                                                      {/* Email Toggle */}
+                                                      <button
+                                                          type="button"
+                                                          disabled={isToggling && togglingUserChannel?.channel === 'email'}
+                                                          onClick={() => handleToggleDirectoryChannel(user.id, 'email', isEmailOn)}
+                                                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all ${
+                                                              isEmailOn
+                                                                  ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                                                                  : 'bg-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                                          }`}
+                                                          title={isEmailOn ? 'Email notifications enabled — Click to disable' : 'Email notifications disabled — Click to enable'}
+                                                      >
+                                                          <Mail size={12} />
+                                                          <span>Email</span>
+                                                          <span className={`w-1.5 h-1.5 rounded-full ${isEmailOn ? 'bg-white' : 'bg-gray-400'}`} />
+                                                      </button>
+
+                                                      {/* Teams Toggle */}
+                                                      <button
+                                                          type="button"
+                                                          disabled={isToggling && togglingUserChannel?.channel === 'teams'}
+                                                          onClick={() => handleToggleDirectoryChannel(user.id, 'teams', isTeamsOn)}
+                                                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all ${
+                                                              isTeamsOn
+                                                                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                                                                  : 'bg-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                                          }`}
+                                                          title={isTeamsOn ? 'MS Teams notifications enabled — Click to disable' : 'MS Teams notifications disabled — Click to enable'}
+                                                      >
+                                                          <MessageSquare size={12} />
+                                                          <span>Teams</span>
+                                                          <span className={`w-1.5 h-1.5 rounded-full ${isTeamsOn ? 'bg-white' : 'bg-gray-400'}`} />
+                                                      </button>
+
+                                                      {/* In-App Toggle */}
+                                                      <button
+                                                          type="button"
+                                                          disabled={isToggling && togglingUserChannel?.channel === 'in_app'}
+                                                          onClick={() => handleToggleDirectoryChannel(user.id, 'in_app', isInAppOn)}
+                                                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all ${
+                                                              isInAppOn
+                                                                  ? 'bg-sky-500 text-white shadow-sm shadow-sky-500/30'
+                                                                  : 'bg-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                                          }`}
+                                                          title={isInAppOn ? 'In-App notifications enabled — Click to disable' : 'In-App notifications disabled — Click to enable'}
+                                                      >
+                                                          <Bell size={12} />
+                                                          <span>In-App</span>
+                                                          <span className={`w-1.5 h-1.5 rounded-full ${isInAppOn ? 'bg-white' : 'bg-gray-400'}`} />
+                                                      </button>
+                                                  </div>
+                                              ) : (
+                                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-400 text-[10px] font-bold uppercase tracking-wider" title="User must be granted access before notifications can be configured">
+                                                      <Lock size={10} /> Access Pending
+                                                  </span>
+                                              )}
                                           </td>
                                           <td className="px-6 py-4 text-right table-sticky-right">
                                               <div className="flex items-center justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -5009,9 +5646,10 @@ if __name__ == "__main__":
                                               </div>
                                           </td>
                                       </tr>
-                                  ));
+                                  );
+                              });
                               })() || (
-                                  <tr><td colSpan={2} className="px-6 py-20 text-center text-gray-400">
+                                  <tr><td colSpan={3} className="px-6 py-20 text-center text-gray-400">
                                       <div className="flex flex-col items-center gap-3">
                                           <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
                                               <Search size={32} className="opacity-10"/>
@@ -5150,278 +5788,6 @@ if __name__ == "__main__":
                       )}
                   </div>
               </div>
-          </div>
-      )}
-      {activeTab === 'NOTIFICATIONS' && (
-          <div className="animate-fade-in space-y-6">
-              <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 p-4 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                      <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg text-blue-600 dark:text-blue-400"><Bell size={20}/></div>
-                      <div>
-                          <h3 className="font-bold text-gray-900 dark:text-white">Notification Rules</h3>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">Configure automated alerts and recipients.</p>
-                      </div>
-                  </div>
-                   <button type="button" onClick={() => setIsTeamsConfigOpen(true)} className="btn-secondary flex items-center gap-2 text-xs">
-                        {teamsWebhookUrl ? <CheckCircle2 size={12} className="text-green-500"/> : <AlertCircle size={12} className="text-orange-500"/>}
-                        Configure Teams
-                   </button>
-              </div>
-
-              <div className="table-shell bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
-                  <table className="dense-admin-table text-gray-500 dark:text-gray-400 min-w-[900px]">
-                      <thead className="table-header">
-                          <tr>
-                              <th className="px-6 py-4 w-1/4 table-sticky-left">Event</th>
-                              <th className="px-6 py-4">Recipients</th>
-                              <th className="px-6 py-4 text-center">Status</th>
-                              <th className="px-6 py-4 text-right table-sticky-right">Actions</th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                          {notificationRules.map(rule => (
-                              <tr key={rule.id} className="table-row">
-                                  <td className="px-6 py-4 table-sticky-left">
-                                      <div className="flex items-center gap-3">
-                                          <div className={`p-2 rounded-lg ${rule.isActive ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-gray-100 text-gray-400 dark:bg-white/5'}`}>
-                                              <Bell size={18}/>
-                                          </div>
-                                          <div>
-                                              <div className="font-bold text-gray-900 dark:text-white">{rule.label}</div>
-                                              <code className="text-[10px] text-gray-400 px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">{rule.eventType}</code>
-                                          </div>
-                                      </div>
-                                  </td>
-                                  <td className="px-6 py-4">
-                                      <div className="flex flex-wrap gap-1.5 is-truncated max-w-md">
-                                          {rule.recipients.length > 0 ? rule.recipients.map((r, idx) => (
-                                              <span key={idx} className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded text-xs border border-gray-200 dark:border-gray-700">
-                                                  {r.type === 'ROLE' && <Shield size={10} className="text-purple-500"/>}
-                                                  {r.type === 'USER' && <User size={10} className="text-blue-500"/>}
-                                                  {r.type === 'EMAIL' && <Mail size={10} className="text-green-500"/>}
-                                                  {r.type === 'REQUESTER' && <User size={10} className="text-orange-500"/>}
-                                                  
-                                                  <span className="font-medium">
-                                                      {r.type === 'ROLE' ? (roles.find(x => x.id === r.id)?.name || r.id) : 
-                                                       r.type === 'USER' ? (users.find(x => x.id === r.id)?.name || 'Unknown User') :
-                                                       r.type === 'REQUESTER' ? 'Requester' : r.id}
-                                                  </span>
-
-                                                  <div className="flex gap-0.5 pl-1 border-l border-gray-300 dark:border-gray-600 ml-1">
-                                                      {r.channels.email && <MailIcon size={10} className="text-blue-400"/>}
-                                                      {r.channels.inApp && <Bell size={10} className="text-amber-400"/>}
-                                                      {r.channels.teams && <ArrowDown size={10} className="text-indigo-400"/>}
-                                                  </div>
-                                              </span>
-                                          )) : <span className="text-gray-400 text-xs italic">No recipients configured</span>}
-                                      </div>
-                                  </td>
-                                  <td className="px-6 py-4 text-center">
-                                      <button type="button" 
-                                          onClick={() => handleToggleActive(rule)}
-                                          className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase transition-colors ${rule.isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}
-                                      >
-                                          {rule.isActive ? 'Active' : 'Disabled'}
-                                      </button>
-                                  </td>
-                                  <td className="px-6 py-4 text-right table-sticky-right">
-                                      <button type="button" onClick={() => openRuleConfig(rule)} className="text-sm font-bold text-[var(--color-brand)] hover:underline">Configure</button>
-                                  </td>
-                              </tr>
-                          ))}
-                      </tbody>
-                  </table>
-              </div>
-
-              {/* Rule Configuration Modal */}
-              {isRuleModalOpen && editingRule && (
-                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-4xl p-0 overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
-                        {/* Header */}
-                        <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-white/5">
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                    <SettingsIcon size={20} className="text-[var(--color-brand)]"/>
-                                    Configure Notification
-                                </h2>
-                                <p className="text-sm text-gray-500 mt-1">Rule: <span className="font-bold text-gray-700 dark:text-gray-300">{editingRule.label}</span></p>
-                            </div>
-                            <button type="button" onClick={() => setIsRuleModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24}/></button>
-                        </div>
-                        
-                        {/* Body */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            
-                            {/* Recipients List */}
-                            <div>
-                                <div className="flex justify-between items-end mb-3">
-                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">Recipients</h3>
-                                    
-                                    {/* Add Recipient Dropdown */}
-                                    <div className="relative group">
-                                        <button type="button" className="btn-secondary text-xs flex items-center gap-1 py-1.5"><Plus size={14}/> Add Recipient</button>
-                                        <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#15171e] rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 p-2 hidden group-hover:block z-50">
-                                            <div className="text-[10px] font-bold text-gray-400 px-2 py-1 uppercase">Dynamic</div>
-                                            <button type="button" 
-                                                onClick={() => setEditingRule({ ...editingRule, recipients: [...editingRule.recipients, { type: 'REQUESTER', id: 'requester', channels: { email: true, inApp: true, teams: false } }] })}
-                                                className="w-full text-left px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg flex items-center gap-2"
-                                            >
-                                                <User size={12} className="text-orange-500"/> Requester
-                                            </button>
-
-                                            <div className="border-t border-gray-100 dark:border-gray-800 my-1"></div>
-                                            <div className="text-[10px] font-bold text-gray-400 px-2 py-1 uppercase">Roles</div>
-                                            {roles.map(r => (
-                                                <button type="button" 
-                                                    key={r.id}
-                                                    onClick={() => setEditingRule({ ...editingRule, recipients: [...editingRule.recipients, { type: 'ROLE', id: r.id, channels: { email: true, inApp: true, teams: false } }] })}
-                                                    className="w-full text-left px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg flex items-center gap-2"
-                                                >
-                                                    <Shield size={12} className="text-purple-500"/> {r.name}
-                                                </button>
-                                            ))}
-                                            
-                                            <div className="border-t border-gray-100 dark:border-gray-800 my-1"></div>
-                                            <button type="button" 
-                                                 onClick={() => {
-                                                     const email = prompt("Enter email address:");
-                                                     if (email) {
-                                                         setEditingRule({ ...editingRule, recipients: [...editingRule.recipients, { type: 'EMAIL', id: email, channels: { email: true, inApp: false, teams: false } }] });
-                                                     }
-                                                 }}
-                                                 className="w-full text-left px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg flex items-center gap-2"
-                                            >
-                                                <Mail size={12} className="text-green-500"/> Custom Email
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    {editingRule.recipients.length === 0 ? (
-                                        <div className="text-center py-8 bg-gray-50 dark:bg-white/5 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 text-gray-400 text-sm">
-                                            No recipients added. No notifications will be sent.
-                                        </div>
-                                    ) : (
-                                        editingRule.recipients.map((r, idx) => (
-                                            <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-800 transition-colors">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-white dark:bg-white/10 flex items-center justify-center text-gray-500 shadow-sm">
-                                                        {r.type === 'ROLE' && <Shield size={18} className="text-purple-500"/>}
-                                                        {r.type === 'USER' && <User size={18} className="text-blue-500"/>}
-                                                        {r.type === 'EMAIL' && <Mail size={18} className="text-green-500"/>}
-                                                        {r.type === 'REQUESTER' && <User size={18} className="text-orange-500"/>}
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-bold text-gray-900 dark:text-white">
-                                                            {r.type === 'ROLE' ? (roles.find(x => x.id === r.id)?.name || r.id) : 
-                                                             r.type === 'USER' ? (users.find(x => x.id === r.id)?.name || 'Unknown User') :
-                                                             r.type === 'REQUESTER' ? 'Event Requester' : r.id}
-                                                        </div>
-                                                        <div className="text-xs text-gray-500">
-                                                            {r.type === 'ROLE' ? 'All users with this role' : 
-                                                             r.type === 'REQUESTER' ? 'User who initiated action' : 
-                                                             'Specific Recipient'}
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center gap-6">
-                                                    <div className="flex gap-2">
-                                                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors border ${r.channels.email ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white dark:bg-white/5 border-gray-200 dark:border-gray-700 text-gray-400'}`}>
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="sr-only" 
-                                                                checked={r.channels.email} 
-                                                                onChange={() => {
-                                                                    const newRecipients = [...editingRule.recipients];
-                                                                    newRecipients[idx].channels.email = !newRecipients[idx].channels.email;
-                                                                    setEditingRule({ ...editingRule, recipients: newRecipients });
-                                                                }}
-                                                            />
-                                                            <Mail size={14}/> <span className="text-xs font-bold">Email</span>
-                                                        </label>
-
-                                                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors border ${r.channels.inApp ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-300' : 'bg-white dark:bg-white/5 border-gray-200 dark:border-gray-700 text-gray-400'}`}>
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="sr-only" 
-                                                                checked={r.channels.inApp} 
-                                                                onChange={() => {
-                                                                    const newRecipients = [...editingRule.recipients];
-                                                                    newRecipients[idx].channels.inApp = !newRecipients[idx].channels.inApp;
-                                                                    setEditingRule({ ...editingRule, recipients: newRecipients });
-                                                                }}
-                                                            />
-                                                            <Bell size={14}/> <span className="text-xs font-bold">In-App</span>
-                                                        </label>
-
-                                                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors border ${r.channels.teams ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300' : 'bg-white dark:bg-white/5 border-gray-200 dark:border-gray-700 text-gray-400'}`}>
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="sr-only" 
-                                                                checked={r.channels.teams} 
-                                                                onChange={() => {
-                                                                    const newRecipients = [...editingRule.recipients];
-                                                                    newRecipients[idx].channels.teams = !newRecipients[idx].channels.teams;
-                                                                    setEditingRule({ ...editingRule, recipients: newRecipients });
-                                                                }}
-                                                            />
-                                                            <ArrowDown size={14}/> <span className="text-xs font-bold">Teams</span>
-                                                        </label>
-                                                    </div>
-
-                                                    <button type="button" 
-                                                        onClick={() => {
-                                                            const newRecipients = editingRule.recipients.filter((_, i) => i !== idx);
-                                                            setEditingRule({ ...editingRule, recipients: newRecipients });
-                                                        }}
-                                                        className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg"
-                                                    >
-                                                        <Trash2 size={16}/>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Footer */}
-                        <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 flex justify-end gap-3">
-                            <button type="button" onClick={() => setIsRuleModalOpen(false)} className="px-6 py-2.5 text-gray-500 font-bold hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors">Cancel</button>
-                            <button type="button" onClick={handleSaveRule} className="btn-primary px-8 flex items-center gap-2">
-                                <Save size={18}/> Save Changes
-                            </button>
-                        </div>
-                    </div>
-                 </div>
-              )}
-
-              {isTeamsConfigOpen && (
-                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-md p-6 animate-slide-up">
-                        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white flex items-center gap-2">Microsoft Teams Configuration</h2>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase">Incoming Webhook URL</label>
-                                <input 
-                                    className="input-field mt-1" 
-                                    placeholder="https://outlook.office.com/webhook/..."
-                                    value={teamsUrlForm}
-                                    onChange={e => setTeamsUrlForm(e.target.value)}
-                                />
-                                <p className="text-[10px] text-gray-400 mt-1">Paste the URL from your Teams Channel Connectors.</p>
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-3 pt-6">
-                            <button type="button" onClick={() => setIsTeamsConfigOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
-                            <button type="button" onClick={() => { updateTeamsWebhook(teamsUrlForm); setIsTeamsConfigOpen(false); }} className="btn-primary">Save Configuration</button>
-                        </div>
-                    </div>
-                 </div>
-              )}
           </div>
       )}
       {activeTab === 'MIGRATION' && (
@@ -5709,7 +6075,7 @@ if __name__ == "__main__":
                                   className="input-field w-full font-medium"
                                   value={emailSubject}
                                   onChange={(e) => setEmailSubject(e.target.value)}
-                                  placeholder="Welcome to MercerFlow"
+                                  placeholder="Welcome to ProcureFlow"
                                />
                            </div>
 
@@ -5734,7 +6100,7 @@ if __name__ == "__main__":
                                      .replace(/{app_name}/g, branding.appName)
                                      .replace(/{link}/g, '<a href="#">http://example.com</a>')
                                      .replace(/{invited_by_name}/g, currentUser?.name || 'Admin')
-                                 }}></div>
+                                     }}></div>
                             </div>
                        </div>
                   </div>
@@ -5758,6 +6124,11 @@ if __name__ == "__main__":
              {activeTab === 'ITEM_CREATION' && (
                  <div className="animate-fade-in">
                      <ItemCreationSettings />
+                 </div>
+             )}
+             {activeTab === 'EOM_RECONCILIATION' && (
+                 <div className="animate-fade-in">
+                     <EOMReconciliationAdminPanel />
                  </div>
              )}
              {/* WORKFLOW STEP MODAL */}
@@ -6454,6 +6825,191 @@ if __name__ == "__main__":
                                                   </div>
                                              </div>
                                          </div>
+
+                                         {/* Notification Channels for Existing User */}
+                                         {inviteForm.id && users.some(u => u.id === inviteForm.id) && (
+                                             <div className="pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
+                                                 <div className="flex items-center justify-between">
+                                                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                                                         <Bell size={14} className="text-[var(--color-brand)]"/> Assigned Notification Channels
+                                                     </label>
+                                                     <span className="text-[10px] text-gray-400 font-medium">Toggle active delivery destinations for this member</span>
+                                                 </div>
+                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                     {/* Email */}
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => handleToggleDirectoryChannel(inviteForm.id, 'email', userPrefsMap[inviteForm.id]?.email_enabled ?? true)}
+                                                         className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                                                             (userPrefsMap[inviteForm.id]?.email_enabled ?? true)
+                                                                 ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                                                                 : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-gray-800 text-gray-400'
+                                                         }`}
+                                                     >
+                                                         <div className="flex items-center gap-2.5">
+                                                             <Mail size={16} />
+                                                             <span className="text-xs font-bold">Email Alerts</span>
+                                                         </div>
+                                                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                             (userPrefsMap[inviteForm.id]?.email_enabled ?? true)
+                                                                 ? 'bg-emerald-500 text-white'
+                                                                 : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                                                         }`}>
+                                                             {(userPrefsMap[inviteForm.id]?.email_enabled ?? true) ? 'ON' : 'OFF'}
+                                                         </span>
+                                                     </button>
+
+                                                     {/* Teams */}
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => handleToggleDirectoryChannel(inviteForm.id, 'teams', userPrefsMap[inviteForm.id]?.teams_enabled ?? true)}
+                                                         className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                                                             (userPrefsMap[inviteForm.id]?.teams_enabled ?? true)
+                                                                 ? 'bg-indigo-50/80 dark:bg-indigo-950/20 border-indigo-300 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300'
+                                                                 : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-gray-800 text-gray-400'
+                                                         }`}
+                                                     >
+                                                         <div className="flex items-center gap-2.5">
+                                                             <MessageSquare size={16} />
+                                                             <span className="text-xs font-bold">MS Teams</span>
+                                                         </div>
+                                                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                             (userPrefsMap[inviteForm.id]?.teams_enabled ?? true)
+                                                                 ? 'bg-indigo-600 text-white'
+                                                                 : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                                                         }`}>
+                                                             {(userPrefsMap[inviteForm.id]?.teams_enabled ?? true) ? 'ON' : 'OFF'}
+                                                         </span>
+                                                     </button>
+
+                                                     {/* In-App */}
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => handleToggleDirectoryChannel(inviteForm.id, 'in_app', userPrefsMap[inviteForm.id]?.in_app_enabled ?? true)}
+                                                         className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                                                             (userPrefsMap[inviteForm.id]?.in_app_enabled ?? true)
+                                                                 ? 'bg-sky-50/80 dark:bg-sky-950/20 border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300'
+                                                                 : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-gray-800 text-gray-400'
+                                                         }`}
+                                                     >
+                                                         <div className="flex items-center gap-2.5">
+                                                             <Bell size={16} />
+                                                             <span className="text-xs font-bold">In-App Live</span>
+                                                         </div>
+                                                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                             (userPrefsMap[inviteForm.id]?.in_app_enabled ?? true)
+                                                                 ? 'bg-sky-500 text-white'
+                                                                 : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                                                         }`}>
+                                                             {(userPrefsMap[inviteForm.id]?.in_app_enabled ?? true) ? 'ON' : 'OFF'}
+                                                         </span>
+                                                     </button>
+                                                 </div>
+
+                                                 {/* Role-Tied Scenario Routing Matrix */}
+                                                 <div className="pt-3 border-t border-gray-100 dark:border-gray-800 space-y-3">
+                                                     {(() => {
+                                                         const targetUserScenarios = NOTIFICATION_SCENARIOS.filter(s => isScenarioAllowedForRoles(s, inviteForm.roleIds, roles));
+                                                         return (
+                                                             <>
+                                                                 <div className="flex items-center justify-between">
+                                                                     <div>
+                                                                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                                                                             <Sliders size={14} className="text-[var(--color-brand)]"/> Role-Granted Scenario Routing
+                                                                         </label>
+                                                                         <p className="text-[10px] text-gray-400 font-medium">
+                                                                             Scenarios automatically unlocked based on the selected roles above.
+                                                                         </p>
+                                                                     </div>
+                                                                     <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-brand)] bg-[var(--color-brand)]/10 px-2 py-0.5 rounded-full">
+                                                                         {targetUserScenarios.length} of {NOTIFICATION_SCENARIOS.length} Active
+                                                                     </span>
+                                                                 </div>
+
+                                                                 <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-gray-50/50 dark:bg-white/5">
+                                                                     <table className="w-full text-left">
+                                                                         <thead className="bg-gray-100/70 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800 text-[9px] uppercase font-black tracking-widest text-gray-400">
+                                                                             <tr>
+                                                                                 <th className="px-3 py-2">Scenario</th>
+                                                                                 <th className="px-2 py-2 text-center w-20">In-App</th>
+                                                                                 <th className="px-2 py-2 text-center w-20">Email</th>
+                                                                                 <th className="px-2 py-2 text-center w-20">Teams</th>
+                                                                             </tr>
+                                                                         </thead>
+                                                                         <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                                                                             {NOTIFICATION_SCENARIOS.map(scen => {
+                                                                                 const isGranted = isScenarioAllowedForRoles(scen, inviteForm.roleIds, roles);
+                                                                                 const userPrefOverrides = userPrefsMap[inviteForm.id]?.category_overrides || {};
+                                                                                 const current = userPrefOverrides[scen.key] || { in_app: true, email: true, teams: true };
+
+                                                                                 if (!isGranted) {
+                                                                                     return (
+                                                                                         <tr key={scen.key} className="opacity-45 bg-gray-50/30 dark:bg-white/[0.02]">
+                                                                                             <td className="px-3 py-2.5">
+                                                                                                 <div className="flex items-center gap-2">
+                                                                                                     <span className="font-bold text-gray-500 text-xs line-through">{scen.title}</span>
+                                                                                                     <span className="text-[8px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-amber-200 dark:border-amber-900/50">
+                                                                                                         <Lock size={8} /> {scen.roleExplanation}
+                                                                                                     </span>
+                                                                                                 </div>
+                                                                                             </td>
+                                                                                             <td colSpan={3} className="px-2 py-2.5 text-center text-[10px] text-gray-400 italic">
+                                                                                                 Role not assigned
+                                                                                             </td>
+                                                                                         </tr>
+                                                                                     );
+                                                                                 }
+
+                                                                                 return (
+                                                                                     <tr key={scen.key} className="hover:bg-white dark:hover:bg-nocturne transition-colors">
+                                                                                         <td className="px-3 py-2.5">
+                                                                                             <div className="flex items-center gap-2 mb-0.5">
+                                                                                                 <span className="font-bold text-gray-900 dark:text-white text-xs">{scen.title}</span>
+                                                                                                 <span className="text-[8px] font-black uppercase text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/50">
+                                                                                                     {scen.badge}
+                                                                                                 </span>
+                                                                                             </div>
+                                                                                             <p className="text-[10px] text-gray-400 leading-tight">{scen.desc}</p>
+                                                                                         </td>
+                                                                                         <td className="px-2 py-2.5 text-center">
+                                                                                             <input
+                                                                                                 type="checkbox"
+                                                                                                 checked={current.in_app !== false}
+                                                                                                 onChange={() => handleToggleUserScenarioChannel(inviteForm.id, scen.key, 'in_app')}
+                                                                                                 className="w-3.5 h-3.5 accent-sky-500 rounded cursor-pointer"
+                                                                                                 title={`Toggle In-App for ${scen.title}`}
+                                                                                             />
+                                                                                         </td>
+                                                                                         <td className="px-2 py-2.5 text-center">
+                                                                                             <input
+                                                                                                 type="checkbox"
+                                                                                                 checked={current.email !== false}
+                                                                                                 onChange={() => handleToggleUserScenarioChannel(inviteForm.id, scen.key, 'email')}
+                                                                                                 className="w-3.5 h-3.5 accent-emerald-500 rounded cursor-pointer"
+                                                                                                 title={`Toggle Email for ${scen.title}`}
+                                                                                             />
+                                                                                         </td>
+                                                                                         <td className="px-2 py-2.5 text-center">
+                                                                                             <input
+                                                                                                 type="checkbox"
+                                                                                                 checked={current.teams !== false}
+                                                                                                 onChange={() => handleToggleUserScenarioChannel(inviteForm.id, scen.key, 'teams')}
+                                                                                                 className="w-3.5 h-3.5 accent-indigo-500 rounded cursor-pointer"
+                                                                                                 title={`Toggle Teams for ${scen.title}`}
+                                                                                             />
+                                                                                         </td>
+                                                                                     </tr>
+                                                                                 );
+                                                                             })}
+                                                                         </tbody>
+                                                                     </table>
+                                                                 </div>
+                                                             </>
+                                                         );
+                                                     })()}
+                                                 </div>
+                                             </div>
+                                         )}
                                     </div>
                                )}
                            </div>

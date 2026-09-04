@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 import { Shield } from 'lucide-react';
 import { consumeSessionLogoutNotice } from '../utils/sessionState.ts';
-import mercerFlowLogo from '../docs/Logo Branding/APP-LOGOS/MercerFlow_Logo.gif';
+import procureFlowTransitionGif from '../docs/Logo Branding/LOGO-NEW/ProcureFlow_transition_.gif';
 
 const Login = () => {
   const { login, isAuthenticated, branding, isLoadingAuth } = useApp();
@@ -24,9 +24,9 @@ const Login = () => {
            <div className="flex flex-col items-center mb-8">
                <div className="mb-5 flex w-full justify-center">
                    <img
-                       src={mercerFlowLogo}
-                       alt="MercerFlow logo"
-                       className="w-full max-w-[260px] rounded-xl border border-white/5 object-contain shadow-[0_18px_50px_rgba(0,0,0,0.22)] dark:border-transparent dark:shadow-none sm:max-w-[300px]"
+                       src={procureFlowTransitionGif}
+                       alt="ProcureFlow logo"
+                       className="w-full max-w-[260px] rounded-xl border-2 border-black object-contain shadow-md sm:max-w-[300px]"
                    />
                </div>
                <p className="text-gray-500 dark:text-gray-400 mt-2 text-center">Sign in to access your dashboard</p>

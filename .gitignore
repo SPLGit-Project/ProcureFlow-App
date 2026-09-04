@@ -9,6 +9,8 @@ yarn-debug.log*
 proof/
 tmp/
 .chrome-headless/
+chrome-temp-profile/
+.claude/
 
 # --- BUILD ARTIFACTS ---
 dist/
