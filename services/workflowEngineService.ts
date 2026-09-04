@@ -53,6 +53,7 @@ class WorkflowEngineService {
             conditions: workflow.conditions || [],
             stages: workflow.stages || [],
             notification_rules: workflow.notification_rules || [],
+            canvas_data: workflow.canvas_data || {},
             updated_at: new Date().toISOString()
         };
 

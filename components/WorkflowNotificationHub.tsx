@@ -4,7 +4,7 @@ import {
     Plus, Edit2, Trash2, CheckCircle2, AlertTriangle, AlertCircle, 
     Clock, Shield, User as UserIcon, Save, X, Eye, Send, 
     RefreshCw, Zap, ArrowRight, ExternalLink, Check, Copy, Activity,
-    Loader2
+    Loader2, Layout
 } from 'lucide-react';
 import { 
     UnifiedWorkflowDefinition, 
@@ -21,10 +21,12 @@ import { playNotificationChime } from '../services/realtimeNotificationService';
 import { useApp } from '../context/AppContext';
 import { useToast } from './ToastNotification';
 import PageHeader from './PageHeader';
+import VisualWorkflowCanvas from './workflow/VisualWorkflowCanvas';
 
 export const WorkflowNotificationHub: React.FC = () => {
     const { roles, users, hasPermission, currentUser, refreshNotifications, setIsNotificationDrawerOpen, sites, triggerNotificationPopup } = useApp();
     const [showTeamsGuide, setShowTeamsGuide] = useState(false);
+    const [studioViewMode, setStudioViewMode] = useState<'CANVAS' | 'LINEAR'>('CANVAS');
     const [testEmailRecipient, setTestEmailRecipient] = useState(currentUser?.email || 'aaron.bell@splservices.com.au');
     const [isSendingRealEmail, setIsSendingRealEmail] = useState(false);
     const [isTriggeringInApp, setIsTriggeringInApp] = useState(false);
@@ -617,14 +619,70 @@ export const WorkflowNotificationHub: React.FC = () => {
                     </div>
 
                     {activeWorkflow && (
-                        <div className="bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-white/10 shadow-sm p-6 space-y-6">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-white/5 pb-4">
-                                <div>
-                                    <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                                        Stage Flow: {activeWorkflow.name}
-                                    </h3>
-                                    <p className="text-xs text-gray-500 mt-0.5">Sequential stages executed automatically upon trigger</p>
+                        <div className="space-y-4">
+                            {/* Studio View Mode Switcher */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-nocturne p-3 rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 rounded-xl bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
+                                        <Layout size={18} />
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block leading-tight">
+                                            Studio Layout Mode
+                                        </span>
+                                        <h4 className="text-xs font-bold text-gray-900 dark:text-white leading-tight">
+                                            {activeWorkflow.name}
+                                        </h4>
+                                    </div>
                                 </div>
+
+                                <div className="flex items-center gap-1.5 p-1 bg-gray-100 dark:bg-white/5 rounded-xl self-start sm:self-auto">
+                                    <button
+                                        type="button"
+                                        onClick={() => setStudioViewMode('CANVAS')}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                            studioViewMode === 'CANVAS'
+                                                ? 'bg-white dark:bg-[#1a1d27] text-[var(--color-brand)] shadow-sm'
+                                                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                        }`}
+                                    >
+                                        <Layout size={13} />
+                                        Visual Node Canvas
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStudioViewMode('LINEAR')}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                            studioViewMode === 'LINEAR'
+                                                ? 'bg-white dark:bg-[#1a1d27] text-[var(--color-brand)] shadow-sm'
+                                                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                        }`}
+                                    >
+                                        <Sliders size={13} />
+                                        Linear Stage View
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Visual Node Canvas Mode */}
+                            {studioViewMode === 'CANVAS' ? (
+                                <VisualWorkflowCanvas
+                                    workflow={activeWorkflow}
+                                    users={users}
+                                    roles={roles}
+                                    sites={sites}
+                                    onSaveWorkflow={handleSaveWorkflow}
+                                    onTriggerInAppPopup={triggerNotificationPopup}
+                                />
+                            ) : (
+                                <div className="bg-white dark:bg-nocturne rounded-3xl border border-gray-200 dark:border-white/10 shadow-sm p-6 space-y-6">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-white/5 pb-4">
+                                        <div>
+                                            <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                                                Stage Flow: {activeWorkflow.name}
+                                            </h3>
+                                            <p className="text-xs text-gray-500 mt-0.5">Sequential stages executed automatically upon trigger</p>
+                                        </div>
 
                                 <button
                                     type="button"
@@ -771,6 +829,8 @@ export const WorkflowNotificationHub: React.FC = () => {
                     )}
                 </div>
             )}
+        </div>
+    )}
 
             {/* TAB 2: TEMPLATES */}
             {activeTab === 'TEMPLATES' && (

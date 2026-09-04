@@ -980,6 +980,54 @@ export interface WorkflowStageNotificationTrigger {
   }>;
 }
 
+export type CanvasNodeType = 'TRIGGER' | 'CONDITION' | 'APPROVAL' | 'NOTIFICATION' | 'ACTION';
+
+export interface CanvasNode {
+  id: string;
+  type: CanvasNodeType;
+  title: string;
+  subtitle?: string;
+  x: number;
+  y: number;
+  data: {
+    trigger_event?: string;
+    approver_type?: 'ROLE' | 'USER' | 'BOTH' | 'AUTO' | 'REQUESTER_MANAGER';
+    approver_id?: string;
+    approver_role?: string;
+    approver_user_id?: string;
+    sla_hours?: number;
+    escalate_to_role?: string;
+    escalate_to_user_id?: string;
+    escalate_after_hours?: number;
+    condition?: WorkflowCondition;
+    channel?: 'IN_APP' | 'TEAMS' | 'EMAIL' | 'ALL';
+    severity?: NotificationSeverity;
+    notification_title?: string;
+    notification_body?: string;
+    action_label?: string;
+    action_url?: string;
+    site_id?: string;
+    auto_action?: 'AUTO_APPROVE' | 'READY_TO_CLOSE' | 'SYNC_CONCUR' | 'LOG_AUDIT' | string;
+    [key: string]: unknown;
+  };
+}
+
+export interface CanvasEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: 'default' | 'yes' | 'no';
+  targetHandle?: 'default';
+  label?: string;
+}
+
+export interface WorkflowCanvasData {
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  zoom?: number;
+  pan?: { x: number; y: number };
+}
+
 export interface UnifiedWorkflowDefinition {
   id: string;
   workflow_key: string;
@@ -991,6 +1039,7 @@ export interface UnifiedWorkflowDefinition {
   conditions: WorkflowCondition[];
   stages: WorkflowStageDefinition[];
   notification_rules: WorkflowStageNotificationTrigger[];
+  canvas_data?: WorkflowCanvasData;
   created_at?: string;
   updated_at?: string;
   created_by?: string;
