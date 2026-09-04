@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     Zap, GitBranch, UserCheck, Bell, Play, Plus, 
     ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, Save, 
@@ -65,6 +66,17 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isExpanded]);
+
+    // Lock body scroll when expanded to prevent background scrolling
+    useEffect(() => {
+        if (isExpanded) {
+            const originalOverflow = document.body.style.overflow;
+            document.body.style.overflow = 'hidden';
+            return () => {
+                document.body.style.overflow = originalOverflow;
+            };
+        }
     }, [isExpanded]);
 
     // Initial Node & Edge Generator from workflow stages (Horizontal Flow)
@@ -457,11 +469,11 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
         setIsSimulating(false);
     };
 
-    return (
-        <div className={`flex flex-col bg-[#f8f9fb] dark:bg-[#0e1017] rounded-3xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-xl relative select-none transition-all duration-200 ${
+    const canvasWorkspace = (
+        <div className={`flex flex-col bg-[#f8f9fb] dark:bg-[#0e1017] select-none transition-all duration-200 ${
             isExpanded 
-                ? 'fixed inset-0 z-[99999] rounded-none border-none h-screen w-screen' 
-                : 'h-[760px]'
+                ? 'fixed inset-0 z-[999999] w-screen h-screen rounded-none border-none' 
+                : 'h-[760px] rounded-3xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-xl relative'
         }`}>
             {/* Top Toolbar */}
             <div className="h-14 px-5 bg-white/90 dark:bg-[#151722]/90 backdrop-blur-md border-b border-gray-200 dark:border-white/10 flex items-center justify-between z-20 shrink-0">
@@ -477,6 +489,12 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
                                 Horizontal Pipeline
                             </span>
+                            {isExpanded && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 flex items-center gap-1">
+                                    <Maximize2 size={10} />
+                                    Fullscreen Canvas
+                                </span>
+                            )}
                             {hasUnsavedChanges && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 animate-pulse">
                                     Unsaved Changes
@@ -505,9 +523,9 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                     <button
                         type="button"
                         onClick={() => setIsExpanded(!isExpanded)}
-                        className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 border transition-all shadow-sm ${
+                        className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 border transition-all shadow-sm ${
                             isExpanded 
-                                ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border-purple-300 dark:border-purple-800' 
+                                ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-700 shadow-purple-500/20' 
                                 : 'border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200'
                         }`}
                         title={isExpanded ? "Collapse back to normal size (Esc)" : "Expand canvas to full desktop screen"}
@@ -516,6 +534,7 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                             <>
                                 <Minimize2 size={14} />
                                 Exit Expand
+                                <span className="text-[10px] opacity-80 font-mono">(Esc)</span>
                             </>
                         ) : (
                             <>
@@ -740,6 +759,40 @@ export const VisualWorkflowCanvas: React.FC<VisualWorkflowCanvasProps> = ({
                 />
             </div>
         </div>
+    );
+
+    return (
+        <>
+            {isExpanded ? (
+                <>
+                    {/* Inline placeholder so page layout does not jump or collapse */}
+                    <div className="h-[760px] bg-gray-50/60 dark:bg-white/[0.02] rounded-3xl border-2 border-dashed border-gray-200 dark:border-white/10 flex flex-col items-center justify-center gap-4 text-center p-8 transition-all select-none">
+                        <div className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 shadow-inner">
+                            <Maximize2 size={32} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <h4 className="text-base font-bold text-gray-900 dark:text-white">Workflow Studio Expanded</h4>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                                The Visual Workflow Studio canvas is currently active in full-screen expanded mode across your display.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsExpanded(false)}
+                            className="mt-2 px-5 py-2.5 bg-white dark:bg-[#151722] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-all shadow-sm flex items-center gap-2"
+                        >
+                            <Minimize2 size={14} />
+                            Exit Fullscreen (Esc)
+                        </button>
+                    </div>
+
+                    {/* Portal directly to document.body bypassing ancestor CSS transforms */}
+                    {typeof document !== 'undefined' ? createPortal(canvasWorkspace, document.body) : canvasWorkspace}
+                </>
+            ) : (
+                canvasWorkspace
+            )}
+        </>
     );
 };
 

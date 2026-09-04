@@ -53,7 +53,7 @@ export const WorkflowNodeInspector: React.FC<WorkflowNodeInspectorProps> = ({
     );
 
     return (
-        <div className="fixed inset-y-0 right-0 z-50 w-96 bg-white dark:bg-[#151722] border-l border-gray-200 dark:border-white/10 shadow-2xl flex flex-col animate-slide-left select-none">
+        <div className="absolute inset-y-0 right-0 z-50 w-96 bg-white dark:bg-[#151722] border-l border-gray-200 dark:border-white/10 shadow-2xl flex flex-col animate-slide-left select-none">
             {/* Header */}
             <div className="p-4 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
                 <div>
