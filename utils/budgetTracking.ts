@@ -1317,3 +1317,121 @@ export function buildPivotTabData(
   };
 }
 
+/**
+ * Dynamically rebalances a 12-month budget array when an individual month's budget is changed,
+ * strictly guaranteeing that the sum of all 12 months equals the annual budget total down to the cent.
+ *
+ * Standard financial budget rule:
+ * - Months prior to the target month remain locked.
+ * - The target month is updated to the new amount.
+ * - Remaining months (months after the target month) absorb the variance proportionally.
+ * - If the last month (Month 12, June) is edited, the variance is absorbed by preceding months.
+ * - Any cent rounding difference is placed in the final adjustable month so the sum is exact.
+ */
+export function rebalanceMonthlyBudget(
+  currentMonths: number[] | null | undefined,
+  targetMonthIndex: number, // 1 = Jul, 2 = Aug, ..., 12 = Jun
+  newAmount: number,
+  annualTotal: number
+): {
+  months: number[];
+  adjustedMonthIndices: number[]; // 1-indexed (e.g. [3, 4, 5, ..., 12])
+  variance: number;
+} {
+  const safeTotal = Math.max(0, Number(annualTotal) || 0);
+  const safeNewAmount = Math.max(0, Number(newAmount) || 0);
+
+  // Initialize 12 months if not provided or incomplete
+  let months: number[] = [];
+  if (Array.isArray(currentMonths) && currentMonths.length === 12) {
+    months = currentMonths.map(m => Math.max(0, Number(m) || 0));
+  } else {
+    const baseMonth = Number((safeTotal / 12).toFixed(2));
+    months = Array(12).fill(baseMonth);
+    const sum = months.reduce((a, b) => a + b, 0);
+    const diff = Number((safeTotal - sum).toFixed(2));
+    months[11] = Number((months[11] + diff).toFixed(2));
+  }
+
+  const targetIdx = Math.max(0, Math.min(11, targetMonthIndex - 1));
+
+  // Determine which months will adjust:
+  // If targetIdx < 11 (Jul..May), adjust the remaining future months (targetIdx + 1 .. 11)
+  // If targetIdx === 11 (June), adjust the prior months (0 .. 10)
+  const adjustIndices: number[] = [];
+  if (targetIdx < 11) {
+    for (let i = targetIdx + 1; i < 12; i++) {
+      adjustIndices.push(i);
+    }
+  } else {
+    for (let i = 0; i < 11; i++) {
+      adjustIndices.push(i);
+    }
+  }
+
+  // Set new amount on target month
+  months[targetIdx] = safeNewAmount;
+
+  // Calculate sum of locked months (all months not in adjustIndices)
+  let lockedSum = 0;
+  for (let i = 0; i < 12; i++) {
+    if (!adjustIndices.includes(i)) {
+      lockedSum += months[i];
+    }
+  }
+  lockedSum = Number(lockedSum.toFixed(2));
+
+  // Remaining budget pool for adjustable months
+  const remainingPool = Math.max(0, Number((safeTotal - lockedSum).toFixed(2)));
+
+  // Calculate previous sum of adjustable months
+  const prevAdjustSum = adjustIndices.reduce((sum, idx) => sum + months[idx], 0);
+
+  if (adjustIndices.length > 0) {
+    if (prevAdjustSum > 0) {
+      // Proportionally scale each adjustable month
+      adjustIndices.forEach(idx => {
+        const ratio = months[idx] / prevAdjustSum;
+        months[idx] = Number((remainingPool * ratio).toFixed(2));
+      });
+    } else {
+      // Split evenly
+      const evenSplit = Number((remainingPool / adjustIndices.length).toFixed(2));
+      adjustIndices.forEach(idx => {
+        months[idx] = evenSplit;
+      });
+    }
+
+    // Cent correction on the last adjustable index to ensure exact match
+    const currentSum = Number(months.reduce((a, b) => a + b, 0).toFixed(2));
+    const roundingDiff = Number((safeTotal - currentSum).toFixed(2));
+    const lastAdjIdx = adjustIndices[adjustIndices.length - 1];
+    months[lastAdjIdx] = Number((months[lastAdjIdx] + roundingDiff).toFixed(2));
+    if (months[lastAdjIdx] < 0) {
+      months[lastAdjIdx] = 0;
+    }
+  }
+
+  const finalSum = Number(months.reduce((a, b) => a + b, 0).toFixed(2));
+  const finalVariance = Number((finalSum - safeTotal).toFixed(2));
+
+  return {
+    months,
+    adjustedMonthIndices: adjustIndices.map(i => i + 1),
+    variance: finalVariance
+  };
+}
+
+/**
+ * Check whether an email ingestion queue item is a Concur / EOM spreadsheet report.
+ */
+export function isConcurEmailItem(attachmentName?: string, subject?: string): boolean {
+  const combined = `${attachmentName || ''} ${subject || ''}`.toLowerCase();
+  const hasExt = /\.(xlsx|xls|csv)$/i.test(attachmentName || '');
+  const matchesKeyword = combined.includes('concur') || 
+                         combined.includes('purchase request') || 
+                         combined.includes('eom') || 
+                         combined.includes('tracking');
+  return hasExt && matchesKeyword;
+}
+

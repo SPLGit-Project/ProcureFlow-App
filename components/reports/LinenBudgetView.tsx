@@ -12,11 +12,16 @@ import {
   TrendingUp, 
   AlertCircle,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  ChevronDown,
+  ChevronRight,
+  RotateCcw,
+  Calendar,
+  Sliders
 } from 'lucide-react';
 import { db } from '../../services/db.ts';
 import { LinenBudgetRecord } from '../../types.ts';
-import { DEFAULT_FY27_BUDGETS } from '../../utils/budgetTracking.ts';
+import { DEFAULT_FY27_BUDGETS, getFinancialYearMonths, rebalanceMonthlyBudget } from '../../utils/budgetTracking.ts';
 
 export default function LinenBudgetView() {
   const [financialYears, setFinancialYears] = useState<string[]>(['FY27']);
@@ -28,10 +33,56 @@ export default function LinenBudgetView() {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const [expandedSiteCodes, setExpandedSiteCodes] = useState<Set<string>>(new Set());
+
   // Modal for creating a new FY budget
   const [showNewYearModal, setShowNewYearModal] = useState<boolean>(false);
   const [newFYName, setNewFYName] = useState<string>('FY28');
   const [cloneFromFY, setCloneFromFY] = useState<string>('FY27');
+
+  const monthsDef = useMemo(() => getFinancialYearMonths(selectedFY), [selectedFY]);
+
+  const toggleExpandSite = (siteCode: string) => {
+    setExpandedSiteCodes(prev => {
+      const next = new Set(prev);
+      if (next.has(siteCode)) next.delete(siteCode);
+      else next.add(siteCode);
+      return next;
+    });
+  };
+
+  const handleMonthlyBudgetChange = (siteCode: string, monthIndex: number, valStr: string) => {
+    const num = Math.max(0, parseFloat(valStr) || 0);
+    setEditableRows(prev => prev.map(row => {
+      if (row.siteCode !== siteCode) return row;
+
+      let currentSpread = row.customMonthlyBudgets;
+      if (!currentSpread || currentSpread.length !== 12) {
+        const baseMonth = Number((row.annualDepletion / 12).toFixed(2));
+        currentSpread = Array(12).fill(baseMonth);
+        const sum = currentSpread.reduce((a, b) => a + b, 0);
+        const diff = Number((row.annualDepletion - sum).toFixed(2));
+        currentSpread[11] = Number((currentSpread[11] + diff).toFixed(2));
+      }
+
+      const { months } = rebalanceMonthlyBudget(currentSpread, monthIndex, num, row.annualDepletion);
+
+      return {
+        ...row,
+        customMonthlyBudgets: months
+      };
+    }));
+  };
+
+  const handleResetEvenSpread = (siteCode: string) => {
+    setEditableRows(prev => prev.map(row => {
+      if (row.siteCode !== siteCode) return row;
+      return {
+        ...row,
+        customMonthlyBudgets: null
+      };
+    }));
+  };
 
   // Load budgets for selected financial year
   const loadBudgets = async () => {
@@ -132,6 +183,14 @@ export default function LinenBudgetView() {
       const updated = { ...row, [field]: num };
       if (field === 'annualDepletion') {
         updated.monthlyDepletion = Number((num / 12).toFixed(2));
+        if (row.customMonthlyBudgets && row.customMonthlyBudgets.length === 12 && row.annualDepletion > 0) {
+          const ratio = num / row.annualDepletion;
+          const scaled = row.customMonthlyBudgets.map(m => Number((m * ratio).toFixed(2)));
+          const sum = Number(scaled.reduce((a, b) => a + b, 0).toFixed(2));
+          const diff = Number((num - sum).toFixed(2));
+          scaled[11] = Number((scaled[11] + diff).toFixed(2));
+          updated.customMonthlyBudgets = scaled;
+        }
       } else if (field === 'annualNewBusiness') {
         updated.monthlyNewBusiness = Number((num / 12).toFixed(2));
       }
@@ -413,56 +472,183 @@ export default function LinenBudgetView() {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800/80 text-xs">
               {siteRows.map((row) => {
                 const total = (Number(row.annualDepletion) || 0) + (Number(row.annualNewBusiness) || 0);
+                const isExpanded = expandedSiteCodes.has(row.siteCode);
+                const hasCustom = Array.isArray(row.customMonthlyBudgets) && row.customMonthlyBudgets.length === 12;
+                const spread: number[] = hasCustom 
+                  ? row.customMonthlyBudgets! 
+                  : Array(12).fill(Number((row.annualDepletion / 12).toFixed(2)));
+                const spreadSum = Number(spread.reduce((a, b) => a + b, 0).toFixed(2));
+                const diffFromAnnual = Number((spreadSum - row.annualDepletion).toFixed(2));
+
                 return (
-                  <tr key={row.siteCode} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
-                    <td className="py-3 px-6 font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-indigo-500/60"></span>
-                      <span>{row.siteName}</span>
-                    </td>
+                  <React.Fragment key={row.siteCode}>
+                    <tr className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                      <td className="py-3 px-6 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpandSite(row.siteCode)}
+                          className="p-1 rounded-md text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                          title={isExpanded ? "Collapse 12-month spread" : "Expand 12-month spread"}
+                        >
+                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                        <span className="w-2 h-2 rounded-full bg-indigo-500/60"></span>
+                        <span>{row.siteName}</span>
+                        {hasCustom && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20" title="Custom 12-Month Spread Active">
+                            Custom 12M
+                          </span>
+                        )}
+                      </td>
 
-                    {/* Depletion Input / View */}
-                    <td className="py-3 px-6 text-right font-semibold">
-                      {isEditMode ? (
-                        <input
-                          type="number"
-                          value={row.annualDepletion}
-                          onChange={(e) => handleCellChange(row.siteCode, 'annualDepletion', e.target.value)}
-                          className="w-32 px-2.5 py-1 text-right text-xs font-bold rounded-lg border border-indigo-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      ) : (
-                        formatAUD(row.annualDepletion)
-                      )}
-                    </td>
+                      {/* Depletion Input / View */}
+                      <td className="py-3 px-6 text-right font-semibold">
+                        {isEditMode ? (
+                          <input
+                            type="number"
+                            value={row.annualDepletion}
+                            onChange={(e) => handleCellChange(row.siteCode, 'annualDepletion', e.target.value)}
+                            className="w-32 px-2.5 py-1 text-right text-xs font-bold rounded-lg border border-indigo-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        ) : (
+                          formatAUD(row.annualDepletion)
+                        )}
+                      </td>
 
-                    {/* Monthly Depletion (Auto Calculated) */}
-                    <td className="py-3 px-6 text-right text-gray-500 dark:text-gray-400 font-mono">
-                      {formatAUD(row.monthlyDepletion)}
-                    </td>
+                      {/* Monthly Depletion (Auto Calculated or Spread) */}
+                      <td className="py-3 px-6 text-right text-gray-500 dark:text-gray-400 font-mono">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>{formatAUD(row.monthlyDepletion)}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandSite(row.siteCode)}
+                            className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold hover:underline"
+                          >
+                            {isExpanded ? 'Hide' : '12M'}
+                          </button>
+                        </div>
+                      </td>
 
-                    {/* New Business Input / View */}
-                    <td className="py-3 px-6 text-right font-semibold">
-                      {isEditMode ? (
-                        <input
-                          type="number"
-                          value={row.annualNewBusiness}
-                          onChange={(e) => handleCellChange(row.siteCode, 'annualNewBusiness', e.target.value)}
-                          className="w-32 px-2.5 py-1 text-right text-xs font-bold rounded-lg border border-indigo-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      ) : (
-                        formatAUD(row.annualNewBusiness)
-                      )}
-                    </td>
+                      {/* New Business Input / View */}
+                      <td className="py-3 px-6 text-right font-semibold">
+                        {isEditMode ? (
+                          <input
+                            type="number"
+                            value={row.annualNewBusiness}
+                            onChange={(e) => handleCellChange(row.siteCode, 'annualNewBusiness', e.target.value)}
+                            className="w-32 px-2.5 py-1 text-right text-xs font-bold rounded-lg border border-indigo-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        ) : (
+                          formatAUD(row.annualNewBusiness)
+                        )}
+                      </td>
 
-                    {/* Monthly New Business (Auto Calculated) */}
-                    <td className="py-3 px-6 text-right text-gray-500 dark:text-gray-400 font-mono">
-                      {formatAUD(row.monthlyNewBusiness)}
-                    </td>
+                      {/* Monthly New Business (Auto Calculated) */}
+                      <td className="py-3 px-6 text-right text-gray-500 dark:text-gray-400 font-mono">
+                        {formatAUD(row.monthlyNewBusiness)}
+                      </td>
 
-                    {/* Combined Total */}
-                    <td className="py-3 px-6 text-right font-black text-gray-900 dark:text-white font-mono">
-                      {formatAUD(total)}
-                    </td>
-                  </tr>
+                      {/* Combined Total */}
+                      <td className="py-3 px-6 text-right font-black text-gray-900 dark:text-white font-mono">
+                        {formatAUD(total)}
+                      </td>
+                    </tr>
+
+                    {/* Expandable 12-Month Spread Drawer */}
+                    {isExpanded && (
+                      <tr className="bg-indigo-50/20 dark:bg-indigo-950/20 border-b border-indigo-100 dark:border-indigo-900/30 animate-fade-in">
+                        <td colSpan={6} className="p-4 sm:px-8">
+                          <div className="p-4 rounded-2xl bg-white dark:bg-gray-900/80 border border-indigo-200/60 dark:border-indigo-800/60 shadow-sm space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-gray-100 dark:border-gray-800">
+                              <div className="flex items-center gap-2">
+                                <Calendar size={15} className="text-indigo-600 dark:text-indigo-400" />
+                                <span className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                                  {row.siteName} — 12-Month Depletion Distribution ({selectedFY})
+                                </span>
+                                {hasCustom ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                                    Dynamic Custom Spread
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                                    Even Spread (Annual ÷ 12)
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs font-bold text-gray-500">
+                                  Annual Locked: <span className="font-mono text-gray-900 dark:text-white font-black">{formatAUD(row.annualDepletion)}</span>
+                                </span>
+
+                                {isEditMode && hasCustom && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetEvenSpread(row.siteCode)}
+                                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                                    title="Reset all 12 months to equal (Annual ÷ 12)"
+                                  >
+                                    <RotateCcw size={12} />
+                                    <span>Reset Even</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 12-Month Grid */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 gap-2">
+                              {monthsDef.map((m) => {
+                                const mVal = spread[m.monthIndex - 1] ?? 0;
+                                return (
+                                  <div
+                                    key={m.monthIndex}
+                                    className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200/80 dark:border-gray-700/60 flex flex-col justify-between"
+                                  >
+                                    <div className="flex items-center justify-between text-[10px] font-black uppercase text-gray-500 dark:text-gray-400 mb-1">
+                                      <span>{m.shortMonth}</span>
+                                      <span className="text-gray-400 font-normal">M{m.monthIndex}</span>
+                                    </div>
+                                    {isEditMode ? (
+                                      <input
+                                        type="number"
+                                        value={mVal}
+                                        onChange={(e) => handleMonthlyBudgetChange(row.siteCode, m.monthIndex, e.target.value)}
+                                        className="w-full text-right px-1.5 py-1 text-xs font-bold font-mono rounded-lg border border-indigo-400 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                      />
+                                    ) : (
+                                      <div className="text-right text-xs font-black font-mono text-gray-900 dark:text-white">
+                                        {formatAUD(mVal)}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Drawer status footer */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] pt-1 text-gray-500 dark:text-gray-400 gap-1">
+                              <div>
+                                {isEditMode ? (
+                                  <span className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-1">
+                                    <Sliders size={12} />
+                                    Changing any month dynamically rebalances remaining months so annual total stays locked.
+                                  </span>
+                                ) : (
+                                  <span>Click Edit Budget above to customize individual month allocations.</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 font-mono">
+                                <span>12M Sum: <strong className="text-gray-900 dark:text-white">{formatAUD(spreadSum)}</strong></span>
+                                <span className={Math.abs(diffFromAnnual) <= 0.05 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
+                                  {Math.abs(diffFromAnnual) <= 0.05 ? '(✓ Balanced)' : `(Variance: ${formatAUD(diffFromAnnual)})`}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
 
@@ -489,34 +675,149 @@ export default function LinenBudgetView() {
               </tr>
 
               {/* Linen Hub Row */}
-              {linenHubRow && (
-                <tr className="bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
-                  <td className="py-3.5 px-6 font-black text-amber-900 dark:text-amber-300 flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                    <span>LINEN HUB</span>
-                  </td>
-                  <td className="py-3.5 px-6 text-right font-black text-amber-900 dark:text-amber-300">
-                    {isEditMode ? (
-                      <input
-                        type="number"
-                        value={linenHubRow.annualDepletion}
-                        onChange={(e) => handleCellChange('LINEN_HUB', 'annualDepletion', e.target.value)}
-                        className="w-32 px-2.5 py-1 text-right text-xs font-bold rounded-lg border border-amber-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      />
-                    ) : (
-                      formatAUD(linenHubRow.annualDepletion)
+              {linenHubRow && (() => {
+                const isExpanded = expandedSiteCodes.has('LINEN_HUB');
+                const hasCustom = Array.isArray(linenHubRow.customMonthlyBudgets) && linenHubRow.customMonthlyBudgets.length === 12;
+                const spread: number[] = hasCustom 
+                  ? linenHubRow.customMonthlyBudgets! 
+                  : Array(12).fill(Number((linenHubRow.annualDepletion / 12).toFixed(2)));
+                const spreadSum = Number(spread.reduce((a, b) => a + b, 0).toFixed(2));
+                const diffFromAnnual = Number((spreadSum - linenHubRow.annualDepletion).toFixed(2));
+
+                return (
+                  <React.Fragment key="LINEN_HUB">
+                    <tr className="bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
+                      <td className="py-3.5 px-6 font-black text-amber-900 dark:text-amber-300 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpandSite('LINEN_HUB')}
+                          className="p-1 rounded-md text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                          title={isExpanded ? "Collapse 12-month spread" : "Expand 12-month spread"}
+                        >
+                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                        <span>LINEN HUB</span>
+                        {hasCustom && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20">
+                            Custom 12M
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-6 text-right font-black text-amber-900 dark:text-amber-300">
+                        {isEditMode ? (
+                          <input
+                            type="number"
+                            value={linenHubRow.annualDepletion}
+                            onChange={(e) => handleCellChange('LINEN_HUB', 'annualDepletion', e.target.value)}
+                            className="w-32 px-2.5 py-1 text-right text-xs font-bold rounded-lg border border-amber-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        ) : (
+                          formatAUD(linenHubRow.annualDepletion)
+                        )}
+                      </td>
+                      <td className="py-3.5 px-6 text-right text-amber-800/70 dark:text-amber-400/80 font-mono">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>{formatAUD(linenHubRow.monthlyDepletion)}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandSite('LINEN_HUB')}
+                            className="text-[10px] text-amber-600 dark:text-amber-400 font-bold hover:underline"
+                          >
+                            {isExpanded ? 'Hide' : '12M'}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-6 text-right text-gray-400 font-mono">-</td>
+                      <td className="py-3.5 px-6 text-right text-gray-400 font-mono">-</td>
+                      <td className="py-3.5 px-6 text-right font-black text-amber-900 dark:text-amber-300 font-mono">
+                        {formatAUD(linenHubRow.annualDepletion)}
+                      </td>
+                    </tr>
+
+                    {/* Expandable 12-Month Spread Drawer for Linen Hub */}
+                    {isExpanded && (
+                      <tr className="bg-amber-50/20 dark:bg-amber-950/20 border-b border-amber-100 dark:border-amber-900/30 animate-fade-in">
+                        <td colSpan={6} className="p-4 sm:px-8">
+                          <div className="p-4 rounded-2xl bg-white dark:bg-gray-900/80 border border-amber-200/60 dark:border-amber-800/60 shadow-sm space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-gray-100 dark:border-gray-800">
+                              <div className="flex items-center gap-2">
+                                <Calendar size={15} className="text-amber-600 dark:text-amber-400" />
+                                <span className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                                  LINEN HUB — 12-Month Depletion Allocation ({selectedFY})
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs font-bold text-gray-500">
+                                  Annual Locked: <span className="font-mono text-gray-900 dark:text-white font-black">{formatAUD(linenHubRow.annualDepletion)}</span>
+                                </span>
+
+                                {isEditMode && hasCustom && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetEvenSpread('LINEN_HUB')}
+                                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors"
+                                  >
+                                    <RotateCcw size={12} />
+                                    <span>Reset Even</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 gap-2">
+                              {monthsDef.map((m) => {
+                                const mVal = spread[m.monthIndex - 1] ?? 0;
+                                return (
+                                  <div
+                                    key={m.monthIndex}
+                                    className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200/80 dark:border-gray-700/60 flex flex-col justify-between"
+                                  >
+                                    <div className="flex items-center justify-between text-[10px] font-black uppercase text-gray-500 dark:text-gray-400 mb-1">
+                                      <span>{m.shortMonth}</span>
+                                      <span className="text-gray-400 font-normal">M{m.monthIndex}</span>
+                                    </div>
+                                    {isEditMode ? (
+                                      <input
+                                        type="number"
+                                        value={mVal}
+                                        onChange={(e) => handleMonthlyBudgetChange('LINEN_HUB', m.monthIndex, e.target.value)}
+                                        className="w-full text-right px-1.5 py-1 text-xs font-bold font-mono rounded-lg border border-amber-400 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                      />
+                                    ) : (
+                                      <div className="text-right text-xs font-black font-mono text-gray-900 dark:text-white">
+                                        {formatAUD(mVal)}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] pt-1 text-gray-500 dark:text-gray-400 gap-1">
+                              <div>
+                                {isEditMode && (
+                                  <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                                    <Sliders size={12} />
+                                    Changing any month automatically rebalances remaining months so annual total stays locked.
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 font-mono">
+                                <span>12M Sum: <strong className="text-gray-900 dark:text-white">{formatAUD(spreadSum)}</strong></span>
+                                <span className={Math.abs(diffFromAnnual) <= 0.05 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
+                                  {Math.abs(diffFromAnnual) <= 0.05 ? '(✓ Balanced)' : `(Variance: ${formatAUD(diffFromAnnual)})`}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                  <td className="py-3.5 px-6 text-right text-amber-800/70 dark:text-amber-400/80 font-mono">
-                    {formatAUD(linenHubRow.monthlyDepletion)}
-                  </td>
-                  <td className="py-3.5 px-6 text-right text-gray-400 font-mono">-</td>
-                  <td className="py-3.5 px-6 text-right text-gray-400 font-mono">-</td>
-                  <td className="py-3.5 px-6 text-right font-black text-amber-900 dark:text-amber-300 font-mono">
-                    {formatAUD(linenHubRow.annualDepletion)}
-                  </td>
-                </tr>
-              )}
+                  </React.Fragment>
+                );
+              })()}
 
               {/* Grand Total Row */}
               <tr className="bg-gray-100/90 dark:bg-gray-900/90 font-black text-sm border-t-2 border-gray-300 dark:border-gray-700">

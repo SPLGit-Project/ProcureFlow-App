@@ -21,7 +21,12 @@ import {
   ArrowRightLeft,
   ShieldCheck,
   Check,
-  RefreshCw
+  RefreshCw,
+  Mail,
+  Inbox,
+  ChevronDown,
+  ChevronUp,
+  Clock
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../../context/AppContext.tsx';
@@ -29,13 +34,15 @@ import { db } from '../../services/db.ts';
 import { 
   LinenBudgetRecord, 
   EomMonthlyOverride, 
-  PORequest 
+  PORequest,
+  EmailIngestionQueueItem
 } from '../../types.ts';
 import { 
   buildEom12MonthGrids, 
   buildPivotTabData, 
   getFinancialYearMonths,
-  calculateExGst
+  calculateExGst,
+  isConcurEmailItem
 } from '../../utils/budgetTracking.ts';
 
 type ActiveTab = 'TRACKING_GRID' | 'PIVOT_BREAKDOWN' | 'CONCUR_RECONCILIATION';
@@ -66,7 +73,7 @@ interface ReconciliationItem {
 }
 
 export default function EOMTrackingView() {
-  const { pos } = useApp();
+  const { pos, emailIngestionQueue, refreshEmailIngestionQueue, downloadInboxAttachment } = useApp();
   const [activeTab, setActiveTab] = useState<ActiveTab>('TRACKING_GRID');
 
   // Year & Month Selection
@@ -91,7 +98,82 @@ export default function EOMTrackingView() {
   // Concur Raw Data Reconciliation State
   const [concurPasteInput, setConcurPasteInput] = useState<string>('');
   const [parsedConcurRows, setParsedConcurRows] = useState<ConcurRawRow[]>([]);
-  const [reconciliationFilter, setReconciliationFilter] = useState<'ALL' | 'MISMATCH' | 'MISSING_PF' | 'MISSING_CONCUR'>('ALL');
+  const [reconciliationFilter, setReconciliationFilter] = useState<'ALL' | 'MISMATCH' | 'MISSING_PF' | 'MISSING_CONCUR' | 'MATCHED'>('ALL');
+  const [concurSearchQuery, setConcurSearchQuery] = useState<string>('');
+
+  // Automated Email Ingestion Pipeline State
+  const [selectedEmailAttachmentId, setSelectedEmailAttachmentId] = useState<string>('');
+  const [isSyncingEmail, setIsSyncingEmail] = useState<boolean>(false);
+  const [showManualFallback, setShowManualFallback] = useState<boolean>(false);
+  const [syncedEmailItem, setSyncedEmailItem] = useState<EmailIngestionQueueItem | null>(null);
+
+  // Detect Concur / EOM attachments in email queue
+  const concurEmailAttachments = useMemo(() => {
+    return (emailIngestionQueue || []).filter(item => 
+      isConcurEmailItem(item.attachmentName, item.subject) && !!item.storagePath
+    ).sort((a, b) => {
+      const timeA = a.receivedAt ? new Date(a.receivedAt).getTime() : 0;
+      const timeB = b.receivedAt ? new Date(b.receivedAt).getTime() : 0;
+      return timeB - timeA;
+    });
+  }, [emailIngestionQueue]);
+
+  useEffect(() => {
+    if (concurEmailAttachments.length > 0 && !selectedEmailAttachmentId) {
+      setSelectedEmailAttachmentId(concurEmailAttachments[0].id);
+    }
+  }, [concurEmailAttachments, selectedEmailAttachmentId]);
+
+  // Parse Concur workbook array buffer or blob
+  const parseConcurSpreadsheetBlob = async (blob: Blob, sourceLabel: string) => {
+    setIsSyncingEmail(true);
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const sheetName = workbook.SheetNames.find(s => s.toLowerCase().includes('raw')) || workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const tsv = XLSX.utils.sheet_to_csv(worksheet, { FS: '\t' });
+      setConcurPasteInput(tsv);
+      handleParseConcurText(tsv);
+      setStatusMessage({ type: 'success', text: `Successfully synced & parsed ${sourceLabel} from email intake.` });
+    } catch (err: any) {
+      console.error('Failed to parse Concur attachment:', err);
+      setStatusMessage({ type: 'error', text: `Failed to read Concur file: ${err.message}` });
+    } finally {
+      setIsSyncingEmail(false);
+    }
+  };
+
+  // Sync selected email attachment
+  const handleSyncSelectedEmail = async (attachmentId?: string) => {
+    const targetId = attachmentId || selectedEmailAttachmentId || concurEmailAttachments[0]?.id;
+    if (!targetId) {
+      setStatusMessage({ type: 'error', text: 'No Concur email attachment detected in queue.' });
+      return;
+    }
+    const item = concurEmailAttachments.find(a => a.id === targetId);
+    if (!item || !item.storagePath) {
+      setStatusMessage({ type: 'error', text: 'Attachment storage path missing in email queue.' });
+      return;
+    }
+    setIsSyncingEmail(true);
+    try {
+      const blob = await downloadInboxAttachment(item.storagePath);
+      setSyncedEmailItem(item);
+      await parseConcurSpreadsheetBlob(blob, item.attachmentName);
+    } catch (err: any) {
+      console.error('Error downloading attachment:', err);
+      setStatusMessage({ type: 'error', text: `Failed to download attachment: ${err.message}` });
+      setIsSyncingEmail(false);
+    }
+  };
+
+  // Auto-sync latest Concur email attachment on first visit if available
+  useEffect(() => {
+    if (activeTab === 'CONCUR_RECONCILIATION' && parsedConcurRows.length === 0 && concurEmailAttachments.length > 0 && !isSyncingEmail) {
+      handleSyncSelectedEmail(concurEmailAttachments[0].id);
+    }
+  }, [activeTab, concurEmailAttachments.length]);
 
   // Load budgets and overrides
   const loadData = async () => {
@@ -431,12 +513,68 @@ export default function EOMTrackingView() {
 
   // Filtered reconciliation drilldown
   const filteredReconciliationItems = useMemo(() => {
-    if (reconciliationFilter === 'ALL') return reconciliationResults.items;
-    if (reconciliationFilter === 'MISMATCH') return reconciliationResults.items.filter(i => i.status === 'AMOUNT_MISMATCH');
-    if (reconciliationFilter === 'MISSING_PF') return reconciliationResults.items.filter(i => i.status === 'MISSING_IN_PROCUREFLOW');
-    if (reconciliationFilter === 'MISSING_CONCUR') return reconciliationResults.items.filter(i => i.status === 'MISSING_IN_CONCUR');
-    return reconciliationResults.items;
-  }, [reconciliationResults.items, reconciliationFilter]);
+    let list = reconciliationResults.items;
+    if (reconciliationFilter === 'MISMATCH') list = list.filter(i => i.status === 'AMOUNT_MISMATCH');
+    else if (reconciliationFilter === 'MISSING_PF') list = list.filter(i => i.status === 'MISSING_IN_PROCUREFLOW');
+    else if (reconciliationFilter === 'MISSING_CONCUR') list = list.filter(i => i.status === 'MISSING_IN_CONCUR');
+    else if (reconciliationFilter === 'MATCHED') list = list.filter(i => i.status === 'MATCHED');
+
+    if (concurSearchQuery.trim()) {
+      const q = concurSearchQuery.toLowerCase();
+      list = list.filter(i => 
+        i.poNumber.toLowerCase().includes(q) ||
+        i.prNumber.toLowerCase().includes(q) ||
+        (i.branch && i.branch.toLowerCase().includes(q)) ||
+        (i.vendor && i.vendor.toLowerCase().includes(q)) ||
+        (i.description && i.description.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [reconciliationResults.items, reconciliationFilter, concurSearchQuery]);
+
+  // Export Parity Audit to Excel
+  const handleExportReconciliationExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    const summaryData = [
+      ['Concur vs ProcureFlow Parity Reconciliation Audit'],
+      ['Export Date', new Date().toLocaleDateString('en-AU')],
+      ['Report Source', syncedEmailItem ? `Email: ${syncedEmailItem.attachmentName}` : 'Spreadsheet'],
+      [''],
+      ['Metric', 'Value'],
+      ['Parity Match Rate', `${reconciliationResults.parityPercent}%`],
+      ['Concur Total (Ex-GST)', reconciliationResults.concurTotalEx],
+      ['ProcureFlow Matched (Ex-GST)', reconciliationResults.pfTotalEx],
+      ['Net Variance', reconciliationResults.netVariance],
+      ['Matched POs', reconciliationResults.matchCount],
+      ['Amount Mismatches', reconciliationResults.mismatchCount],
+      ['Missing in ProcureFlow', reconciliationResults.missingInPfCount],
+      ['Missing in Concur', reconciliationResults.missingInConcurCount]
+    ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Parity Summary');
+
+    const auditData: any[] = [
+      ['Status', 'PO Number', 'PR Number', 'Concur Ex-GST ($)', 'ProcureFlow Ex-GST ($)', 'Variance ($)', 'Branch', 'Description', 'Vendor']
+    ];
+    reconciliationResults.items.forEach(i => {
+      auditData.push([
+        i.status,
+        i.poNumber,
+        i.prNumber || '',
+        i.concurExGst,
+        i.procureFlowExGst,
+        i.variance,
+        i.branch || '',
+        i.description || '',
+        i.vendor || ''
+      ]);
+    });
+    const wsAudit = XLSX.utils.aoa_to_sheet(auditData);
+    XLSX.utils.book_append_sheet(wb, wsAudit, 'Audit Details');
+
+    XLSX.writeFile(wb, `Concur_ProcureFlow_Parity_Audit_${selectedFY}.xlsx`);
+  };
 
   // Export EOM Tracking Grid to Excel
   const handleExportGridExcel = () => {
@@ -1288,265 +1426,475 @@ export default function EOMTrackingView() {
       {/* ───────────────────────────────────────────────────────────────────── */}
       {/* TAB 3: CONCUR RAW DATA AUDIT & RECONCILIATION                        */}
       {/* ───────────────────────────────────────────────────────────────────── */}
-      {activeTab === 'CONCUR_RECONCILIATION' && (
-        <div className="space-y-6 animate-fade-in">
-          {/* Header Banner */}
-          <div className="p-6 rounded-3xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-transparent border border-indigo-500/20">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-base font-black uppercase tracking-wider text-gray-900 dark:text-white flex items-center gap-2">
-                  <ShieldCheck className="text-indigo-600" size={20} />
-                  <span>Concur Raw Data Audit &amp; Parity Check</span>
-                </h3>
-                <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 max-w-2xl">
-                  Paste rows directly from Concur's month-end export or upload the raw spreadsheet. The reconciliation engine automatically matches every Purchase Order number against ProcureFlow and audits Ex-GST amounts for 100% General Ledger parity.
-                </p>
+      {activeTab === 'CONCUR_RECONCILIATION' && (() => {
+        const activeEmailItem = concurEmailAttachments.find(a => a.id === selectedEmailAttachmentId) || concurEmailAttachments[0];
+
+        return (
+          <div className="space-y-6 animate-fade-in">
+            {/* Header Banner */}
+            <div className="p-6 rounded-3xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-transparent border border-indigo-500/20">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-black uppercase tracking-wider text-gray-900 dark:text-white flex items-center gap-2">
+                    <ShieldCheck className="text-indigo-600" size={20} />
+                    <span>Concur Raw Data Audit &amp; Parity Check</span>
+                  </h3>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 max-w-3xl">
+                    Automated intake pipeline detects month-end Concur reports directly from the finance inbox queue. The reconciliation engine matches every Purchase Order against ProcureFlow and audits Ex-GST amounts for 100% General Ledger parity.
+                  </p>
+                </div>
+
+                {parsedConcurRows.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-500/20 flex items-center gap-1.5 shadow-sm">
+                      <CheckCircle2 size={14} />
+                      {reconciliationResults.parityPercent}% Match Rate
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleExportReconciliationExcel}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-black uppercase text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all"
+                      title="Export complete reconciliation audit to Excel"
+                    >
+                      <Download size={14} />
+                      <span>Export Audit</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── AUTOMATED EMAIL INTAKE PIPELINE CARD ──────────────────────────── */}
+            <div className="bg-white dark:bg-[#1c1f2b] p-6 rounded-3xl border border-indigo-100 dark:border-indigo-900/40 shadow-sm space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center relative">
+                    <Mail size={24} />
+                    <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-gray-900 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                        Automated Finance Email Intake Pipeline
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-500/20">
+                        Live Inbox Queue
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {concurEmailAttachments.length > 0
+                        ? `Detected ${concurEmailAttachments.length} Concur month-end spreadsheet(s) from finance email.`
+                        : 'Monitoring inbound inbox for incoming Concur month-end spreadsheets...'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => refreshEmailIngestionQueue()}
+                    disabled={isSyncingEmail}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 rounded-xl transition-colors"
+                    title="Check inbox for new incoming emails"
+                  >
+                    <RefreshCw size={13} className={isSyncingEmail ? 'animate-spin' : ''} />
+                    <span>Refresh Inbox</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSyncSelectedEmail()}
+                    disabled={isSyncingEmail || !activeEmailItem}
+                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-black uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                  >
+                    {isSyncingEmail ? <RefreshCw size={14} className="animate-spin" /> : <ArrowRightLeft size={14} />}
+                    <span>{parsedConcurRows.length > 0 ? 'Re-Sync Concur Data' : 'Sync & Reconcile'}</span>
+                  </button>
+                </div>
               </div>
 
-              {parsedConcurRows.length > 0 && (
-                <div className="flex items-center gap-3">
-                  <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-500/20 flex items-center gap-1.5">
-                    <CheckCircle2 size={14} />
-                    {reconciliationResults.parityPercent}% Match Rate
-                  </span>
+              {/* Active Detected Report Details */}
+              {activeEmailItem ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 rounded-2xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 text-xs">
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-gray-400 block mb-1">
+                      Active Email Attachment
+                    </span>
+                    {concurEmailAttachments.length > 1 ? (
+                      <select
+                        value={selectedEmailAttachmentId || activeEmailItem.id}
+                        onChange={(e) => {
+                          setSelectedEmailAttachmentId(e.target.value);
+                          handleSyncSelectedEmail(e.target.value);
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-800 text-xs font-bold text-gray-900 dark:text-white"
+                      >
+                        {concurEmailAttachments.map(att => (
+                          <option key={att.id} value={att.id}>
+                            {att.attachmentName} ({att.receivedAt ? new Date(att.receivedAt).toLocaleDateString('en-AU') : 'Latest'})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="font-mono font-bold text-indigo-950 dark:text-indigo-200 text-sm flex items-center gap-1.5 truncate">
+                        <FileSpreadsheet size={15} className="text-indigo-600 flex-shrink-0" />
+                        {activeEmailItem.attachmentName}
+                      </span>
+                    )}
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-gray-400 block mb-1">Sender &amp; Subject</span>
+                    <span className="font-medium text-gray-700 dark:text-gray-300 block truncate" title={activeEmailItem.fromAddress}>
+                      From: {activeEmailItem.fromAddress || 'finance@splservices.com.au'}
+                    </span>
+                    <span className="text-[11px] text-gray-500 truncate block" title={activeEmailItem.subject}>
+                      {activeEmailItem.subject || 'Concur Month End Report'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-gray-400 block mb-1">Received Timestamp</span>
+                    <span className="font-mono font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                      <Clock size={13} className="text-gray-400" />
+                      {activeEmailItem.receivedAt ? new Date(activeEmailItem.receivedAt).toLocaleString('en-AU') : 'Recently received'}
+                    </span>
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5 block">
+                      ✓ Ready for parity reconciliation
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-dashed border-gray-200 dark:border-gray-700 text-center py-6">
+                  <Inbox size={28} className="mx-auto text-gray-400 mb-2" />
+                  <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                    No Concur month-end spreadsheets detected in the inbox queue yet.
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    When reports like `Purchase Request EOM SEP-26.xls` are emailed to the finance inbox, they will be automatically ingested here.
+                  </p>
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* INGESTION SECTION: DRAG & DROP OR PASTE */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Direct Paste Box */}
-            <div className="bg-white dark:bg-[#1c1f2b] p-5 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white flex items-center gap-1.5">
-                  <FileText size={16} className="text-indigo-600" />
-                  <span>Paste Raw Concur Rows (TSV / CSV)</span>
-                </span>
-                <span className="text-[10px] text-gray-400 font-mono">Headers required</span>
-              </div>
-              <textarea
-                rows={5}
-                value={concurPasteInput}
-                onChange={(e) => setConcurPasteInput(e.target.value)}
-                placeholder="Paste Concur Raw Data here (e.g. Purchase Request No.	Employee Name	Description	PO Number	Approval Status	Submit Date	Total...)"
-                className="w-full p-3 text-xs font-mono rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-gray-500">
-                  Matches on PO number and audits Ex-GST totals (/ 1.10).
-                </span>
+              {/* Accordion Toggle for Manual Fallback */}
+              <div className="pt-2">
                 <button
                   type="button"
-                  onClick={() => handleParseConcurText()}
-                  disabled={!concurPasteInput.trim()}
-                  className="px-4 py-2 text-xs font-black uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md transition-all disabled:opacity-50"
+                  onClick={() => setShowManualFallback(!showManualFallback)}
+                  className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                 >
-                  Parse &amp; Reconcile
+                  {showManualFallback ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>{showManualFallback ? 'Hide Manual Fallback Options' : 'Need to test with a local file? Manual Upload & Paste Options'}</span>
                 </button>
+
+                {showManualFallback && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
+                    {/* Direct Paste */}
+                    <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 space-y-2">
+                      <span className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                        <FileText size={14} />
+                        <span>Paste Concur TSV/CSV</span>
+                      </span>
+                      <textarea
+                        rows={3}
+                        value={concurPasteInput}
+                        onChange={(e) => setConcurPasteInput(e.target.value)}
+                        placeholder="Paste Concur Raw Data here..."
+                        className="w-full p-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleParseConcurText()}
+                        disabled={!concurPasteInput.trim()}
+                        className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50"
+                      >
+                        Parse Pasted Rows
+                      </button>
+                    </div>
+
+                    {/* File Upload */}
+                    <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                      <span className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                        <UploadCloud size={14} />
+                        <span>Upload Local Concur Spreadsheet</span>
+                      </span>
+                      <div className="mt-2 p-4 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-500 transition-colors text-center cursor-pointer relative bg-white dark:bg-gray-900">
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls,.csv"
+                          onChange={handleFileUpload}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        />
+                        <UploadCloud size={20} className="mx-auto text-gray-400 mb-1" />
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                          Click to browse or drop local .xls/.xlsx
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* File Upload Box */}
-            <div className="bg-white dark:bg-[#1c1f2b] p-5 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col justify-between">
-              <div>
-                <span className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white flex items-center gap-1.5 mb-2">
-                  <UploadCloud size={16} className="text-emerald-600" />
-                  <span>Upload Concur Export (.xlsx / .xls / .csv)</span>
-                </span>
-                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                  Directly upload the Concur report file (such as `Purchase Request EOM SEP-26.xls`). The spreadsheet's 'Raw Data' sheet will be parsed automatically.
-                </p>
-              </div>
-
-              <div className="mt-4 p-6 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-indigo-500 transition-colors text-center cursor-pointer relative bg-gray-50/50 dark:bg-gray-800/30">
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  onChange={handleFileUpload}
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                />
-                <UploadCloud size={28} className="mx-auto text-gray-400 mb-2" />
-                <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                  Click to browse or drop Concur file here
-                </span>
-                <p className="text-[10px] text-gray-400 mt-1">Supports Excel .xls/.xlsx and CSV</p>
-              </div>
-            </div>
-          </div>
-
-          {/* RECONCILIATION SUMMARY DASHBOARD */}
-          {parsedConcurRows.length > 0 && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
-                  <span className="text-[10px] font-black uppercase text-gray-400">Total Concur Spend (Ex-GST)</span>
-                  <div className="text-xl font-black text-gray-900 dark:text-white mt-1">
-                    {formatAUDExact(reconciliationResults.concurTotalEx)}
+            {/* ── RECONCILIATION SUMMARY DASHBOARD ─────────────────────────────── */}
+            {parsedConcurRows.length > 0 && (
+              <div className="space-y-6">
+                {/* 4 Executive KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
+                    <span className="text-[10px] font-black uppercase text-gray-400">Total Concur Spend (Ex-GST)</span>
+                    <div className="text-xl font-black text-gray-900 dark:text-white mt-1">
+                      {formatAUDExact(reconciliationResults.concurTotalEx)}
+                    </div>
+                    <span className="text-[11px] text-gray-500 mt-1 block font-mono">{parsedConcurRows.length} Concur records</span>
                   </div>
-                  <span className="text-[11px] text-gray-500 mt-1 block">{parsedConcurRows.length} Concur records</span>
-                </div>
 
-                <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
-                  <span className="text-[10px] font-black uppercase text-gray-400">Matched ProcureFlow Spend</span>
-                  <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
-                    {formatAUDExact(reconciliationResults.pfTotalEx)}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
+                    <span className="text-[10px] font-black uppercase text-gray-400">Matched ProcureFlow Spend</span>
+                    <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+                      {formatAUDExact(reconciliationResults.pfTotalEx)}
+                    </div>
+                    <span className="text-[11px] text-emerald-600 mt-1 block font-mono">{reconciliationResults.matchCount} matched items</span>
                   </div>
-                  <span className="text-[11px] text-emerald-600 mt-1 block">{reconciliationResults.matchCount} matched items</span>
-                </div>
 
-                <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
-                  <span className="text-[10px] font-black uppercase text-gray-400">Net Variance (Δ)</span>
-                  <div className={`text-xl font-black mt-1 ${Math.abs(reconciliationResults.netVariance) < 1 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {formatAUDExact(reconciliationResults.netVariance)}
-                  </div>
-                  <span className="text-[11px] text-gray-500 mt-1 block">
-                    {Math.abs(reconciliationResults.netVariance) < 1 ? 'Perfect alignment' : 'Variance requires investigation'}
-                  </span>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
-                  <span className="text-[10px] font-black uppercase text-gray-400">Discrepancy Breakdown</span>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="px-2 py-0.5 rounded text-xs font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                      {reconciliationResults.mismatchCount} Diff
-                    </span>
-                    <span className="px-2 py-0.5 rounded text-xs font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                      {reconciliationResults.missingInPfCount} Missing in PF
-                    </span>
-                    <span className="px-2 py-0.5 rounded text-xs font-black bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                      {reconciliationResults.missingInConcurCount} Missing in Concur
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* RECONCILIATION DRILLDOWN TABLE */}
-              <div className="bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
-                      Side-by-Side Reconciliation Audit Log
-                    </h4>
-                    <span className="text-xs font-mono font-bold text-gray-500">
-                      ({filteredReconciliationItems.length} items)
+                  <div className={`p-4 rounded-2xl border shadow-sm ${
+                    Math.abs(reconciliationResults.netVariance) <= 0.05
+                      ? 'bg-emerald-500/5 border-emerald-500/20'
+                      : 'bg-rose-500/5 border-rose-500/20'
+                  }`}>
+                    <span className="text-[10px] font-black uppercase text-gray-400">Net Variance (Δ)</span>
+                    <div className={`text-xl font-black mt-1 font-mono ${
+                      Math.abs(reconciliationResults.netVariance) <= 0.05 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                    }`}>
+                      {formatAUDExact(reconciliationResults.netVariance)}
+                    </div>
+                    <span className="text-[11px] text-gray-500 mt-1 block">
+                      {Math.abs(reconciliationResults.netVariance) <= 0.05 ? '✓ Full GL Parity Achieved' : 'Variance requires investigation'}
                     </span>
                   </div>
 
-                  {/* Filter Pills */}
-                  <div className="flex items-center gap-1.5 text-xs font-bold">
-                    <button
-                      type="button"
-                      onClick={() => setReconciliationFilter('ALL')}
-                      className={`px-3 py-1 rounded-xl transition-all ${
-                        reconciliationFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
-                      }`}
-                    >
-                      All ({reconciliationResults.items.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setReconciliationFilter('MISMATCH')}
-                      className={`px-3 py-1 rounded-xl transition-all ${
-                        reconciliationFilter === 'MISMATCH' ? 'bg-rose-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
-                      }`}
-                    >
-                      Mismatches ({reconciliationResults.mismatchCount})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setReconciliationFilter('MISSING_PF')}
-                      className={`px-3 py-1 rounded-xl transition-all ${
-                        reconciliationFilter === 'MISSING_PF' ? 'bg-amber-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
-                      }`}
-                    >
-                      Missing in PF ({reconciliationResults.missingInPfCount})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setReconciliationFilter('MISSING_CONCUR')}
-                      className={`px-3 py-1 rounded-xl transition-all ${
-                        reconciliationFilter === 'MISSING_CONCUR' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
-                      }`}
-                    >
-                      Missing in Concur ({reconciliationResults.missingInConcurCount})
-                    </button>
+                  <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
+                    <span className="text-[10px] font-black uppercase text-gray-400">Discrepancy Breakdown</span>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <span className="px-2 py-0.5 rounded text-xs font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300" title="Amount differences">
+                        {reconciliationResults.mismatchCount} Diff
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-xs font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" title="In Concur but missing in ProcureFlow">
+                        {reconciliationResults.missingInPfCount} Missing in PF
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-xs font-black bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300" title="Approved in ProcureFlow but not in Concur">
+                        {reconciliationResults.missingInConcurCount} Missing in Concur
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto max-h-[600px]">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10 text-[11px] font-black uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200">
-                      <tr>
-                        <th className="py-2.5 px-3">Status</th>
-                        <th className="py-2.5 px-3">PO Number</th>
-                        <th className="py-2.5 px-3">PR #</th>
-                        <th className="py-2.5 px-4 text-right">Concur (Ex-GST)</th>
-                        <th className="py-2.5 px-4 text-right">ProcureFlow (Ex-GST)</th>
-                        <th className="py-2.5 px-4 text-right">Variance (Δ)</th>
-                        <th className="py-2.5 px-4">Entity / Branch</th>
-                        <th className="py-2.5 px-4">Description</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono text-[11px]">
-                      {filteredReconciliationItems.map((item, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
-                          <td className="py-2 px-3 font-sans">
-                            {item.status === 'MATCHED' && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                Matched
-                              </span>
-                            )}
-                            {item.status === 'AMOUNT_MISMATCH' && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                                Mismatch
-                              </span>
-                            )}
-                            {item.status === 'MISSING_IN_PROCUREFLOW' && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                                Missing in PF
-                              </span>
-                            )}
-                            {item.status === 'MISSING_IN_CONCUR' && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                                Missing in Concur
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 font-bold text-gray-900 dark:text-white">
-                            {item.poNumber}
-                          </td>
-                          <td className="py-2 px-3 text-gray-500 font-sans">
-                            {item.prNumber || '-'}
-                          </td>
-                          <td className="py-2 px-4 text-right">
-                            {item.concurExGst > 0 ? formatAUDExact(item.concurExGst) : '-'}
-                          </td>
-                          <td className="py-2 px-4 text-right">
-                            {item.procureFlowExGst > 0 ? formatAUDExact(item.procureFlowExGst) : '-'}
-                          </td>
-                          <td className={`py-2 px-4 text-right font-bold ${
-                            item.variance === 0 ? 'text-gray-400' :
-                            item.variance > 0 ? 'text-rose-600' : 'text-blue-600'
-                          }`}>
-                            {item.variance === 0 ? '$0.00' : formatAUDExact(item.variance)}
-                          </td>
-                          <td className="py-2 px-4 font-sans text-gray-600 dark:text-gray-300">
-                            {item.branch || '-'}
-                          </td>
-                          <td className="py-2 px-4 font-sans text-gray-500 dark:text-gray-400 truncate max-w-[200px]" title={item.description}>
-                            {item.description || '-'}
-                          </td>
+                {/* Visual Variance Explanatory Banner */}
+                {reconciliationResults.mismatchCount > 0 || reconciliationResults.missingInConcurCount > 0 || reconciliationResults.missingInPfCount > 0 ? (
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-3">
+                    <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold">Variance Analysis &amp; Reconciliation Notes:</p>
+                      <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-800 dark:text-amber-300">
+                        {reconciliationResults.mismatchCount > 0 && (
+                          <li>
+                            <strong>{reconciliationResults.mismatchCount} Purchase Order(s)</strong> have amount discrepancies between Concur and ProcureFlow (often attributable to freight, invoice rounding, or line-item adjustments).
+                          </li>
+                        )}
+                        {reconciliationResults.missingInConcurCount > 0 && (
+                          <li>
+                            <strong>{reconciliationResults.missingInConcurCount} approved ProcureFlow PO(s)</strong> have not yet been created in Concur.
+                          </li>
+                        )}
+                        {reconciliationResults.missingInPfCount > 0 && (
+                          <li>
+                            <strong>{reconciliationResults.missingInPfCount} record(s) in Concur</strong> have no matching internal ProcureFlow PO number.
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-900 dark:text-emerald-200 text-xs flex items-center gap-3">
+                    <CheckCircle2 size={18} className="text-emerald-600 flex-shrink-0" />
+                    <span className="font-bold">
+                      100% General Ledger Parity! All Purchase Orders and net Ex-GST expenditure match between Concur and ProcureFlow.
+                    </span>
+                  </div>
+                )}
+
+                {/* ── RECONCILIATION DRILLDOWN TABLE ───────────────────────────── */}
+                <div className="bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                        Side-by-Side Reconciliation Audit Log
+                      </h4>
+                      <span className="text-xs font-mono font-bold text-gray-500">
+                        ({filteredReconciliationItems.length} of {reconciliationResults.items.length})
+                      </span>
+                    </div>
+
+                    {/* Search & Filter Controls */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Search */}
+                      <div className="relative">
+                        <Search size={13} className="absolute left-3 top-2.5 text-gray-400" />
+                        <input
+                          type="text"
+                          value={concurSearchQuery}
+                          onChange={(e) => setConcurSearchQuery(e.target.value)}
+                          placeholder="Search PO, PR, branch..."
+                          className="pl-8 pr-3 py-1.5 text-xs rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none w-44 focus:w-56 transition-all"
+                        />
+                      </div>
+
+                      {/* Filter Pills */}
+                      <div className="flex items-center gap-1 text-xs font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setReconciliationFilter('ALL')}
+                          className={`px-3 py-1 rounded-xl transition-all ${
+                            reconciliationFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                          }`}
+                        >
+                          All ({reconciliationResults.items.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReconciliationFilter('MISMATCH')}
+                          className={`px-3 py-1 rounded-xl transition-all ${
+                            reconciliationFilter === 'MISMATCH' ? 'bg-rose-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                          }`}
+                        >
+                          Mismatches ({reconciliationResults.mismatchCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReconciliationFilter('MISSING_PF')}
+                          className={`px-3 py-1 rounded-xl transition-all ${
+                            reconciliationFilter === 'MISSING_PF' ? 'bg-amber-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                          }`}
+                        >
+                          Missing in PF ({reconciliationResults.missingInPfCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReconciliationFilter('MISSING_CONCUR')}
+                          className={`px-3 py-1 rounded-xl transition-all ${
+                            reconciliationFilter === 'MISSING_CONCUR' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                          }`}
+                        >
+                          Missing in Concur ({reconciliationResults.missingInConcurCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReconciliationFilter('MATCHED')}
+                          className={`px-3 py-1 rounded-xl transition-all ${
+                            reconciliationFilter === 'MATCHED' ? 'bg-emerald-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                          }`}
+                        >
+                          Matched ({reconciliationResults.matchCount})
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto max-h-[600px]">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10 text-[11px] font-black uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
+                        <tr>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3">PO Number</th>
+                          <th className="py-2.5 px-3">PR #</th>
+                          <th className="py-2.5 px-4 text-right">Concur (Ex-GST)</th>
+                          <th className="py-2.5 px-4 text-right">ProcureFlow (Ex-GST)</th>
+                          <th className="py-2.5 px-4 text-right">Variance (Δ)</th>
+                          <th className="py-2.5 px-4">Entity / Branch</th>
+                          <th className="py-2.5 px-4">Description &amp; Vendor</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono text-[11px]">
+                        {filteredReconciliationItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="py-8 text-center text-gray-400 font-sans">
+                              No records match the current filter.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredReconciliationItems.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                              <td className="py-2 px-3 font-sans">
+                                {item.status === 'MATCHED' && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                    Matched
+                                  </span>
+                                )}
+                                {item.status === 'AMOUNT_MISMATCH' && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                    Mismatch
+                                  </span>
+                                )}
+                                {item.status === 'MISSING_IN_PROCUREFLOW' && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                                    Missing in PF
+                                  </span>
+                                )}
+                                {item.status === 'MISSING_IN_CONCUR' && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                                    Missing in Concur
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 font-bold text-gray-900 dark:text-white">
+                                {item.poNumber}
+                              </td>
+                              <td className="py-2 px-3 text-gray-500 font-sans">
+                                {item.prNumber || '-'}
+                              </td>
+                              <td className="py-2 px-4 text-right">
+                                {item.concurExGst > 0 ? formatAUDExact(item.concurExGst) : '-'}
+                              </td>
+                              <td className="py-2 px-4 text-right">
+                                {item.procureFlowExGst > 0 ? formatAUDExact(item.procureFlowExGst) : '-'}
+                              </td>
+                              <td className={`py-2 px-4 text-right font-bold ${
+                                item.variance === 0 ? 'text-gray-400' :
+                                item.variance > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'
+                              }`}>
+                                {item.variance === 0 ? (
+                                  <span className="text-gray-400">$0.00</span>
+                                ) : (
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                                    item.variance > 0 ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                  }`}>
+                                    {item.variance > 0 ? `+${formatAUDExact(item.variance)}` : formatAUDExact(item.variance)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-4 font-sans text-gray-600 dark:text-gray-300">
+                                {item.branch || '-'}
+                              </td>
+                              <td className="py-2 px-4 font-sans text-gray-500 dark:text-gray-400 truncate max-w-[240px]" title={`${item.description || ''} (${item.vendor || ''})`}>
+                                <span>{item.description || '-'}</span>
+                                {item.vendor && (
+                                  <span className="text-gray-400 text-[10px] block truncate">
+                                    {item.vendor}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -1510,6 +1510,12 @@ const Settings = () => {
       try {
           const { parseStockFileEnhanced } = await import('../utils/fileParser.ts');
           for (const item of pending) {
+              // Concur / EOM reports are processed by the EOM Reconciliation screen, not supplier stock
+              const combined = `${item.attachmentName || ''} ${item.subject || ''}`.toLowerCase();
+              if (combined.includes('concur') || combined.includes('purchase request') || combined.includes('eom') || combined.includes('tracking')) {
+                  continue;
+              }
+
               // Atomically claim the row first — if another tab/session already
               // grabbed it, skip so each file is processed exactly once.
               const claimed = await claimEmailIngestionItem(item.id);
