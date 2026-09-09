@@ -35,6 +35,7 @@ import {
   Save,
   Settings,
   ShieldCheck,
+  Sparkles,
   Sun,
   TrendingUp,
   X
@@ -47,6 +48,7 @@ import VersionBadge from './VersionBadge.tsx';
 import { MultiSiteSelector } from './MultiSiteSelector.tsx';
 import TaskDrawer from './TaskDrawer.tsx';
 import AccountDrawer from './AccountDrawer.tsx';
+import InsightsDrawer from './InsightsDrawer.tsx';
 import NotificationDrawer from './NotificationDrawer.tsx';
 import NotificationPreferencesModal from './NotificationPreferencesModal.tsx';
 import InAppNotificationPopupContainer from './InAppNotificationPopup.tsx';
@@ -88,6 +90,7 @@ const Layout = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isTaskDrawerOpen, setIsTaskDrawerOpen] = React.useState(false);
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = React.useState(false);
+  const [isInsightsDrawerOpen, setIsInsightsDrawerOpen] = React.useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
@@ -713,6 +716,13 @@ const Layout = () => {
                         <span className="hidden lg:inline text-[11px] font-black uppercase tracking-widest">New Request</span>
                       </Link>
                     )}
+                    <button type="button"
+                      onClick={() => setIsInsightsDrawerOpen(true)}
+                      className="relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95"
+                      title="ProcureFlow Insights & Tips"
+                    >
+                      <Sparkles size={18} />
+                    </button>
                     <NavLink
                       to="/"
                       className={({ isActive }) =>
@@ -775,6 +785,7 @@ const Layout = () => {
           </div>
 
           <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
+          <InsightsDrawer isOpen={isInsightsDrawerOpen} onClose={() => setIsInsightsDrawerOpen(false)} />
           <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
 
           <InAppNotificationPopupContainer
@@ -1066,6 +1077,13 @@ const Layout = () => {
                 <span className="hidden lg:inline">New Request</span>
               </Link>
             )}
+            <button type="button"
+              onClick={() => setIsInsightsDrawerOpen(true)}
+              className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"
+              title="ProcureFlow Insights & Tips"
+            >
+              <Sparkles size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
+            </button>
             <NavLink
               to="/"
               className={({ isActive }) =>
@@ -1142,7 +1160,7 @@ const Layout = () => {
       <UpdateToast />
 
       <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
-
+      <InsightsDrawer isOpen={isInsightsDrawerOpen} onClose={() => setIsInsightsDrawerOpen(false)} />
       <AccountDrawer isOpen={isAccountDrawerOpen} onClose={() => setIsAccountDrawerOpen(false)} />
 
       <InAppNotificationPopupContainer

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  ArrowRight, CheckCircle2, Package, 
+  ArrowRight, ArrowLeft, CheckCircle, CheckCircle2, Package, 
   Link as LinkIcon, ClipboardList, 
   ChevronRight, Sparkles, Layers,
   DollarSign, FileText, ShieldCheck,
@@ -363,8 +363,9 @@ export default function Home() {
   const isApprover = currentUser?.role === 'APPROVER' || currentUser?.roleIds?.includes('APPROVER') || hasPermission('approve_requests');
   const canLinkConcur = hasPermission('link_concur');
 
-  // Selected stage filter ('ALL' | 1 | 2 | 3 | 4 | 5 | 6)
-  const [selectedStage, setSelectedStage] = useState<number | 'ALL'>('ALL');
+  // Selected stage filter (null = "REQUESTS AWAITING COMPLETION" | 1 | 2 | 3 | 4 | 5 | 6)
+  const [selectedStage, setSelectedStage] = useState<number | null>(null);
+  const [completionFilter, setCompletionFilter] = useState<'ALL' | 'IN_FULL' | 'AWAITING_DELIVERY'>('ALL');
   const [activeExceptionFilter, setActiveExceptionFilter] = useState<'MISSING_CONCUR' | 'READY_TO_CLOSE' | 'OVERDUE' | null>(null);
   const [onlyTriggeredFilter, setOnlyTriggeredFilter] = useState(false);
   const [triggersConfig, setTriggersConfig] = useState<LifecycleTriggersConfig>(DEFAULT_LIFECYCLE_TRIGGERS);
@@ -373,7 +374,6 @@ export default function Home() {
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'SPEND_DESC' | 'SPEND_ASC' | 'SUPPLIER_ASC'>('NEWEST');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('ALL');
   const [expandedSites, setExpandedSites] = useState<Set<string>>(new Set());
-  const [isInsightsOpen, setIsInsightsOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -396,26 +396,6 @@ export default function Home() {
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [concurReqInput, setConcurReqInput] = useState('');
   const [concurPoInput, setConcurPoInput] = useState('');
-
-  // ── Role-Tailored ProcureFlow Insights ──────────────────────────────────────
-  const userEligibleTips = useMemo(() => {
-    return PROCUREFLOW_TIPS.filter(tip => {
-      if (tip.permissionRequired && !hasPermission(tip.permissionRequired)) {
-        return false;
-      }
-      if (tip.roleRequired && !tip.roleRequired.includes(currentUser?.role || '')) {
-        return false;
-      }
-      return true;
-    });
-  }, [currentUser, hasPermission]);
-
-  const [tipIndex, setTipIndex] = useState(0);
-  const currentTip = userEligibleTips[tipIndex % Math.max(1, userEligibleTips.length)] || PROCUREFLOW_TIPS[0];
-
-  const handleNextTip = () => {
-    setTipIndex(prev => (prev + 1) % userEligibleTips.length);
-  };
 
   // ── Filtered POs by Active Sites ────────────────────────────────────────────
   const siteFilteredPOs = useMemo(() => {
@@ -450,6 +430,25 @@ export default function Home() {
   const totalFlaggedOrders = useMemo(() => {
     return Object.values(stageStatusMap).reduce((sum, s) => sum + s.alertCount + s.warningCount, 0);
   }, [stageStatusMap]);
+
+  // Requests Awaiting Completion (Stage 4 & 5 active delivery requests)
+  const awaitingCompletionPOs = useMemo(() => {
+    return siteFilteredPOs.filter(p => 
+      p.status === 'ACTIVE' || p.status === 'RECEIVED' || p.status === 'VARIANCE_PENDING'
+    );
+  }, [siteFilteredPOs]);
+
+  const inFullPOs = useMemo(() => {
+    return awaitingCompletionPOs.filter(p => 
+      p.lines.length > 0 && p.lines.every(l => (l.quantityReceived || 0) >= l.quantityOrdered)
+    );
+  }, [awaitingCompletionPOs]);
+
+  const awaitingDeliveryPOs = useMemo(() => {
+    return awaitingCompletionPOs.filter(p => 
+      p.lines.length === 0 || !p.lines.every(l => (l.quantityReceived || 0) >= l.quantityOrdered)
+    );
+  }, [awaitingCompletionPOs]);
 
   // Legacy counts preserved for filtering compatibility
   const pendingConcurPOs = useMemo(() => {
@@ -555,8 +554,8 @@ export default function Home() {
           if (evalResult.level === 'OK') return false;
         }
 
-        // Stage filter
-        if (selectedStage !== 'ALL') {
+        // Stage filter vs Awaiting Completion default
+        if (selectedStage !== null) {
           if (selectedStage === 1) return p.status === 'PENDING_APPROVAL' || p.status === 'DRAFT';
           if (selectedStage === 2) return p.status === 'APPROVED_PENDING_CONCUR_REQUEST';
           if (selectedStage === 3) return p.status === 'APPROVED_PENDING_CONCUR';
@@ -564,8 +563,14 @@ export default function Home() {
           if (selectedStage === 5) return p.status === 'RECEIVED' || p.status === 'VARIANCE_PENDING';
           if (selectedStage === 6) return p.status === 'CLOSED';
         } else {
-          // 'ALL': by default show open/active requests
-          return p.status !== 'CLOSED' && p.status !== 'REJECTED';
+          // Default: REQUESTS AWAITING COMPLETION (Stage 4 Active & Stage 5 Received/Reconciled)
+          const isAwaiting = p.status === 'ACTIVE' || p.status === 'RECEIVED' || p.status === 'VARIANCE_PENDING';
+          if (!isAwaiting) return false;
+
+          const isInFull = p.lines.length > 0 && p.lines.every(l => (l.quantityReceived || 0) >= l.quantityOrdered);
+          if (completionFilter === 'IN_FULL') return isInFull;
+          if (completionFilter === 'AWAITING_DELIVERY') return !isInFull;
+          return true;
         }
         return true;
       })
@@ -593,6 +598,14 @@ export default function Home() {
 
     // Sorting
     return list.sort((a, b) => {
+      // In default Awaiting Completion view with 'ALL', float in-full orders to the top for quick action
+      if (selectedStage === null && completionFilter === 'ALL') {
+        const inFullA = a.lines.length > 0 && a.lines.every(l => (l.quantityReceived || 0) >= l.quantityOrdered);
+        const inFullB = b.lines.length > 0 && b.lines.every(l => (l.quantityReceived || 0) >= l.quantityOrdered);
+        if (inFullA && !inFullB) return -1;
+        if (!inFullA && inFullB) return 1;
+      }
+
       const dateA = new Date(a.requestDate).getTime() || 0;
       const dateB = new Date(b.requestDate).getTime() || 0;
       const spendA = a.totalAmountIncGst ?? (a.totalAmount * 1.10);
@@ -612,7 +625,7 @@ export default function Home() {
           return dateB - dateA;
       }
     });
-  }, [siteFilteredPOs, activeExceptionFilter, onlyTriggeredFilter, triggersConfig, selectedStage, selectedSupplier, actionSearch, sortBy]);
+  }, [siteFilteredPOs, activeExceptionFilter, onlyTriggeredFilter, triggersConfig, selectedStage, completionFilter, selectedSupplier, actionSearch, sortBy]);
 
   // ── Multi-Site Grouping ─────────────────────────────────────────────────────
   const groupedBySite = useMemo(() => {
@@ -732,6 +745,244 @@ export default function Home() {
     }
   };
 
+  const handleCloseOrder = async (po: PORequest) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to close order ${po.displayId || po.id}? This will mark it as CLOSED (Stage 6) and clear it from your active worklist.`
+    );
+    if (!confirmed) return;
+    setIsSubmittingAction(true);
+    try {
+      const event: ApprovalEvent = {
+        id: `ev-${Date.now()}`,
+        action: 'ADMIN_OVERRIDE',
+        approverName: currentUser?.name || 'System User',
+        date: new Date().toISOString().split('T')[0],
+        comments: 'Order receipted in full and closed via Awaiting Completion dashboard'
+      };
+      await updatePOStatus(po.id, 'CLOSED', event);
+    } catch (err: any) {
+      alert(`Failed to close order: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const renderPOCard = (po: PORequest) => {
+    const stageInfo = getPOStageInfo(po, currentUser, hasPermission);
+    const StageIcon = stageInfo.stageConfig.icon;
+    const totalItems = po.lines.reduce((sum, l) => sum + (l.quantityOrdered || 0), 0);
+    const receivedItems = po.lines.reduce((sum, l) => sum + (l.quantityReceived || 0), 0);
+    const triggerEval = evaluatePOTrigger(po, triggersConfig);
+    const unfulfilledWithNeedBy = po.lines.find(l => (l.quantityReceived || 0) < l.quantityOrdered && l.needByDate);
+    const cardNeedByDate = unfulfilledWithNeedBy?.needByDate || po.lines.find(l => l.needByDate)?.needByDate;
+
+    const isInFull = (po.status === 'ACTIVE' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') &&
+      po.lines.length > 0 &&
+      po.lines.every(l => (l.quantityReceived || 0) >= l.quantityOrdered);
+    const isTriggerAlert = triggerEval.level === 'ALERT';
+    const isTriggerWarning = triggerEval.level === 'WARNING';
+
+    let cardBorderClass = 'border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e]';
+    if (isTriggerAlert) {
+      cardBorderClass = 'border-2 border-rose-500 bg-rose-50/50 dark:bg-rose-950/20 shadow-md shadow-rose-500/10 ring-1 ring-rose-500/30';
+    } else if (isTriggerWarning) {
+      cardBorderClass = 'border-2 border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 shadow-md shadow-amber-500/10 ring-1 ring-amber-500/30';
+    } else if (isInFull) {
+      cardBorderClass = 'border-2 border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md shadow-emerald-500/10 ring-1 ring-emerald-500/30';
+    }
+
+    return (
+      <div
+        key={po.id}
+        className={`rounded-2xl ${cardBorderClass} p-4 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between gap-3 group`}
+      >
+        {/* Top Header: Request Display ID, Site Badge, Date */}
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className={`p-1.5 rounded-lg ${stageInfo.stageConfig.bgLightClass} ${stageInfo.stageConfig.textClass} shrink-0`}>
+                <StageIcon size={14} />
+              </div>
+              <span className="font-mono font-bold text-sm text-gray-950 dark:text-white truncate">
+                {po.displayId || po.id}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs flex-wrap justify-end">
+              {isTriggerAlert && (
+                <span className="px-2 py-0.5 rounded-lg bg-rose-600 text-white text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse shadow-xs" title={triggerEval.reason}>
+                  <AlertOctagon size={11} /> {triggerEval.reason}
+                </span>
+              )}
+              {isTriggerWarning && !isTriggerAlert && (
+                <span className="px-2 py-0.5 rounded-lg bg-amber-500 text-white text-[10px] font-black flex items-center gap-1 shrink-0 shadow-xs" title={triggerEval.reason}>
+                  <AlertTriangle size={11} /> {triggerEval.reason}
+                </span>
+              )}
+              {isInFull && (
+                <span className="px-2 py-0.5 rounded-lg bg-emerald-600 text-white text-[10px] font-black flex items-center gap-1 shrink-0 shadow-xs">
+                  <CheckCircle size={11} /> In Full - Ready to Close
+                </span>
+              )}
+              <span className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 font-semibold text-gray-700 dark:text-gray-300">
+                {po.site || 'Site'}
+              </span>
+              {cardNeedByDate ? (
+                <span className="text-gray-500 dark:text-gray-400 font-medium text-[11px]" title={`Need-by delivery date: ${cardNeedByDate}`}>
+                  Due: {new Date(cardNeedByDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
+                </span>
+              ) : (
+                <span className="text-gray-400 font-medium text-[11px]">
+                  {new Date(po.requestDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Supplier, Amount & Customer / Project */}
+          <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+            <div>
+              <p className="text-[10px] uppercase font-bold text-gray-400">Supplier</p>
+              <p className="font-bold text-gray-900 dark:text-white truncate" title={po.supplierName}>
+                {po.supplierName || 'Unknown Supplier'}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase font-bold text-gray-400">Total Spend (Inc GST)</p>
+              <p className="font-black text-emerald-600 dark:text-emerald-400">
+                {formatCurrency(po.totalAmountIncGst ?? po.totalAmount * 1.10)}
+              </p>
+            </div>
+            {po.customerName && (
+              <div className="col-span-2">
+                <p className="text-[10px] uppercase font-bold text-gray-400">Customer / Project</p>
+                <p className="font-medium text-gray-700 dark:text-gray-300 truncate">{po.customerName}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Line items summary / delivery progress */}
+          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
+            <span>{po.lines.length} Line Item{po.lines.length === 1 ? '' : 's'} ({totalItems} units)</span>
+            {(po.status === 'ACTIVE' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') && (
+              <span className={`font-bold ${isInFull ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                {receivedItems} / {totalItems} units received {isInFull ? '(100% In Full)' : ''}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Action Button Row */}
+        <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+          {selectedStage === null ? (
+            // In Awaiting Completion mode:
+            isInFull ? (
+              <button
+                type="button"
+                onClick={() => handleCloseOrder(po)}
+                disabled={isSubmittingAction}
+                className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                title="Close and archive order receipted in full"
+              >
+                <CheckCircle size={14} />
+                <span>Close Order</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActiveModal({ type: 'DELIVERY', po })}
+                className="flex-1 py-2 px-3 bg-[var(--color-brand)] hover:opacity-90 active:scale-95 text-white font-black text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                title="Record goods delivery for this order"
+              >
+                <Truck size={14} />
+                <span>Add Delivery</span>
+              </button>
+            )
+          ) : (
+            // In specific Stage filter mode:
+            <>
+              {stageInfo.actionType === 'APPROVE' && (isApprover || isAdmin) && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenActionModal(po)}
+                  className="flex-1 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <ShieldCheck size={14} />
+                  <span>Review &amp; Approve</span>
+                </button>
+              )}
+
+              {stageInfo.actionType === 'CONCUR_REQ' && (canLinkConcur || isAdmin || po.requesterId === currentUser?.id) && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenActionModal(po)}
+                  className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Link2 size={14} />
+                  <span>Log Concur Req #</span>
+                </button>
+              )}
+
+              {stageInfo.actionType === 'CONCUR_PO' && (canLinkConcur || isAdmin) && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenActionModal(po)}
+                  className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <ShoppingCart size={14} />
+                  <span>Link Concur PO #</span>
+                </button>
+              )}
+
+              {stageInfo.actionType === 'DELIVERY' && (
+                isInFull ? (
+                  <button
+                    type="button"
+                    onClick={() => handleCloseOrder(po)}
+                    disabled={isSubmittingAction}
+                    className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    title="Close and archive order receipted in full"
+                  >
+                    <CheckCircle size={14} />
+                    <span>Close Order</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenActionModal(po)}
+                    className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Truck size={14} />
+                    <span>Record Goods Receipt</span>
+                  </button>
+                )
+              )}
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setActiveModal({ type: 'QUICK_VIEW', po })}
+            className="py-2 px-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs rounded-xl transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+            title="Quick Inspect Order Lines & Deliveries"
+          >
+            <Eye size={14} />
+            <span>Quick View</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate(`/requests/${po.id}`)}
+            className="p-2 text-gray-400 hover:text-[var(--color-brand)] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors shrink-0 cursor-pointer"
+            title="Open Full Request Details Page"
+          >
+            <ExternalLink size={15} />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-7.25rem)] max-w-7xl flex-col gap-5 overflow-hidden animate-page-entry px-3 sm:px-6 pb-12">
       <PageHeader title="Home" subtitle="Workspace" />
@@ -740,27 +991,12 @@ export default function Home() {
       <section className="relative flex-1 overflow-hidden rounded-[1.75rem] border border-transparent bg-transparent text-gray-950 shadow-none dark:border-white/10 dark:bg-nocturne dark:text-white dark:shadow-2xl">
         <div className="relative flex flex-col gap-5 sm:gap-6 p-3.5 sm:p-5 lg:p-6">
           
-          {/* Header Row: Greeting & Dynamic Focus + Compact Insights Trigger Button */}
+          {/* Header Row: Greeting & Dynamic Focus */}
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
             <div className="space-y-1.5 min-w-0 max-w-3xl">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black leading-tight text-gray-950 dark:text-white">
-                  Good to see you, {firstName}.
-                </h1>
-                {/* ProcureFlow Insights Interactive Icon Trigger */}
-                <button
-                  type="button"
-                  onClick={() => setIsInsightsOpen(true)}
-                  className="px-2.5 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs hover:scale-102 shrink-0 active:scale-95 cursor-pointer"
-                  title="Click to view tailored ProcureFlow Insights"
-                >
-                  <Sparkles size={13} className="text-amber-500 shrink-0 animate-pulse" />
-                  <span className="text-[11px] font-bold">Insights</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-amber-500/20 text-amber-700 dark:text-amber-300">
-                    {currentTip.badgeLabel}
-                  </span>
-                </button>
-              </div>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black leading-tight text-gray-950 dark:text-white">
+                Good to see you, {firstName}.
+              </h1>
               <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300 leading-relaxed">
                 {dynamicFocusInsight}
               </p>
@@ -781,17 +1017,17 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedStage('ALL');
+                    setSelectedStage(null);
                     setActiveExceptionFilter(null);
                     setOnlyTriggeredFilter(false);
                   }}
                   className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                    selectedStage === 'ALL' && !activeExceptionFilter && !onlyTriggeredFilter
-                      ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                    selectedStage === null && !activeExceptionFilter && !onlyTriggeredFilter
+                      ? 'bg-[var(--color-brand)] text-white shadow-xs'
                       : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
                   }`}
                 >
-                  All Open ({totalOpenRequests})
+                  Awaiting Completion ({awaitingCompletionPOs.length})
                 </button>
                 {totalFlaggedOrders > 0 && (
                   <button
@@ -827,17 +1063,17 @@ export default function Home() {
                   <div
                     key={stage.num}
                     onClick={() => {
-                      setSelectedStage(stage.num);
+                      setSelectedStage(prev => prev === stage.num ? null : stage.num);
                       setActiveExceptionFilter(null);
                       setOnlyTriggeredFilter(false);
                     }}
                     className={`relative p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col items-center text-center justify-between gap-3 group ${
-                      hasAlert
-                        ? 'animate-pulse ring-2 ring-rose-500 border-rose-500 bg-rose-50/80 dark:bg-rose-950/40 shadow-lg shadow-rose-500/10'
-                        : hasWarning
-                          ? 'animate-pulse ring-2 ring-amber-500 border-amber-500 bg-amber-50/80 dark:bg-amber-950/40 shadow-lg shadow-amber-500/10'
-                          : isSelected
-                            ? `${stage.bgLightClass} ${stage.activeRing}`
+                      isSelected
+                        ? 'ring-2 ring-[var(--color-brand)] border-[var(--color-brand)] bg-[var(--color-brand)]/10 shadow-lg scale-[1.03] z-10'
+                        : hasAlert
+                          ? 'border-rose-400 dark:border-rose-800/80 bg-rose-50/40 dark:bg-rose-950/20 hover:border-rose-500 shadow-xs'
+                          : hasWarning
+                            ? 'border-amber-400 dark:border-amber-800/80 bg-amber-50/40 dark:bg-amber-950/20 hover:border-amber-500 shadow-xs'
                             : 'bg-white dark:bg-[#15171e] border-gray-200/80 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-2xs hover:shadow-md'
                     }`}
                   >
@@ -850,22 +1086,22 @@ export default function Home() {
                           e.stopPropagation();
                           setActiveInfoStage(stage.num);
                         }}
-                        className="p-1 text-gray-400 hover:text-[var(--color-brand)] dark:hover:text-white rounded-md transition-colors"
+                        className="p-1 text-gray-400 hover:text-[var(--color-brand)] dark:hover:text-white rounded-md transition-colors cursor-pointer"
                         title={`Learn about Stage ${stage.num}: ${stage.label}`}
                       >
                         <Info size={13} />
                       </button>
 
-                      {/* Live Badge */}
+                      {/* Live Badge - refined pulse strictly on the indicator */}
                       <div className="flex items-center gap-1">
                         {hasAlert ? (
-                          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-rose-500 text-white flex items-center gap-1 shadow-2xs">
+                          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-rose-500 text-white flex items-center gap-1 shadow-2xs animate-pulse">
                             <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping shrink-0" />
                             <AlertOctagon size={10} />
                             {stageStatus.alertCount}
                           </span>
                         ) : hasWarning ? (
-                          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-500 text-white flex items-center gap-1 shadow-2xs">
+                          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-500 text-white flex items-center gap-1 shadow-2xs animate-pulse">
                             <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping shrink-0" />
                             <AlertTriangle size={10} />
                             {stageStatus.warningCount}
@@ -882,12 +1118,12 @@ export default function Home() {
 
                     {/* Centered Large Stage Icon */}
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition-all shadow-xs ${
-                      hasAlert
-                        ? 'bg-rose-500 text-white shadow-rose-500/25 scale-105'
-                        : hasWarning
-                          ? 'bg-amber-500 text-white shadow-amber-500/25 scale-105'
-                          : isSelected
-                            ? `${stage.badgeClass} scale-105 shadow-md`
+                      isSelected
+                        ? 'bg-[var(--color-brand)] text-white scale-105 shadow-md'
+                        : hasAlert
+                          ? 'bg-rose-500 text-white shadow-rose-500/25 scale-105'
+                          : hasWarning
+                            ? 'bg-amber-500 text-white shadow-amber-500/25 scale-105'
                             : `${stage.bgLightClass} ${stage.textClass} group-hover:scale-105`
                     }`}>
                       <IconComp size={22} />
@@ -911,6 +1147,11 @@ export default function Home() {
                           Warning SLA
                         </p>
                       )}
+                      {isSelected && (
+                        <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-[var(--color-brand)] text-white">
+                          Selected
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -923,7 +1164,7 @@ export default function Home() {
             {/* Header & Controls Bar */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className={`w-2 h-2 rounded-full ${
                     onlyTriggeredFilter
                       ? 'bg-rose-500'
@@ -933,7 +1174,9 @@ export default function Home() {
                           ? 'bg-emerald-500'
                           : activeExceptionFilter === 'MISSING_CONCUR'
                             ? 'bg-sky-500'
-                            : 'bg-[var(--color-brand)]'
+                            : selectedStage === null
+                              ? 'bg-emerald-500'
+                              : 'bg-[var(--color-brand)]'
                   } animate-pulse`} />
                   <h3 className="text-sm font-black text-gray-950 dark:text-white uppercase tracking-wider flex items-center gap-2">
                     {onlyTriggeredFilter
@@ -944,13 +1187,28 @@ export default function Home() {
                           ? 'Orders Ready for Closure (100% Received)'
                           : activeExceptionFilter === 'MISSING_CONCUR'
                             ? 'Approved Orders Missing Concur PR #'
-                            : selectedStage === 'ALL'
-                              ? 'All Open Requests'
+                            : selectedStage === null
+                              ? 'Requests Awaiting Completion'
                               : LIFECYCLE_STAGES[selectedStage - 1].stageTitle}
                     <span className="text-xs font-bold text-gray-500 lowercase">
                       ({visiblePOs.length} order{visiblePOs.length === 1 ? '' : 's'})
                     </span>
                   </h3>
+                  {selectedStage !== null && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedStage(null);
+                        setActiveExceptionFilter(null);
+                        setOnlyTriggeredFilter(false);
+                      }}
+                      className="px-2.5 py-1 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                      title="Back to Requests Awaiting Completion"
+                    >
+                      <ArrowLeft size={12} />
+                      <span>Back to Awaiting Completion</span>
+                    </button>
+                  )}
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                   {onlyTriggeredFilter
@@ -961,10 +1219,51 @@ export default function Home() {
                         ? 'Showing orders where 100% of physical delivery quantities have arrived on-site.'
                         : activeExceptionFilter === 'MISSING_CONCUR'
                           ? 'Showing financially approved orders awaiting requisition entry into SAP Concur.'
-                          : selectedStage === 'ALL'
-                            ? 'Showing active requests across all lifecycle stages.'
+                          : selectedStage === null
+                            ? 'Showing active purchase orders awaiting delivery or order closure. In-full orders are highlighted for 1-click closure.'
                             : LIFECYCLE_STAGES[selectedStage - 1].descriptor}
                 </p>
+
+                {/* Sub-filters when in Awaiting Completion default view */}
+                {selectedStage === null && !onlyTriggeredFilter && !activeExceptionFilter && (
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setCompletionFilter('ALL')}
+                      className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        completionFilter === 'ALL'
+                          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 shadow-xs'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                      }`}
+                    >
+                      All Awaiting ({awaitingCompletionPOs.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionFilter('IN_FULL')}
+                      className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                        completionFilter === 'IN_FULL'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100'
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span>In Full - Ready to Close ({inFullPOs.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionFilter('AWAITING_DELIVERY')}
+                      className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                        completionFilter === 'AWAITING_DELIVERY'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 hover:bg-blue-100'
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      <span>Awaiting Deliveries ({awaitingDeliveryPOs.length})</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Controls: Search, Supplier Filter, Sort Dropdown & Expand Toggle */}
@@ -1118,159 +1417,7 @@ export default function Home() {
                         {/* Site Orders Grid */}
                         {isExpanded && (
                           <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3.5 border-t border-gray-100 dark:border-gray-800/60">
-                            {requests.map((po) => {
-                              const stageInfo = getPOStageInfo(po, currentUser, hasPermission);
-                              const StageIcon = stageInfo.stageConfig.icon;
-                              const totalItems = po.lines.reduce((sum, l) => sum + (l.quantityOrdered || 0), 0);
-                              const receivedItems = po.lines.reduce((sum, l) => sum + (l.quantityReceived || 0), 0);
-                              const triggerEval = evaluatePOTrigger(po, triggersConfig);
-                              const unfulfilledWithNeedBy = po.lines.find(l => (l.quantityReceived || 0) < l.quantityOrdered && l.needByDate);
-                              const cardNeedByDate = unfulfilledWithNeedBy?.needByDate || po.lines.find(l => l.needByDate)?.needByDate;
-
-                              return (
-                                <div
-                                  key={po.id}
-                                  className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between gap-3 group"
-                                >
-                                  {/* Top Header: Request Display ID, Site Badge, Date */}
-                                  <div>
-                                    <div className="flex items-center justify-between gap-2 mb-2">
-                                      <div className="flex items-center gap-2">
-                                        <div className={`p-1.5 rounded-lg ${stageInfo.stageConfig.bgLightClass} ${stageInfo.stageConfig.textClass} shrink-0`}>
-                                          <StageIcon size={14} />
-                                        </div>
-                                        <span className="font-mono font-bold text-sm text-gray-950 dark:text-white">
-                                          {po.displayId || po.id}
-                                        </span>
-                                      </div>
-
-                                      <div className="flex items-center gap-1.5 text-xs flex-wrap justify-end">
-                                        {triggerEval.level === 'ALERT' && (
-                                          <span className="px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse" title={triggerEval.reason}>
-                                            <AlertOctagon size={11} /> {triggerEval.reason}
-                                          </span>
-                                        )}
-                                        {triggerEval.level === 'WARNING' && (
-                                          <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 text-[10px] font-black flex items-center gap-1 shrink-0" title={triggerEval.reason}>
-                                            <AlertTriangle size={11} /> {triggerEval.reason}
-                                          </span>
-                                        )}
-                                        <span className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 font-semibold text-gray-700 dark:text-gray-300">
-                                          {po.site || 'Site'}
-                                        </span>
-                                        {cardNeedByDate ? (
-                                          <span className="text-gray-500 dark:text-gray-400 font-medium text-[11px]" title={`Need-by delivery date: ${cardNeedByDate}`}>
-                                            Due: {new Date(cardNeedByDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
-                                          </span>
-                                        ) : (
-                                          <span className="text-gray-400 font-medium text-[11px]">
-                                            {new Date(po.requestDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* Supplier, Amount & Customer / Project */}
-                                    <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                                      <div>
-                                        <p className="text-[10px] uppercase font-bold text-gray-400">Supplier</p>
-                                        <p className="font-bold text-gray-900 dark:text-white truncate" title={po.supplierName}>
-                                          {po.supplierName || 'Unknown Supplier'}
-                                        </p>
-                                      </div>
-                                      <div>
-                                        <p className="text-[10px] uppercase font-bold text-gray-400">Total Spend (Inc GST)</p>
-                                        <p className="font-black text-emerald-600 dark:text-emerald-400">
-                                          {formatCurrency(po.totalAmountIncGst ?? po.totalAmount * 1.10)}
-                                        </p>
-                                      </div>
-                                      {po.customerName && (
-                                        <div className="col-span-2">
-                                          <p className="text-[10px] uppercase font-bold text-gray-400">Customer / Project</p>
-                                          <p className="font-medium text-gray-700 dark:text-gray-300 truncate">{po.customerName}</p>
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Line items summary / delivery progress */}
-                                    <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
-                                      <span>{po.lines.length} Line Item{po.lines.length === 1 ? '' : 's'} ({totalItems} units)</span>
-                                      {(po.status === 'ACTIVE' || po.status === 'RECEIVED') && (
-                                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                                          {receivedItems} / {totalItems} units received
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Action Button Row */}
-                                  <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
-                                    {stageInfo.actionType === 'APPROVE' && (isApprover || isAdmin) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenActionModal(po)}
-                                        className="flex-1 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                                      >
-                                        <ShieldCheck size={14} />
-                                        <span>Review &amp; Approve</span>
-                                      </button>
-                                    )}
-
-                                    {stageInfo.actionType === 'CONCUR_REQ' && (canLinkConcur || isAdmin || po.requesterId === currentUser?.id) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenActionModal(po)}
-                                        className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                                      >
-                                        <Link2 size={14} />
-                                        <span>Log Concur Req #</span>
-                                      </button>
-                                    )}
-
-                                    {stageInfo.actionType === 'CONCUR_PO' && (canLinkConcur || isAdmin) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenActionModal(po)}
-                                        className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                                      >
-                                        <ShoppingCart size={14} />
-                                        <span>Link Concur PO #</span>
-                                      </button>
-                                    )}
-
-                                    {stageInfo.actionType === 'DELIVERY' && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenActionModal(po)}
-                                        className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                                      >
-                                        <Truck size={14} />
-                                        <span>Record Goods Receipt</span>
-                                      </button>
-                                    )}
-
-                                    <button
-                                      type="button"
-                                      onClick={() => setActiveModal({ type: 'QUICK_VIEW', po })}
-                                      className="py-2 px-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs rounded-xl transition-all flex items-center gap-1 shrink-0"
-                                      title="Quick Inspect Order Lines & Deliveries"
-                                    >
-                                      <Eye size={14} />
-                                      <span>Quick View</span>
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => navigate(`/requests/${po.id}`)}
-                                      className="p-2 text-gray-400 hover:text-[var(--color-brand)] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors shrink-0"
-                                      title="Open Full Request Details Page"
-                                    >
-                                      <ExternalLink size={15} />
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                            {requests.map((po) => renderPOCard(po))}
                           </div>
                         )}
                       </div>
@@ -1279,160 +1426,7 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                  {visiblePOs.map((po) => {
-                    const stageInfo = getPOStageInfo(po, currentUser, hasPermission);
-                    const StageIcon = stageInfo.stageConfig.icon;
-                    const totalItems = po.lines.reduce((sum, l) => sum + (l.quantityOrdered || 0), 0);
-                    const receivedItems = po.lines.reduce((sum, l) => sum + (l.quantityReceived || 0), 0);
-                    const triggerEval = evaluatePOTrigger(po, triggersConfig);
-                    const unfulfilledWithNeedBy = po.lines.find(l => (l.quantityReceived || 0) < l.quantityOrdered && l.needByDate);
-                    const cardNeedByDate = unfulfilledWithNeedBy?.needByDate || po.lines.find(l => l.needByDate)?.needByDate;
-
-                    return (
-                      <div
-                        key={po.id}
-                        className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-4 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between gap-3 group"
-                      >
-                        {/* Top Header: Request Display ID, Site Badge, Date */}
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-2">
-                            <div className="flex items-center gap-2">
-                              {/* Small Stage Indicator */}
-                              <div className={`p-1.5 rounded-lg ${stageInfo.stageConfig.bgLightClass} ${stageInfo.stageConfig.textClass} shrink-0`}>
-                                <StageIcon size={14} />
-                              </div>
-                              <span className="font-mono font-bold text-sm text-gray-950 dark:text-white">
-                                {po.displayId || po.id}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 text-xs flex-wrap justify-end">
-                              {triggerEval.level === 'ALERT' && (
-                                <span className="px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse" title={triggerEval.reason}>
-                                  <AlertOctagon size={11} /> {triggerEval.reason}
-                                </span>
-                              )}
-                              {triggerEval.level === 'WARNING' && (
-                                <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 text-[10px] font-black flex items-center gap-1 shrink-0" title={triggerEval.reason}>
-                                  <AlertTriangle size={11} /> {triggerEval.reason}
-                                </span>
-                              )}
-                              <span className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 font-semibold text-gray-700 dark:text-gray-300">
-                                {po.site || 'Site'}
-                              </span>
-                              {cardNeedByDate ? (
-                                <span className="text-gray-500 dark:text-gray-400 font-medium text-[11px]" title={`Need-by delivery date: ${cardNeedByDate}`}>
-                                  Due: {new Date(cardNeedByDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
-                                </span>
-                              ) : (
-                                <span className="text-gray-400 font-medium text-[11px]">
-                                  {new Date(po.requestDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Supplier, Amount & Customer / Project */}
-                          <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                            <div>
-                              <p className="text-[10px] uppercase font-bold text-gray-400">Supplier</p>
-                              <p className="font-bold text-gray-900 dark:text-white truncate" title={po.supplierName}>
-                                {po.supplierName || 'Unknown Supplier'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] uppercase font-bold text-gray-400">Total Spend (Inc GST)</p>
-                              <p className="font-black text-emerald-600 dark:text-emerald-400">
-                                {formatCurrency(po.totalAmountIncGst ?? po.totalAmount * 1.10)}
-                              </p>
-                            </div>
-                            {po.customerName && (
-                              <div className="col-span-2">
-                                <p className="text-[10px] uppercase font-bold text-gray-400">Customer / Project</p>
-                                <p className="font-medium text-gray-700 dark:text-gray-300 truncate">{po.customerName}</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Line items summary / delivery progress */}
-                          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
-                            <span>{po.lines.length} Line Item{po.lines.length === 1 ? '' : 's'} ({totalItems} units)</span>
-                            {(po.status === 'ACTIVE' || po.status === 'RECEIVED') && (
-                              <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                                {receivedItems} / {totalItems} units received
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Action Button Row */}
-                        <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
-                          {stageInfo.actionType === 'APPROVE' && (isApprover || isAdmin) && (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenActionModal(po)}
-                              className="flex-1 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                            >
-                              <ShieldCheck size={14} />
-                              <span>Review &amp; Approve</span>
-                            </button>
-                          )}
-
-                          {stageInfo.actionType === 'CONCUR_REQ' && (canLinkConcur || isAdmin || po.requesterId === currentUser?.id) && (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenActionModal(po)}
-                              className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                            >
-                              <Link2 size={14} />
-                              <span>Log Concur Req #</span>
-                            </button>
-                          )}
-
-                          {stageInfo.actionType === 'CONCUR_PO' && (canLinkConcur || isAdmin) && (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenActionModal(po)}
-                              className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                            >
-                              <ShoppingCart size={14} />
-                              <span>Link Concur PO #</span>
-                            </button>
-                          )}
-
-                          {stageInfo.actionType === 'DELIVERY' && (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenActionModal(po)}
-                              className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                            >
-                              <Truck size={14} />
-                              <span>Record Goods Receipt</span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => setActiveModal({ type: 'QUICK_VIEW', po })}
-                            className="py-2 px-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs rounded-xl transition-all flex items-center gap-1 shrink-0"
-                            title="Quick Inspect Order Lines & Deliveries"
-                          >
-                            <Eye size={14} />
-                            <span>Quick View</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/requests/${po.id}`)}
-                            className="p-2 text-gray-400 hover:text-[var(--color-brand)] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors shrink-0"
-                            title="Open Full Request Details Page"
-                          >
-                            <ExternalLink size={15} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {visiblePOs.map((po) => renderPOCard(po))}
                 </div>
               )
             ) : (
@@ -1450,17 +1444,18 @@ export default function Home() {
                         ? 'No orders are currently 100% physically received and awaiting order closure.'
                         : activeExceptionFilter === 'MISSING_CONCUR'
                           ? 'No approved orders are currently missing SAP Concur Request numbers.'
-                          : selectedStage === 'ALL'
-                            ? 'No open purchase requests require action.'
+                          : selectedStage === null
+                            ? 'No purchase orders are currently awaiting delivery or order completion.'
                             : `No requests are currently in ${LIFECYCLE_STAGES[selectedStage - 1].stageTitle}.`}
                 </p>
-                {(actionSearch || selectedSupplier !== 'ALL' || activeExceptionFilter !== null) && (
+                {(actionSearch || selectedSupplier !== 'ALL' || activeExceptionFilter !== null || completionFilter !== 'ALL') && (
                   <button
                     type="button"
                     onClick={() => {
                       setActionSearch('');
                       setSelectedSupplier('ALL');
                       setActiveExceptionFilter(null);
+                      setCompletionFilter('ALL');
                     }}
                     className="mt-3 text-xs font-bold text-[var(--color-brand)] hover:underline cursor-pointer"
                   >
@@ -1585,78 +1580,6 @@ export default function Home() {
           </div>
         );
       })()}
-
-      {/* ── PROCUREFLOW INSIGHTS MODAL ───────────────────────────────────────── */}
-      {isInsightsOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs animate-fade-in"
-          onClick={() => setIsInsightsOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-nocturne rounded-2xl shadow-2xl max-w-md w-full flex flex-col animate-slide-up border border-gray-200 dark:border-gray-800 overflow-hidden"
-          >
-            {/* Header */}
-            <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gradient-to-r from-amber-500/10 via-brand/5 to-transparent">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shadow-xs shrink-0">
-                  <Sparkles size={18} />
-                </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">
-                    ProcureFlow Insight
-                  </span>
-                  <h2 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
-                    {currentTip.title}
-                  </h2>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsInsightsOpen(false)}
-                className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="p-5 space-y-3.5">
-              <div className="flex items-center justify-between">
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-[var(--color-brand)]/10 text-[var(--color-brand)]">
-                  Topic: {currentTip.badgeLabel}
-                </span>
-                <span className="text-[11px] font-medium text-gray-400">
-                  Tip {tipIndex + 1} of {userEligibleTips.length}
-                </span>
-              </div>
-
-              <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-medium bg-gray-50 dark:bg-[#15171e] p-4 rounded-xl border border-gray-100 dark:border-gray-800">
-                {currentTip.tip}
-              </p>
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-[#15171e]/50">
-              <button
-                type="button"
-                onClick={handleNextTip}
-                className="text-xs font-bold text-[var(--color-brand)] hover:underline flex items-center gap-1.5 cursor-pointer"
-              >
-                <RotateCcw size={13} />
-                <span>Next Insight</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsInsightsOpen(false)}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-              >
-                Got It
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── INLINE MODALS EXECUTED DIRECTLY ON HOME SCREEN ───────────────────── */}
 
