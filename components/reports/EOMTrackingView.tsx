@@ -1,0 +1,1552 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  FileSpreadsheet, 
+  Table, 
+  Layers, 
+  UploadCloud, 
+  Download, 
+  CheckCircle2, 
+  AlertCircle, 
+  Search, 
+  Edit3, 
+  Save, 
+  X, 
+  DollarSign, 
+  Building2, 
+  TrendingUp, 
+  Sparkles, 
+  ChevronRight,
+  Filter,
+  FileText,
+  ArrowRightLeft,
+  ShieldCheck,
+  Check,
+  RefreshCw
+} from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { useApp } from '../../context/AppContext.tsx';
+import { db } from '../../services/db.ts';
+import { 
+  LinenBudgetRecord, 
+  EomMonthlyOverride, 
+  PORequest 
+} from '../../types.ts';
+import { 
+  buildEom12MonthGrids, 
+  buildPivotTabData, 
+  getFinancialYearMonths,
+  calculateExGst
+} from '../../utils/budgetTracking.ts';
+
+type ActiveTab = 'TRACKING_GRID' | 'PIVOT_BREAKDOWN' | 'CONCUR_RECONCILIATION';
+
+interface ConcurRawRow {
+  prNumber: string;
+  employeeName: string;
+  description: string;
+  poNumber: string;
+  approvalStatus: string;
+  submitDate: string;
+  totalIncGst: number;
+  totalExGst: number;
+  entity: string;
+  vendorName: string;
+}
+
+interface ReconciliationItem {
+  poNumber: string;
+  prNumber: string;
+  concurExGst: number;
+  procureFlowExGst: number;
+  variance: number;
+  status: 'MATCHED' | 'AMOUNT_MISMATCH' | 'MISSING_IN_PROCUREFLOW' | 'MISSING_IN_CONCUR';
+  description?: string;
+  branch?: string;
+  vendor?: string;
+}
+
+export default function EOMTrackingView() {
+  const { pos } = useApp();
+  const [activeTab, setActiveTab] = useState<ActiveTab>('TRACKING_GRID');
+
+  // Year & Month Selection
+  const [financialYears, setFinancialYears] = useState<string[]>(['FY27']);
+  const [selectedFY, setSelectedFY] = useState<string>('FY27');
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(2); // 1 = Jul, 2 = Aug, 3 = Sep...
+
+  // Data from Supabase
+  const [budgetRecords, setBudgetRecords] = useState<LinenBudgetRecord[]>([]);
+  const [overrides, setOverrides] = useState<EomMonthlyOverride[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSavingOverrides, setIsSavingOverrides] = useState<boolean>(false);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Edit Actuals / Adjustments Mode
+  const [isEditActualsMode, setIsEditActualsMode] = useState<boolean>(false);
+  const [editableOverrides, setEditableOverrides] = useState<Record<string, number>>({});
+
+  // Search & Filter for Pivot View
+  const [pivotSearch, setPivotSearch] = useState<string>('');
+
+  // Concur Raw Data Reconciliation State
+  const [concurPasteInput, setConcurPasteInput] = useState<string>('');
+  const [parsedConcurRows, setParsedConcurRows] = useState<ConcurRawRow[]>([]);
+  const [reconciliationFilter, setReconciliationFilter] = useState<'ALL' | 'MISMATCH' | 'MISSING_PF' | 'MISSING_CONCUR'>('ALL');
+
+  // Load budgets and overrides
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [budgets, overrideList] = await Promise.all([
+        db.getLinenBudgets(),
+        db.getEomMonthlyOverrides(selectedFY)
+      ]);
+
+      if (budgets && budgets.length > 0) {
+        const distinctYears = Array.from(new Set(budgets.map(b => b.financialYear))).sort();
+        setFinancialYears(distinctYears);
+        const yearBudgets = budgets.filter(b => b.financialYear === selectedFY);
+        setBudgetRecords(yearBudgets);
+      }
+      setOverrides(overrideList || []);
+
+      // Seed editable overrides dictionary
+      const map: Record<string, number> = {};
+      (overrideList || []).forEach(o => {
+        map[`${o.siteCode}:${o.monthIndex}:${o.spendType}`] = o.overrideAmount;
+      });
+      setEditableOverrides(map);
+    } catch (err: any) {
+      console.error('Error loading EOM data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [selectedFY]);
+
+  // Compute 12-Month Tracking Grid Model
+  const gridModel = useMemo(() => {
+    // If in edit actuals mode, create synthetic overrides
+    const effectiveOverrides: EomMonthlyOverride[] = isEditActualsMode
+      ? Object.entries(editableOverrides).map(([key, val]) => {
+          const [siteCode, mIdxStr, spendType] = key.split(':');
+          return {
+            financialYear: selectedFY,
+            siteCode,
+            monthIndex: parseInt(mIdxStr, 10),
+            spendType: spendType as 'DEPLETION' | 'NEW_BUSINESS',
+            overrideAmount: val
+          };
+        })
+      : overrides;
+
+    return buildEom12MonthGrids(
+      pos,
+      budgetRecords,
+      effectiveOverrides,
+      selectedFY,
+      selectedMonthIndex
+    );
+  }, [pos, budgetRecords, overrides, editableOverrides, isEditActualsMode, selectedFY, selectedMonthIndex]);
+
+  // Compute Pivot Tab Data Model
+  const pivotModel = useMemo(() => {
+    return buildPivotTabData(pos, selectedMonthIndex, selectedFY);
+  }, [pos, selectedMonthIndex, selectedFY]);
+
+  // Filtered detailed PRs in Pivot View
+  const filteredPivotPrs = useMemo(() => {
+    if (!pivotSearch.trim()) return pivotModel.detailedPrs;
+    const q = pivotSearch.toLowerCase();
+    return pivotModel.detailedPrs.filter(
+      p => p.prNumber.toLowerCase().includes(q) ||
+           p.poNumber.toLowerCase().includes(q) ||
+           p.business.toLowerCase().includes(q) ||
+           p.reason.toLowerCase().includes(q)
+    );
+  }, [pivotModel.detailedPrs, pivotSearch]);
+
+  // Save manual overrides
+  const handleSaveOverrides = async () => {
+    setIsSavingOverrides(true);
+    try {
+      const promises = Object.entries(editableOverrides).map(([key, val]) => {
+        const [siteCode, mIdxStr, spendType] = key.split(':');
+        return db.upsertEomMonthlyOverride({
+          financialYear: selectedFY,
+          siteCode,
+          monthIndex: parseInt(mIdxStr, 10),
+          spendType: spendType as 'DEPLETION' | 'NEW_BUSINESS',
+          overrideAmount: Number(val) || 0
+        });
+      });
+      await Promise.all(promises);
+      await loadData();
+      setIsEditActualsMode(false);
+      setStatusMessage({ type: 'success', text: 'Successfully saved monthly actuals and adjustments.' });
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: `Failed to save adjustments: ${err.message}` });
+    } finally {
+      setIsSavingOverrides(false);
+    }
+  };
+
+  // Helper formatters
+  const formatAUD = (val?: number | null) => {
+    if (val === undefined || val === null || isNaN(val)) return '-';
+    return '$' + Math.round(val).toLocaleString('en-AU');
+  };
+
+  const formatAUDExact = (val?: number | null) => {
+    if (val === undefined || val === null || isNaN(val)) return '$0.00';
+    return '$' + val.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  // Parse Concur raw paste or file
+  const handleParseConcurText = (textToParse?: string) => {
+    const raw = textToParse !== undefined ? textToParse : concurPasteInput;
+    if (!raw.trim()) return;
+
+    const lines = raw.trim().split(/\r?\n/);
+    if (lines.length < 2) return;
+
+    const header = lines[0].split('\t').length > 1 ? lines[0].split('\t') : lines[0].split(',');
+    const cleanHeader = header.map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+
+    const prIdx = cleanHeader.findIndex(h => h.includes('purchase request') || h.includes('pr'));
+    const descIdx = cleanHeader.findIndex(h => h.includes('description'));
+    const poIdx = cleanHeader.findIndex(h => h.includes('po') || h.includes('purchase order'));
+    const totalIdx = cleanHeader.findIndex(h => h.includes('total') || h.includes('amount'));
+    const empIdx = cleanHeader.findIndex(h => h.includes('employee'));
+    const entityIdx = cleanHeader.findIndex(h => h.includes('entity') || h.includes('branch') || h.includes('site'));
+    const vendorIdx = cleanHeader.findIndex(h => h.includes('vendor') || h.includes('supplier'));
+    const statusIdx = cleanHeader.findIndex(h => h.includes('status'));
+    const dateIdx = cleanHeader.findIndex(h => h.includes('date'));
+
+    const parsed: ConcurRawRow[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const cols = line.split('\t').length > 1 ? line.split('\t') : line.split(',');
+      const getVal = (idx: number) => (idx >= 0 && cols[idx] ? cols[idx].trim().replace(/^"|"$/g, '') : '');
+
+      const prNumber = getVal(prIdx);
+      const poNumber = getVal(poIdx);
+      const description = getVal(descIdx);
+      const totalRaw = getVal(totalIdx).replace(/[\$,]/g, '');
+      const totalIncGst = parseFloat(totalRaw) || 0;
+      const totalExGst = calculateExGst(totalIncGst);
+
+      if (prNumber || poNumber || totalIncGst > 0) {
+        parsed.push({
+          prNumber,
+          employeeName: getVal(empIdx),
+          description,
+          poNumber,
+          approvalStatus: getVal(statusIdx) || 'Approved',
+          submitDate: getVal(dateIdx),
+          totalIncGst,
+          totalExGst,
+          entity: getVal(entityIdx),
+          vendorName: getVal(vendorIdx)
+        });
+      }
+    }
+
+    setParsedConcurRows(parsed);
+    setStatusMessage({ type: 'success', text: `Successfully parsed ${parsed.length} Concur records.` });
+  };
+
+  // Drag & drop file upload for Concur
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames.find(s => s.toLowerCase().includes('raw')) || workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const tsv = XLSX.utils.sheet_to_csv(worksheet, { FS: '\t' });
+        setConcurPasteInput(tsv);
+        handleParseConcurText(tsv);
+      } catch (err: any) {
+        setStatusMessage({ type: 'error', text: `Failed to read spreadsheet: ${err.message}` });
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Run automated reconciliation between Concur and ProcureFlow
+  const reconciliationResults = useMemo((): {
+    items: ReconciliationItem[];
+    concurTotalEx: number;
+    pfTotalEx: number;
+    netVariance: number;
+    matchCount: number;
+    mismatchCount: number;
+    missingInPfCount: number;
+    missingInConcurCount: number;
+    parityPercent: number;
+  } => {
+    if (parsedConcurRows.length === 0) {
+      return {
+        items: [],
+        concurTotalEx: 0,
+        pfTotalEx: 0,
+        netVariance: 0,
+        matchCount: 0,
+        mismatchCount: 0,
+        missingInPfCount: 0,
+        missingInConcurCount: 0,
+        parityPercent: 100
+      };
+    }
+
+    // Build ProcureFlow PO Map
+    const pfMap = new Map<string, PORequest>();
+    pos.forEach(p => {
+      if (p.status === 'REJECTED' || p.status === 'DRAFT') return;
+      const keys = [
+        p.concurPoNumber,
+        p.displayId,
+        p.id,
+        p.concurRequestNumber,
+        ...(p.lines || []).map(l => l.concurPoNumber)
+      ].filter(Boolean);
+
+      keys.forEach(k => {
+        if (k) pfMap.set(k.toUpperCase().trim(), p);
+      });
+    });
+
+    const items: ReconciliationItem[] = [];
+    const matchedPfIds = new Set<string>();
+
+    let concurTotalEx = 0;
+    let pfTotalEx = 0;
+    let matchCount = 0;
+    let mismatchCount = 0;
+    let missingInPfCount = 0;
+
+    parsedConcurRows.forEach(c => {
+      concurTotalEx += c.totalExGst;
+      const keyPo = (c.poNumber || '').toUpperCase().trim();
+      const keyPr = (c.prNumber || '').toUpperCase().trim();
+
+      const matchedPO = pfMap.get(keyPo) || pfMap.get(keyPr);
+
+      if (matchedPO) {
+        matchedPfIds.add(matchedPO.id);
+        const pfEx = matchedPO.subtotalAmount || matchedPO.totalAmount || calculateExGst(matchedPO.totalAmountIncGst || 0);
+        pfTotalEx += pfEx;
+        const diff = Number((c.totalExGst - pfEx).toFixed(2));
+
+        if (Math.abs(diff) <= 0.05) {
+          matchCount++;
+          items.push({
+            poNumber: c.poNumber || matchedPO.concurPoNumber || matchedPO.displayId,
+            prNumber: c.prNumber || matchedPO.concurRequestNumber || '',
+            concurExGst: c.totalExGst,
+            procureFlowExGst: pfEx,
+            variance: 0,
+            status: 'MATCHED',
+            description: c.description || matchedPO.comments,
+            branch: c.entity || matchedPO.site,
+            vendor: c.vendorName || matchedPO.supplierName
+          });
+        } else {
+          mismatchCount++;
+          items.push({
+            poNumber: c.poNumber || matchedPO.concurPoNumber || matchedPO.displayId,
+            prNumber: c.prNumber || matchedPO.concurRequestNumber || '',
+            concurExGst: c.totalExGst,
+            procureFlowExGst: pfEx,
+            variance: diff,
+            status: 'AMOUNT_MISMATCH',
+            description: c.description || matchedPO.comments,
+            branch: c.entity || matchedPO.site,
+            vendor: c.vendorName || matchedPO.supplierName
+          });
+        }
+      } else {
+        missingInPfCount++;
+        items.push({
+          poNumber: c.poNumber || 'UNKNOWN',
+          prNumber: c.prNumber || '',
+          concurExGst: c.totalExGst,
+          procureFlowExGst: 0,
+          variance: c.totalExGst,
+          status: 'MISSING_IN_PROCUREFLOW',
+          description: c.description,
+          branch: c.entity,
+          vendor: c.vendorName
+        });
+      }
+    });
+
+    // Check for ProcureFlow approved POs missing in Concur
+    let missingInConcurCount = 0;
+    pos.forEach(p => {
+      if (p.status === 'REJECTED' || p.status === 'DRAFT') return;
+      if (!matchedPfIds.has(p.id)) {
+        const pfEx = p.subtotalAmount || p.totalAmount || calculateExGst(p.totalAmountIncGst || 0);
+        missingInConcurCount++;
+        items.push({
+          poNumber: p.concurPoNumber || p.displayId,
+          prNumber: p.concurRequestNumber || '',
+          concurExGst: 0,
+          procureFlowExGst: pfEx,
+          variance: -pfEx,
+          status: 'MISSING_IN_CONCUR',
+          description: p.comments || p.reasonForRequest,
+          branch: p.site,
+          vendor: p.supplierName
+        });
+      }
+    });
+
+    const netVariance = Number((concurTotalEx - pfTotalEx).toFixed(2));
+    const totalItems = items.length;
+    const parityPercent = totalItems > 0 ? Number(((matchCount / totalItems) * 100).toFixed(1)) : 100;
+
+    return {
+      items,
+      concurTotalEx,
+      pfTotalEx,
+      netVariance,
+      matchCount,
+      mismatchCount,
+      missingInPfCount,
+      missingInConcurCount,
+      parityPercent
+    };
+  }, [parsedConcurRows, pos]);
+
+  // Filtered reconciliation drilldown
+  const filteredReconciliationItems = useMemo(() => {
+    if (reconciliationFilter === 'ALL') return reconciliationResults.items;
+    if (reconciliationFilter === 'MISMATCH') return reconciliationResults.items.filter(i => i.status === 'AMOUNT_MISMATCH');
+    if (reconciliationFilter === 'MISSING_PF') return reconciliationResults.items.filter(i => i.status === 'MISSING_IN_PROCUREFLOW');
+    if (reconciliationFilter === 'MISSING_CONCUR') return reconciliationResults.items.filter(i => i.status === 'MISSING_IN_CONCUR');
+    return reconciliationResults.items;
+  }, [reconciliationResults.items, reconciliationFilter]);
+
+  // Export EOM Tracking Grid to Excel
+  const handleExportGridExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    // 1. Depletion Sheet
+    const depData: any[] = [
+      ['DEPLETION (ACC + HC, Excl. GST) - ' + selectedFY],
+      ['Location', ...gridModel.months.map(m => m.label), 'BALANCE YTG', 'SPEND YTD %']
+    ];
+    gridModel.depletionRows.forEach(r => {
+      depData.push([r.siteName, ...r.monthlyActuals.map(v => v !== null ? v : ''), r.balanceYtg, `${r.spendYtdPercent}%`]);
+      depData.push(['MNTH $BUDGET', ...r.monthlyBudgets, '', '']);
+    });
+    depData.push(['TOTAL', ...gridModel.depletionTotalRow.monthlyActuals.map(v => v !== null ? v : ''), gridModel.depletionTotalRow.balanceYtg, `${gridModel.depletionTotalRow.spendYtdPercent}%`]);
+
+    const wsDep = XLSX.utils.aoa_to_sheet(depData);
+    XLSX.utils.book_append_sheet(wb, wsDep, 'Depletion');
+
+    // 2. New Business Sheet
+    const nbData: any[] = [
+      ['NEW BUSINESS (ACC + HC, Excl. GST) - ' + selectedFY],
+      ['Location', ...gridModel.months.map(m => m.label), 'BALANCE YTG']
+    ];
+    gridModel.newBusinessRows.forEach(r => {
+      nbData.push([r.siteName, ...r.monthlyActuals.map(v => v !== null ? v : ''), r.balanceYtg]);
+      nbData.push(['MNTH $BUDGET', ...r.monthlyBudgets, '']);
+    });
+    nbData.push(['TOTAL', ...gridModel.newBusinessTotalRow.monthlyActuals.map(v => v !== null ? v : ''), gridModel.newBusinessTotalRow.balanceYtg]);
+
+    const wsNb = XLSX.utils.aoa_to_sheet(nbData);
+    XLSX.utils.book_append_sheet(wb, wsNb, 'New Business');
+
+    XLSX.writeFile(wb, `ProcureFlow_EOM_Tracking_${selectedFY}.xlsx`);
+  };
+
+  return (
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-6 animate-fade-in">
+      {/* ── TOP HEADER & TAB SWITCHER ────────────────────────────────────────── */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-gray-200 dark:border-gray-800">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+              <FileSpreadsheet size={26} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                End of Month (EOM) Spend &amp; Reconciliation
+              </h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Financial governance model replicating the Ash/Concur month-end spreadsheet with live ProcureFlow PO integration.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Controls & Selectors */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* View Tab Segmented Toggle */}
+          <div className="flex items-center p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 text-xs font-black uppercase tracking-wider">
+            <button
+              type="button"
+              onClick={() => setActiveTab('TRACKING_GRID')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition-all ${
+                activeTab === 'TRACKING_GRID'
+                  ? 'bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              <Table size={14} />
+              <span>Tracking vs Budget</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('PIVOT_BREAKDOWN')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition-all ${
+                activeTab === 'PIVOT_BREAKDOWN'
+                  ? 'bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              <Layers size={14} />
+              <span>Pivot Tab</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('CONCUR_RECONCILIATION')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition-all ${
+                activeTab === 'CONCUR_RECONCILIATION'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              <ArrowRightLeft size={14} />
+              <span>Concur Audit</span>
+            </button>
+          </div>
+
+          {/* FY Selector */}
+          <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700">
+            <span className="text-xs font-bold text-gray-500">FY:</span>
+            <select
+              value={selectedFY}
+              onChange={(e) => setSelectedFY(e.target.value)}
+              className="bg-transparent text-sm font-black text-gray-900 dark:text-white outline-none cursor-pointer"
+            >
+              {financialYears.map(fy => (
+                <option key={fy} value={fy} className="text-gray-900 dark:text-gray-100 dark:bg-gray-800">
+                  {fy}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Month Selector */}
+          <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700">
+            <span className="text-xs font-bold text-gray-500">Month:</span>
+            <select
+              value={selectedMonthIndex}
+              onChange={(e) => setSelectedMonthIndex(parseInt(e.target.value, 10))}
+              className="bg-transparent text-sm font-black text-gray-900 dark:text-white outline-none cursor-pointer"
+            >
+              {gridModel.months.map(m => (
+                <option key={m.monthIndex} value={m.monthIndex} className="text-gray-900 dark:text-gray-100 dark:bg-gray-800">
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Export Button */}
+          <button
+            type="button"
+            onClick={handleExportGridExcel}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-black uppercase tracking-wider text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 rounded-xl border border-gray-300 dark:border-gray-700 transition-all shadow-sm"
+          >
+            <Download size={14} />
+            <span>Export Excel</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── STATUS MESSAGE ─────────────────────────────────────────────────── */}
+      {statusMessage && (
+        <div className={`p-4 rounded-2xl flex items-center justify-between border ${
+          statusMessage.type === 'success'
+            ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/20'
+            : 'bg-rose-500/10 text-rose-800 dark:text-rose-300 border-rose-500/20'
+        }`}>
+          <div className="flex items-center gap-3">
+            {statusMessage.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+            <span className="text-xs font-bold">{statusMessage.text}</span>
+          </div>
+          <button onClick={() => setStatusMessage(null)} className="text-xs font-black hover:opacity-70">Dismiss</button>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────────────── */}
+      {/* TAB 1: TRACKING VS MONTHLY BUDGET                                    */}
+      {/* ───────────────────────────────────────────────────────────────────── */}
+      {activeTab === 'TRACKING_GRID' && (
+        <div className="space-y-6">
+          {/* Subheader: Edit Actuals Mode Toggle */}
+          <div className="flex items-center justify-between bg-white dark:bg-[#1c1f2b] p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-600 dark:text-gray-300">
+                Data Mode:
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                Live ProcureFlow Aggregation
+              </span>
+              {overrides.length > 0 && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                  {overrides.length} Manual Adjustment(s) Active
+                </span>
+              )}
+            </div>
+
+            {!isEditActualsMode ? (
+              <button
+                type="button"
+                onClick={() => setIsEditActualsMode(true)}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 rounded-xl border border-indigo-500/20 transition-all"
+              >
+                <Edit3 size={14} />
+                <span>Edit Actuals / Input Adjustments</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditActualsMode(false)}
+                  className="px-3 py-1.5 text-xs font-black uppercase text-gray-600 hover:bg-gray-100 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveOverrides}
+                  disabled={isSavingOverrides}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-black uppercase text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-md"
+                >
+                  {isSavingOverrides ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                  <span>Save Adjustments</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* TWO COLUMN WORKBOOK SPLIT */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+            {/* ── LEFT COLUMN: BUDGET & YTD SUMMARIES (4 cols) ──────────────── */}
+            <div className="xl:col-span-4 space-y-6">
+              {/* CURRENT $BUDGET TABLE */}
+              <div className="bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40 flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                    CURRENT $BUDGET {selectedFY}
+                  </h3>
+                  <span className="text-[10px] font-bold text-gray-400">Baseline Annual / Monthly</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-[11px]">
+                    <thead>
+                      <tr className="bg-gray-50 dark:bg-gray-900/80 font-black text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800">
+                        <th className="py-2.5 px-3">Location</th>
+                        <th className="py-2.5 px-2 text-right">YRLY Dep ($)</th>
+                        <th className="py-2.5 px-2 text-right text-gray-400">Per Month</th>
+                        <th className="py-2.5 px-2 text-right">YRLY New B</th>
+                        <th className="py-2.5 px-2 text-right text-gray-400">Per Month</th>
+                        <th className="py-2.5 px-3 text-right font-black text-gray-900 dark:text-white">TOTAL</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono">
+                      {gridModel.budgetTable.rows.map(r => (
+                        <tr key={r.siteCode} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                          <td className="py-2 px-3 font-sans font-bold text-gray-900 dark:text-white">{r.location}</td>
+                          <td className="py-2 px-2 text-right">{formatAUD(r.yearlyDepletion)}</td>
+                          <td className="py-2 px-2 text-right text-gray-400">{formatAUD(r.perMonthDepletion)}</td>
+                          <td className="py-2 px-2 text-right">{formatAUD(r.yearlyNewBusiness)}</td>
+                          <td className="py-2 px-2 text-right text-gray-400">{formatAUD(r.perMonthNewBusiness)}</td>
+                          <td className="py-2 px-3 text-right font-bold text-gray-900 dark:text-white">{formatAUD(r.total)}</td>
+                        </tr>
+                      ))}
+                      {/* Total Sites */}
+                      <tr className="bg-indigo-50/40 dark:bg-indigo-950/20 font-black text-indigo-950 dark:text-indigo-200 border-t border-indigo-200">
+                        <td className="py-2.5 px-3 font-sans">Total</td>
+                        <td className="py-2.5 px-2 text-right">{formatAUD(gridModel.budgetTable.totalRow.yearlyDepletion)}</td>
+                        <td className="py-2.5 px-2 text-right text-indigo-800/60 dark:text-indigo-400">{formatAUD(gridModel.budgetTable.totalRow.perMonthDepletion)}</td>
+                        <td className="py-2.5 px-2 text-right">{formatAUD(gridModel.budgetTable.totalRow.yearlyNewBusiness)}</td>
+                        <td className="py-2.5 px-2 text-right text-indigo-800/60 dark:text-indigo-400">{formatAUD(gridModel.budgetTable.totalRow.perMonthNewBusiness)}</td>
+                        <td className="py-2.5 px-3 text-right text-indigo-600 dark:text-indigo-400">{formatAUD(gridModel.budgetTable.totalRow.total)}</td>
+                      </tr>
+                      {/* Linen Hub */}
+                      <tr className="bg-amber-500/5 font-black text-amber-900 dark:text-amber-300">
+                        <td className="py-2.5 px-3 font-sans">LINEN HUB</td>
+                        <td className="py-2.5 px-2 text-right">{formatAUD(gridModel.budgetTable.linenHubBudget)}</td>
+                        <td className="py-2.5 px-2 text-right text-amber-800/60 dark:text-amber-400">{formatAUD(gridModel.budgetTable.linenHubBudget / 12)}</td>
+                        <td className="py-2.5 px-2 text-right text-gray-400">-</td>
+                        <td className="py-2.5 px-2 text-right text-gray-400">-</td>
+                        <td className="py-2.5 px-3 text-right">{formatAUD(gridModel.budgetTable.linenHubBudget)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* YTD & CURRENT MONTH ACTUALS TABLE */}
+              <div className="bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40 flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                    Actuals (Excl. GST) - YTD vs {gridModel.months[selectedMonthIndex - 1]?.label}
+                  </h3>
+                  <span className="text-[10px] font-bold text-emerald-600">Net Parity</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-[11px]">
+                    <thead>
+                      <tr className="bg-gray-50 dark:bg-gray-900/80 font-black text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800">
+                        <th className="py-2.5 px-3">Location</th>
+                        <th className="py-2.5 px-3 text-right">Depletion (YTD)</th>
+                        <th className="py-2.5 px-3 text-right">New B (YTD)</th>
+                        <th className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400 font-black">Dep ({gridModel.months[selectedMonthIndex - 1]?.label})</th>
+                        <th className="py-2.5 px-3 text-right text-amber-600 dark:text-amber-400 font-black">New B ({gridModel.months[selectedMonthIndex - 1]?.label})</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono">
+                      {gridModel.ytdTable.map(r => (
+                        <tr key={r.siteCode} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                          <td className="py-2 px-3 font-sans font-bold text-gray-900 dark:text-white">{r.location}</td>
+                          <td className="py-2 px-3 text-right">{formatAUD(r.depletionYtd)}</td>
+                          <td className="py-2 px-3 text-right">{formatAUD(r.newBusinessYtd)}</td>
+                          <td className="py-2 px-3 text-right text-emerald-600 dark:text-emerald-400 font-bold">{formatAUD(r.depletionSelectedMonth)}</td>
+                          <td className="py-2 px-3 text-right text-amber-600 dark:text-amber-400 font-bold">{formatAUD(r.newBusinessSelectedMonth)}</td>
+                        </tr>
+                      ))}
+                      {/* Total */}
+                      <tr className="bg-gray-100 dark:bg-gray-900/90 font-black text-gray-900 dark:text-white border-t border-gray-300">
+                        <td className="py-2.5 px-3 font-sans uppercase">TOTAL</td>
+                        <td className="py-2.5 px-3 text-right">{formatAUD(gridModel.ytdTotalRow.depletionYtd)}</td>
+                        <td className="py-2.5 px-3 text-right">{formatAUD(gridModel.ytdTotalRow.newBusinessYtd)}</td>
+                        <td className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400">{formatAUD(gridModel.ytdTotalRow.depletionSelectedMonth)}</td>
+                        <td className="py-2.5 px-3 text-right text-amber-600 dark:text-amber-400">{formatAUD(gridModel.ytdTotalRow.newBusinessSelectedMonth)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* GOVERNANCE CARDS & CONTRACT STATUS METRICS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                  <div className="text-[10px] font-black uppercase text-amber-800 dark:text-amber-300">LINEN HUB TILL DATE</div>
+                  <div className="text-lg font-black text-amber-900 dark:text-amber-200 mt-0.5">{formatAUD(gridModel.kpiCards.linenHubTillDate)}</div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                  <div className="text-[10px] font-black uppercase text-amber-800 dark:text-amber-300">LINEN HUB REMAINING</div>
+                  <div className="text-lg font-black text-amber-900 dark:text-amber-200 mt-0.5">{formatAUD(gridModel.kpiCards.linenHubRemaining)}</div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20">
+                  <div className="text-[10px] font-black uppercase text-blue-800 dark:text-blue-300">DEP STATUS TILL DATE</div>
+                  <div className="text-lg font-black text-blue-900 dark:text-blue-200 mt-0.5">{formatAUD(gridModel.kpiCards.depStatusTillDate)}</div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20">
+                  <div className="text-[10px] font-black uppercase text-blue-800 dark:text-blue-300">NB STATUS TILL DATE</div>
+                  <div className="text-lg font-black text-blue-900 dark:text-blue-200 mt-0.5">{formatAUD(gridModel.kpiCards.nbStatusTillDate)}</div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-300">OVERALL DEP vs BUDGET</div>
+                  <div className="text-lg font-black text-emerald-900 dark:text-emerald-200 mt-0.5">{formatAUD(gridModel.kpiCards.overallDepVsBudget)}</div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-purple-500/10 border border-purple-500/20">
+                  <div className="text-[10px] font-black uppercase text-purple-800 dark:text-purple-300">OVERALL NB vs BUDGET</div>
+                  <div className="text-lg font-black text-purple-900 dark:text-purple-200 mt-0.5">{formatAUD(gridModel.kpiCards.overallNbVsBudget)}</div>
+                </div>
+              </div>
+
+              {/* STRATEGIC CONTRACT ACCUMULATIONS */}
+              <div className="p-4 rounded-3xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 space-y-2.5 text-xs">
+                <div className="text-[11px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 pb-1 border-b border-gray-100 dark:border-gray-800">
+                  Strategic Contract Tracking
+                </div>
+                <div className="flex justify-between font-mono">
+                  <span className="font-sans text-gray-600 dark:text-gray-300">HSV (YTD)</span>
+                  <span className="font-bold text-gray-900 dark:text-white">{formatAUD(gridModel.kpiCards.hsvYtd)}</span>
+                </div>
+                <div className="flex justify-between font-mono">
+                  <span className="font-sans text-gray-600 dark:text-gray-300">RHC (YTD) - DEP</span>
+                  <span className="font-bold text-gray-900 dark:text-white">{formatAUD(gridModel.kpiCards.rhcDepYtd)}</span>
+                </div>
+                <div className="flex justify-between font-mono">
+                  <span className="font-sans text-gray-600 dark:text-gray-300">RHC (YTD) - NB</span>
+                  <span className="font-bold text-gray-900 dark:text-white">{formatAUD(gridModel.kpiCards.rhcNbYtd)}</span>
+                </div>
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex justify-between font-mono text-[11px] text-gray-500">
+                  <span className="font-sans">HSV ({gridModel.months[selectedMonthIndex - 1]?.shortMonth}) - Included in DEP</span>
+                  <span className="font-bold">{formatAUD(gridModel.kpiCards.hsvCurrentMonth)}</span>
+                </div>
+                <div className="flex justify-between font-mono text-[11px] text-gray-500">
+                  <span className="font-sans">RHC ({gridModel.months[selectedMonthIndex - 1]?.shortMonth}) - Included in DEP</span>
+                  <span className="font-bold">{formatAUD(gridModel.kpiCards.rhcDepCurrentMonth)}</span>
+                </div>
+                <div className="flex justify-between font-mono text-[11px] text-gray-500">
+                  <span className="font-sans">RHC ({gridModel.months[selectedMonthIndex - 1]?.shortMonth}) - Included in NB</span>
+                  <span className="font-bold">{formatAUD(gridModel.kpiCards.rhcNbCurrentMonth)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* ── RIGHT COLUMN: 12-MONTH MONTHLY PERFORMANCE GRIDS (8 cols) ─── */}
+            <div className="xl:col-span-8 space-y-6">
+              {/* DEPLETION GRID */}
+              <div className="bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-emerald-500/10 via-transparent to-transparent flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-emerald-950 dark:text-emerald-300">
+                      DEPLETION (ACC + HC, Excl. GST)
+                    </h3>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                      Monthly actuals vs. budget with dynamic green (within budget) and red (over budget) conditional formatting.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] font-bold">
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 rounded bg-[#99FF66] border border-black/10"></span>
+                      <span>Within Budget</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 rounded bg-[#FFFF99] border border-black/10"></span>
+                      <span>Over Budget</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-[11px]">
+                    <thead>
+                      <tr className="bg-gray-50 dark:bg-gray-900/80 font-black text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-800">
+                        <th className="py-2.5 px-3 min-w-[120px]">Location</th>
+                        {gridModel.months.map(m => (
+                          <th key={m.monthIndex} className="py-2.5 px-2 text-right min-w-[78px]">
+                            {m.label}
+                          </th>
+                        ))}
+                        <th className="py-2.5 px-3 text-right font-black min-w-[95px]">BALANCE YTG</th>
+                        <th className="py-2.5 px-3 text-right font-black min-w-[85px]">SPEND YTD %</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono">
+                      {gridModel.depletionRows.map(row => (
+                        <React.Fragment key={row.siteCode}>
+                          {/* Actual Row */}
+                          <tr className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                            <td className="py-2 px-3 font-sans font-black text-gray-900 dark:text-white">
+                              {row.siteName}
+                            </td>
+                            {row.monthlyActuals.map((val, idx) => {
+                              const budget = row.monthlyBudgets[idx];
+                              const isRecorded = val !== null && val !== undefined;
+                              const isOverBudget = isRecorded && budget > 0 && val > budget;
+                              const isUnderBudget = isRecorded && budget > 0 && val <= budget;
+                              const cellKey = `${row.siteCode}:${idx + 1}:DEPLETION`;
+
+                              let cellBg = '';
+                              let cellText = 'text-gray-900 dark:text-white';
+                              if (isOverBudget) {
+                                cellBg = 'bg-[#FFFF99] text-gray-900 font-bold';
+                              } else if (isUnderBudget) {
+                                cellBg = 'bg-[#99FF66] text-gray-900 font-bold';
+                              }
+
+                              return (
+                                <td key={idx} className={`py-2 px-2 text-right transition-colors ${cellBg}`}>
+                                  {isEditActualsMode ? (
+                                    <input
+                                      type="number"
+                                      value={editableOverrides[cellKey] !== undefined ? editableOverrides[cellKey] : (val || 0)}
+                                      onChange={(e) => {
+                                        const num = parseFloat(e.target.value) || 0;
+                                        setEditableOverrides(prev => ({ ...prev, [cellKey]: num }));
+                                      }}
+                                      className="w-20 px-1 py-0.5 text-right text-[10px] font-mono font-bold rounded border border-emerald-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none"
+                                    />
+                                  ) : (
+                                    <span className={cellText}>{formatAUD(val)}</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                            <td className="py-2 px-3 text-right font-bold text-gray-900 dark:text-white bg-gray-50/40 dark:bg-gray-900/40">
+                              {formatAUD(row.balanceYtg)}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-indigo-600 dark:text-indigo-400 bg-gray-50/40 dark:bg-gray-900/40">
+                              {row.spendYtdPercent}%
+                            </td>
+                          </tr>
+
+                          {/* Budget Row */}
+                          <tr className="bg-gray-50/30 dark:bg-gray-900/20 text-gray-500 dark:text-gray-400 text-[10px]">
+                            <td className="py-1 px-3 font-sans italic text-gray-400">
+                              MNTH $BUDGET
+                            </td>
+                            {row.monthlyBudgets.map((b, idx) => (
+                              <td key={idx} className="py-1 px-2 text-right">
+                                {formatAUD(b)}
+                              </td>
+                            ))}
+                            <td className="py-1 px-3 text-right text-gray-300">-</td>
+                            <td className="py-1 px-3 text-right text-gray-300">-</td>
+                          </tr>
+                        </React.Fragment>
+                      ))}
+
+                      {/* Total Depletion Row */}
+                      <tr className="bg-gray-100 dark:bg-gray-900/90 font-black text-gray-900 dark:text-white border-t-2 border-gray-300 dark:border-gray-700">
+                        <td className="py-3 px-3 font-sans uppercase">TOTAL</td>
+                        {gridModel.depletionTotalRow.monthlyActuals.map((val, idx) => (
+                          <td key={idx} className="py-3 px-2 text-right">
+                            {formatAUD(val)}
+                          </td>
+                        ))}
+                        <td className="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400">
+                          {formatAUD(gridModel.depletionTotalRow.balanceYtg)}
+                        </td>
+                        <td className="py-3 px-3 text-right text-indigo-600 dark:text-indigo-400">
+                          {gridModel.depletionTotalRow.spendYtdPercent}%
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* NEW BUSINESS GRID */}
+              <div className="bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-amber-500/10 via-transparent to-transparent flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-amber-950 dark:text-amber-300">
+                      NEW BUSINESS (ACC + HC, Excl. GST)
+                    </h3>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                      Site-by-site tracking of growth contract purchases against New Business budget targets.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-[11px]">
+                    <thead>
+                      <tr className="bg-gray-50 dark:bg-gray-900/80 font-black text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-800">
+                        <th className="py-2.5 px-3 min-w-[120px]">Location</th>
+                        {gridModel.months.map(m => (
+                          <th key={m.monthIndex} className="py-2.5 px-2 text-right min-w-[78px]">
+                            {m.label}
+                          </th>
+                        ))}
+                        <th className="py-2.5 px-3 text-right font-black min-w-[95px]">BALANCE YTG</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono">
+                      {gridModel.newBusinessRows.map(row => (
+                        <React.Fragment key={row.siteCode}>
+                          {/* Actual Row */}
+                          <tr className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                            <td className="py-2 px-3 font-sans font-black text-gray-900 dark:text-white">
+                              {row.siteName}
+                            </td>
+                            {row.monthlyActuals.map((val, idx) => {
+                              const budget = row.monthlyBudgets[idx];
+                              const isRecorded = val !== null && val !== undefined && val > 0;
+                              const isOverBudget = isRecorded && (budget === 0 || val > budget);
+                              const isUnderBudget = isRecorded && budget > 0 && val <= budget;
+                              const cellKey = `${row.siteCode}:${idx + 1}:NEW_BUSINESS`;
+
+                              let cellBg = '';
+                              let cellText = 'text-gray-900 dark:text-white';
+                              if (isOverBudget) {
+                                cellBg = 'bg-[#FFFF99] text-gray-900 font-bold';
+                              } else if (isUnderBudget) {
+                                cellBg = 'bg-[#99FF66] text-gray-900 font-bold';
+                              }
+
+                              return (
+                                <td key={idx} className={`py-2 px-2 text-right transition-colors ${cellBg}`}>
+                                  {isEditActualsMode ? (
+                                    <input
+                                      type="number"
+                                      value={editableOverrides[cellKey] !== undefined ? editableOverrides[cellKey] : (val || 0)}
+                                      onChange={(e) => {
+                                        const num = parseFloat(e.target.value) || 0;
+                                        setEditableOverrides(prev => ({ ...prev, [cellKey]: num }));
+                                      }}
+                                      className="w-20 px-1 py-0.5 text-right text-[10px] font-mono font-bold rounded border border-amber-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none"
+                                    />
+                                  ) : (
+                                    <span className={cellText}>{val !== null && val > 0 ? formatAUD(val) : (val === 0 ? '$0' : '-')}</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                            <td className="py-2 px-3 text-right font-bold text-gray-900 dark:text-white bg-gray-50/40 dark:bg-gray-900/40">
+                              {formatAUD(row.balanceYtg)}
+                            </td>
+                          </tr>
+
+                          {/* Budget Row */}
+                          <tr className="bg-gray-50/30 dark:bg-gray-900/20 text-gray-500 dark:text-gray-400 text-[10px]">
+                            <td className="py-1 px-3 font-sans italic text-gray-400">
+                              MNTH $BUDGET
+                            </td>
+                            {row.monthlyBudgets.map((b, idx) => (
+                              <td key={idx} className="py-1 px-2 text-right">
+                                {formatAUD(b)}
+                              </td>
+                            ))}
+                            <td className="py-1 px-3 text-right text-gray-300">-</td>
+                          </tr>
+                        </React.Fragment>
+                      ))}
+
+                      {/* Total New Business Row */}
+                      <tr className="bg-gray-100 dark:bg-gray-900/90 font-black text-gray-900 dark:text-white border-t-2 border-gray-300 dark:border-gray-700">
+                        <td className="py-3 px-3 font-sans uppercase">TOTAL</td>
+                        {gridModel.newBusinessTotalRow.monthlyActuals.map((val, idx) => (
+                          <td key={idx} className="py-3 px-2 text-right">
+                            {formatAUD(val)}
+                          </td>
+                        ))}
+                        <td className="py-3 px-3 text-right text-amber-600 dark:text-amber-400">
+                          {formatAUD(gridModel.newBusinessTotalRow.balanceYtg)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────────────── */}
+      {/* TAB 2: PURCHASE REQUEST EOM (PIVOT BREAKDOWN)                        */}
+      {/* ───────────────────────────────────────────────────────────────────── */}
+      {activeTab === 'PIVOT_BREAKDOWN' && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="p-4 bg-white dark:bg-[#1c1f2b] rounded-2xl border border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                Purchase Request EOM - {pivotModel.monthLabel}
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Four-panel pivot matrix replicating Purchase Request EOM SEP-26.xls Pivot Tab.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search PR, PO, Business..."
+                  value={pivotSearch}
+                  onChange={(e) => setPivotSearch(e.target.value)}
+                  className="pl-8 pr-4 py-1.5 text-xs rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* PANEL 1: LEFT DETAILED PR LIST (7 cols) */}
+            <div className="lg:col-span-7 bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                  Purchase Requests by Sector (Excl. GST)
+                </span>
+                <span className="text-xs font-mono font-bold text-gray-500">
+                  {filteredPivotPrs.length} record(s)
+                </span>
+              </div>
+
+              <div className="overflow-x-auto max-h-[700px] overflow-y-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10">
+                    <tr className="font-black text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700 text-[11px] uppercase">
+                      <th className="py-2.5 px-3">PR #</th>
+                      <th className="py-2.5 px-3">PO Number</th>
+                      <th className="py-2.5 px-2">Business</th>
+                      <th className="py-2.5 px-2">Reason</th>
+                      <th className="py-2.5 px-3 text-right">Accommodation</th>
+                      <th className="py-2.5 px-3 text-right">Healthcare</th>
+                      <th className="py-2.5 px-3 text-right font-black text-gray-900 dark:text-white">Grand Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono text-[11px]">
+                    {filteredPivotPrs.map((pr, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                        <td className="py-2 px-3 font-sans font-bold text-emerald-600 dark:text-emerald-400">
+                          {pr.prNumber}
+                        </td>
+                        <td className="py-2 px-3 font-bold text-gray-900 dark:text-white">
+                          {pr.poNumber}
+                        </td>
+                        <td className="py-2 px-2 font-sans font-semibold">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${
+                            pr.business === 'HSV' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300' :
+                            pr.business === 'RHC' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' :
+                            pr.business === 'Linen Hub' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
+                            'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
+                          }`}>
+                            {pr.business}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2 font-sans text-gray-500">
+                          {pr.reason}
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          {pr.accommodation > 0 ? formatAUDExact(pr.accommodation) : '-'}
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          {pr.healthcare > 0 ? formatAUDExact(pr.healthcare) : '-'}
+                        </td>
+                        <td className="py-2 px-3 text-right font-bold text-gray-900 dark:text-white">
+                          {formatAUDExact(pr.grandTotal)}
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredPivotPrs.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-gray-400 font-sans text-xs">
+                          No purchase requests match the selected month and query.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  <tfoot className="sticky bottom-0 bg-gray-100 dark:bg-gray-900 font-black border-t-2 border-gray-300 dark:border-gray-700">
+                    <tr className="text-xs text-gray-900 dark:text-white font-mono">
+                      <td colSpan={4} className="py-3 px-3 font-sans uppercase">Grand Total</td>
+                      <td className="py-3 px-3 text-right">{formatAUDExact(pivotModel.prsTotal.accommodation)}</td>
+                      <td className="py-3 px-3 text-right">{formatAUDExact(pivotModel.prsTotal.healthcare)}</td>
+                      <td className="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400 text-sm">
+                        {formatAUDExact(pivotModel.prsTotal.grandTotal)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            {/* RIGHT SIDE PANELS (5 cols) */}
+            <div className="lg:col-span-5 space-y-6">
+              {/* PANEL 2: DEPLETION SUMMARY */}
+              <div className="bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                <div className="p-3.5 border-b border-gray-200 dark:border-gray-800 bg-emerald-500/10 flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-emerald-950 dark:text-emerald-300">
+                    DEPLETION (HSV INCLUDED)
+                  </h4>
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Branch Breakdown</span>
+                </div>
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-gray-900/80 font-black text-gray-500 text-[10px] uppercase border-b border-gray-200 dark:border-gray-800">
+                      <th className="py-2 px-3">Branch</th>
+                      <th className="py-2 px-3 text-right">Accommodation</th>
+                      <th className="py-2 px-3 text-right">Healthcare</th>
+                      <th className="py-2 px-3 text-right font-black">Grand Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono text-[11px]">
+                    {pivotModel.depletionSummary.map(r => (
+                      <tr key={r.branch} className="hover:bg-gray-50/50">
+                        <td className="py-2 px-3 font-sans font-bold text-gray-900 dark:text-white">{r.branch}</td>
+                        <td className="py-2 px-3 text-right">{r.accommodation > 0 ? formatAUDExact(r.accommodation) : '-'}</td>
+                        <td className="py-2 px-3 text-right">{r.healthcare > 0 ? formatAUDExact(r.healthcare) : '-'}</td>
+                        <td className="py-2 px-3 text-right font-bold">{formatAUDExact(r.grandTotal)}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-emerald-50/60 dark:bg-emerald-950/40 font-black text-emerald-950 dark:text-emerald-200 border-t border-emerald-200">
+                      <td className="py-2.5 px-3 font-sans uppercase">Grand Total</td>
+                      <td className="py-2.5 px-3 text-right">{formatAUDExact(pivotModel.depletionTotal.accommodation)}</td>
+                      <td className="py-2.5 px-3 text-right">{formatAUDExact(pivotModel.depletionTotal.healthcare)}</td>
+                      <td className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400">{formatAUDExact(pivotModel.depletionTotal.grandTotal)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* PANEL 3: NEW BUSINESS SUMMARY */}
+              <div className="bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                <div className="p-3.5 border-b border-gray-200 dark:border-gray-800 bg-amber-500/10 flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-amber-950 dark:text-amber-300">
+                    NEW BUSINESS
+                  </h4>
+                  <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400">Branch Breakdown</span>
+                </div>
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-gray-900/80 font-black text-gray-500 text-[10px] uppercase border-b border-gray-200 dark:border-gray-800">
+                      <th className="py-2 px-3">Branch</th>
+                      <th className="py-2 px-3 text-right">Accommodation</th>
+                      <th className="py-2 px-3 text-right">Healthcare</th>
+                      <th className="py-2 px-3 text-right font-black">Grand Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono text-[11px]">
+                    {pivotModel.newBusinessSummary.map(r => (
+                      <tr key={r.branch} className="hover:bg-gray-50/50">
+                        <td className="py-2 px-3 font-sans font-bold text-gray-900 dark:text-white">{r.branch}</td>
+                        <td className="py-2 px-3 text-right">{r.accommodation > 0 ? formatAUDExact(r.accommodation) : '-'}</td>
+                        <td className="py-2 px-3 text-right">{r.healthcare > 0 ? formatAUDExact(r.healthcare) : '-'}</td>
+                        <td className="py-2 px-3 text-right font-bold">{formatAUDExact(r.grandTotal)}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-amber-50/60 dark:bg-amber-950/40 font-black text-amber-950 dark:text-amber-200 border-t border-amber-200">
+                      <td className="py-2.5 px-3 font-sans uppercase">Grand Total</td>
+                      <td className="py-2.5 px-3 text-right">{formatAUDExact(pivotModel.newBusinessTotal.accommodation)}</td>
+                      <td className="py-2.5 px-3 text-right">{formatAUDExact(pivotModel.newBusinessTotal.healthcare)}</td>
+                      <td className="py-2.5 px-3 text-right text-amber-600 dark:text-amber-400">{formatAUDExact(pivotModel.newBusinessTotal.grandTotal)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* PANEL 4: CROSS-TAB MATRIX */}
+              <div className="bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                <div className="p-3.5 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/60 flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                    Cross-Tab Breakdown by Stream &amp; Sector
+                  </h4>
+                </div>
+                <div className="overflow-x-auto max-h-[350px]">
+                  <table className="w-full text-left border-collapse text-[11px]">
+                    <thead>
+                      <tr className="bg-gray-100 dark:bg-gray-800 text-[10px] font-black uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200">
+                        <th className="py-2 px-2.5">Branch</th>
+                        <th className="py-2 px-2">Reason</th>
+                        <th className="py-2 px-2 text-right">BAU Acc</th>
+                        <th className="py-2 px-2 text-right">BAU HC</th>
+                        <th className="py-2 px-2 text-right text-amber-600">Linen Hub</th>
+                        <th className="py-2 px-2 text-right text-purple-600">HSV</th>
+                        <th className="py-2 px-2 text-right">NB Acc</th>
+                        <th className="py-2 px-2 text-right">NB HC</th>
+                        <th className="py-2 px-2.5 text-right font-black">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono text-[10px]">
+                      {pivotModel.crossTabMatrix.map((r, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50/50">
+                          <td className="py-1.5 px-2.5 font-sans font-bold text-gray-900 dark:text-white">{r.branch}</td>
+                          <td className="py-1.5 px-2 font-sans text-gray-500">{r.reason}</td>
+                          <td className="py-1.5 px-2 text-right">{r.bauAccommodation > 0 ? formatAUD(r.bauAccommodation) : '-'}</td>
+                          <td className="py-1.5 px-2 text-right">{r.bauHealthcare > 0 ? formatAUD(r.bauHealthcare) : '-'}</td>
+                          <td className="py-1.5 px-2 text-right text-amber-600 font-semibold">{r.linenHub > 0 ? formatAUD(r.linenHub) : '-'}</td>
+                          <td className="py-1.5 px-2 text-right text-purple-600 font-semibold">{r.hsv > 0 ? formatAUD(r.hsv) : '-'}</td>
+                          <td className="py-1.5 px-2 text-right">{r.newBusinessAccommodation > 0 ? formatAUD(r.newBusinessAccommodation) : '-'}</td>
+                          <td className="py-1.5 px-2 text-right">{r.newBusinessHealthcare > 0 ? formatAUD(r.newBusinessHealthcare) : '-'}</td>
+                          <td className="py-1.5 px-2.5 text-right font-bold">{formatAUD(r.grandTotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-100 dark:bg-gray-900 font-black border-t border-gray-300 font-mono text-[10px]">
+                      <tr>
+                        <td colSpan={2} className="py-2 px-2.5 font-sans uppercase">Grand Total</td>
+                        <td className="py-2 px-2 text-right">{formatAUD(pivotModel.crossTabTotal.bauAccommodation)}</td>
+                        <td className="py-2 px-2 text-right">{formatAUD(pivotModel.crossTabTotal.bauHealthcare)}</td>
+                        <td className="py-2 px-2 text-right text-amber-600">{formatAUD(pivotModel.crossTabTotal.linenHub)}</td>
+                        <td className="py-2 px-2 text-right text-purple-600">{formatAUD(pivotModel.crossTabTotal.hsv)}</td>
+                        <td className="py-2 px-2 text-right">{formatAUD(pivotModel.crossTabTotal.newBusinessAccommodation)}</td>
+                        <td className="py-2 px-2 text-right">{formatAUD(pivotModel.crossTabTotal.newBusinessHealthcare)}</td>
+                        <td className="py-2 px-2.5 text-right text-emerald-600 text-xs">{formatAUD(pivotModel.crossTabTotal.grandTotal)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────────────── */}
+      {/* TAB 3: CONCUR RAW DATA AUDIT & RECONCILIATION                        */}
+      {/* ───────────────────────────────────────────────────────────────────── */}
+      {activeTab === 'CONCUR_RECONCILIATION' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Header Banner */}
+          <div className="p-6 rounded-3xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-transparent border border-indigo-500/20">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-black uppercase tracking-wider text-gray-900 dark:text-white flex items-center gap-2">
+                  <ShieldCheck className="text-indigo-600" size={20} />
+                  <span>Concur Raw Data Audit &amp; Parity Check</span>
+                </h3>
+                <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 max-w-2xl">
+                  Paste rows directly from Concur's month-end export or upload the raw spreadsheet. The reconciliation engine automatically matches every Purchase Order number against ProcureFlow and audits Ex-GST amounts for 100% General Ledger parity.
+                </p>
+              </div>
+
+              {parsedConcurRows.length > 0 && (
+                <div className="flex items-center gap-3">
+                  <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-500/20 flex items-center gap-1.5">
+                    <CheckCircle2 size={14} />
+                    {reconciliationResults.parityPercent}% Match Rate
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* INGESTION SECTION: DRAG & DROP OR PASTE */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Direct Paste Box */}
+            <div className="bg-white dark:bg-[#1c1f2b] p-5 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white flex items-center gap-1.5">
+                  <FileText size={16} className="text-indigo-600" />
+                  <span>Paste Raw Concur Rows (TSV / CSV)</span>
+                </span>
+                <span className="text-[10px] text-gray-400 font-mono">Headers required</span>
+              </div>
+              <textarea
+                rows={5}
+                value={concurPasteInput}
+                onChange={(e) => setConcurPasteInput(e.target.value)}
+                placeholder="Paste Concur Raw Data here (e.g. Purchase Request No.	Employee Name	Description	PO Number	Approval Status	Submit Date	Total...)"
+                className="w-full p-3 text-xs font-mono rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-gray-500">
+                  Matches on PO number and audits Ex-GST totals (/ 1.10).
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleParseConcurText()}
+                  disabled={!concurPasteInput.trim()}
+                  className="px-4 py-2 text-xs font-black uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md transition-all disabled:opacity-50"
+                >
+                  Parse &amp; Reconcile
+                </button>
+              </div>
+            </div>
+
+            {/* File Upload Box */}
+            <div className="bg-white dark:bg-[#1c1f2b] p-5 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white flex items-center gap-1.5 mb-2">
+                  <UploadCloud size={16} className="text-emerald-600" />
+                  <span>Upload Concur Export (.xlsx / .xls / .csv)</span>
+                </span>
+                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                  Directly upload the Concur report file (such as `Purchase Request EOM SEP-26.xls`). The spreadsheet's 'Raw Data' sheet will be parsed automatically.
+                </p>
+              </div>
+
+              <div className="mt-4 p-6 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-indigo-500 transition-colors text-center cursor-pointer relative bg-gray-50/50 dark:bg-gray-800/30">
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleFileUpload}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+                <UploadCloud size={28} className="mx-auto text-gray-400 mb-2" />
+                <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                  Click to browse or drop Concur file here
+                </span>
+                <p className="text-[10px] text-gray-400 mt-1">Supports Excel .xls/.xlsx and CSV</p>
+              </div>
+            </div>
+          </div>
+
+          {/* RECONCILIATION SUMMARY DASHBOARD */}
+          {parsedConcurRows.length > 0 && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
+                  <span className="text-[10px] font-black uppercase text-gray-400">Total Concur Spend (Ex-GST)</span>
+                  <div className="text-xl font-black text-gray-900 dark:text-white mt-1">
+                    {formatAUDExact(reconciliationResults.concurTotalEx)}
+                  </div>
+                  <span className="text-[11px] text-gray-500 mt-1 block">{parsedConcurRows.length} Concur records</span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
+                  <span className="text-[10px] font-black uppercase text-gray-400">Matched ProcureFlow Spend</span>
+                  <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+                    {formatAUDExact(reconciliationResults.pfTotalEx)}
+                  </div>
+                  <span className="text-[11px] text-emerald-600 mt-1 block">{reconciliationResults.matchCount} matched items</span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
+                  <span className="text-[10px] font-black uppercase text-gray-400">Net Variance (Δ)</span>
+                  <div className={`text-xl font-black mt-1 ${Math.abs(reconciliationResults.netVariance) < 1 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {formatAUDExact(reconciliationResults.netVariance)}
+                  </div>
+                  <span className="text-[11px] text-gray-500 mt-1 block">
+                    {Math.abs(reconciliationResults.netVariance) < 1 ? 'Perfect alignment' : 'Variance requires investigation'}
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
+                  <span className="text-[10px] font-black uppercase text-gray-400">Discrepancy Breakdown</span>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="px-2 py-0.5 rounded text-xs font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                      {reconciliationResults.mismatchCount} Diff
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-xs font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      {reconciliationResults.missingInPfCount} Missing in PF
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-xs font-black bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                      {reconciliationResults.missingInConcurCount} Missing in Concur
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* RECONCILIATION DRILLDOWN TABLE */}
+              <div className="bg-white dark:bg-[#1c1f2b] rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                      Side-by-Side Reconciliation Audit Log
+                    </h4>
+                    <span className="text-xs font-mono font-bold text-gray-500">
+                      ({filteredReconciliationItems.length} items)
+                    </span>
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div className="flex items-center gap-1.5 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setReconciliationFilter('ALL')}
+                      className={`px-3 py-1 rounded-xl transition-all ${
+                        reconciliationFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
+                      }`}
+                    >
+                      All ({reconciliationResults.items.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReconciliationFilter('MISMATCH')}
+                      className={`px-3 py-1 rounded-xl transition-all ${
+                        reconciliationFilter === 'MISMATCH' ? 'bg-rose-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
+                      }`}
+                    >
+                      Mismatches ({reconciliationResults.mismatchCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReconciliationFilter('MISSING_PF')}
+                      className={`px-3 py-1 rounded-xl transition-all ${
+                        reconciliationFilter === 'MISSING_PF' ? 'bg-amber-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
+                      }`}
+                    >
+                      Missing in PF ({reconciliationResults.missingInPfCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReconciliationFilter('MISSING_CONCUR')}
+                      className={`px-3 py-1 rounded-xl transition-all ${
+                        reconciliationFilter === 'MISSING_CONCUR' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
+                      }`}
+                    >
+                      Missing in Concur ({reconciliationResults.missingInConcurCount})
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto max-h-[600px]">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10 text-[11px] font-black uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200">
+                      <tr>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3">PO Number</th>
+                        <th className="py-2.5 px-3">PR #</th>
+                        <th className="py-2.5 px-4 text-right">Concur (Ex-GST)</th>
+                        <th className="py-2.5 px-4 text-right">ProcureFlow (Ex-GST)</th>
+                        <th className="py-2.5 px-4 text-right">Variance (Δ)</th>
+                        <th className="py-2.5 px-4">Entity / Branch</th>
+                        <th className="py-2.5 px-4">Description</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono text-[11px]">
+                      {filteredReconciliationItems.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                          <td className="py-2 px-3 font-sans">
+                            {item.status === 'MATCHED' && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                Matched
+                              </span>
+                            )}
+                            {item.status === 'AMOUNT_MISMATCH' && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                Mismatch
+                              </span>
+                            )}
+                            {item.status === 'MISSING_IN_PROCUREFLOW' && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                                Missing in PF
+                              </span>
+                            )}
+                            {item.status === 'MISSING_IN_CONCUR' && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                                Missing in Concur
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 font-bold text-gray-900 dark:text-white">
+                            {item.poNumber}
+                          </td>
+                          <td className="py-2 px-3 text-gray-500 font-sans">
+                            {item.prNumber || '-'}
+                          </td>
+                          <td className="py-2 px-4 text-right">
+                            {item.concurExGst > 0 ? formatAUDExact(item.concurExGst) : '-'}
+                          </td>
+                          <td className="py-2 px-4 text-right">
+                            {item.procureFlowExGst > 0 ? formatAUDExact(item.procureFlowExGst) : '-'}
+                          </td>
+                          <td className={`py-2 px-4 text-right font-bold ${
+                            item.variance === 0 ? 'text-gray-400' :
+                            item.variance > 0 ? 'text-rose-600' : 'text-blue-600'
+                          }`}>
+                            {item.variance === 0 ? '$0.00' : formatAUDExact(item.variance)}
+                          </td>
+                          <td className="py-2 px-4 font-sans text-gray-600 dark:text-gray-300">
+                            {item.branch || '-'}
+                          </td>
+                          <td className="py-2 px-4 font-sans text-gray-500 dark:text-gray-400 truncate max-w-[200px]" title={item.description}>
+                            {item.description || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

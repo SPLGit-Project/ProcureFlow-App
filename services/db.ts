@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient.ts';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds, SupplierContact, EmailIngestionQueueItem } from '../types.ts';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds, SupplierContact, EmailIngestionQueueItem, LinenBudgetRecord, EomMonthlyOverride } from '../types.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { normalizeSupplierContacts } from '../utils/suppliers.ts';
@@ -2178,5 +2178,130 @@ export const db = {
             details: l.details,
             createdAt: l.created_at
         }));
+    },
+
+    getLinenBudgets: async (financialYear?: string): Promise<LinenBudgetRecord[]> => {
+        let query = supabase.from('linen_budgets').select('*').order('sort_order');
+        if (financialYear) {
+            query = query.eq('financial_year', financialYear);
+        }
+        const { data, error } = await query;
+        if (error) {
+            console.error('Error fetching linen_budgets:', error);
+            return [];
+        }
+        return (data || []).map((row: any) => ({
+            id: row.id,
+            financialYear: row.financial_year,
+            isCurrent: !!row.is_current,
+            siteCode: row.site_code,
+            siteName: row.site_name,
+            annualDepletion: Number(row.annual_depletion || 0),
+            monthlyDepletion: Number(row.monthly_depletion || 0),
+            annualNewBusiness: Number(row.annual_new_business || 0),
+            monthlyNewBusiness: Number(row.monthly_new_business || 0),
+            customMonthlyBudgets: row.custom_monthly_budgets,
+            sortOrder: Number(row.sort_order || 0),
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            updatedBy: row.updated_by
+        }));
+    },
+
+    saveLinenBudget: async (records: LinenBudgetRecord[]): Promise<void> => {
+        if (!records.length) return;
+        const rows = records.map(r => ({
+            financial_year: r.financialYear,
+            is_current: r.isCurrent,
+            site_code: r.siteCode,
+            site_name: r.siteName,
+            annual_depletion: r.annualDepletion,
+            monthly_depletion: r.monthlyDepletion,
+            annual_new_business: r.annualNewBusiness,
+            monthly_new_business: r.monthlyNewBusiness,
+            custom_monthly_budgets: r.customMonthlyBudgets || null,
+            sort_order: r.sortOrder,
+            updated_at: new Date().toISOString()
+        }));
+        const { error } = await supabase.from('linen_budgets').upsert(rows, {
+            onConflict: 'financial_year,site_code'
+        });
+        if (error) throw error;
+    },
+
+    setCurrentFinancialYear: async (financialYear: string): Promise<void> => {
+        const { error: err1 } = await supabase.from('linen_budgets').update({ is_current: false }).neq('id', '00000000-0000-0000-0000-000000000000');
+        if (err1) throw err1;
+        const { error: err2 } = await supabase.from('linen_budgets').update({ is_current: true }).eq('financial_year', financialYear);
+        if (err2) throw err2;
+    },
+
+    createFinancialYearBudget: async (newYear: string, cloneFromYear?: string): Promise<void> => {
+        let sourceRecords: LinenBudgetRecord[] = [];
+        if (cloneFromYear) {
+            sourceRecords = await db.getLinenBudgets(cloneFromYear);
+        }
+        if (!sourceRecords.length) {
+            const defaultTemplate = [
+                { siteCode: 'MEL', siteName: 'Melbourne', annualDepletion: 0, monthlyDepletion: 0, annualNewBusiness: 0, monthlyNewBusiness: 0, sortOrder: 1 },
+                { siteCode: 'SYD', siteName: 'Sydney', annualDepletion: 0, monthlyDepletion: 0, annualNewBusiness: 0, monthlyNewBusiness: 0, sortOrder: 2 },
+                { siteCode: 'ADL', siteName: 'Adelaide', annualDepletion: 0, monthlyDepletion: 0, annualNewBusiness: 0, monthlyNewBusiness: 0, sortOrder: 3 },
+                { siteCode: 'BNE', siteName: 'Brisbane', annualDepletion: 0, monthlyDepletion: 0, annualNewBusiness: 0, monthlyNewBusiness: 0, sortOrder: 4 },
+                { siteCode: 'CNS', siteName: 'Cairns', annualDepletion: 0, monthlyDepletion: 0, annualNewBusiness: 0, monthlyNewBusiness: 0, sortOrder: 5 },
+                { siteCode: 'MKY', siteName: 'Mackay', annualDepletion: 0, monthlyDepletion: 0, annualNewBusiness: 0, monthlyNewBusiness: 0, sortOrder: 6 },
+                { siteCode: 'PER', siteName: 'Perth', annualDepletion: 0, monthlyDepletion: 0, annualNewBusiness: 0, monthlyNewBusiness: 0, sortOrder: 7 },
+                { siteCode: 'ALB', siteName: 'Albury', annualDepletion: 0, monthlyDepletion: 0, annualNewBusiness: 0, monthlyNewBusiness: 0, sortOrder: 8 },
+                { siteCode: 'LINEN_HUB', siteName: 'LINEN HUB', annualDepletion: 0, monthlyDepletion: 0, annualNewBusiness: 0, monthlyNewBusiness: 0, sortOrder: 9 },
+            ];
+            sourceRecords = defaultTemplate.map(t => ({
+                ...t,
+                financialYear: newYear,
+                isCurrent: false
+            }));
+        } else {
+            sourceRecords = sourceRecords.map(r => ({
+                ...r,
+                financialYear: newYear,
+                isCurrent: false
+            }));
+        }
+        await db.saveLinenBudget(sourceRecords);
+    },
+
+    getEomMonthlyOverrides: async (financialYear: string): Promise<EomMonthlyOverride[]> => {
+        const { data, error } = await supabase
+            .from('eom_monthly_actuals')
+            .select('*')
+            .eq('financial_year', financialYear);
+        if (error) {
+            console.error('Error fetching eom_monthly_actuals:', error);
+            return [];
+        }
+        return (data || []).map((row: any) => ({
+            id: row.id,
+            financialYear: row.financial_year,
+            monthIndex: Number(row.month_index),
+            siteCode: row.site_code,
+            spendType: row.spend_type,
+            overrideAmount: Number(row.override_amount || 0),
+            adjustmentNotes: row.adjustment_notes || '',
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
+        }));
+    },
+
+    upsertEomMonthlyOverride: async (override: EomMonthlyOverride): Promise<void> => {
+        const { error } = await supabase.from('eom_monthly_actuals').upsert({
+            financial_year: override.financialYear,
+            month_index: override.monthIndex,
+            site_code: override.siteCode,
+            spend_type: override.spendType,
+            override_amount: override.overrideAmount,
+            adjustment_notes: override.adjustmentNotes || null,
+            updated_at: new Date().toISOString()
+        }, {
+            onConflict: 'financial_year,month_index,site_code,spend_type'
+        });
+        if (error) throw error;
     }
 };

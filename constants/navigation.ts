@@ -56,6 +56,8 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
 
     // ── Reports & Analytics ──
     { id: 'reports', path: '/reports', label: 'Reports', iconName: 'BarChart3', permission: 'view_reports', category: 'Reports & Analytics' },
+    { id: 'reports-eom', path: '/reports/eom', label: 'End of Month (EOM)', iconName: 'FileSpreadsheet', permission: 'view_reports', category: 'Reports & Analytics' },
+    { id: 'reports-linen-budget', path: '/reports/linen-budget', label: 'Linen Budget', iconName: 'DollarSign', permission: 'view_reports', category: 'Reports & Analytics' },
 
     // ── Admin ──
     { id: 'approval-rules', path: '/admin/approval-rules', label: 'Approval Rules', iconName: 'ShieldCheck', permission: 'manage_settings', category: 'Admin' },

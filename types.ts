@@ -448,6 +448,63 @@ export interface EomReconciliationResult {
   rawProcessedRows: Record<string, any>[];
 }
 
+export interface LinenBudgetRecord {
+  id?: string;
+  financialYear: string;
+  isCurrent: boolean;
+  siteCode: string;
+  siteName: string;
+  annualDepletion: number;
+  monthlyDepletion: number;
+  annualNewBusiness: number;
+  monthlyNewBusiness: number;
+  customMonthlyBudgets?: number[] | null;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface LinenBudgetSummary {
+  financialYear: string;
+  isCurrent: boolean;
+  records: LinenBudgetRecord[];
+  totalDepletion: number;
+  totalNewBusiness: number;
+  totalSites: number;
+  linenHub: number;
+  grandTotal: number;
+}
+
+export interface EomMonthlyOverride {
+  id?: string;
+  financialYear: string;
+  monthIndex: number; // 1 = Jul, 2 = Aug, ..., 12 = Jun
+  siteCode: string; // 'MEL_ALB', 'SYD', 'ADL', 'BNE', 'CNS', 'MKY', 'PER', 'HOL'
+  spendType: 'DEPLETION' | 'NEW_BUSINESS';
+  overrideAmount: number;
+  adjustmentNotes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EomMonthlyGridSiteRow {
+  siteCode: string;
+  siteName: string;
+  monthlyActuals: (number | null)[]; // 12 elements (Jul to Jun)
+  monthlyBudgets: number[]; // 12 elements
+  balanceYtg: number;
+  spendYtdPercent: number;
+}
+
+export interface EomMonthDefinition {
+  monthIndex: number; // 1 to 12
+  label: string; // 'Jul-26', 'Aug-26', etc.
+  shortMonth: string; // 'Jul', 'Aug', etc.
+  calendarMonth: number; // 7, 8, ..., 12, 1, ..., 6
+  calendarYear: number; // 2026 or 2027
+}
+
 export type POStatus = 
   | 'DRAFT' 
   | 'PENDING_APPROVAL' 

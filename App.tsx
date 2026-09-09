@@ -87,6 +87,8 @@ const ProcurementReviewWizard = lazy(() => import('./components/wizards/Procurem
 const ProcurementQueue = lazy(() => import('./components/ProcurementQueue.tsx'));
 const NotificationCenter = lazy(() => import('./components/NotificationCenter.tsx'));
 const WorkflowNotificationHub = lazy(() => import('./components/WorkflowNotificationHub.tsx'));
+const EOMTrackingView = lazy(() => import('./components/reports/EOMTrackingView.tsx'));
+const LinenBudgetView = lazy(() => import('./components/reports/LinenBudgetView.tsx'));
 
 const LoadingSpinner = () => (
     <div className="h-full w-full flex items-center justify-center p-20">
@@ -142,6 +144,8 @@ function App() {
               <Route path="finance" element={<Suspense fallback={<LoadingSpinner />}><FinanceView /></Suspense>} />
               <Route path="settings" element={<Suspense fallback={<LoadingSpinner />}><Settings /></Suspense>} />
               <Route path="reports" element={<Suspense fallback={<LoadingSpinner />}><ReportingView /></Suspense>} />
+              <Route path="reports/eom" element={<Suspense fallback={<LoadingSpinner />}><EOMTrackingView /></Suspense>} />
+              <Route path="reports/linen-budget" element={<Suspense fallback={<LoadingSpinner />}><LinenBudgetView /></Suspense>} />
               <Route path="history" element={<Suspense fallback={<LoadingSpinner />}><HistoryView /></Suspense>} />
               <Route path="help"  element={<Suspense fallback={<LoadingSpinner />}><HelpGuide /></Suspense>} />
               <Route path="notifications" element={<Suspense fallback={<LoadingSpinner />}><NotificationCenter /></Suspense>} />
