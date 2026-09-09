@@ -363,6 +363,7 @@ export default function Home() {
 
   // Selected stage filter ('ALL' | 1 | 2 | 3 | 4 | 5 | 6)
   const [selectedStage, setSelectedStage] = useState<number | 'ALL'>('ALL');
+  const [activeExceptionFilter, setActiveExceptionFilter] = useState<'MISSING_CONCUR' | 'READY_TO_CLOSE' | 'OVERDUE' | null>(null);
   const [activeInfoStage, setActiveInfoStage] = useState<number | null>(null);
   const [actionSearch, setActionSearch] = useState('');
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'SPEND_DESC' | 'SPEND_ASC' | 'SUPPLIER_ASC'>('NEWEST');
@@ -506,6 +507,25 @@ export default function Home() {
   const visiblePOs = useMemo(() => {
     const list = siteFilteredPOs
       .filter(p => {
+        // Exception filter takes highest precedence if active
+        if (activeExceptionFilter === 'OVERDUE') {
+          return (p.status === 'ACTIVE' || p.status === 'RECEIVED' || p.status === 'VARIANCE_PENDING') &&
+            p.lines.some(l => {
+              if (!l.needByDate || (l.quantityReceived || 0) >= l.quantityOrdered) return false;
+              const diffDays = (Date.now() - new Date(l.needByDate).getTime()) / (1000 * 60 * 60 * 24);
+              return diffDays > 14;
+            });
+        }
+        if (activeExceptionFilter === 'READY_TO_CLOSE') {
+          return (p.status === 'RECEIVED' || p.status === 'VARIANCE_PENDING' || p.status === 'ACTIVE') &&
+            p.lines.length > 0 &&
+            p.lines.every(l => (l.quantityReceived || 0) >= l.quantityOrdered);
+        }
+        if (activeExceptionFilter === 'MISSING_CONCUR') {
+          return p.status === 'APPROVED_PENDING_CONCUR_REQUEST' ||
+            (p.status === 'APPROVED_PENDING_CONCUR' && !p.concurRequestNumber);
+        }
+
         // Stage filter
         if (selectedStage !== 'ALL') {
           if (selectedStage === 1) return p.status === 'PENDING_APPROVAL' || p.status === 'DRAFT';
@@ -563,7 +583,7 @@ export default function Home() {
           return dateB - dateA;
       }
     });
-  }, [siteFilteredPOs, selectedStage, selectedSupplier, actionSearch, sortBy]);
+  }, [siteFilteredPOs, activeExceptionFilter, selectedStage, selectedSupplier, actionSearch, sortBy]);
 
   // ── Multi-Site Grouping ─────────────────────────────────────────────────────
   const groupedBySite = useMemo(() => {
@@ -738,8 +758,20 @@ export default function Home() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {/* 1. Missing Concur PR ID */}
                 <div 
-                  onClick={() => setSelectedStage(2)}
-                  className="bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border border-amber-200/60 dark:border-amber-800/30 cursor-pointer transition-all flex items-center justify-between group"
+                  onClick={() => {
+                    if (activeExceptionFilter === 'MISSING_CONCUR') {
+                      setActiveExceptionFilter(null);
+                      setSelectedStage('ALL');
+                    } else {
+                      setActiveExceptionFilter('MISSING_CONCUR');
+                      setSelectedStage(2);
+                    }
+                  }}
+                  className={`bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group ${
+                    activeExceptionFilter === 'MISSING_CONCUR'
+                      ? 'border-sky-500 ring-2 ring-sky-500/30'
+                      : 'border-amber-200/60 dark:border-amber-800/30'
+                  }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold shrink-0">
@@ -757,8 +789,20 @@ export default function Home() {
 
                 {/* 2. 100% Received Ready to Close */}
                 <div 
-                  onClick={() => setSelectedStage(5)}
-                  className="bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border border-amber-200/60 dark:border-amber-800/30 cursor-pointer transition-all flex items-center justify-between group"
+                  onClick={() => {
+                    if (activeExceptionFilter === 'READY_TO_CLOSE') {
+                      setActiveExceptionFilter(null);
+                      setSelectedStage('ALL');
+                    } else {
+                      setActiveExceptionFilter('READY_TO_CLOSE');
+                      setSelectedStage('ALL');
+                    }
+                  }}
+                  className={`bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group ${
+                    activeExceptionFilter === 'READY_TO_CLOSE'
+                      ? 'border-emerald-500 ring-2 ring-emerald-500/30'
+                      : 'border-amber-200/60 dark:border-amber-800/30'
+                  }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0">
@@ -776,8 +820,20 @@ export default function Home() {
 
                 {/* 3. Overdue Deliveries > 14 Days */}
                 <div 
-                  onClick={() => setSelectedStage(4)}
-                  className="bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border border-amber-200/60 dark:border-amber-800/30 cursor-pointer transition-all flex items-center justify-between group"
+                  onClick={() => {
+                    if (activeExceptionFilter === 'OVERDUE') {
+                      setActiveExceptionFilter(null);
+                      setSelectedStage('ALL');
+                    } else {
+                      setActiveExceptionFilter('OVERDUE');
+                      setSelectedStage('ALL');
+                    }
+                  }}
+                  className={`bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group ${
+                    activeExceptionFilter === 'OVERDUE'
+                      ? 'border-rose-500 ring-2 ring-rose-500/40 bg-rose-50/40 dark:bg-rose-950/20'
+                      : 'border-amber-200/60 dark:border-amber-800/30'
+                  }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold shrink-0">
@@ -808,9 +864,12 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedStage('ALL')}
-                  className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all ${
-                    selectedStage === 'ALL'
+                  onClick={() => {
+                    setSelectedStage('ALL');
+                    setActiveExceptionFilter(null);
+                  }}
+                  className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    selectedStage === 'ALL' && !activeExceptionFilter
                       ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
                       : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
                   }`}
@@ -825,13 +884,16 @@ export default function Home() {
               {LIFECYCLE_STAGES.map((stage) => {
                 const IconComp = stage.icon;
                 const count = stageCounts[stage.num] || 0;
-                const isSelected = selectedStage === stage.num;
+                const isSelected = selectedStage === stage.num && !activeExceptionFilter;
                 const isInfoActive = activeInfoStage === stage.num;
 
                 return (
                   <div
                     key={stage.num}
-                    onClick={() => setSelectedStage(stage.num)}
+                    onClick={() => {
+                      setSelectedStage(stage.num);
+                      setActiveExceptionFilter(null);
+                    }}
                     className={`relative p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col items-center text-center justify-between gap-3 group ${
                       isSelected
                         ? `${stage.bgLightClass} ${stage.activeRing}`
@@ -891,20 +953,40 @@ export default function Home() {
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-[var(--color-brand)] animate-pulse" />
+                  <span className={`w-2 h-2 rounded-full ${
+                    activeExceptionFilter === 'OVERDUE'
+                      ? 'bg-rose-500'
+                      : activeExceptionFilter === 'READY_TO_CLOSE'
+                        ? 'bg-emerald-500'
+                        : activeExceptionFilter === 'MISSING_CONCUR'
+                          ? 'bg-sky-500'
+                          : 'bg-[var(--color-brand)]'
+                  } animate-pulse`} />
                   <h3 className="text-sm font-black text-gray-950 dark:text-white uppercase tracking-wider">
-                    {selectedStage === 'ALL'
-                      ? 'All Open Requests'
-                      : LIFECYCLE_STAGES[selectedStage - 1].stageTitle}
+                    {activeExceptionFilter === 'OVERDUE'
+                      ? 'Overdue Deliveries (>14d Past Need-By)'
+                      : activeExceptionFilter === 'READY_TO_CLOSE'
+                        ? 'Orders Ready for Closure (100% Received)'
+                        : activeExceptionFilter === 'MISSING_CONCUR'
+                          ? 'Approved Orders Missing Concur PR #'
+                          : selectedStage === 'ALL'
+                            ? 'All Open Requests'
+                            : LIFECYCLE_STAGES[selectedStage - 1].stageTitle}
                     <span className="ml-2 text-xs font-bold text-gray-500 lowercase">
                       ({visiblePOs.length} order{visiblePOs.length === 1 ? '' : 's'})
                     </span>
                   </h3>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {selectedStage === 'ALL'
-                    ? 'Showing active requests across all lifecycle stages.'
-                    : LIFECYCLE_STAGES[selectedStage - 1].descriptor}
+                  {activeExceptionFilter === 'OVERDUE'
+                    ? 'Showing purchase orders with unreceived line items exceeding the 14-day need-by SLA.'
+                    : activeExceptionFilter === 'READY_TO_CLOSE'
+                      ? 'Showing orders where 100% of physical delivery quantities have arrived on-site.'
+                      : activeExceptionFilter === 'MISSING_CONCUR'
+                        ? 'Showing financially approved orders awaiting requisition entry into SAP Concur.'
+                        : selectedStage === 'ALL'
+                          ? 'Showing active requests across all lifecycle stages.'
+                          : LIFECYCLE_STAGES[selectedStage - 1].descriptor}
                 </p>
               </div>
 
@@ -983,6 +1065,32 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Active Exception Filter Banner */}
+            {activeExceptionFilter && (
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs font-semibold mb-4 text-amber-900 dark:text-amber-200 animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>
+                    Filtered by exception: <strong>{
+                      activeExceptionFilter === 'OVERDUE'
+                        ? 'Overdue Deliveries (>14d past need-by date)'
+                        : activeExceptionFilter === 'READY_TO_CLOSE'
+                          ? 'Ready for Order Closure (100% Goods Received)'
+                          : 'Approved Orders Missing Concur PR #'
+                    }</strong>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveExceptionFilter(null)}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-100 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <X size={13} />
+                  <span>Clear Filter</span>
+                </button>
+              </div>
+            )}
+
             {/* ── Multi-Site Grouped Accordions or Direct Grid ─────────────────── */}
             {visiblePOs.length > 0 ? (
               groupedBySite.length > 1 ? (
@@ -1033,6 +1141,14 @@ export default function Home() {
                               const StageIcon = stageInfo.stageConfig.icon;
                               const totalItems = po.lines.reduce((sum, l) => sum + (l.quantityOrdered || 0), 0);
                               const receivedItems = po.lines.reduce((sum, l) => sum + (l.quantityReceived || 0), 0);
+                              const isCardOverdue = (po.status === 'ACTIVE' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') &&
+                                po.lines.some(l => {
+                                  if (!l.needByDate || (l.quantityReceived || 0) >= l.quantityOrdered) return false;
+                                  const diffDays = (Date.now() - new Date(l.needByDate).getTime()) / (1000 * 60 * 60 * 24);
+                                  return diffDays > 14;
+                                });
+                              const unfulfilledWithNeedBy = po.lines.find(l => (l.quantityReceived || 0) < l.quantityOrdered && l.needByDate);
+                              const cardNeedByDate = unfulfilledWithNeedBy?.needByDate || po.lines.find(l => l.needByDate)?.needByDate;
 
                               return (
                                 <div
@@ -1051,13 +1167,24 @@ export default function Home() {
                                         </span>
                                       </div>
 
-                                      <div className="flex items-center gap-1.5 text-xs">
+                                      <div className="flex items-center gap-1.5 text-xs flex-wrap justify-end">
+                                        {isCardOverdue && (
+                                          <span className="px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse">
+                                            <Clock size={11} /> Overdue (&gt;14d)
+                                          </span>
+                                        )}
                                         <span className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 font-semibold text-gray-700 dark:text-gray-300">
                                           {po.site || 'Site'}
                                         </span>
-                                        <span className="text-gray-400 font-medium">
-                                          {new Date(po.requestDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
-                                        </span>
+                                        {cardNeedByDate ? (
+                                          <span className="text-gray-500 dark:text-gray-400 font-medium text-[11px]" title={`Need-by delivery date: ${cardNeedByDate}`}>
+                                            Due: {new Date(cardNeedByDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
+                                          </span>
+                                        ) : (
+                                          <span className="text-gray-400 font-medium text-[11px]">
+                                            {new Date(po.requestDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
 
@@ -1175,6 +1302,14 @@ export default function Home() {
                     const StageIcon = stageInfo.stageConfig.icon;
                     const totalItems = po.lines.reduce((sum, l) => sum + (l.quantityOrdered || 0), 0);
                     const receivedItems = po.lines.reduce((sum, l) => sum + (l.quantityReceived || 0), 0);
+                    const isCardOverdue = (po.status === 'ACTIVE' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') &&
+                      po.lines.some(l => {
+                        if (!l.needByDate || (l.quantityReceived || 0) >= l.quantityOrdered) return false;
+                        const diffDays = (Date.now() - new Date(l.needByDate).getTime()) / (1000 * 60 * 60 * 24);
+                        return diffDays > 14;
+                      });
+                    const unfulfilledWithNeedBy = po.lines.find(l => (l.quantityReceived || 0) < l.quantityOrdered && l.needByDate);
+                    const cardNeedByDate = unfulfilledWithNeedBy?.needByDate || po.lines.find(l => l.needByDate)?.needByDate;
 
                     return (
                       <div
@@ -1194,13 +1329,24 @@ export default function Home() {
                               </span>
                             </div>
 
-                            <div className="flex items-center gap-1.5 text-xs">
+                            <div className="flex items-center gap-1.5 text-xs flex-wrap justify-end">
+                              {isCardOverdue && (
+                                <span className="px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse">
+                                  <Clock size={11} /> Overdue (&gt;14d)
+                                </span>
+                              )}
                               <span className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 font-semibold text-gray-700 dark:text-gray-300">
                                 {po.site || 'Site'}
                               </span>
-                              <span className="text-gray-400 font-medium">
-                                {new Date(po.requestDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
-                              </span>
+                              {cardNeedByDate ? (
+                                <span className="text-gray-500 dark:text-gray-400 font-medium text-[11px]" title={`Need-by delivery date: ${cardNeedByDate}`}>
+                                  Due: {new Date(cardNeedByDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 font-medium text-[11px]">
+                                  {new Date(po.requestDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -1316,18 +1462,25 @@ export default function Home() {
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-sm">
                   {actionSearch || selectedSupplier !== 'ALL'
                     ? 'No requests matched your active filters or search criteria.'
-                    : selectedStage === 'ALL'
-                      ? 'No open purchase requests require action.'
-                      : `No requests are currently in ${LIFECYCLE_STAGES[selectedStage - 1].stageTitle}.`}
+                    : activeExceptionFilter === 'OVERDUE'
+                      ? 'All clear! No open purchase orders are currently overdue past their 14-day need-by SLA.'
+                      : activeExceptionFilter === 'READY_TO_CLOSE'
+                        ? 'No orders are currently 100% physically received and awaiting order closure.'
+                        : activeExceptionFilter === 'MISSING_CONCUR'
+                          ? 'No approved orders are currently missing SAP Concur Request numbers.'
+                          : selectedStage === 'ALL'
+                            ? 'No open purchase requests require action.'
+                            : `No requests are currently in ${LIFECYCLE_STAGES[selectedStage - 1].stageTitle}.`}
                 </p>
-                {(actionSearch || selectedSupplier !== 'ALL') && (
+                {(actionSearch || selectedSupplier !== 'ALL' || activeExceptionFilter !== null) && (
                   <button
                     type="button"
                     onClick={() => {
                       setActionSearch('');
                       setSelectedSupplier('ALL');
+                      setActiveExceptionFilter(null);
                     }}
-                    className="mt-3 text-xs font-bold text-[var(--color-brand)] hover:underline"
+                    className="mt-3 text-xs font-bold text-[var(--color-brand)] hover:underline cursor-pointer"
                   >
                     Clear All Filters
                   </button>
