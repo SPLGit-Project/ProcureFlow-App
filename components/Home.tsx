@@ -345,6 +345,34 @@ export function getPOStageInfo(po: PORequest, currentUser: any, hasPermission: (
   };
 }
 
+export function getPOStageNumber(status: POStatus): number {
+  switch (status) {
+    case 'DRAFT':
+    case 'PENDING_APPROVAL':
+    case 'REJECTED':
+      return 1;
+    case 'APPROVED_PENDING_CONCUR_REQUEST':
+      return 2;
+    case 'APPROVED_PENDING_CONCUR':
+      return 3;
+    case 'ACTIVE':
+      return 4;
+    case 'RECEIVED':
+    case 'VARIANCE_PENDING':
+      return 5;
+    case 'CLOSED':
+      return 6;
+    default:
+      return 1;
+  }
+}
+
+export function getLifecycleStageByStatus(status?: POStatus | null): LifecycleStageConfig | null {
+  if (!status) return null;
+  const num = getPOStageNumber(status);
+  return LIFECYCLE_STAGES[num - 1] || null;
+}
+
 export default function Home() {
   const {
     currentUser,

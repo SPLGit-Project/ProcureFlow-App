@@ -35,6 +35,7 @@ import {
   LinenBudgetRecord, 
   EomMonthlyOverride, 
   PORequest,
+  POStatus,
   EmailIngestionQueueItem
 } from '../../types.ts';
 import { 
@@ -50,6 +51,10 @@ import {
   TOTAL_DEPLETION_BUDGET,
   isClassicLinenRecord
 } from '../../utils/budgetTracking.ts';
+import { 
+  LifecycleStageConfig, 
+  getLifecycleStageByStatus 
+} from '../Home.tsx';
 
 type ActiveTab = 'TRACKING_GRID' | 'PIVOT_BREAKDOWN' | 'CONCUR_RECONCILIATION';
 
@@ -78,6 +83,8 @@ interface ReconciliationItem {
   branch?: string;
   vendor?: string;
   isClassicLinen?: boolean;
+  procureFlowStage?: LifecycleStageConfig | null;
+  procureFlowStatus?: POStatus | null;
 }
 
 export default function EOMTrackingView() {
@@ -603,8 +610,11 @@ export default function EOMTrackingView() {
     );
 
     // 2. Filter ProcureFlow POs across the enterprise (effectiveAllPos) for this reconciliation
+    // Strictly include approved requests only (Stage 2: at PR# stage and beyond).
+    // Requisitions before Stage 2 (DRAFT, PENDING_APPROVAL, REJECTED) are not yet approved
+    // and therefore cannot be missing in Concur or counted in reconciliation.
     const monthPos = effectiveAllPos.filter(p => {
-      if (p.status === 'REJECTED' || p.status === 'DRAFT') return false;
+      if (p.status === 'REJECTED' || p.status === 'DRAFT' || p.status === 'PENDING_APPROVAL') return false;
 
       // Match A: PO directly linked to this month's Concur PO# or PR#
       const pConcurPo = (p.concurPoNumber || '').toUpperCase().trim();
@@ -733,6 +743,7 @@ export default function EOMTrackingView() {
         const pfEx = matchedPO.subtotalAmount || matchedPO.totalAmount || calculateExGst(matchedPO.totalAmountIncGst || 0);
         pfTotalEx += pfEx;
         const diff = Number((c.totalExGst - pfEx).toFixed(2));
+        const pfStage = getLifecycleStageByStatus(matchedPO.status);
 
         if (Math.abs(diff) <= 0.05) {
           matchCount++;
@@ -746,7 +757,9 @@ export default function EOMTrackingView() {
             description: c.description || matchedPO.comments,
             branch: displayBranch,
             vendor: c.vendorName || matchedPO.supplierName,
-            isClassicLinen: isResolvedCL
+            isClassicLinen: isResolvedCL,
+            procureFlowStage: pfStage,
+            procureFlowStatus: matchedPO.status
           });
         } else {
           mismatchCount++;
@@ -760,7 +773,9 @@ export default function EOMTrackingView() {
             description: c.description || matchedPO.comments,
             branch: displayBranch,
             vendor: c.vendorName || matchedPO.supplierName,
-            isClassicLinen: isResolvedCL
+            isClassicLinen: isResolvedCL,
+            procureFlowStage: pfStage,
+            procureFlowStatus: matchedPO.status
           });
         }
       } else {
@@ -775,7 +790,9 @@ export default function EOMTrackingView() {
           description: c.description,
           branch: displayBranch,
           vendor: c.vendorName,
-          isClassicLinen: isResolvedCL
+          isClassicLinen: isResolvedCL,
+          procureFlowStage: null,
+          procureFlowStatus: null
         });
       }
     });
@@ -790,6 +807,7 @@ export default function EOMTrackingView() {
                      p.site?.toLowerCase().includes('classic') ||
                      p.siteId === '88888888-8888-4888-8888-888888888888';
         const displayBranch = isCL ? 'Classic Linen (SYD)' : p.site;
+        const pfStage = getLifecycleStageByStatus(p.status);
 
         items.push({
           poNumber: p.concurPoNumber || p.displayId,
@@ -801,7 +819,9 @@ export default function EOMTrackingView() {
           description: p.comments || p.reasonForRequest,
           branch: displayBranch,
           vendor: p.supplierName,
-          isClassicLinen: isCL
+          isClassicLinen: isCL,
+          procureFlowStage: pfStage,
+          procureFlowStatus: p.status
         });
       }
     });
@@ -840,7 +860,14 @@ export default function EOMTrackingView() {
         (i.branch && i.branch.toLowerCase().includes(q)) ||
         (i.vendor && i.vendor.toLowerCase().includes(q)) ||
         (i.description && i.description.toLowerCase().includes(q)) ||
-        (i.isClassicLinen && (q.includes('cl') || q.includes('classic') || q.includes('linen') || q.includes('syd')))
+        (i.isClassicLinen && (q.includes('cl') || q.includes('classic') || q.includes('linen') || q.includes('syd'))) ||
+        (i.procureFlowStage && (
+          i.procureFlowStage.label.toLowerCase().includes(q) ||
+          i.procureFlowStage.stageTitle.toLowerCase().includes(q) ||
+          i.procureFlowStage.shortLabel.toLowerCase().includes(q) ||
+          q === `stage ${i.procureFlowStage.num}` ||
+          q === `s${i.procureFlowStage.num}`
+        ))
       );
     }
     return list;
@@ -869,11 +896,12 @@ export default function EOMTrackingView() {
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Parity Summary');
 
     const auditData: any[] = [
-      ['Status', 'PO Number', 'PR Number', 'Concur Ex-GST ($)', 'ProcureFlow Ex-GST ($)', 'Variance ($)', 'Branch', 'Description', 'Vendor']
+      ['Status', 'PF Stage', 'PO Number', 'PR Number', 'Concur Ex-GST ($)', 'ProcureFlow Ex-GST ($)', 'Variance ($)', 'Branch', 'Description', 'Vendor']
     ];
     reconciliationResults.items.forEach(i => {
       auditData.push([
         i.status,
+        i.procureFlowStage ? `Stage ${i.procureFlowStage.num} - ${i.procureFlowStage.label}` : (i.status === 'MISSING_IN_PROCUREFLOW' ? 'Not in PF' : '-'),
         i.poNumber,
         i.prNumber || '',
         i.concurExGst,
@@ -2119,6 +2147,9 @@ export default function EOMTrackingView() {
                             <strong>Classic Linen reconciliation:</strong> Concur transactions with SYD branch prefix and &lsquo;CL&rsquo; identifiers are recognized and reconciled against SPL Classic Linen in ProcureFlow.
                           </li>
                         )}
+                        <li className="text-gray-700 dark:text-gray-300 font-medium">
+                          <strong>Approved requests scope:</strong> Reconciliation audits approved requests only (Stage 2: PR # Logging and above). Unapproved requests in Draft or awaiting approval are excluded from missing checks.
+                        </li>
                       </ul>
                     </div>
                   </div>
@@ -2213,6 +2244,7 @@ export default function EOMTrackingView() {
                       <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10 text-[11px] font-black uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
                         <tr>
                           <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3">PF Stage</th>
                           <th className="py-2.5 px-3">PO Number</th>
                           <th className="py-2.5 px-3">PR #</th>
                           <th className="py-2.5 px-4 text-right">Concur (Ex-GST)</th>
@@ -2225,7 +2257,7 @@ export default function EOMTrackingView() {
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 font-mono text-[11px]">
                         {filteredReconciliationItems.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="py-8 text-center text-gray-400 font-sans">
+                            <td colSpan={9} className="py-8 text-center text-gray-400 font-sans">
                               No records match the current filter.
                             </td>
                           </tr>
@@ -2252,6 +2284,19 @@ export default function EOMTrackingView() {
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
                                     Missing in Concur
                                   </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 font-sans">
+                                {item.procureFlowStage ? (
+                                  <div 
+                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg ${item.procureFlowStage.bgLightClass} ${item.procureFlowStage.textClass} border ${item.procureFlowStage.borderClass} font-bold text-[10px] shadow-2xs whitespace-nowrap`}
+                                    title={`${item.procureFlowStage.stageTitle}: ${item.procureFlowStage.descriptor}`}
+                                  >
+                                    <item.procureFlowStage.icon size={12} className="shrink-0" />
+                                    <span>Stage {item.procureFlowStage.num} &bull; {item.procureFlowStage.shortLabel}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 dark:text-gray-600 text-[10px] font-mono pl-2" title="Not in ProcureFlow">-</span>
                                 )}
                               </td>
                               <td className="py-2 px-3 font-bold text-gray-900 dark:text-white">
