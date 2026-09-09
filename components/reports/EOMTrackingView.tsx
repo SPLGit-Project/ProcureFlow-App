@@ -40,9 +40,13 @@ import {
 import { 
   buildEom12MonthGrids, 
   buildPivotTabData, 
-  getFinancialYearMonths,
-  calculateExGst,
-  isConcurEmailItem
+  getFinancialYearMonths, 
+  calculateExGst, 
+  isConcurEmailItem,
+  parseConcurReportMetadata,
+  enrichConcurQueueItems,
+  EnrichedConcurEmailItem,
+  TOTAL_DEPLETION_BUDGET
 } from '../../utils/budgetTracking.ts';
 
 type ActiveTab = 'TRACKING_GRID' | 'PIVOT_BREAKDOWN' | 'CONCUR_RECONCILIATION';
@@ -91,38 +95,38 @@ export default function EOMTrackingView() {
   // Edit Actuals / Adjustments Mode
   const [isEditActualsMode, setIsEditActualsMode] = useState<boolean>(false);
   const [editableOverrides, setEditableOverrides] = useState<Record<string, number>>({});
+  const [editableBudgets, setEditableBudgets] = useState<Record<string, number>>({});
 
   // Search & Filter for Pivot View
   const [pivotSearch, setPivotSearch] = useState<string>('');
 
   // Concur Raw Data Reconciliation State
-  const [concurPasteInput, setConcurPasteInput] = useState<string>('');
   const [parsedConcurRows, setParsedConcurRows] = useState<ConcurRawRow[]>([]);
   const [reconciliationFilter, setReconciliationFilter] = useState<'ALL' | 'MISMATCH' | 'MISSING_PF' | 'MISSING_CONCUR' | 'MATCHED'>('ALL');
   const [concurSearchQuery, setConcurSearchQuery] = useState<string>('');
 
   // Automated Email Ingestion Pipeline State
+  const [concurInboxEmail, setConcurInboxEmail] = useState<string>('concur-reports@splservices.com.au');
+  const [isEditingInboxEmail, setIsEditingInboxEmail] = useState<boolean>(false);
+  const [tempInboxEmail, setTempInboxEmail] = useState<string>('');
+  const [isSavingInboxEmail, setIsSavingInboxEmail] = useState<boolean>(false);
+
   const [selectedEmailAttachmentId, setSelectedEmailAttachmentId] = useState<string>('');
   const [isSyncingEmail, setIsSyncingEmail] = useState<boolean>(false);
-  const [showManualFallback, setShowManualFallback] = useState<boolean>(false);
-  const [syncedEmailItem, setSyncedEmailItem] = useState<EmailIngestionQueueItem | null>(null);
+  const [syncedEmailItem, setSyncedEmailItem] = useState<EnrichedConcurEmailItem | null>(null);
 
-  // Detect Concur / EOM attachments in email queue
-  const concurEmailAttachments = useMemo(() => {
-    return (emailIngestionQueue || []).filter(item => 
-      isConcurEmailItem(item.attachmentName, item.subject) && !!item.storagePath
-    ).sort((a, b) => {
-      const timeA = a.receivedAt ? new Date(a.receivedAt).getTime() : 0;
-      const timeB = b.receivedAt ? new Date(b.receivedAt).getTime() : 0;
-      return timeB - timeA;
-    });
+  // Detect & Enrich Concur / EOM attachments in email queue with version & month intelligence
+  const concurEmailAttachments: EnrichedConcurEmailItem[] = useMemo(() => {
+    return enrichConcurQueueItems(emailIngestionQueue || []);
   }, [emailIngestionQueue]);
 
   useEffect(() => {
     if (concurEmailAttachments.length > 0 && !selectedEmailAttachmentId) {
-      setSelectedEmailAttachmentId(concurEmailAttachments[0].id);
+      // Find latest for active month or fallback to newest overall
+      const matchForMonth = concurEmailAttachments.find(a => a.metadata.monthIndex === selectedMonthIndex && a.isLatestForMonth);
+      setSelectedEmailAttachmentId(matchForMonth ? matchForMonth.id : concurEmailAttachments[0].id);
     }
-  }, [concurEmailAttachments, selectedEmailAttachmentId]);
+  }, [concurEmailAttachments, selectedEmailAttachmentId, selectedMonthIndex]);
 
   // Parse Concur workbook array buffer or blob
   const parseConcurSpreadsheetBlob = async (blob: Blob, sourceLabel: string) => {
@@ -133,7 +137,6 @@ export default function EOMTrackingView() {
       const sheetName = workbook.SheetNames.find(s => s.toLowerCase().includes('raw')) || workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const tsv = XLSX.utils.sheet_to_csv(worksheet, { FS: '\t' });
-      setConcurPasteInput(tsv);
       handleParseConcurText(tsv);
       setStatusMessage({ type: 'success', text: `Successfully synced & parsed ${sourceLabel} from email intake.` });
     } catch (err: any) {
@@ -160,7 +163,7 @@ export default function EOMTrackingView() {
     try {
       const blob = await downloadInboxAttachment(item.storagePath);
       setSyncedEmailItem(item);
-      await parseConcurSpreadsheetBlob(blob, item.attachmentName);
+      await parseConcurSpreadsheetBlob(blob, `${item.attachmentName} (${item.metadata.monthLabel} ${item.metadata.versionTag})`);
     } catch (err: any) {
       console.error('Error downloading attachment:', err);
       setStatusMessage({ type: 'error', text: `Failed to download attachment: ${err.message}` });
@@ -175,20 +178,82 @@ export default function EOMTrackingView() {
     }
   }, [activeTab, concurEmailAttachments.length]);
 
+  // Save Concur Inbound Email Configuration
+  const handleSaveConcurInboxEmail = async () => {
+    if (!tempInboxEmail.trim()) return;
+    setIsSavingInboxEmail(true);
+    try {
+      await db.updateConcurInboundEmailConfig(tempInboxEmail.trim());
+      setConcurInboxEmail(tempInboxEmail.trim());
+      setIsEditingInboxEmail(false);
+      setStatusMessage({ type: 'success', text: `Concur monitored mailbox updated to ${tempInboxEmail.trim()}` });
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: `Failed to update mailbox: ${err.message}` });
+    } finally {
+      setIsSavingInboxEmail(false);
+    }
+  };
+
+  // Budget cell change handler
+  const handleBudgetCellChange = (siteCode: string, monthIndex: number, amount: number) => {
+    setEditableBudgets(prev => ({
+      ...prev,
+      [`${siteCode}:${monthIndex}`]: amount
+    }));
+  };
+
+  // Auto-balance month helper: offsets difference to Melbourne
+  const handleAutoBalanceMonth = (monthIndex: number, diff: number) => {
+    setEditableBudgets(prev => {
+      const currentMelAlb = prev[`MEL_ALB:${monthIndex}`] ?? 261250;
+      const balanced = Math.max(0, Number((currentMelAlb - diff).toFixed(2)));
+      return {
+        ...prev,
+        [`MEL_ALB:${monthIndex}`]: balanced
+      };
+    });
+  };
+
   // Load budgets and overrides
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [budgets, overrideList] = await Promise.all([
+      const [budgets, overrideList, inboxEmail] = await Promise.all([
         db.getLinenBudgets(),
-        db.getEomMonthlyOverrides(selectedFY)
+        db.getEomMonthlyOverrides(selectedFY),
+        db.getConcurInboundEmailConfig()
       ]);
+
+      if (inboxEmail) {
+        setConcurInboxEmail(inboxEmail);
+      }
 
       if (budgets && budgets.length > 0) {
         const distinctYears = Array.from(new Set(budgets.map(b => b.financialYear))).sort();
         setFinancialYears(distinctYears);
         const yearBudgets = budgets.filter(b => b.financialYear === selectedFY);
         setBudgetRecords(yearBudgets);
+
+        // Seed editable budgets
+        const bMap: Record<string, number> = {};
+        yearBudgets.forEach(b => {
+          if (b.customMonthlyBudgets && Array.isArray(b.customMonthlyBudgets)) {
+            b.customMonthlyBudgets.forEach((amt, idx) => {
+              bMap[`${b.siteCode}:${idx + 1}`] = amt;
+            });
+          } else {
+            for (let m = 1; m <= 12; m++) {
+              bMap[`${b.siteCode}:${m}`] = b.monthlyDepletion;
+            }
+          }
+        });
+        // Seed MEL_ALB as sum of MEL and ALB
+        for (let m = 1; m <= 12; m++) {
+          const mel = bMap[`MEL:${m}`] || 0;
+          const alb = bMap[`ALB:${m}`] || 0;
+          bMap[`MEL_ALB:${m}`] = Number((mel + alb).toFixed(2));
+        }
+        setEditableBudgets(bMap);
       }
       setOverrides(overrideList || []);
 
@@ -209,9 +274,9 @@ export default function EOMTrackingView() {
     loadData();
   }, [selectedFY]);
 
-  // Compute 12-Month Tracking Grid Model
+  // Compute 12-Month Tracking Grid Model with live budget & actuals edits
   const gridModel = useMemo(() => {
-    // If in edit actuals mode, create synthetic overrides
+    // If in edit mode, create synthetic overrides
     const effectiveOverrides: EomMonthlyOverride[] = isEditActualsMode
       ? Object.entries(editableOverrides).map(([key, val]) => {
           const [siteCode, mIdxStr, spendType] = key.split(':');
@@ -225,14 +290,34 @@ export default function EOMTrackingView() {
         })
       : overrides;
 
+    // Apply live editable budgets to records
+    const effectiveBudgetRecords: LinenBudgetRecord[] = isEditActualsMode
+      ? budgetRecords.map(b => {
+          const customSpread = [...(b.customMonthlyBudgets || Array(12).fill(b.monthlyDepletion))];
+          const albRecord = budgetRecords.find(x => x.siteCode === 'ALB');
+          const albMonthly = albRecord?.monthlyDepletion || 40083.33;
+          for (let m = 1; m <= 12; m++) {
+            if (b.siteCode === 'MEL') {
+              const melAlb = editableBudgets[`MEL_ALB:${m}`];
+              if (melAlb !== undefined) {
+                customSpread[m - 1] = Math.max(0, Number((melAlb - albMonthly).toFixed(2)));
+              }
+            } else if (editableBudgets[`${b.siteCode}:${m}`] !== undefined) {
+              customSpread[m - 1] = Number(editableBudgets[`${b.siteCode}:${m}`].toFixed(2));
+            }
+          }
+          return { ...b, customMonthlyBudgets: customSpread };
+        })
+      : budgetRecords;
+
     return buildEom12MonthGrids(
       pos,
-      budgetRecords,
+      effectiveBudgetRecords,
       effectiveOverrides,
       selectedFY,
       selectedMonthIndex
     );
-  }, [pos, budgetRecords, overrides, editableOverrides, isEditActualsMode, selectedFY, selectedMonthIndex]);
+  }, [pos, budgetRecords, overrides, editableOverrides, editableBudgets, isEditActualsMode, selectedFY, selectedMonthIndex]);
 
   // Compute Pivot Tab Data Model
   const pivotModel = useMemo(() => {
@@ -251,11 +336,63 @@ export default function EOMTrackingView() {
     );
   }, [pivotModel.detailedPrs, pivotSearch]);
 
-  // Save manual overrides
+  // Save manual overrides and site monthly budgets
   const handleSaveOverrides = async () => {
     setIsSavingOverrides(true);
     try {
-      const promises = Object.entries(editableOverrides).map(([key, val]) => {
+      // 1. Validate monthly budget balancing: sum of sites must equal monthly baseline budget for all months
+      const baselineMonthlyDepletion = Math.round(TOTAL_DEPLETION_BUDGET / 12); // $826,750
+      const trackingSiteCodes = ['MEL_ALB', 'SYD', 'ADL', 'BNE', 'CNS', 'MKY', 'PER'];
+      for (let m = 1; m <= 12; m++) {
+        let monthSum = 0;
+        trackingSiteCodes.forEach(code => {
+          const val = editableBudgets[`${code}:${m}`];
+          if (val !== undefined) {
+            monthSum += val;
+          } else {
+            const r = gridModel.depletionRows.find(row => row.siteCode === code);
+            monthSum += (r ? r.monthlyBudgets[m - 1] : 0);
+          }
+        });
+        const diff = Math.abs(monthSum - baselineMonthlyDepletion);
+        if (diff > 1) {
+          const monthLabel = gridModel.months[m - 1]?.label || `Month ${m}`;
+          setStatusMessage({
+            type: 'error',
+            text: `Cannot save: ${monthLabel} site budgets sum to ${formatAUD(monthSum)}, which does not match the required monthly total of ${formatAUD(baselineMonthlyDepletion)} (Variance: ${formatAUD(monthSum - baselineMonthlyDepletion)}). Click 'Auto-bal' on ${monthLabel} or adjust allocations.`
+          });
+          setIsSavingOverrides(false);
+          return;
+        }
+      }
+
+      // 2. Persist updated custom monthly budgets to linen_budgets (preserving baseline annual & monthly depletion)
+      if (budgetRecords.length > 0) {
+        const albRecord = budgetRecords.find(b => b.siteCode === 'ALB');
+        const albMonthly = albRecord?.monthlyDepletion || 40083.33;
+
+        const updatedRecords: LinenBudgetRecord[] = budgetRecords.map(b => {
+          const customSpread = [...(b.customMonthlyBudgets || Array(12).fill(b.monthlyDepletion))];
+          for (let m = 1; m <= 12; m++) {
+            if (b.siteCode === 'MEL') {
+              const melAlbVal = editableBudgets[`MEL_ALB:${m}`];
+              if (melAlbVal !== undefined) {
+                customSpread[m - 1] = Math.max(0, Number((melAlbVal - albMonthly).toFixed(2)));
+              }
+            } else if (editableBudgets[`${b.siteCode}:${m}`] !== undefined) {
+              customSpread[m - 1] = Number(editableBudgets[`${b.siteCode}:${m}`].toFixed(2));
+            }
+          }
+          return {
+            ...b,
+            customMonthlyBudgets: customSpread
+          };
+        });
+        await db.saveLinenBudget(updatedRecords);
+      }
+
+      // 3. Save actuals overrides
+      const overridePromises = Object.entries(editableOverrides).map(([key, val]) => {
         const [siteCode, mIdxStr, spendType] = key.split(':');
         return db.upsertEomMonthlyOverride({
           financialYear: selectedFY,
@@ -265,12 +402,13 @@ export default function EOMTrackingView() {
           overrideAmount: Number(val) || 0
         });
       });
-      await Promise.all(promises);
+      await Promise.all(overridePromises);
+
       await loadData();
       setIsEditActualsMode(false);
-      setStatusMessage({ type: 'success', text: 'Successfully saved monthly actuals and adjustments.' });
+      setStatusMessage({ type: 'success', text: 'Successfully saved site monthly budgets and adjustments.' });
     } catch (err: any) {
-      setStatusMessage({ type: 'error', text: `Failed to save adjustments: ${err.message}` });
+      setStatusMessage({ type: 'error', text: `Failed to save: ${err.message}` });
     } finally {
       setIsSavingOverrides(false);
     }
@@ -287,12 +425,11 @@ export default function EOMTrackingView() {
     return '$' + val.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  // Parse Concur raw paste or file
-  const handleParseConcurText = (textToParse?: string) => {
-    const raw = textToParse !== undefined ? textToParse : concurPasteInput;
-    if (!raw.trim()) return;
+  // Parse Concur text from automated intake
+  const handleParseConcurText = (rawText?: string) => {
+    if (!rawText || !rawText.trim()) return;
 
-    const lines = raw.trim().split(/\r?\n/);
+    const lines = rawText.trim().split(/\r?\n/);
     if (lines.length < 2) return;
 
     const header = lines[0].split('\t').length > 1 ? lines[0].split('\t') : lines[0].split(',');
@@ -340,32 +477,17 @@ export default function EOMTrackingView() {
     }
 
     setParsedConcurRows(parsed);
-    setStatusMessage({ type: 'success', text: `Successfully parsed ${parsed.length} Concur records.` });
+
+    // Auto-detect report month and synchronize selectedMonthIndex if different
+    const meta = parseConcurReportMetadata(syncedEmailItem?.attachmentName || '', syncedEmailItem?.subject || '', parsed);
+    if (meta.monthIndex && meta.monthIndex !== selectedMonthIndex) {
+      setSelectedMonthIndex(meta.monthIndex);
+    }
+
+    setStatusMessage({ type: 'success', text: `Successfully parsed ${parsed.length} Concur records for ${meta.monthLabel} (${meta.versionTag}).` });
   };
 
-  // Drag & drop file upload for Concur
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames.find(s => s.toLowerCase().includes('raw')) || workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const tsv = XLSX.utils.sheet_to_csv(worksheet, { FS: '\t' });
-        setConcurPasteInput(tsv);
-        handleParseConcurText(tsv);
-      } catch (err: any) {
-        setStatusMessage({ type: 'error', text: `Failed to read spreadsheet: ${err.message}` });
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
-  // Run automated reconciliation between Concur and ProcureFlow
+  // Run automated reconciliation between Concur and ProcureFlow scoped strictly to the active selected month
   const reconciliationResults = useMemo((): {
     items: ReconciliationItem[];
     concurTotalEx: number;
@@ -376,8 +498,32 @@ export default function EOMTrackingView() {
     missingInPfCount: number;
     missingInConcurCount: number;
     parityPercent: number;
+    targetMonthLabel: string;
   } => {
-    if (parsedConcurRows.length === 0) {
+    const targetMonthDef = gridModel.months[selectedMonthIndex - 1] || gridModel.months[1];
+    const targetCalMonth = targetMonthDef?.calendarMonth || 9;
+    const targetCalYear = targetMonthDef?.calendarYear || 2026;
+    const targetMonthLabel = targetMonthDef?.label || 'Sep-26';
+
+    // 1. Filter ProcureFlow POs strictly to the target month & year
+    const monthPos = pos.filter(p => {
+      if (p.status === 'REJECTED' || p.status === 'DRAFT') return false;
+      const dateStr = p.requestDate || (p as any).submitDate || p.createdAt;
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+      return (d.getMonth() + 1 === targetCalMonth) && (d.getFullYear() === targetCalYear);
+    });
+
+    // 2. Filter parsed Concur rows strictly to the target month & year (or include if no specific date row is present)
+    const monthConcurRows = parsedConcurRows.filter(c => {
+      if (!c.submitDate) return true;
+      const d = new Date(c.submitDate);
+      if (isNaN(d.getTime())) return true;
+      return (d.getMonth() + 1 === targetCalMonth) && (d.getFullYear() === targetCalYear);
+    });
+
+    if (monthConcurRows.length === 0 && monthPos.length === 0) {
       return {
         items: [],
         concurTotalEx: 0,
@@ -387,14 +533,14 @@ export default function EOMTrackingView() {
         mismatchCount: 0,
         missingInPfCount: 0,
         missingInConcurCount: 0,
-        parityPercent: 100
+        parityPercent: 100,
+        targetMonthLabel
       };
     }
 
-    // Build ProcureFlow PO Map
+    // Build ProcureFlow PO Map for the selected month
     const pfMap = new Map<string, PORequest>();
-    pos.forEach(p => {
-      if (p.status === 'REJECTED' || p.status === 'DRAFT') return;
+    monthPos.forEach(p => {
       const keys = [
         p.concurPoNumber,
         p.displayId,
@@ -417,7 +563,7 @@ export default function EOMTrackingView() {
     let mismatchCount = 0;
     let missingInPfCount = 0;
 
-    parsedConcurRows.forEach(c => {
+    monthConcurRows.forEach(c => {
       concurTotalEx += c.totalExGst;
       const keyPo = (c.poNumber || '').toUpperCase().trim();
       const keyPr = (c.prNumber || '').toUpperCase().trim();
@@ -473,10 +619,9 @@ export default function EOMTrackingView() {
       }
     });
 
-    // Check for ProcureFlow approved POs missing in Concur
+    // Check for ProcureFlow approved POs in this month missing in Concur
     let missingInConcurCount = 0;
-    pos.forEach(p => {
-      if (p.status === 'REJECTED' || p.status === 'DRAFT') return;
+    monthPos.forEach(p => {
       if (!matchedPfIds.has(p.id)) {
         const pfEx = p.subtotalAmount || p.totalAmount || calculateExGst(p.totalAmountIncGst || 0);
         missingInConcurCount++;
@@ -507,9 +652,10 @@ export default function EOMTrackingView() {
       mismatchCount,
       missingInPfCount,
       missingInConcurCount,
-      parityPercent
+      parityPercent,
+      targetMonthLabel
     };
-  }, [parsedConcurRows, pos]);
+  }, [parsedConcurRows, pos, selectedMonthIndex, selectedFY, gridModel.months]);
 
   // Filtered reconciliation drilldown
   const filteredReconciliationItems = useMemo(() => {
@@ -1044,20 +1190,38 @@ export default function EOMTrackingView() {
                             <td className="py-1 px-3 font-sans italic text-gray-400">
                               MNTH $BUDGET
                             </td>
-                            {row.monthlyBudgets.map((b, idx) => (
-                              <td key={idx} className="py-1 px-2 text-right">
-                                {formatAUD(b)}
-                              </td>
-                            ))}
+                            {row.monthlyBudgets.map((b, idx) => {
+                              const budgetKey = `${row.siteCode}:${idx + 1}`;
+                              const curVal = editableBudgets[budgetKey] !== undefined ? editableBudgets[budgetKey] : Math.round(b);
+
+                              return (
+                                <td key={idx} className="py-1 px-1 text-right">
+                                  {isEditActualsMode ? (
+                                    <input
+                                      type="number"
+                                      value={curVal}
+                                      onChange={(e) => {
+                                        const num = parseFloat(e.target.value) || 0;
+                                        handleBudgetCellChange(row.siteCode, idx + 1, num);
+                                      }}
+                                      className="w-18 px-1 py-0.5 text-right text-[10px] font-mono font-bold rounded border border-indigo-400 bg-white dark:bg-gray-800 text-indigo-900 dark:text-indigo-200 outline-none"
+                                      title={`Edit monthly budget for ${row.siteName} (${gridModel.months[idx]?.label})`}
+                                    />
+                                  ) : (
+                                    formatAUD(b)
+                                  )}
+                                </td>
+                              );
+                            })}
                             <td className="py-1 px-3 text-right text-gray-300">-</td>
                             <td className="py-1 px-3 text-right text-gray-300">-</td>
                           </tr>
                         </React.Fragment>
                       ))}
 
-                      {/* Total Depletion Row */}
+                      {/* Total Depletion Actuals Row */}
                       <tr className="bg-gray-100 dark:bg-gray-900/90 font-black text-gray-900 dark:text-white border-t-2 border-gray-300 dark:border-gray-700">
-                        <td className="py-3 px-3 font-sans uppercase">TOTAL</td>
+                        <td className="py-3 px-3 font-sans uppercase">TOTAL ACTUALS</td>
                         {gridModel.depletionTotalRow.monthlyActuals.map((val, idx) => (
                           <td key={idx} className="py-3 px-2 text-right">
                             {formatAUD(val)}
@@ -1069,6 +1233,64 @@ export default function EOMTrackingView() {
                         <td className="py-3 px-3 text-right text-indigo-600 dark:text-indigo-400">
                           {gridModel.depletionTotalRow.spendYtdPercent}%
                         </td>
+                      </tr>
+
+                      {/* Total Depletion Budget Row with Strict Balancing Check against Baseline */}
+                      <tr className="bg-gray-50 dark:bg-gray-900/60 font-bold text-gray-700 dark:text-gray-300 text-[10px] border-t border-gray-200 dark:border-gray-800">
+                        <td className="py-2.5 px-3 font-sans uppercase">
+                          <div className="font-bold">MNTH BUDGET</div>
+                          <div className="text-[9px] text-gray-400 font-normal">($826,750/mo)</div>
+                        </td>
+                        {gridModel.months.map((m, idx) => {
+                          const baselineMonthlyTarget = Math.round(TOTAL_DEPLETION_BUDGET / 12); // $826,750
+                          const trackingSiteCodes = ['MEL_ALB', 'SYD', 'ADL', 'BNE', 'CNS', 'MKY', 'PER'];
+                          const currentMonthSum = trackingSiteCodes.reduce((sum, sCode) => {
+                            const val = editableBudgets[`${sCode}:${m.monthIndex}`];
+                            if (val !== undefined) return sum + val;
+                            const r = gridModel.depletionRows.find(row => row.siteCode === sCode);
+                            return sum + (r ? r.monthlyBudgets[idx] : 0);
+                          }, 0);
+
+                          const diff = Math.round(currentMonthSum - baselineMonthlyTarget);
+                          const isBalanced = Math.abs(diff) < 2;
+
+                          return (
+                            <td key={m.monthIndex} className="py-2.5 px-2 text-right">
+                              <div className="font-mono font-bold">{formatAUD(currentMonthSum)}</div>
+                              {isEditActualsMode && (
+                                <div className="mt-1 flex flex-col items-end gap-0.5">
+                                  {isBalanced ? (
+                                    <span className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-100/70 dark:bg-emerald-950/50 px-1 py-0.2 rounded border border-emerald-300/40">
+                                      ✓ Balanced
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className={`text-[8px] font-black px-1 py-0.2 rounded border ${
+                                        diff > 0
+                                          ? 'text-amber-700 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/50 border-amber-300/40'
+                                          : 'text-rose-700 dark:text-rose-300 bg-rose-100/70 dark:bg-rose-950/50 border-rose-300/40'
+                                      }`}>
+                                        {diff > 0 ? `+${formatAUD(diff)}` : formatAUD(diff)}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAutoBalanceMonth(m.monthIndex, diff)}
+                                        className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                                        title="Auto-balance difference to Melbourne to equal $826,750"
+                                      >
+                                        Auto-bal
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="py-2.5 px-3 text-right font-black text-gray-900 dark:text-white">
+                          {formatAUD(TOTAL_DEPLETION_BUDGET)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-gray-400">100%</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1483,8 +1705,8 @@ export default function EOMTrackingView() {
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {concurEmailAttachments.length > 0
-                        ? `Detected ${concurEmailAttachments.length} Concur month-end spreadsheet(s) from finance email.`
-                        : 'Monitoring inbound inbox for incoming Concur month-end spreadsheets...'}
+                        ? `Detected ${concurEmailAttachments.length} Concur month-end spreadsheet(s) in the finance email queue.`
+                        : 'Monitoring finance intake mailbox for incoming Concur month-end spreadsheets...'}
                     </p>
                   </div>
                 </div>
@@ -1494,7 +1716,7 @@ export default function EOMTrackingView() {
                     type="button"
                     onClick={() => refreshEmailIngestionQueue()}
                     disabled={isSyncingEmail}
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 rounded-xl transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
                     title="Check inbox for new incoming emails"
                   >
                     <RefreshCw size={13} className={isSyncingEmail ? 'animate-spin' : ''} />
@@ -1505,7 +1727,7 @@ export default function EOMTrackingView() {
                     type="button"
                     onClick={() => handleSyncSelectedEmail()}
                     disabled={isSyncingEmail || !activeEmailItem}
-                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-black uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-black uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer"
                   >
                     {isSyncingEmail ? <RefreshCw size={14} className="animate-spin" /> : <ArrowRightLeft size={14} />}
                     <span>{parsedConcurRows.length > 0 ? 'Re-Sync Concur Data' : 'Sync & Reconcile'}</span>
@@ -1513,13 +1735,69 @@ export default function EOMTrackingView() {
                 </div>
               </div>
 
+              {/* Concur Inbound Mailbox Configuration Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-indigo-50/40 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100/70 dark:border-indigo-900/30 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-bold text-gray-700 dark:text-gray-300 shrink-0">Monitored Mailbox:</span>
+                  {isEditingInboxEmail ? (
+                    <div className="flex items-center gap-1.5 flex-1 max-w-sm">
+                      <input
+                        type="email"
+                        value={tempInboxEmail}
+                        onChange={(e) => setTempInboxEmail(e.target.value)}
+                        placeholder="e.g. concur-reports@splservices.com.au"
+                        className="px-2.5 py-1 text-xs rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none w-full"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveConcurInboxEmail}
+                        disabled={isSavingInboxEmail || !tempInboxEmail.trim()}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold disabled:opacity-50 shrink-0 cursor-pointer"
+                      >
+                        {isSavingInboxEmail ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingInboxEmail(false)}
+                        className="px-2 py-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-xs font-bold shrink-0 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-mono font-bold text-indigo-900 dark:text-indigo-200 truncate">{concurInboxEmail}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTempInboxEmail(concurInboxEmail);
+                          setIsEditingInboxEmail(true);
+                        }}
+                        className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline shrink-0 cursor-pointer"
+                      >
+                        Edit Mailbox
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">
+                  Automated background daemon checks this inbox for Concur month-end reports
+                </span>
+              </div>
+
               {/* Active Detected Report Details */}
               {activeEmailItem ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 rounded-2xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 text-xs">
                   <div>
-                    <span className="text-[10px] font-black uppercase text-gray-400 block mb-1">
-                      Active Email Attachment
-                    </span>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-black uppercase text-gray-400">
+                        Active Email Attachment
+                      </span>
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300">
+                        {activeEmailItem.metadata.monthLabel} • {activeEmailItem.metadata.versionTag}
+                      </span>
+                    </div>
+
                     {concurEmailAttachments.length > 1 ? (
                       <select
                         value={selectedEmailAttachmentId || activeEmailItem.id}
@@ -1531,7 +1809,7 @@ export default function EOMTrackingView() {
                       >
                         {concurEmailAttachments.map(att => (
                           <option key={att.id} value={att.id}>
-                            {att.attachmentName} ({att.receivedAt ? new Date(att.receivedAt).toLocaleDateString('en-AU') : 'Latest'})
+                            {att.attachmentName} ({att.metadata.monthLabel} {att.metadata.versionTag}) {!att.isLatestForMonth ? '⚠️ Superseded' : ''}
                           </option>
                         ))}
                       </select>
@@ -1540,6 +1818,13 @@ export default function EOMTrackingView() {
                         <FileSpreadsheet size={15} className="text-indigo-600 flex-shrink-0" />
                         {activeEmailItem.attachmentName}
                       </span>
+                    )}
+
+                    {!activeEmailItem.isLatestForMonth && (
+                      <div className="mt-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                        <AlertCircle size={12} className="shrink-0" />
+                        <span>Superseded by newer report: {activeEmailItem.supersededBy}</span>
+                      </div>
                     )}
                   </div>
 
@@ -1560,7 +1845,7 @@ export default function EOMTrackingView() {
                       {activeEmailItem.receivedAt ? new Date(activeEmailItem.receivedAt).toLocaleString('en-AU') : 'Recently received'}
                     </span>
                     <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5 block">
-                      ✓ Ready for parity reconciliation
+                      ✓ Ready for {activeEmailItem.metadata.monthLabel} reconciliation
                     </span>
                   </div>
                 </div>
@@ -1571,69 +1856,10 @@ export default function EOMTrackingView() {
                     No Concur month-end spreadsheets detected in the inbox queue yet.
                   </p>
                   <p className="text-[11px] text-gray-500 mt-0.5">
-                    When reports like `Purchase Request EOM SEP-26.xls` are emailed to the finance inbox, they will be automatically ingested here.
+                    When reports like `Purchase Request EOM SEP-26.xls` are emailed to <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{concurInboxEmail}</span>, they will be automatically ingested here.
                   </p>
                 </div>
               )}
-
-              {/* Accordion Toggle for Manual Fallback */}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowManualFallback(!showManualFallback)}
-                  className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                >
-                  {showManualFallback ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  <span>{showManualFallback ? 'Hide Manual Fallback Options' : 'Need to test with a local file? Manual Upload & Paste Options'}</span>
-                </button>
-
-                {showManualFallback && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
-                    {/* Direct Paste */}
-                    <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 space-y-2">
-                      <span className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                        <FileText size={14} />
-                        <span>Paste Concur TSV/CSV</span>
-                      </span>
-                      <textarea
-                        rows={3}
-                        value={concurPasteInput}
-                        onChange={(e) => setConcurPasteInput(e.target.value)}
-                        placeholder="Paste Concur Raw Data here..."
-                        className="w-full p-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleParseConcurText()}
-                        disabled={!concurPasteInput.trim()}
-                        className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50"
-                      >
-                        Parse Pasted Rows
-                      </button>
-                    </div>
-
-                    {/* File Upload */}
-                    <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
-                      <span className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                        <UploadCloud size={14} />
-                        <span>Upload Local Concur Spreadsheet</span>
-                      </span>
-                      <div className="mt-2 p-4 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-500 transition-colors text-center cursor-pointer relative bg-white dark:bg-gray-900">
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls,.csv"
-                          onChange={handleFileUpload}
-                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                        />
-                        <UploadCloud size={20} className="mx-auto text-gray-400 mb-1" />
-                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                          Click to browse or drop local .xls/.xlsx
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* ── RECONCILIATION SUMMARY DASHBOARD ─────────────────────────────── */}
@@ -1642,7 +1868,7 @@ export default function EOMTrackingView() {
                 {/* 4 Executive KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
-                    <span className="text-[10px] font-black uppercase text-gray-400">Total Concur Spend (Ex-GST)</span>
+                    <span className="text-[10px] font-black uppercase text-gray-400">Total Concur ({reconciliationResults.targetMonthLabel}, Ex-GST)</span>
                     <div className="text-xl font-black text-gray-900 dark:text-white mt-1">
                       {formatAUDExact(reconciliationResults.concurTotalEx)}
                     </div>
@@ -1650,7 +1876,7 @@ export default function EOMTrackingView() {
                   </div>
 
                   <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1f2b] border border-gray-200 dark:border-gray-800 shadow-sm">
-                    <span className="text-[10px] font-black uppercase text-gray-400">Matched ProcureFlow Spend</span>
+                    <span className="text-[10px] font-black uppercase text-gray-400">ProcureFlow ({reconciliationResults.targetMonthLabel}, Ex-GST)</span>
                     <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
                       {formatAUDExact(reconciliationResults.pfTotalEx)}
                     </div>
@@ -1662,7 +1888,7 @@ export default function EOMTrackingView() {
                       ? 'bg-emerald-500/5 border-emerald-500/20'
                       : 'bg-rose-500/5 border-rose-500/20'
                   }`}>
-                    <span className="text-[10px] font-black uppercase text-gray-400">Net Variance (Δ)</span>
+                    <span className="text-[10px] font-black uppercase text-gray-400">Net Variance ({reconciliationResults.targetMonthLabel})</span>
                     <div className={`text-xl font-black mt-1 font-mono ${
                       Math.abs(reconciliationResults.netVariance) <= 0.05 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                     }`}>
@@ -1694,7 +1920,7 @@ export default function EOMTrackingView() {
                   <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-3">
                     <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
                     <div className="space-y-1">
-                      <p className="font-bold">Variance Analysis &amp; Reconciliation Notes:</p>
+                      <p className="font-bold">Variance Analysis &amp; Reconciliation Notes ({reconciliationResults.targetMonthLabel}):</p>
                       <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-800 dark:text-amber-300">
                         {reconciliationResults.mismatchCount > 0 && (
                           <li>
@@ -1703,7 +1929,7 @@ export default function EOMTrackingView() {
                         )}
                         {reconciliationResults.missingInConcurCount > 0 && (
                           <li>
-                            <strong>{reconciliationResults.missingInConcurCount} approved ProcureFlow PO(s)</strong> have not yet been created in Concur.
+                            <strong>{reconciliationResults.missingInConcurCount} approved ProcureFlow PO(s)</strong> for {reconciliationResults.targetMonthLabel} have not yet been created in Concur.
                           </li>
                         )}
                         {reconciliationResults.missingInPfCount > 0 && (
@@ -1718,7 +1944,7 @@ export default function EOMTrackingView() {
                   <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-900 dark:text-emerald-200 text-xs flex items-center gap-3">
                     <CheckCircle2 size={18} className="text-emerald-600 flex-shrink-0" />
                     <span className="font-bold">
-                      100% General Ledger Parity! All Purchase Orders and net Ex-GST expenditure match between Concur and ProcureFlow.
+                      100% General Ledger Parity for {reconciliationResults.targetMonthLabel}! All Purchase Orders and net Ex-GST expenditure match between Concur and ProcureFlow.
                     </span>
                   </div>
                 )}
@@ -1728,7 +1954,7 @@ export default function EOMTrackingView() {
                   <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
-                        Side-by-Side Reconciliation Audit Log
+                        Side-by-Side Reconciliation Audit Log ({reconciliationResults.targetMonthLabel})
                       </h4>
                       <span className="text-xs font-mono font-bold text-gray-500">
                         ({filteredReconciliationItems.length} of {reconciliationResults.items.length})

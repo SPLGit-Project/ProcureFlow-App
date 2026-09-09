@@ -47,6 +47,7 @@ import { HierarchyManager } from '../utils/hierarchyManager.ts';
 import SimpleWorkflowConfig from './SimpleWorkflowConfig.tsx';
 import WorkflowNotificationHub from './WorkflowNotificationHub.tsx';
 import EOMReconciliationAdminPanel from './EOMReconciliationAdminPanel.tsx';
+import LifecycleTriggersAdminPanel from './LifecycleTriggersAdminPanel.tsx';
 import { ShieldCheck } from 'lucide-react';
 
 
@@ -87,7 +88,7 @@ const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: str
     { id: 'manage_development', label: 'Development Admin', description: 'Access to Smart Buying and Data Ingest tools', icon: Code, category: 'Development' }
 ];
 
-type AdminTab = 'PROFILE' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC' | 'SMART_BUYING' | 'ITEM_CREATION' | 'EOM_RECONCILIATION';
+type AdminTab = 'PROFILE' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC' | 'SMART_BUYING' | 'ITEM_CREATION' | 'EOM_RECONCILIATION' | 'LIFECYCLE_TRIGGERS';
 
 const MASTER_ITEM_COLUMNS = [
     { key: 'sku', label: 'SKU' },
@@ -2852,7 +2853,8 @@ const Settings = () => {
       { id: 'DATA_SYNC', label: 'Data Sync', icon: Database, permission: 'manage_settings' },
       { id: 'SMART_BUYING',    label: 'Smart Buying',   icon: BarChart3, permission: 'manage_settings' },
       { id: 'ITEM_CREATION',   label: 'Item Creation',  icon: Package,   permission: 'manage_items' },
-      { id: 'EOM_RECONCILIATION', label: 'EOM P&L Reconciliation', icon: ShieldCheck, permission: 'manage_settings' }
+      { id: 'EOM_RECONCILIATION', label: 'EOM P&L Reconciliation', icon: ShieldCheck, permission: 'manage_settings' },
+      { id: 'LIFECYCLE_TRIGGERS', label: 'Lifecycle Triggers & SLAs', icon: Activity, permission: 'manage_settings' }
   ];
 
   const visibleTabs: { id: AdminTab, icon: React.ElementType, label: string }[] = [
@@ -6135,6 +6137,11 @@ if __name__ == "__main__":
              {activeTab === 'EOM_RECONCILIATION' && (
                  <div className="animate-fade-in">
                      <EOMReconciliationAdminPanel />
+                 </div>
+             )}
+             {activeTab === 'LIFECYCLE_TRIGGERS' && (
+                 <div className="animate-fade-in">
+                     <LifecycleTriggersAdminPanel />
                  </div>
              )}
              {/* WORKFLOW STEP MODAL */}

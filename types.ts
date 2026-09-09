@@ -545,6 +545,10 @@ export interface PORequest {
   customerName?: string;
   reasonForRequest?: 'Depletion' | 'New Customer' | 'Other';
   comments?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  submitDate?: string;
+  hasDiscrepancy?: boolean;
 }
 
 export interface POLineItem {
@@ -1342,4 +1346,41 @@ export interface PricingSchedule {
   approved_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+// --- Procurement Lifecycle Warning & Alert Triggers ---
+
+export interface LifecycleTriggersConfig {
+  stage1WarningHours: number;
+  stage1AlertHours: number;
+  stage2WarningDays: number;
+  stage2AlertDays: number;
+  stage3WarningDays: number;
+  stage3AlertDays: number;
+  stage4WarningDaysToNeedBy: number;
+  stage4AlertOverdueDays: number;
+  stage5WarningDays: number;
+  stage5AlertDays: number;
+}
+
+export const DEFAULT_LIFECYCLE_TRIGGERS: LifecycleTriggersConfig = {
+  stage1WarningHours: 48,
+  stage1AlertHours: 120,
+  stage2WarningDays: 3,
+  stage2AlertDays: 7,
+  stage3WarningDays: 3,
+  stage3AlertDays: 7,
+  stage4WarningDaysToNeedBy: 3,
+  stage4AlertOverdueDays: 14,
+  stage5WarningDays: 7,
+  stage5AlertDays: 7,
+};
+
+export interface StageStatusResult {
+  stageNum: number;
+  alertCount: number;
+  warningCount: number;
+  status: 'NORMAL' | 'WARNING' | 'ALERT';
+  alertItems: string[];
+  warningItems: string[];
 }

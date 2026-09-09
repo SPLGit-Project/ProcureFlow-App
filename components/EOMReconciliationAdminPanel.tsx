@@ -1,13 +1,40 @@
-import React from 'react';
-import { ShieldCheck, ArrowRight, FileSpreadsheet, CheckCircle2, DollarSign, Layers, Building2, UploadCloud, Info } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldCheck, ArrowRight, FileSpreadsheet, CheckCircle2, DollarSign, Layers, Building2, UploadCloud, Info, Mail, Save, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/taxCalculations';
 import { classifyLegacyPO } from '../utils/budgetTracking';
+import { db } from '../services/db';
 
 export default function EOMReconciliationAdminPanel() {
   const { pos } = useApp();
   const navigate = useNavigate();
+
+  const [concurMailbox, setConcurMailbox] = useState('concur-reports@splservices.com.au');
+  const [isSavingMailbox, setIsSavingMailbox] = useState(false);
+  const [mailboxSaved, setMailboxSaved] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    db.getConcurInboundEmailConfig().then(email => {
+      if (active && email) setConcurMailbox(email);
+    }).catch(console.error);
+    return () => { active = false; };
+  }, []);
+
+  const handleSaveMailbox = async () => {
+    if (!concurMailbox.trim()) return;
+    setIsSavingMailbox(true);
+    try {
+      await db.updateConcurInboundEmailConfig(concurMailbox.trim());
+      setMailboxSaved(true);
+      setTimeout(() => setMailboxSaved(false), 3000);
+    } catch (err: any) {
+      alert(`Failed to save Concur mailbox: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setIsSavingMailbox(false);
+    }
+  };
 
   // Calculate high-level reconciliation numbers across all active POs
   const financialTotals = React.useMemo(() => {
@@ -148,6 +175,46 @@ export default function EOMReconciliationAdminPanel() {
           <span className="text-[11px] font-medium text-gray-500 mt-1 block">
             Gross incurred: {formatCurrency(financialTotals.totalInc)}
           </span>
+        </div>
+      </div>
+
+      {/* ── CONCUR MONITORED MAILBOX INGESTION CONFIGURATION ──────────────────── */}
+      <div className="p-5 rounded-2xl bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 shadow-2xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Mail size={18} className="text-[var(--color-brand)]" />
+            <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+              Automated Concur Reconciliation Intake Mailbox
+            </h4>
+          </div>
+          {mailboxSaved && (
+            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+              <Check size={14} /> Saved
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Specify the dedicated intake inbox to monitor for incoming monthly SAP Concur reports and spreadsheets. ProcureFlow automatically resolves report months, identifies version updates, and reconciles line items.
+        </p>
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+          <input
+            type="email"
+            value={concurMailbox}
+            onChange={(e) => setConcurMailbox(e.target.value)}
+            placeholder="concur-reports@splservices.com.au"
+            className="flex-1 px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-700 text-xs font-bold text-gray-900 dark:text-white outline-none focus:border-[var(--color-brand)]"
+          />
+          <button
+            type="button"
+            onClick={handleSaveMailbox}
+            disabled={isSavingMailbox || !concurMailbox.trim()}
+            className="px-4 py-2 bg-[var(--color-brand)] hover:opacity-90 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
+          >
+            <Save size={14} />
+            <span>{isSavingMailbox ? 'Saving...' : 'Update Mailbox'}</span>
+          </button>
         </div>
       </div>
 

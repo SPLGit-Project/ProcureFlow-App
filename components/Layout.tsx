@@ -358,6 +358,7 @@ const Layout = () => {
                         <React.Fragment key={item.path}>
                           <NavLink
                             to={item.path}
+                            end={item.path === '/reports' || item.path === '/' || children.length > 0}
                             title={isRevampExpanded ? undefined : item.label}
                             className={({ isActive }) =>
                               `relative flex items-center rounded-xl transition-all duration-150 group w-full
@@ -547,6 +548,7 @@ const Layout = () => {
                         <React.Fragment key={item.path}>
                           <NavLink
                             to={item.path}
+                            end={item.path === '/reports' || item.path === '/' || children.length > 0}
                             onClick={() => setIsMobileMenuOpen(false)}
                             className={({ isActive }) =>
                               `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ArrowRight, CheckCircle2, Package, 
@@ -9,13 +9,15 @@ import {
   Search, Filter, X, Eye, AlertCircle,
   Building2, Calendar, User, Check,
   Clock, ExternalLink, AlertTriangle, RefreshCw,
-  Info, RotateCcw, HelpCircle, ChevronDown
+  Info, RotateCcw, HelpCircle, ChevronDown, AlertOctagon
 } from 'lucide-react';
-import { ItemRequest, PORequest, POLineItem, POStatus, ApprovalEvent, DeliveryHeader, PermissionId } from '../types';
+import { ItemRequest, PORequest, POLineItem, POStatus, ApprovalEvent, DeliveryHeader, PermissionId, LifecycleTriggersConfig, DEFAULT_LIFECYCLE_TRIGGERS } from '../types';
 import { useApp } from '../context/AppContext';
 import PageHeader from './PageHeader';
 import DeliveryModal from './DeliveryModal';
 import { formatCurrency } from '../utils/taxCalculations';
+import { db } from '../services/db';
+import { evaluatePOTrigger, evaluateAllStagesStatus } from '../utils/lifecycleTriggers';
 
 // ── ProcureFlow Role-Tailored Insights Engine ─────────────────────────────────
 
@@ -364,12 +366,24 @@ export default function Home() {
   // Selected stage filter ('ALL' | 1 | 2 | 3 | 4 | 5 | 6)
   const [selectedStage, setSelectedStage] = useState<number | 'ALL'>('ALL');
   const [activeExceptionFilter, setActiveExceptionFilter] = useState<'MISSING_CONCUR' | 'READY_TO_CLOSE' | 'OVERDUE' | null>(null);
+  const [onlyTriggeredFilter, setOnlyTriggeredFilter] = useState(false);
+  const [triggersConfig, setTriggersConfig] = useState<LifecycleTriggersConfig>(DEFAULT_LIFECYCLE_TRIGGERS);
   const [activeInfoStage, setActiveInfoStage] = useState<number | null>(null);
   const [actionSearch, setActionSearch] = useState('');
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'SPEND_DESC' | 'SPEND_ASC' | 'SUPPLIER_ASC'>('NEWEST');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('ALL');
   const [expandedSites, setExpandedSites] = useState<Set<string>>(new Set());
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    db.getLifecycleTriggersConfig()
+      .then(cfg => {
+        if (active && cfg) setTriggersConfig(cfg);
+      })
+      .catch(console.error);
+    return () => { active = false; };
+  }, []);
 
   // Modals state
   const [activeModal, setActiveModal] = useState<{
@@ -428,7 +442,16 @@ export default function Home() {
   }, [siteFilteredPOs]);
 
 
-  // ── Action Required & System Exceptions Calculation ───────────────────────
+  // ── Procurement Lifecycle Stage Evaluation by SLAs & Triggers ──────────────
+  const stageStatusMap = useMemo(() => {
+    return evaluateAllStagesStatus(siteFilteredPOs, triggersConfig);
+  }, [siteFilteredPOs, triggersConfig]);
+
+  const totalFlaggedOrders = useMemo(() => {
+    return Object.values(stageStatusMap).reduce((sum, s) => sum + s.alertCount + s.warningCount, 0);
+  }, [stageStatusMap]);
+
+  // Legacy counts preserved for filtering compatibility
   const pendingConcurPOs = useMemo(() => {
     return siteFilteredPOs.filter(p => 
       p.status === 'APPROVED_PENDING_CONCUR_REQUEST' || 
@@ -526,6 +549,12 @@ export default function Home() {
             (p.status === 'APPROVED_PENDING_CONCUR' && !p.concurRequestNumber);
         }
 
+        // Only items hitting warning or alert triggers
+        if (onlyTriggeredFilter) {
+          const evalResult = evaluatePOTrigger(p, triggersConfig);
+          if (evalResult.level === 'OK') return false;
+        }
+
         // Stage filter
         if (selectedStage !== 'ALL') {
           if (selectedStage === 1) return p.status === 'PENDING_APPROVAL' || p.status === 'DRAFT';
@@ -583,7 +612,7 @@ export default function Home() {
           return dateB - dateA;
       }
     });
-  }, [siteFilteredPOs, activeExceptionFilter, selectedStage, selectedSupplier, actionSearch, sortBy]);
+  }, [siteFilteredPOs, activeExceptionFilter, onlyTriggeredFilter, triggersConfig, selectedStage, selectedSupplier, actionSearch, sortBy]);
 
   // ── Multi-Site Grouping ─────────────────────────────────────────────────────
   const groupedBySite = useMemo(() => {
@@ -739,119 +768,6 @@ export default function Home() {
           </div>
 
           
-          {/* ── ACTION REQUIRED / PENDING TASKS TASK CENTER ──────────────────────── */}
-          {totalActionExceptions > 0 && (
-            <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-rose-500/10 dark:from-amber-950/30 dark:via-orange-950/30 dark:to-rose-950/30 border border-amber-200 dark:border-amber-800/40 rounded-2xl p-4 sm:p-5 shadow-xs animate-fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
-                  <h3 className="text-xs font-black uppercase tracking-wider text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
-                    <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400" />
-                    Action Required ({totalActionExceptions} Pending Items)
-                  </h3>
-                </div>
-                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
-                  Data Governance & Operational Alignment Tasks
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {/* 1. Missing Concur PR ID */}
-                <div 
-                  onClick={() => {
-                    if (activeExceptionFilter === 'MISSING_CONCUR') {
-                      setActiveExceptionFilter(null);
-                      setSelectedStage('ALL');
-                    } else {
-                      setActiveExceptionFilter('MISSING_CONCUR');
-                      setSelectedStage(2);
-                    }
-                  }}
-                  className={`bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group ${
-                    activeExceptionFilter === 'MISSING_CONCUR'
-                      ? 'border-sky-500 ring-2 ring-sky-500/30'
-                      : 'border-amber-200/60 dark:border-amber-800/30'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold shrink-0">
-                      <Link2 size={16} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-gray-900 dark:text-white truncate">Log Concur PR #</div>
-                      <div className="text-[10px] text-gray-500 dark:text-gray-400">Approved orders awaiting ERP link</div>
-                    </div>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-sky-500 text-white shrink-0">
-                    {pendingConcurPOs.length}
-                  </span>
-                </div>
-
-                {/* 2. 100% Received Ready to Close */}
-                <div 
-                  onClick={() => {
-                    if (activeExceptionFilter === 'READY_TO_CLOSE') {
-                      setActiveExceptionFilter(null);
-                      setSelectedStage('ALL');
-                    } else {
-                      setActiveExceptionFilter('READY_TO_CLOSE');
-                      setSelectedStage('ALL');
-                    }
-                  }}
-                  className={`bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group ${
-                    activeExceptionFilter === 'READY_TO_CLOSE'
-                      ? 'border-emerald-500 ring-2 ring-emerald-500/30'
-                      : 'border-amber-200/60 dark:border-amber-800/30'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0">
-                      <CheckCheck size={16} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-gray-900 dark:text-white truncate">Ready for Order Closure</div>
-                      <div className="text-[10px] text-gray-500 dark:text-gray-400">100% physical delivery completed</div>
-                    </div>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-500 text-white shrink-0">
-                    {readyToClosePOs.length}
-                  </span>
-                </div>
-
-                {/* 3. Overdue Deliveries > 14 Days */}
-                <div 
-                  onClick={() => {
-                    if (activeExceptionFilter === 'OVERDUE') {
-                      setActiveExceptionFilter(null);
-                      setSelectedStage('ALL');
-                    } else {
-                      setActiveExceptionFilter('OVERDUE');
-                      setSelectedStage('ALL');
-                    }
-                  }}
-                  className={`bg-white/80 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group ${
-                    activeExceptionFilter === 'OVERDUE'
-                      ? 'border-rose-500 ring-2 ring-rose-500/40 bg-rose-50/40 dark:bg-rose-950/20'
-                      : 'border-amber-200/60 dark:border-amber-800/30'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold shrink-0">
-                      <Clock size={16} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-gray-900 dark:text-white truncate">Overdue Deliveries</div>
-                      <div className="text-[10px] text-gray-500 dark:text-gray-400">&gt;14 days past need-by date</div>
-                    </div>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-rose-500 text-white shrink-0">
-                    {overdueDeliveryPOs.length}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* ── HERO 6-STAGE INTERACTIVE WORKSPACE SELECTOR ──────────────────────── */}
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
@@ -867,15 +783,33 @@ export default function Home() {
                   onClick={() => {
                     setSelectedStage('ALL');
                     setActiveExceptionFilter(null);
+                    setOnlyTriggeredFilter(false);
                   }}
                   className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                    selectedStage === 'ALL' && !activeExceptionFilter
+                    selectedStage === 'ALL' && !activeExceptionFilter && !onlyTriggeredFilter
                       ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
                       : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
                   }`}
                 >
                   All Open ({totalOpenRequests})
                 </button>
+                {totalFlaggedOrders > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOnlyTriggeredFilter(!onlyTriggeredFilter);
+                      setActiveExceptionFilter(null);
+                    }}
+                    className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                      onlyTriggeredFilter
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/40 hover:bg-rose-100'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                    <span>{totalFlaggedOrders} Requiring Attention</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -884,8 +818,10 @@ export default function Home() {
               {LIFECYCLE_STAGES.map((stage) => {
                 const IconComp = stage.icon;
                 const count = stageCounts[stage.num] || 0;
-                const isSelected = selectedStage === stage.num && !activeExceptionFilter;
-                const isInfoActive = activeInfoStage === stage.num;
+                const isSelected = selectedStage === stage.num && !activeExceptionFilter && !onlyTriggeredFilter;
+                const stageStatus = stageStatusMap[stage.num];
+                const hasAlert = (stageStatus?.alertCount || 0) > 0;
+                const hasWarning = (stageStatus?.warningCount || 0) > 0 && !hasAlert;
 
                 return (
                   <div
@@ -893,14 +829,19 @@ export default function Home() {
                     onClick={() => {
                       setSelectedStage(stage.num);
                       setActiveExceptionFilter(null);
+                      setOnlyTriggeredFilter(false);
                     }}
                     className={`relative p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col items-center text-center justify-between gap-3 group ${
-                      isSelected
-                        ? `${stage.bgLightClass} ${stage.activeRing}`
-                        : 'bg-white dark:bg-[#15171e] border-gray-200/80 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-2xs hover:shadow-md'
+                      hasAlert
+                        ? 'animate-pulse ring-2 ring-rose-500 border-rose-500 bg-rose-50/80 dark:bg-rose-950/40 shadow-lg shadow-rose-500/10'
+                        : hasWarning
+                          ? 'animate-pulse ring-2 ring-amber-500 border-amber-500 bg-amber-50/80 dark:bg-amber-950/40 shadow-lg shadow-amber-500/10'
+                          : isSelected
+                            ? `${stage.bgLightClass} ${stage.activeRing}`
+                            : 'bg-white dark:bg-[#15171e] border-gray-200/80 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 shadow-2xs hover:shadow-md'
                     }`}
                   >
-                    {/* Top Row: Info Icon & Live Count Badge */}
+                    {/* Top Row: Info Icon & Live Trigger / Count Badge */}
                     <div className="w-full flex items-center justify-between">
                       {/* Info Tooltip Button */}
                       <button
@@ -915,19 +856,39 @@ export default function Home() {
                         <Info size={13} />
                       </button>
 
-                      {/* Live Count Badge */}
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
-                        count > 0 ? stage.badgeClass : 'bg-gray-100 dark:bg-gray-800 text-gray-400'
-                      }`}>
-                        {count}
-                      </span>
+                      {/* Live Badge */}
+                      <div className="flex items-center gap-1">
+                        {hasAlert ? (
+                          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-rose-500 text-white flex items-center gap-1 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping shrink-0" />
+                            <AlertOctagon size={10} />
+                            {stageStatus.alertCount}
+                          </span>
+                        ) : hasWarning ? (
+                          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-500 text-white flex items-center gap-1 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping shrink-0" />
+                            <AlertTriangle size={10} />
+                            {stageStatus.warningCount}
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
+                            count > 0 ? stage.badgeClass : 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                          }`}>
+                            {count}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Centered Large Stage Icon */}
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition-all shadow-xs ${
-                      isSelected
-                        ? `${stage.badgeClass} scale-105 shadow-md`
-                        : `${stage.bgLightClass} ${stage.textClass} group-hover:scale-105`
+                      hasAlert
+                        ? 'bg-rose-500 text-white shadow-rose-500/25 scale-105'
+                        : hasWarning
+                          ? 'bg-amber-500 text-white shadow-amber-500/25 scale-105'
+                          : isSelected
+                            ? `${stage.badgeClass} scale-105 shadow-md`
+                            : `${stage.bgLightClass} ${stage.textClass} group-hover:scale-105`
                     }`}>
                       <IconComp size={22} />
                     </div>
@@ -940,6 +901,16 @@ export default function Home() {
                       <p className="text-xs font-bold text-gray-900 dark:text-white mt-0.5">
                         {stage.label}
                       </p>
+                      {hasAlert && (
+                        <p className="text-[9px] font-black text-rose-600 dark:text-rose-400 mt-0.5">
+                          Critical Alert
+                        </p>
+                      )}
+                      {hasWarning && (
+                        <p className="text-[9px] font-black text-amber-600 dark:text-amber-400 mt-0.5">
+                          Warning SLA
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
@@ -954,39 +925,45 @@ export default function Home() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${
-                    activeExceptionFilter === 'OVERDUE'
+                    onlyTriggeredFilter
                       ? 'bg-rose-500'
-                      : activeExceptionFilter === 'READY_TO_CLOSE'
-                        ? 'bg-emerald-500'
-                        : activeExceptionFilter === 'MISSING_CONCUR'
-                          ? 'bg-sky-500'
-                          : 'bg-[var(--color-brand)]'
+                      : activeExceptionFilter === 'OVERDUE'
+                        ? 'bg-rose-500'
+                        : activeExceptionFilter === 'READY_TO_CLOSE'
+                          ? 'bg-emerald-500'
+                          : activeExceptionFilter === 'MISSING_CONCUR'
+                            ? 'bg-sky-500'
+                            : 'bg-[var(--color-brand)]'
                   } animate-pulse`} />
-                  <h3 className="text-sm font-black text-gray-950 dark:text-white uppercase tracking-wider">
-                    {activeExceptionFilter === 'OVERDUE'
-                      ? 'Overdue Deliveries (>14d Past Need-By)'
-                      : activeExceptionFilter === 'READY_TO_CLOSE'
-                        ? 'Orders Ready for Closure (100% Received)'
-                        : activeExceptionFilter === 'MISSING_CONCUR'
-                          ? 'Approved Orders Missing Concur PR #'
-                          : selectedStage === 'ALL'
-                            ? 'All Open Requests'
-                            : LIFECYCLE_STAGES[selectedStage - 1].stageTitle}
-                    <span className="ml-2 text-xs font-bold text-gray-500 lowercase">
+                  <h3 className="text-sm font-black text-gray-950 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                    {onlyTriggeredFilter
+                      ? 'Requests Requiring Attention (SLA Warnings & Alerts)'
+                      : activeExceptionFilter === 'OVERDUE'
+                        ? 'Overdue Deliveries (>14d Past Need-By)'
+                        : activeExceptionFilter === 'READY_TO_CLOSE'
+                          ? 'Orders Ready for Closure (100% Received)'
+                          : activeExceptionFilter === 'MISSING_CONCUR'
+                            ? 'Approved Orders Missing Concur PR #'
+                            : selectedStage === 'ALL'
+                              ? 'All Open Requests'
+                              : LIFECYCLE_STAGES[selectedStage - 1].stageTitle}
+                    <span className="text-xs font-bold text-gray-500 lowercase">
                       ({visiblePOs.length} order{visiblePOs.length === 1 ? '' : 's'})
                     </span>
                   </h3>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {activeExceptionFilter === 'OVERDUE'
-                    ? 'Showing purchase orders with unreceived line items exceeding the 14-day need-by SLA.'
-                    : activeExceptionFilter === 'READY_TO_CLOSE'
-                      ? 'Showing orders where 100% of physical delivery quantities have arrived on-site.'
-                      : activeExceptionFilter === 'MISSING_CONCUR'
-                        ? 'Showing financially approved orders awaiting requisition entry into SAP Concur.'
-                        : selectedStage === 'ALL'
-                          ? 'Showing active requests across all lifecycle stages.'
-                          : LIFECYCLE_STAGES[selectedStage - 1].descriptor}
+                  {onlyTriggeredFilter
+                    ? 'Showing all purchase orders currently breaching operational warning or critical alert SLAs.'
+                    : activeExceptionFilter === 'OVERDUE'
+                      ? 'Showing purchase orders with unreceived line items exceeding the 14-day need-by SLA.'
+                      : activeExceptionFilter === 'READY_TO_CLOSE'
+                        ? 'Showing orders where 100% of physical delivery quantities have arrived on-site.'
+                        : activeExceptionFilter === 'MISSING_CONCUR'
+                          ? 'Showing financially approved orders awaiting requisition entry into SAP Concur.'
+                          : selectedStage === 'ALL'
+                            ? 'Showing active requests across all lifecycle stages.'
+                            : LIFECYCLE_STAGES[selectedStage - 1].descriptor}
                 </p>
               </div>
 
@@ -1065,28 +1042,33 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Active Exception Filter Banner */}
-            {activeExceptionFilter && (
-              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs font-semibold mb-4 text-amber-900 dark:text-amber-200 animate-fade-in">
+            {/* Active Trigger / Exception Filter Banner */}
+            {(onlyTriggeredFilter || activeExceptionFilter) && (
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold mb-4 text-rose-900 dark:text-rose-200 animate-fade-in">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                  <AlertOctagon size={15} className="text-rose-600 dark:text-rose-400 shrink-0" />
                   <span>
-                    Filtered by exception: <strong>{
-                      activeExceptionFilter === 'OVERDUE'
-                        ? 'Overdue Deliveries (>14d past need-by date)'
-                        : activeExceptionFilter === 'READY_TO_CLOSE'
-                          ? 'Ready for Order Closure (100% Goods Received)'
-                          : 'Approved Orders Missing Concur PR #'
+                    Filtered by SLA trigger: <strong>{
+                      onlyTriggeredFilter
+                        ? 'Items breaching warning or alert trigger thresholds'
+                        : activeExceptionFilter === 'OVERDUE'
+                          ? 'Overdue Deliveries (>14d past need-by date)'
+                          : activeExceptionFilter === 'READY_TO_CLOSE'
+                            ? 'Ready for Order Closure (100% Goods Received)'
+                            : 'Approved Orders Missing Concur PR #'
                     }</strong>
                   </span>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setActiveExceptionFilter(null)}
-                  className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-100 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                  onClick={() => {
+                    setOnlyTriggeredFilter(false);
+                    setActiveExceptionFilter(null);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-900 dark:text-rose-100 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                 >
                   <X size={13} />
-                  <span>Clear Filter</span>
+                  <span>Show All</span>
                 </button>
               </div>
             )}
@@ -1141,12 +1123,7 @@ export default function Home() {
                               const StageIcon = stageInfo.stageConfig.icon;
                               const totalItems = po.lines.reduce((sum, l) => sum + (l.quantityOrdered || 0), 0);
                               const receivedItems = po.lines.reduce((sum, l) => sum + (l.quantityReceived || 0), 0);
-                              const isCardOverdue = (po.status === 'ACTIVE' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') &&
-                                po.lines.some(l => {
-                                  if (!l.needByDate || (l.quantityReceived || 0) >= l.quantityOrdered) return false;
-                                  const diffDays = (Date.now() - new Date(l.needByDate).getTime()) / (1000 * 60 * 60 * 24);
-                                  return diffDays > 14;
-                                });
+                              const triggerEval = evaluatePOTrigger(po, triggersConfig);
                               const unfulfilledWithNeedBy = po.lines.find(l => (l.quantityReceived || 0) < l.quantityOrdered && l.needByDate);
                               const cardNeedByDate = unfulfilledWithNeedBy?.needByDate || po.lines.find(l => l.needByDate)?.needByDate;
 
@@ -1168,9 +1145,14 @@ export default function Home() {
                                       </div>
 
                                       <div className="flex items-center gap-1.5 text-xs flex-wrap justify-end">
-                                        {isCardOverdue && (
-                                          <span className="px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse">
-                                            <Clock size={11} /> Overdue (&gt;14d)
+                                        {triggerEval.level === 'ALERT' && (
+                                          <span className="px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse" title={triggerEval.reason}>
+                                            <AlertOctagon size={11} /> {triggerEval.reason}
+                                          </span>
+                                        )}
+                                        {triggerEval.level === 'WARNING' && (
+                                          <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 text-[10px] font-black flex items-center gap-1 shrink-0" title={triggerEval.reason}>
+                                            <AlertTriangle size={11} /> {triggerEval.reason}
                                           </span>
                                         )}
                                         <span className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 font-semibold text-gray-700 dark:text-gray-300">
@@ -1302,12 +1284,7 @@ export default function Home() {
                     const StageIcon = stageInfo.stageConfig.icon;
                     const totalItems = po.lines.reduce((sum, l) => sum + (l.quantityOrdered || 0), 0);
                     const receivedItems = po.lines.reduce((sum, l) => sum + (l.quantityReceived || 0), 0);
-                    const isCardOverdue = (po.status === 'ACTIVE' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') &&
-                      po.lines.some(l => {
-                        if (!l.needByDate || (l.quantityReceived || 0) >= l.quantityOrdered) return false;
-                        const diffDays = (Date.now() - new Date(l.needByDate).getTime()) / (1000 * 60 * 60 * 24);
-                        return diffDays > 14;
-                      });
+                    const triggerEval = evaluatePOTrigger(po, triggersConfig);
                     const unfulfilledWithNeedBy = po.lines.find(l => (l.quantityReceived || 0) < l.quantityOrdered && l.needByDate);
                     const cardNeedByDate = unfulfilledWithNeedBy?.needByDate || po.lines.find(l => l.needByDate)?.needByDate;
 
@@ -1330,9 +1307,14 @@ export default function Home() {
                             </div>
 
                             <div className="flex items-center gap-1.5 text-xs flex-wrap justify-end">
-                              {isCardOverdue && (
-                                <span className="px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse">
-                                  <Clock size={11} /> Overdue (&gt;14d)
+                              {triggerEval.level === 'ALERT' && (
+                                <span className="px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse" title={triggerEval.reason}>
+                                  <AlertOctagon size={11} /> {triggerEval.reason}
+                                </span>
+                              )}
+                              {triggerEval.level === 'WARNING' && (
+                                <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 text-[10px] font-black flex items-center gap-1 shrink-0" title={triggerEval.reason}>
+                                  <AlertTriangle size={11} /> {triggerEval.reason}
                                 </span>
                               )}
                               <span className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 font-semibold text-gray-700 dark:text-gray-300">

@@ -1431,7 +1431,219 @@ export function isConcurEmailItem(attachmentName?: string, subject?: string): bo
   const matchesKeyword = combined.includes('concur') || 
                          combined.includes('purchase request') || 
                          combined.includes('eom') || 
-                         combined.includes('tracking');
+                         combined.includes('tracking') ||
+                         combined.includes('reconciliation');
   return hasExt && matchesKeyword;
+}
+
+export interface ConcurReportMetadata {
+  monthIndex: number; // 1 to 12 in financial year (1 = Jul ... 12 = Jun)
+  financialYear: string; // e.g. 'FY27'
+  calendarMonth: number; // 1 to 12
+  calendarYear: number; // e.g. 2026
+  monthLabel: string; // e.g. 'Sep-26'
+  version: number;
+  versionTag: string; // e.g. 'v1', 'v2'
+  detectedFrom: 'filename' | 'subject' | 'rows' | 'default';
+}
+
+export interface EnrichedConcurEmailItem {
+  id: string;
+  attachmentName: string;
+  subject?: string;
+  fromAddress?: string;
+  receivedAt?: string;
+  storagePath?: string;
+  status: string;
+  metadata: ConcurReportMetadata;
+  isLatestForMonth: boolean;
+  supersededBy?: string;
+}
+
+const MONTH_NAME_MAP: Record<string, number> = {
+  jan: 1, january: 1,
+  feb: 2, february: 2,
+  mar: 3, march: 3,
+  apr: 4, april: 4,
+  may: 5,
+  jun: 6, june: 6,
+  jul: 7, july: 7,
+  aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9,
+  oct: 10, october: 10,
+  nov: 11, november: 11,
+  dec: 12, december: 12
+};
+
+/**
+ * Intelligent parser to detect month, financial year, and version from filename, subject, or raw rows.
+ */
+export function parseConcurReportMetadata(
+  attachmentName: string = '',
+  subject: string = '',
+  sampleRows: any[] = []
+): ConcurReportMetadata {
+  const cleanName = attachmentName.replace(/\.[^/.]+$/, ''); // strip extension
+  const combined = `${cleanName} ${subject}`.toLowerCase();
+
+  // 1. Version Detection
+  let version = 1;
+  const versionMatch = cleanName.match(/(?:[._\s-]v|version|rev|revision)[._\s-]*(\d+)/i) ||
+                       subject.match(/(?:[._\s-]v|version|rev|revision)[._\s-]*(\d+)/i);
+  if (versionMatch && versionMatch[1]) {
+    version = parseInt(versionMatch[1], 10);
+  } else if (combined.includes('updated') || combined.includes('revised') || combined.includes('final_2')) {
+    version = 2;
+  }
+
+  // Helper to construct return object from calendar month and year
+  const buildResult = (calMonth: number, calYear: number, detectedFrom: ConcurReportMetadata['detectedFrom']): ConcurReportMetadata => {
+    const yyyy = calYear < 100 ? 2000 + calYear : calYear;
+    let finYear: string;
+    let mIndex: number;
+
+    if (calMonth >= 7) {
+      const endYear = yyyy + 1;
+      finYear = `FY${String(endYear).slice(-2)}`;
+      mIndex = calMonth - 6;
+    } else {
+      finYear = `FY${String(yyyy).slice(-2)}`;
+      mIndex = calMonth + 6;
+    }
+
+    const shortMonths = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthLabel = `${shortMonths[calMonth]}-${String(yyyy).slice(-2)}`;
+
+    return {
+      monthIndex: mIndex,
+      financialYear: finYear,
+      calendarMonth: calMonth,
+      calendarYear: yyyy,
+      monthLabel,
+      version,
+      versionTag: `v${version}`,
+      detectedFrom
+    };
+  };
+
+  // 2. Try Name Month Match (e.g. SEP-26, SEP 2026, September 2026)
+  const monthNameRegex = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[-_\s]*(?:20)?(\d{2})\b/i;
+  
+  const nameMatch = cleanName.match(monthNameRegex);
+  if (nameMatch) {
+    const mNum = MONTH_NAME_MAP[nameMatch[1].toLowerCase()];
+    const yNum = parseInt(nameMatch[2], 10);
+    if (mNum) return buildResult(mNum, yNum, 'filename');
+  }
+
+  // 3. Try Numeric Month Match in Name (e.g. 2026-09, 2026_09, 09-2026)
+  const isoMatch = cleanName.match(/\b(20\d{2})[-_.](0?[1-9]|1[0-2])\b/);
+  if (isoMatch) {
+    return buildResult(parseInt(isoMatch[2], 10), parseInt(isoMatch[1], 10), 'filename');
+  }
+  const dmyMatch = cleanName.match(/\b(0?[1-9]|1[0-2])[-_.](20\d{2})\b/);
+  if (dmyMatch) {
+    return buildResult(parseInt(dmyMatch[1], 10), parseInt(dmyMatch[2], 10), 'filename');
+  }
+
+  // 4. Try Subject Match
+  const subjectMatch = subject.match(monthNameRegex);
+  if (subjectMatch) {
+    const mNum = MONTH_NAME_MAP[subjectMatch[1].toLowerCase()];
+    const yNum = parseInt(subjectMatch[2], 10);
+    if (mNum) return buildResult(mNum, yNum, 'subject');
+  }
+
+  // 5. Inspect Sample Rows (date columns)
+  if (sampleRows && sampleRows.length > 0) {
+    const dateCounts: Record<string, number> = {};
+    sampleRows.slice(0, 50).forEach(row => {
+      const dateVal = row.submitDate || row.date || row.Date || row['Submit Date'] || (Array.isArray(row) ? row.find(c => typeof c === 'string' && /\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(c)) : null);
+      if (dateVal) {
+        const d = new Date(dateVal);
+        if (!isNaN(d.getTime())) {
+          const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+          dateCounts[key] = (dateCounts[key] || 0) + 1;
+        }
+      }
+    });
+
+    let bestKey: string | null = null;
+    let maxCount = 0;
+    Object.entries(dateCounts).forEach(([k, c]) => {
+      if (c > maxCount) {
+        maxCount = c;
+        bestKey = k;
+      }
+    });
+
+    if (bestKey) {
+      const [yStr, mStr] = (bestKey as string).split('-');
+      return buildResult(parseInt(mStr, 10), parseInt(yStr, 10), 'rows');
+    }
+  }
+
+  // Fallback to September 2026 (Month 3 of FY27)
+  return buildResult(9, 2026, 'default');
+}
+
+/**
+ * Enriches Concur email queue items with metadata and determines the latest vs superseded version per month.
+ */
+export function enrichConcurQueueItems(queue: any[]): EnrichedConcurEmailItem[] {
+  const filtered = (queue || []).filter(item => 
+    isConcurEmailItem(item.attachmentName, item.subject) && !!item.storagePath
+  );
+
+  const enriched: EnrichedConcurEmailItem[] = filtered.map(item => {
+    const metadata = parseConcurReportMetadata(item.attachmentName, item.subject);
+    return {
+      id: item.id,
+      attachmentName: item.attachmentName,
+      subject: item.subject,
+      fromAddress: item.fromAddress,
+      receivedAt: item.receivedAt,
+      storagePath: item.storagePath,
+      status: item.status,
+      metadata,
+      isLatestForMonth: true
+    };
+  });
+
+  // Group by financialYear + monthIndex to resolve versions
+  const groups: Record<string, EnrichedConcurEmailItem[]> = {};
+  enriched.forEach(item => {
+    const key = `${item.metadata.financialYear}:${item.metadata.monthIndex}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(item);
+  });
+
+  Object.values(groups).forEach(items => {
+    if (items.length <= 1) return;
+    // Sort descending: highest version first; if tied, newest receivedAt first
+    items.sort((a, b) => {
+      if (b.metadata.version !== a.metadata.version) {
+        return b.metadata.version - a.metadata.version;
+      }
+      const timeA = a.receivedAt ? new Date(a.receivedAt).getTime() : 0;
+      const timeB = b.receivedAt ? new Date(b.receivedAt).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    const latest = items[0];
+    latest.isLatestForMonth = true;
+
+    for (let i = 1; i < items.length; i++) {
+      items[i].isLatestForMonth = false;
+      items[i].supersededBy = `${latest.attachmentName} (${latest.metadata.versionTag})`;
+    }
+  });
+
+  // Sort overall by receivedAt descending
+  return enriched.sort((a, b) => {
+    const timeA = a.receivedAt ? new Date(a.receivedAt).getTime() : 0;
+    const timeB = b.receivedAt ? new Date(b.receivedAt).getTime() : 0;
+    return timeB - timeA;
+  });
 }
 

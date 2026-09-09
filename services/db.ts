@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient.ts';
-import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds, SupplierContact, EmailIngestionQueueItem, LinenBudgetRecord, EomMonthlyOverride } from '../types.ts';
+import { User, PORequest, Supplier, Item, Site, WorkflowStep, NotificationRule, RoleDefinition, SupplierCatalogItem, SupplierStockSnapshot, ApprovalEvent, POLineItem, DeliveryHeader, DeliveryLineItem, SupplierProductMap, ProductAvailability, AppNotification, AttributeOption, SystemAuditLog, PermissionId, FeatureFlags, MarginThresholds, SupplierContact, EmailIngestionQueueItem, LinenBudgetRecord, EomMonthlyOverride, LifecycleTriggersConfig, DEFAULT_LIFECYCLE_TRIGGERS } from '../types.ts';
 import { normalizeItemCode } from '../utils/normalization.ts';
 import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { normalizeSupplierContacts } from '../utils/suppliers.ts';
@@ -1152,6 +1152,41 @@ export const db = {
         const { error } = await supabase.from('app_config').upsert({
             key: 'inbound_email_config',
             value: { email },
+            updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+    },
+
+    getConcurInboundEmailConfig: async (): Promise<string> => {
+        const { data, error } = await supabase.from('app_config').select('value').eq('key', 'concur_inbound_email_config').single();
+        if (error && error.code !== 'PGRST116') throw error;
+        return data?.value?.email || 'concur-reports@splservices.com.au';
+    },
+
+    updateConcurInboundEmailConfig: async (email: string): Promise<void> => {
+        const { error } = await supabase.from('app_config').upsert({
+            key: 'concur_inbound_email_config',
+            value: { email },
+            updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+    },
+
+    getLifecycleTriggersConfig: async (): Promise<LifecycleTriggersConfig> => {
+        const { data, error } = await supabase.from('app_config').select('value').eq('key', 'lifecycle_triggers_config').single();
+        if (error && error.code !== 'PGRST116') throw error;
+        return {
+            ...DEFAULT_LIFECYCLE_TRIGGERS,
+            ...(data?.value || {})
+        };
+    },
+
+    updateLifecycleTriggersConfig: async (config: Partial<LifecycleTriggersConfig>): Promise<void> => {
+        const current = await db.getLifecycleTriggersConfig();
+        const updated = { ...current, ...config };
+        const { error } = await supabase.from('app_config').upsert({
+            key: 'lifecycle_triggers_config',
+            value: updated,
             updated_at: new Date().toISOString()
         });
         if (error) throw error;
