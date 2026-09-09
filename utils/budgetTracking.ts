@@ -110,13 +110,54 @@ export function calculateExGst(amountIncGst: number): number {
 }
 
 /**
+ * Detect if a record, description, site, or PO relates to Classic Linen.
+ * Classic Linen is an operating entity under Sydney (located on the same physical property
+ * at Bankstown with SYD prefix in Concur), but tracked specifically as Classic Linen in ProcureFlow.
+ */
+export function isClassicLinenRecord(description?: string, branch?: string, poNumber?: string, site?: string): boolean {
+  const desc = (description || '').toUpperCase().trim();
+  const b = (branch || '').toUpperCase().trim();
+  const po = (poNumber || '').toUpperCase().trim();
+  const s = (site || '').toUpperCase().trim();
+
+  if (s.includes('CLASSIC') || s.includes('CLASSIC LINEN')) return true;
+  if (desc.includes('CLASSIC LINEN') || desc.includes('CLASSIC') || b.includes('CLASSIC')) return true;
+
+  // Concur standard tokens: 'CL - ', 'CL-', '[CL]', '(CL)', ' CL '
+  if (
+    desc.startsWith('CL -') || 
+    desc.startsWith('CL-') || 
+    desc.startsWith('CL ') ||
+    /\bCL\b/.test(desc) || 
+    desc.includes(' CL -') || 
+    desc.includes('- CL -') ||
+    desc.includes('CL-DEP') ||
+    desc.includes('CL - DEP')
+  ) {
+    if (b.includes('SYD') || po.startsWith('SYD') || desc.includes('SYD') || !b) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Extract canonical branch code from site string, entity name, or PO number prefix.
  */
 export function normalizeBranchCode(siteOrPo?: string, entity?: string): string {
   const combined = `${siteOrPo || ''} ${entity || ''}`.toUpperCase();
   
   if (combined.includes('MELBOURNE') || combined.startsWith('MEL') || combined.includes('SPL MELBOURNE')) return 'MEL';
-  if (combined.includes('SYDNEY') || combined.startsWith('SYD') || combined.includes('SPL SYDNEY')) return 'SYD';
+  if (
+    combined.includes('SYDNEY') || 
+    combined.startsWith('SYD') || 
+    combined.includes('SPL SYDNEY') ||
+    combined.includes('CLASSIC') ||
+    combined.includes('CLASSIC LINEN') ||
+    combined.includes('CL -') ||
+    combined.includes('CL-')
+  ) return 'SYD';
   if (combined.includes('BRISBANE') || combined.startsWith('BNE') || combined.includes('SPL BRISBANE')) return 'BNE';
   if (combined.includes('PERTH') || combined.startsWith('PER') || combined.includes('SPL PERTH')) return 'PER';
   if (combined.includes('ADELAIDE') || combined.startsWith('ADL') || combined.includes('SPL ADELAIDE')) return 'ADL';

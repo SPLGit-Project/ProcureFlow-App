@@ -47,7 +47,8 @@ import {
   parseAustralianOrIsoDate,
   enrichConcurQueueItems,
   EnrichedConcurEmailItem,
-  TOTAL_DEPLETION_BUDGET
+  TOTAL_DEPLETION_BUDGET,
+  isClassicLinenRecord
 } from '../../utils/budgetTracking.ts';
 
 type ActiveTab = 'TRACKING_GRID' | 'PIVOT_BREAKDOWN' | 'CONCUR_RECONCILIATION';
@@ -63,6 +64,7 @@ interface ConcurRawRow {
   totalExGst: number;
   entity: string;
   vendorName: string;
+  isClassicLinen?: boolean;
 }
 
 interface ReconciliationItem {
@@ -75,10 +77,12 @@ interface ReconciliationItem {
   description?: string;
   branch?: string;
   vendor?: string;
+  isClassicLinen?: boolean;
 }
 
 export default function EOMTrackingView() {
-  const { pos, emailIngestionQueue, refreshEmailIngestionQueue, downloadInboxAttachment } = useApp();
+  const { pos, allPos, emailIngestionQueue, refreshEmailIngestionQueue, downloadInboxAttachment } = useApp();
+  const effectiveAllPos = (allPos && allPos.length > 0) ? allPos : pos;
   const [activeTab, setActiveTab] = useState<ActiveTab>('TRACKING_GRID');
 
   // Year & Month Selection
@@ -330,18 +334,18 @@ export default function EOMTrackingView() {
       : budgetRecords;
 
     return buildEom12MonthGrids(
-      pos,
+      effectiveAllPos,
       effectiveBudgetRecords,
       effectiveOverrides,
       selectedFY,
       selectedMonthIndex
     );
-  }, [pos, budgetRecords, overrides, editableOverrides, editableBudgets, isEditActualsMode, selectedFY, selectedMonthIndex]);
+  }, [effectiveAllPos, budgetRecords, overrides, editableOverrides, editableBudgets, isEditActualsMode, selectedFY, selectedMonthIndex]);
 
   // Compute Pivot Tab Data Model
   const pivotModel = useMemo(() => {
-    return buildPivotTabData(pos, selectedMonthIndex, selectedFY);
-  }, [pos, selectedMonthIndex, selectedFY]);
+    return buildPivotTabData(effectiveAllPos, selectedMonthIndex, selectedFY);
+  }, [effectiveAllPos, selectedMonthIndex, selectedFY]);
 
   // Filtered detailed PRs in Pivot View
   const filteredPivotPrs = useMemo(() => {
@@ -479,12 +483,37 @@ export default function EOMTrackingView() {
       const description = getVal(descIdx);
       const branchVal = branchIdx >= 0 && getVal(branchIdx) ? getVal(branchIdx) : getVal(entityIdx);
 
-      // Exclude summary / total lines that lack legitimate PO or PR numbers
-      const isSummaryRow = (!prNumber && !poNumber) ||
-                           (description.toLowerCase() === 'total') ||
-                           (branchVal.toLowerCase() === 'total') ||
-                           (prNumber.toLowerCase().includes('total'));
+      // Helper to check if a value is formatted currency or purely numbers with decimal/currency (e.g. "$258,424.57")
+      const isCurrencyOrAmount = (val: string) => {
+        const v = val.trim();
+        return (v.startsWith('$') || v.includes(',')) && /^\$?\s*[\d,]+(\.\d{1,2})?$/.test(v);
+      };
+
+      const hasTotalWord = cols.some(c => {
+        const lower = c.trim().toLowerCase();
+        return lower === 'total' || lower === 'grand total' || lower === 'report total' || lower.startsWith('total ') || lower === 'sum' || lower === 'summary';
+      });
+
+      // Valid Concur PR numbers are sequential integer IDs (e.g. 9848) or alphanumeric codes (e.g. PR-9848), never currency amounts
+      const isPrCorruptedByCurrency = isCurrencyOrAmount(prNumber);
+      const isEntityCorruptedByCurrency = isCurrencyOrAmount(branchVal);
+
+      // Exclude summary / total lines that lack legitimate PO or PR numbers or are Excel summary footers
+      const isSummaryRow = hasTotalWord ||
+                           (!poNumber && !prNumber) ||
+                           (!poNumber && isPrCorruptedByCurrency) ||
+                           isEntityCorruptedByCurrency ||
+                           (!poNumber && !description && !getVal(vendorIdx)) ||
+                           description.toLowerCase().includes('total') ||
+                           branchVal.toLowerCase().includes('total') ||
+                           prNumber.toLowerCase().includes('total');
       if (isSummaryRow) continue;
+
+      const cleanPr = prNumber.replace(/^[#\s]+|^PR-?/i, '').trim();
+
+      // Check if this record belongs to Classic Linen
+      const isCL = isClassicLinenRecord(description, branchVal, poNumber);
+      const resolvedEntity = isCL ? 'Classic Linen' : (branchVal || getVal(entityIdx));
 
       const totalRaw = (totalIdx >= 0 ? getVal(totalIdx) : '').replace(/[\$,]/g, '');
       const totalIncGst = parseFloat(totalRaw) || 0;
@@ -502,7 +531,7 @@ export default function EOMTrackingView() {
       }
 
       parsed.push({
-        prNumber,
+        prNumber: cleanPr || prNumber,
         employeeName: getVal(empIdx),
         description,
         poNumber,
@@ -510,8 +539,9 @@ export default function EOMTrackingView() {
         submitDate: getVal(dateIdx),
         totalIncGst,
         totalExGst,
-        entity: branchVal || getVal(entityIdx),
-        vendorName: getVal(vendorIdx)
+        entity: resolvedEntity,
+        vendorName: getVal(vendorIdx),
+        isClassicLinen: isCL
       });
     }
 
@@ -550,22 +580,67 @@ export default function EOMTrackingView() {
     const targetCalYear = targetMonthDef?.calendarYear || 2026;
     const targetMonthLabel = targetMonthDef?.label || 'Sep-26';
 
-    // 1. Filter ProcureFlow POs strictly to the target month & year using Australian & ISO date parsing
-    const monthPos = pos.filter(p => {
-      if (p.status === 'REJECTED' || p.status === 'DRAFT') return false;
-      const dateStr = p.requestDate || (p as any).submitDate || p.createdAt;
-      if (!dateStr) return false;
-      const d = parseAustralianOrIsoDate(dateStr);
-      if (!d) return false;
-      return (d.getMonth() + 1 === targetCalMonth) && (d.getFullYear() === targetCalYear);
-    });
-
-    // 2. Filter parsed Concur rows strictly to the target month & year (or include if no specific date row is present)
+    // 1. Filter parsed Concur rows strictly to the target month & year (or include if no specific date row is present)
     const monthConcurRows = parsedConcurRows.filter(c => {
+      // Exclude corrupted summary rows defensively
+      if (!c.poNumber && (!c.prNumber || c.prNumber.includes('$') || c.prNumber.includes(','))) return false;
       if (!c.submitDate) return true;
       const d = parseAustralianOrIsoDate(c.submitDate);
       if (!d) return true;
       return (d.getMonth() + 1 === targetCalMonth) && (d.getFullYear() === targetCalYear);
+    });
+
+    // Extract quick lookup sets from Concur rows for bidirectional cross-month linkage
+    const concurPrSet = new Set(
+      monthConcurRows
+        .map(c => (c.prNumber || '').replace(/^[#\s]+|^PR-?/i, '').toUpperCase().trim())
+        .filter(Boolean)
+    );
+    const concurPoSet = new Set(
+      monthConcurRows
+        .map(c => (c.poNumber || '').toUpperCase().trim())
+        .filter(Boolean)
+    );
+
+    // 2. Filter ProcureFlow POs across the enterprise (effectiveAllPos) for this reconciliation
+    const monthPos = effectiveAllPos.filter(p => {
+      if (p.status === 'REJECTED' || p.status === 'DRAFT') return false;
+
+      // Match A: PO directly linked to this month's Concur PO# or PR#
+      const pConcurPo = (p.concurPoNumber || '').toUpperCase().trim();
+      const pDisplay = (p.displayId || '').toUpperCase().trim();
+      const pReqNum = (p.concurRequestNumber || '').replace(/^[#\s]+|^PR-?/i, '').toUpperCase().trim();
+      const pLinesConcurPos = (p.lines || []).map(l => (l.concurPoNumber || '').toUpperCase().trim());
+
+      const hasDirectConcurMatch = 
+        (pConcurPo && concurPoSet.has(pConcurPo)) ||
+        (pDisplay && concurPoSet.has(pDisplay)) ||
+        (pReqNum && (concurPrSet.has(pReqNum) || concurPoSet.has(pReqNum))) ||
+        pLinesConcurPos.some(lp => lp && concurPoSet.has(lp));
+
+      if (hasDirectConcurMatch) return true;
+
+      // Match B: Strict Calendar month & year match
+      const dateStr = p.requestDate || (p as any).submitDate || p.createdAt;
+      if (!dateStr) return false;
+      const d = parseAustralianOrIsoDate(dateStr);
+      if (!d) return false;
+      const isSameMonth = (d.getMonth() + 1 === targetCalMonth) && (d.getFullYear() === targetCalYear);
+      if (isSameMonth) return true;
+
+      // Match C: Tail of prior month for next month replenishment (e.g. Aug 25-31 for Sep)
+      // Especially for Classic Linen and major linen orders placed at end of prior month
+      const prevCalMonth = targetCalMonth === 1 ? 12 : targetCalMonth - 1;
+      const prevCalYear = targetCalMonth === 1 ? targetCalYear - 1 : targetCalYear;
+      if (d.getMonth() + 1 === prevCalMonth && d.getFullYear() === prevCalYear && d.getDate() >= 24) {
+        const text = `${p.comments || ''} ${p.reasonForRequest || ''} ${p.customerName || ''}`.toUpperCase();
+        const shortMonth = (targetMonthDef?.shortMonth || '').toUpperCase();
+        if (text.includes(shortMonth) || p.site?.toLowerCase().includes('classic') || p.siteId === '88888888-8888-4888-8888-888888888888') {
+          return true;
+        }
+      }
+
+      return false;
     });
 
     if (monthConcurRows.length === 0 && monthPos.length === 0) {
@@ -583,19 +658,27 @@ export default function EOMTrackingView() {
       };
     }
 
-    // Build ProcureFlow PO Map for the selected month
+    // Build ProcureFlow PO Map for the selected month with normalized keys
     const pfMap = new Map<string, PORequest>();
     monthPos.forEach(p => {
-      const keys = [
+      const rawKeys = [
         p.concurPoNumber,
         p.displayId,
         p.id,
         p.concurRequestNumber,
         ...(p.lines || []).map(l => l.concurPoNumber)
-      ].filter(Boolean);
+      ].filter(Boolean) as string[];
 
-      keys.forEach(k => {
-        if (k) pfMap.set(k.toUpperCase().trim(), p);
+      rawKeys.forEach(k => {
+        const norm = k.toUpperCase().trim();
+        pfMap.set(norm, p);
+        const bare = norm.replace(/^[#\s]+|^PR-?/i, '').trim();
+        if (bare) {
+          pfMap.set(bare, p);
+          pfMap.set('#' + bare, p);
+          pfMap.set('PR' + bare, p);
+          pfMap.set('PR-' + bare, p);
+        }
       });
     });
 
@@ -612,8 +695,38 @@ export default function EOMTrackingView() {
       concurTotalEx += c.totalExGst;
       const keyPo = (c.poNumber || '').toUpperCase().trim();
       const keyPr = (c.prNumber || '').toUpperCase().trim();
+      const cleanPr = keyPr.replace(/^[#\s]+|^PR-?/i, '').trim();
 
-      const matchedPO = pfMap.get(keyPo) || pfMap.get(keyPr);
+      let matchedPO = pfMap.get(keyPo) || pfMap.get(keyPr) || (cleanPr ? pfMap.get(cleanPr) : undefined);
+
+      // Heuristic fallback for Classic Linen: If not matched by exact ID, search unmatched Classic Linen POs by vendor and amount
+      const isCL = c.isClassicLinen || isClassicLinenRecord(c.description, c.entity, c.poNumber, matchedPO?.site);
+      if (!matchedPO && isCL) {
+        const clCandidates = monthPos.filter(p => 
+          !matchedPfIds.has(p.id) && 
+          (p.site?.toLowerCase().includes('classic') || p.siteId === '88888888-8888-4888-8888-888888888888')
+        );
+
+        const vendorMatch = clCandidates.find(p => {
+          const pSupplier = (p.supplierName || '').toLowerCase();
+          const cVendor = (c.vendorName || '').toLowerCase();
+          const isVendorSimilar = pSupplier.includes(cVendor) || cVendor.includes(pSupplier) ||
+            (cVendor.includes('simba') && pSupplier.includes('simba')) ||
+            (cVendor.includes('host') && pSupplier.includes('host')) ||
+            (cVendor.includes('global textile') && pSupplier.includes('global textile')) ||
+            (cVendor.includes('cy international') && pSupplier.includes('cy'));
+          if (!isVendorSimilar) return false;
+          const pfEx = p.subtotalAmount || p.totalAmount || calculateExGst(p.totalAmountIncGst || 0);
+          return Math.abs(c.totalExGst - pfEx) <= 50;
+        });
+
+        if (vendorMatch) {
+          matchedPO = vendorMatch;
+        }
+      }
+
+      const isResolvedCL = isCL || (matchedPO && (matchedPO.site?.toLowerCase().includes('classic') || matchedPO.siteId === '88888888-8888-4888-8888-888888888888'));
+      const displayBranch = isResolvedCL ? 'Classic Linen (SYD)' : (c.entity || matchedPO?.site || 'SYD');
 
       if (matchedPO) {
         matchedPfIds.add(matchedPO.id);
@@ -631,8 +744,9 @@ export default function EOMTrackingView() {
             variance: 0,
             status: 'MATCHED',
             description: c.description || matchedPO.comments,
-            branch: c.entity || matchedPO.site,
-            vendor: c.vendorName || matchedPO.supplierName
+            branch: displayBranch,
+            vendor: c.vendorName || matchedPO.supplierName,
+            isClassicLinen: isResolvedCL
           });
         } else {
           mismatchCount++;
@@ -644,8 +758,9 @@ export default function EOMTrackingView() {
             variance: diff,
             status: 'AMOUNT_MISMATCH',
             description: c.description || matchedPO.comments,
-            branch: c.entity || matchedPO.site,
-            vendor: c.vendorName || matchedPO.supplierName
+            branch: displayBranch,
+            vendor: c.vendorName || matchedPO.supplierName,
+            isClassicLinen: isResolvedCL
           });
         }
       } else {
@@ -658,8 +773,9 @@ export default function EOMTrackingView() {
           variance: c.totalExGst,
           status: 'MISSING_IN_PROCUREFLOW',
           description: c.description,
-          branch: c.entity,
-          vendor: c.vendorName
+          branch: displayBranch,
+          vendor: c.vendorName,
+          isClassicLinen: isResolvedCL
         });
       }
     });
@@ -670,6 +786,11 @@ export default function EOMTrackingView() {
       if (!matchedPfIds.has(p.id)) {
         const pfEx = p.subtotalAmount || p.totalAmount || calculateExGst(p.totalAmountIncGst || 0);
         missingInConcurCount++;
+        const isCL = isClassicLinenRecord(p.comments, p.site, p.concurPoNumber, p.site) ||
+                     p.site?.toLowerCase().includes('classic') ||
+                     p.siteId === '88888888-8888-4888-8888-888888888888';
+        const displayBranch = isCL ? 'Classic Linen (SYD)' : p.site;
+
         items.push({
           poNumber: p.concurPoNumber || p.displayId,
           prNumber: p.concurRequestNumber || '',
@@ -678,8 +799,9 @@ export default function EOMTrackingView() {
           variance: -pfEx,
           status: 'MISSING_IN_CONCUR',
           description: p.comments || p.reasonForRequest,
-          branch: p.site,
-          vendor: p.supplierName
+          branch: displayBranch,
+          vendor: p.supplierName,
+          isClassicLinen: isCL
         });
       }
     });
@@ -700,7 +822,7 @@ export default function EOMTrackingView() {
       parityPercent,
       targetMonthLabel
     };
-  }, [parsedConcurRows, pos, selectedMonthIndex, selectedFY, gridModel.months]);
+  }, [parsedConcurRows, effectiveAllPos, selectedMonthIndex, selectedFY, gridModel.months]);
 
   // Filtered reconciliation drilldown
   const filteredReconciliationItems = useMemo(() => {
@@ -717,7 +839,8 @@ export default function EOMTrackingView() {
         i.prNumber.toLowerCase().includes(q) ||
         (i.branch && i.branch.toLowerCase().includes(q)) ||
         (i.vendor && i.vendor.toLowerCase().includes(q)) ||
-        (i.description && i.description.toLowerCase().includes(q))
+        (i.description && i.description.toLowerCase().includes(q)) ||
+        (i.isClassicLinen && (q.includes('cl') || q.includes('classic') || q.includes('linen') || q.includes('syd')))
       );
     }
     return list;
@@ -1991,6 +2114,11 @@ export default function EOMTrackingView() {
                             <strong>{reconciliationResults.missingInPfCount} record(s) in Concur</strong> have no matching internal ProcureFlow PO number.
                           </li>
                         )}
+                        {reconciliationResults.items.some(i => i.isClassicLinen) && (
+                          <li className="text-indigo-800 dark:text-indigo-300 font-medium">
+                            <strong>Classic Linen reconciliation:</strong> Concur transactions with SYD branch prefix and &lsquo;CL&rsquo; identifiers are recognized and reconciled against SPL Classic Linen in ProcureFlow.
+                          </li>
+                        )}
                       </ul>
                     </div>
                   </div>
@@ -2153,7 +2281,13 @@ export default function EOMTrackingView() {
                                 )}
                               </td>
                               <td className="py-2 px-4 font-sans text-gray-600 dark:text-gray-300">
-                                {item.branch || '-'}
+                                {item.isClassicLinen ? (
+                                  <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800/50">
+                                    Classic Linen <span className="text-[10px] text-indigo-500 font-mono font-normal">(SYD)</span>
+                                  </span>
+                                ) : (
+                                  item.branch || '-'
+                                )}
                               </td>
                               <td className="py-2 px-4 font-sans text-gray-500 dark:text-gray-400 truncate max-w-[240px]" title={`${item.description || ''} (${item.vendor || ''})`}>
                                 <span>{item.description || '-'}</span>
