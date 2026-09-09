@@ -1423,17 +1423,62 @@ export function rebalanceMonthlyBudget(
 }
 
 /**
+ * Parse Australian (DD/MM/YYYY, DD.MM.YYYY, DD-MM-YYYY) or ISO (YYYY-MM-DD) date string safely.
+ * Standard JS Date('04/09/2026') treats '04' as the month in US format, which corrupts AU dates.
+ */
+export function parseAustralianOrIsoDate(dateStr?: string | null): Date | null {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const trimmed = dateStr.trim();
+  if (!trimmed) return null;
+
+  // 1. Check Australian DD/MM/YYYY or DD.MM.YYYY or DD-MM-YYYY
+  const dmyMatch = trimmed.match(/^([0-2]?[0-9]|3[01])[-_./](0?[1-9]|1[0-2])[-_./](20\d{2}|\d{2})$/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10);
+    let year = parseInt(dmyMatch[3], 10);
+    if (year < 100) year += 2000;
+    return new Date(year, month - 1, day);
+  }
+
+  // 2. Check ISO YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = trimmed.match(/^(20\d{2})[-_./](0?[1-9]|1[0-2])[-_./]([0-2]?[0-9]|3[01])/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10);
+    const day = parseInt(isoMatch[3], 10);
+    return new Date(year, month - 1, day);
+  }
+
+  // 3. Fallback to standard Date constructor
+  const d = new Date(trimmed);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/**
  * Check whether an email ingestion queue item is a Concur / EOM spreadsheet report.
+ * Matches keywords for monthly EOM reports as well as weekly spend/depletion tracker spreadsheets.
  */
 export function isConcurEmailItem(attachmentName?: string, subject?: string): boolean {
   const combined = `${attachmentName || ''} ${subject || ''}`.toLowerCase();
   const hasExt = /\.(xlsx|xls|csv)$/i.test(attachmentName || '');
-  const matchesKeyword = combined.includes('concur') || 
-                         combined.includes('purchase request') || 
-                         combined.includes('eom') || 
-                         combined.includes('tracking') ||
-                         combined.includes('reconciliation');
-  return hasExt && matchesKeyword;
+  if (!hasExt) return false;
+
+  const keywords = [
+    'concur',
+    'purchase request',
+    'eom',
+    'tracking',
+    'tracker',
+    'depletion',
+    'spend',
+    'budget',
+    'reconciliation',
+    'reconcil',
+    'pr report'
+  ];
+
+  return keywords.some(k => combined.includes(k));
 }
 
 export interface ConcurReportMetadata {
@@ -1443,8 +1488,10 @@ export interface ConcurReportMetadata {
   calendarYear: number; // e.g. 2026
   monthLabel: string; // e.g. 'Sep-26'
   version: number;
-  versionTag: string; // e.g. 'v1', 'v2'
-  detectedFrom: 'filename' | 'subject' | 'rows' | 'default';
+  versionTag: string; // e.g. 'v1', '04/09', '04/09 v2'
+  reportDate?: string; // e.g. '2026-09-04'
+  reportDateLabel?: string; // e.g. '04/09/2026'
+  detectedFrom: 'filename' | 'subject' | 'rows' | 'sheet' | 'default';
 }
 
 export interface EnrichedConcurEmailItem {
@@ -1476,17 +1523,20 @@ const MONTH_NAME_MAP: Record<string, number> = {
 };
 
 /**
- * Intelligent parser to detect month, financial year, and version from filename, subject, or raw rows.
+ * Intelligent parser to detect month, financial year, report snapshot date, and version
+ * from filename, subject, sheet title, or raw rows.
+ * Specialised for Australian financial years (July-June) and date formats (DD.MM.YYYY / DD/MM/YYYY).
  */
 export function parseConcurReportMetadata(
   attachmentName: string = '',
   subject: string = '',
-  sampleRows: any[] = []
+  sampleRows: any[] = [],
+  sheetName: string = ''
 ): ConcurReportMetadata {
   const cleanName = attachmentName.replace(/\.[^/.]+$/, ''); // strip extension
-  const combined = `${cleanName} ${subject}`.toLowerCase();
+  const combined = `${cleanName} ${subject} ${sheetName}`.toLowerCase();
 
-  // 1. Version Detection
+  // 1. Version Detection (e.g. v2, Rev 3, Final_2, Updated)
   let version = 1;
   const versionMatch = cleanName.match(/(?:[._\s-]v|version|rev|revision)[._\s-]*(\d+)/i) ||
                        subject.match(/(?:[._\s-]v|version|rev|revision)[._\s-]*(\d+)/i);
@@ -1496,8 +1546,13 @@ export function parseConcurReportMetadata(
     version = 2;
   }
 
-  // Helper to construct return object from calendar month and year
-  const buildResult = (calMonth: number, calYear: number, detectedFrom: ConcurReportMetadata['detectedFrom']): ConcurReportMetadata => {
+  // Helper to construct return object from calendar month, year, and optional day
+  const buildResult = (
+    calMonth: number,
+    calYear: number,
+    detectedFrom: ConcurReportMetadata['detectedFrom'],
+    reportDay?: number
+  ): ConcurReportMetadata => {
     const yyyy = calYear < 100 ? 2000 + calYear : calYear;
     let finYear: string;
     let mIndex: number;
@@ -1514,6 +1569,18 @@ export function parseConcurReportMetadata(
     const shortMonths = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const monthLabel = `${shortMonths[calMonth]}-${String(yyyy).slice(-2)}`;
 
+    let reportDate: string | undefined;
+    let reportDateLabel: string | undefined;
+    let versionTag = `v${version}`;
+
+    if (reportDay && reportDay >= 1 && reportDay <= 31) {
+      const dd = String(reportDay).padStart(2, '0');
+      const mm = String(calMonth).padStart(2, '0');
+      reportDate = `${yyyy}-${mm}-${dd}`;
+      reportDateLabel = `${dd}/${mm}/${yyyy}`;
+      versionTag = version > 1 ? `${dd}/${mm} v${version}` : `${dd}/${mm}`;
+    }
+
     return {
       monthIndex: mIndex,
       financialYear: finYear,
@@ -1521,14 +1588,46 @@ export function parseConcurReportMetadata(
       calendarYear: yyyy,
       monthLabel,
       version,
-      versionTag: `v${version}`,
+      versionTag,
+      reportDate,
+      reportDateLabel,
       detectedFrom
     };
   };
 
-  // 2. Try Name Month Match (e.g. SEP-26, SEP 2026, September 2026)
+  // 2. Try Australian Full Date Match (DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY) in filename or subject
+  // Example: "Weekly Depletion Status 04.09.2026.xlsx" or "WEEKLY DEPLETION BUDGET $SPEND TRACKER - 04/09/2026"
+  const auDateRegex = /\b([0-2]?[0-9]|3[01])[-_./](0?[1-9]|1[0-2])[-_./](20\d{2})\b/;
+  const auDateMatch = cleanName.match(auDateRegex) || subject.match(auDateRegex);
+  if (auDateMatch) {
+    const day = parseInt(auDateMatch[1], 10);
+    const month = parseInt(auDateMatch[2], 10);
+    const year = parseInt(auDateMatch[3], 10);
+    return buildResult(month, year, cleanName.match(auDateRegex) ? 'filename' : 'subject', day);
+  }
+
+  // 3. Try ISO Full Date Match (YYYY-MM-DD) in filename or subject
+  const isoDateRegex = /\b(20\d{2})[-_.](0?[1-9]|1[0-2])[-_.]([0-2]?[0-9]|3[01])\b/;
+  const isoDateMatch = cleanName.match(isoDateRegex) || subject.match(isoDateRegex);
+  if (isoDateMatch) {
+    const year = parseInt(isoDateMatch[1], 10);
+    const month = parseInt(isoDateMatch[2], 10);
+    const day = parseInt(isoDateMatch[3], 10);
+    return buildResult(month, year, cleanName.match(isoDateRegex) ? 'filename' : 'subject', day);
+  }
+
+  // 4. Try Text Month with Day and Year (e.g. 04-Sep-2026, 04 Sep 26)
+  const textDateRegex = /\b([0-2]?[0-9]|3[01])[-_\s]*(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[-_\s]*(?:20)?(\d{2})\b/i;
+  const textDateMatch = cleanName.match(textDateRegex) || subject.match(textDateRegex);
+  if (textDateMatch) {
+    const day = parseInt(textDateMatch[1], 10);
+    const month = MONTH_NAME_MAP[textDateMatch[2].toLowerCase()];
+    const year = parseInt(textDateMatch[3], 10);
+    if (month) return buildResult(month, year, 'filename', day);
+  }
+
+  // 5. Try Month Name + Year Match (e.g. SEP-26, SEP 2026, September 2026)
   const monthNameRegex = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[-_\s]*(?:20)?(\d{2})\b/i;
-  
   const nameMatch = cleanName.match(monthNameRegex);
   if (nameMatch) {
     const mNum = MONTH_NAME_MAP[nameMatch[1].toLowerCase()];
@@ -1536,7 +1635,14 @@ export function parseConcurReportMetadata(
     if (mNum) return buildResult(mNum, yNum, 'filename');
   }
 
-  // 3. Try Numeric Month Match in Name (e.g. 2026-09, 2026_09, 09-2026)
+  const subjectMonthMatch = subject.match(monthNameRegex);
+  if (subjectMonthMatch) {
+    const mNum = MONTH_NAME_MAP[subjectMonthMatch[1].toLowerCase()];
+    const yNum = parseInt(subjectMonthMatch[2], 10);
+    if (mNum) return buildResult(mNum, yNum, 'subject');
+  }
+
+  // 6. Try Numeric Month Match in Name (e.g. 2026-09, 2026_09, 09-2026)
   const isoMatch = cleanName.match(/\b(20\d{2})[-_.](0?[1-9]|1[0-2])\b/);
   if (isoMatch) {
     return buildResult(parseInt(isoMatch[2], 10), parseInt(isoMatch[1], 10), 'filename');
@@ -1546,22 +1652,23 @@ export function parseConcurReportMetadata(
     return buildResult(parseInt(dmyMatch[1], 10), parseInt(dmyMatch[2], 10), 'filename');
   }
 
-  // 4. Try Subject Match
-  const subjectMatch = subject.match(monthNameRegex);
-  if (subjectMatch) {
-    const mNum = MONTH_NAME_MAP[subjectMatch[1].toLowerCase()];
-    const yNum = parseInt(subjectMatch[2], 10);
-    if (mNum) return buildResult(mNum, yNum, 'subject');
+  // 7. Check Sheet Title (e.g. "SEP TO DATE", "OCT TO DATE")
+  if (sheetName) {
+    const sheetMonthMatch = sheetName.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i);
+    if (sheetMonthMatch) {
+      const mNum = MONTH_NAME_MAP[sheetMonthMatch[1].toLowerCase()];
+      if (mNum) return buildResult(mNum, 2026, 'sheet');
+    }
   }
 
-  // 5. Inspect Sample Rows (date columns)
+  // 8. Inspect Sample Rows (date columns) using parseAustralianOrIsoDate
   if (sampleRows && sampleRows.length > 0) {
     const dateCounts: Record<string, number> = {};
     sampleRows.slice(0, 50).forEach(row => {
-      const dateVal = row.submitDate || row.date || row.Date || row['Submit Date'] || (Array.isArray(row) ? row.find(c => typeof c === 'string' && /\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(c)) : null);
+      const dateVal = row.submitDate || row.date || row.Date || row['Submit Date'] || (Array.isArray(row) ? row.find(c => typeof c === 'string' && /\d{1,4}[-./]\d{1,2}[-./]\d{2,4}/.test(c)) : null);
       if (dateVal) {
-        const d = new Date(dateVal);
-        if (!isNaN(d.getTime())) {
+        const d = parseAustralianOrIsoDate(String(dateVal));
+        if (d && !isNaN(d.getTime())) {
           const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
           dateCounts[key] = (dateCounts[key] || 0) + 1;
         }
@@ -1589,6 +1696,7 @@ export function parseConcurReportMetadata(
 
 /**
  * Enriches Concur email queue items with metadata and determines the latest vs superseded version per month.
+ * For weekly reports, the latest weekly snapshot in the month is marked active while keeping prior snapshots selectable.
  */
 export function enrichConcurQueueItems(queue: any[]): EnrichedConcurEmailItem[] {
   const filtered = (queue || []).filter(item => 
@@ -1610,7 +1718,7 @@ export function enrichConcurQueueItems(queue: any[]): EnrichedConcurEmailItem[] 
     };
   });
 
-  // Group by financialYear + monthIndex to resolve versions
+  // Group by financialYear + monthIndex to resolve versions & weekly snapshots
   const groups: Record<string, EnrichedConcurEmailItem[]> = {};
   enriched.forEach(item => {
     const key = `${item.metadata.financialYear}:${item.metadata.monthIndex}`;
@@ -1620,8 +1728,14 @@ export function enrichConcurQueueItems(queue: any[]): EnrichedConcurEmailItem[] 
 
   Object.values(groups).forEach(items => {
     if (items.length <= 1) return;
-    // Sort descending: highest version first; if tied, newest receivedAt first
+    // Sort descending:
+    // 1. Report date descending (e.g. 2026-09-11 before 2026-09-04)
+    // 2. Version descending (e.g. v2 before v1)
+    // 3. Received timestamp descending
     items.sort((a, b) => {
+      if (a.metadata.reportDate && b.metadata.reportDate && a.metadata.reportDate !== b.metadata.reportDate) {
+        return b.metadata.reportDate.localeCompare(a.metadata.reportDate);
+      }
       if (b.metadata.version !== a.metadata.version) {
         return b.metadata.version - a.metadata.version;
       }
@@ -1639,8 +1753,10 @@ export function enrichConcurQueueItems(queue: any[]): EnrichedConcurEmailItem[] 
     }
   });
 
-  // Sort overall by receivedAt descending
   return enriched.sort((a, b) => {
+    if (a.metadata.reportDate && b.metadata.reportDate && a.metadata.reportDate !== b.metadata.reportDate) {
+      return b.metadata.reportDate.localeCompare(a.metadata.reportDate);
+    }
     const timeA = a.receivedAt ? new Date(a.receivedAt).getTime() : 0;
     const timeB = b.receivedAt ? new Date(b.receivedAt).getTime() : 0;
     return timeB - timeA;

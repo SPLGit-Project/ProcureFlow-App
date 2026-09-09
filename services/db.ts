@@ -1160,7 +1160,7 @@ export const db = {
     getConcurInboundEmailConfig: async (): Promise<string> => {
         const { data, error } = await supabase.from('app_config').select('value').eq('key', 'concur_inbound_email_config').single();
         if (error && error.code !== 'PGRST116') throw error;
-        return data?.value?.email || 'concur-reports@splservices.com.au';
+        return data?.value?.email || 'Procurement@splservices.com.au';
     },
 
     updateConcurInboundEmailConfig: async (email: string): Promise<void> => {

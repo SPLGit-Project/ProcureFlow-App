@@ -44,6 +44,7 @@ import {
   calculateExGst, 
   isConcurEmailItem,
   parseConcurReportMetadata,
+  parseAustralianOrIsoDate,
   enrichConcurQueueItems,
   EnrichedConcurEmailItem,
   TOTAL_DEPLETION_BUDGET
@@ -129,15 +130,27 @@ export default function EOMTrackingView() {
   }, [concurEmailAttachments, selectedEmailAttachmentId, selectedMonthIndex]);
 
   // Parse Concur workbook array buffer or blob
-  const parseConcurSpreadsheetBlob = async (blob: Blob, sourceLabel: string) => {
+  const parseConcurSpreadsheetBlob = async (blob: Blob, sourceLabel: string, attachmentItem?: EnrichedConcurEmailItem) => {
     setIsSyncingEmail(true);
     try {
       const arrayBuffer = await blob.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-      const sheetName = workbook.SheetNames.find(s => s.toLowerCase().includes('raw')) || workbook.SheetNames[0];
+      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+      
+      // Select the best sheet:
+      // 1. Sheet matching target month prefix (e.g. 'sep')
+      // 2. Sheet matching 'raw', 'depletion', or 'spend'
+      // 3. Fallback to first sheet
+      const targetMonthDef = gridModel.months[selectedMonthIndex - 1];
+      const monthPrefix = targetMonthDef ? targetMonthDef.label.slice(0, 3).toLowerCase() : '';
+      const sheetName = workbook.SheetNames.find(s => monthPrefix && s.toLowerCase().includes(monthPrefix))
+        || workbook.SheetNames.find(s => s.toLowerCase().includes('raw'))
+        || workbook.SheetNames.find(s => s.toLowerCase().includes('depletion'))
+        || workbook.SheetNames.find(s => s.toLowerCase().includes('spend'))
+        || workbook.SheetNames[0];
+
       const worksheet = workbook.Sheets[sheetName];
       const tsv = XLSX.utils.sheet_to_csv(worksheet, { FS: '\t' });
-      handleParseConcurText(tsv);
+      handleParseConcurText(tsv, sheetName, attachmentItem);
       setStatusMessage({ type: 'success', text: `Successfully synced & parsed ${sourceLabel} from email intake.` });
     } catch (err: any) {
       console.error('Failed to parse Concur attachment:', err);
@@ -163,7 +176,7 @@ export default function EOMTrackingView() {
     try {
       const blob = await downloadInboxAttachment(item.storagePath);
       setSyncedEmailItem(item);
-      await parseConcurSpreadsheetBlob(blob, `${item.attachmentName} (${item.metadata.monthLabel} ${item.metadata.versionTag})`);
+      await parseConcurSpreadsheetBlob(blob, `${item.attachmentName} (${item.metadata.monthLabel} ${item.metadata.versionTag})`, item);
     } catch (err: any) {
       console.error('Error downloading attachment:', err);
       setStatusMessage({ type: 'error', text: `Failed to download attachment: ${err.message}` });
@@ -171,12 +184,18 @@ export default function EOMTrackingView() {
     }
   };
 
-  // Auto-sync latest Concur email attachment on first visit if available
+  // Auto-sync latest Concur email attachment on first visit or month switch if available
   useEffect(() => {
     if (activeTab === 'CONCUR_RECONCILIATION' && parsedConcurRows.length === 0 && concurEmailAttachments.length > 0 && !isSyncingEmail) {
-      handleSyncSelectedEmail(concurEmailAttachments[0].id);
+      const matchForMonth = concurEmailAttachments.find(a => a.metadata.monthIndex === selectedMonthIndex && a.isLatestForMonth)
+        || concurEmailAttachments.find(a => a.metadata.monthIndex === selectedMonthIndex)
+        || concurEmailAttachments[0];
+      if (matchForMonth) {
+        setSelectedEmailAttachmentId(matchForMonth.id);
+        handleSyncSelectedEmail(matchForMonth.id);
+      }
     }
-  }, [activeTab, concurEmailAttachments.length]);
+  }, [activeTab, concurEmailAttachments.length, selectedMonthIndex]);
 
   // Save Concur Inbound Email Configuration
   const handleSaveConcurInboxEmail = async () => {
@@ -426,7 +445,7 @@ export default function EOMTrackingView() {
   };
 
   // Parse Concur text from automated intake
-  const handleParseConcurText = (rawText?: string) => {
+  const handleParseConcurText = (rawText?: string, sheetName: string = '', activeItem?: EnrichedConcurEmailItem) => {
     if (!rawText || !rawText.trim()) return;
 
     const lines = rawText.trim().split(/\r?\n/);
@@ -438,9 +457,11 @@ export default function EOMTrackingView() {
     const prIdx = cleanHeader.findIndex(h => h.includes('purchase request') || h.includes('pr'));
     const descIdx = cleanHeader.findIndex(h => h.includes('description'));
     const poIdx = cleanHeader.findIndex(h => h.includes('po') || h.includes('purchase order'));
-    const totalIdx = cleanHeader.findIndex(h => h.includes('total') || h.includes('amount'));
+    const totalIdx = cleanHeader.findIndex(h => h === 'total' || h.includes('total inc') || (h.includes('total') && !h.includes('excl')));
+    const exclGstIdx = cleanHeader.findIndex(h => h.includes('excl gst') || h.includes('ex gst') || h.includes('net amount') || h.includes('subtotal'));
     const empIdx = cleanHeader.findIndex(h => h.includes('employee'));
-    const entityIdx = cleanHeader.findIndex(h => h.includes('entity') || h.includes('branch') || h.includes('site'));
+    const branchIdx = cleanHeader.findIndex(h => h === 'branch' || h.startsWith('branch'));
+    const entityIdx = cleanHeader.findIndex(h => h.includes('entity') || h.includes('site') || (h.includes('branch') && h !== 'branch'));
     const vendorIdx = cleanHeader.findIndex(h => h.includes('vendor') || h.includes('supplier'));
     const statusIdx = cleanHeader.findIndex(h => h.includes('status'));
     const dateIdx = cleanHeader.findIndex(h => h.includes('date'));
@@ -456,30 +477,54 @@ export default function EOMTrackingView() {
       const prNumber = getVal(prIdx);
       const poNumber = getVal(poIdx);
       const description = getVal(descIdx);
-      const totalRaw = getVal(totalIdx).replace(/[\$,]/g, '');
-      const totalIncGst = parseFloat(totalRaw) || 0;
-      const totalExGst = calculateExGst(totalIncGst);
+      const branchVal = branchIdx >= 0 && getVal(branchIdx) ? getVal(branchIdx) : getVal(entityIdx);
 
-      if (prNumber || poNumber || totalIncGst > 0) {
-        parsed.push({
-          prNumber,
-          employeeName: getVal(empIdx),
-          description,
-          poNumber,
-          approvalStatus: getVal(statusIdx) || 'Approved',
-          submitDate: getVal(dateIdx),
-          totalIncGst,
-          totalExGst,
-          entity: getVal(entityIdx),
-          vendorName: getVal(vendorIdx)
-        });
+      // Exclude summary / total lines that lack legitimate PO or PR numbers
+      const isSummaryRow = (!prNumber && !poNumber) ||
+                           (description.toLowerCase() === 'total') ||
+                           (branchVal.toLowerCase() === 'total') ||
+                           (prNumber.toLowerCase().includes('total'));
+      if (isSummaryRow) continue;
+
+      const totalRaw = (totalIdx >= 0 ? getVal(totalIdx) : '').replace(/[\$,]/g, '');
+      const totalIncGst = parseFloat(totalRaw) || 0;
+
+      let totalExGst = 0;
+      if (exclGstIdx >= 0) {
+        const exclRaw = getVal(exclGstIdx).replace(/[\$,]/g, '');
+        const parsedExcl = parseFloat(exclRaw);
+        if (!isNaN(parsedExcl) && parsedExcl > 0) {
+          totalExGst = Number(parsedExcl.toFixed(2));
+        }
       }
+      if (totalExGst === 0 && totalIncGst > 0) {
+        totalExGst = calculateExGst(totalIncGst);
+      }
+
+      parsed.push({
+        prNumber,
+        employeeName: getVal(empIdx),
+        description,
+        poNumber,
+        approvalStatus: getVal(statusIdx) || 'Approved',
+        submitDate: getVal(dateIdx),
+        totalIncGst,
+        totalExGst,
+        entity: branchVal || getVal(entityIdx),
+        vendorName: getVal(vendorIdx)
+      });
     }
 
     setParsedConcurRows(parsed);
 
     // Auto-detect report month and synchronize selectedMonthIndex if different
-    const meta = parseConcurReportMetadata(syncedEmailItem?.attachmentName || '', syncedEmailItem?.subject || '', parsed);
+    const currentItem = activeItem || syncedEmailItem;
+    const meta = parseConcurReportMetadata(
+      currentItem?.attachmentName || '',
+      currentItem?.subject || sheetName || '',
+      parsed,
+      sheetName
+    );
     if (meta.monthIndex && meta.monthIndex !== selectedMonthIndex) {
       setSelectedMonthIndex(meta.monthIndex);
     }
@@ -505,21 +550,21 @@ export default function EOMTrackingView() {
     const targetCalYear = targetMonthDef?.calendarYear || 2026;
     const targetMonthLabel = targetMonthDef?.label || 'Sep-26';
 
-    // 1. Filter ProcureFlow POs strictly to the target month & year
+    // 1. Filter ProcureFlow POs strictly to the target month & year using Australian & ISO date parsing
     const monthPos = pos.filter(p => {
       if (p.status === 'REJECTED' || p.status === 'DRAFT') return false;
       const dateStr = p.requestDate || (p as any).submitDate || p.createdAt;
       if (!dateStr) return false;
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return false;
+      const d = parseAustralianOrIsoDate(dateStr);
+      if (!d) return false;
       return (d.getMonth() + 1 === targetCalMonth) && (d.getFullYear() === targetCalYear);
     });
 
     // 2. Filter parsed Concur rows strictly to the target month & year (or include if no specific date row is present)
     const monthConcurRows = parsedConcurRows.filter(c => {
       if (!c.submitDate) return true;
-      const d = new Date(c.submitDate);
-      if (isNaN(d.getTime())) return true;
+      const d = parseAustralianOrIsoDate(c.submitDate);
+      if (!d) return true;
       return (d.getMonth() + 1 === targetCalMonth) && (d.getFullYear() === targetCalYear);
     });
 
@@ -842,7 +887,16 @@ export default function EOMTrackingView() {
             <span className="text-xs font-bold text-gray-500">Month:</span>
             <select
               value={selectedMonthIndex}
-              onChange={(e) => setSelectedMonthIndex(parseInt(e.target.value, 10))}
+              onChange={(e) => {
+                const newMonth = parseInt(e.target.value, 10);
+                setSelectedMonthIndex(newMonth);
+                const matchForMonth = concurEmailAttachments.find(a => a.metadata.monthIndex === newMonth && a.isLatestForMonth)
+                  || concurEmailAttachments.find(a => a.metadata.monthIndex === newMonth);
+                if (matchForMonth && matchForMonth.id !== selectedEmailAttachmentId) {
+                  setSelectedEmailAttachmentId(matchForMonth.id);
+                  handleSyncSelectedEmail(matchForMonth.id);
+                }
+              }}
               className="bg-transparent text-sm font-black text-gray-900 dark:text-white outline-none cursor-pointer"
             >
               {gridModel.months.map(m => (
@@ -1794,7 +1848,7 @@ export default function EOMTrackingView() {
                         Active Email Attachment
                       </span>
                       <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300">
-                        {activeEmailItem.metadata.monthLabel} • {activeEmailItem.metadata.versionTag}
+                        {activeEmailItem.metadata.monthLabel} • {activeEmailItem.metadata.reportDateLabel ? `${activeEmailItem.metadata.reportDateLabel} snapshot` : activeEmailItem.metadata.versionTag}
                       </span>
                     </div>
 
@@ -1809,7 +1863,7 @@ export default function EOMTrackingView() {
                       >
                         {concurEmailAttachments.map(att => (
                           <option key={att.id} value={att.id}>
-                            {att.attachmentName} ({att.metadata.monthLabel} {att.metadata.versionTag}) {!att.isLatestForMonth ? '⚠️ Superseded' : ''}
+                            {att.attachmentName} — {att.metadata.monthLabel} ({att.metadata.reportDateLabel ? `${att.metadata.reportDateLabel} snapshot` : att.metadata.versionTag}) {!att.isLatestForMonth ? '⚠️ (Superseded)' : '✓ (Latest)'}
                           </option>
                         ))}
                       </select>
