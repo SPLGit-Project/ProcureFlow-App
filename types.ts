@@ -40,7 +40,26 @@ export type PermissionId =
   | 'publish_items'
   | 'view_audit_logs'
   | 'manage_branding'
-  | 'manage_sites';
+  | 'manage_sites'
+  // Granular Admin Permissions
+  | 'manage_users'
+  | 'manage_roles'
+  | 'manage_workflows'
+  | 'manage_email_templates'
+  | 'manage_data_sync'
+  | 'manage_data_migration'
+  | 'manage_eom_reconciliation'
+  | 'manage_lifecycle_triggers'
+  // Data Export Governance
+  | 'export_orders'
+  | 'export_catalog'
+  | 'export_reports'
+  | 'export_audit_logs'
+  // Operational Governance
+  | 'delete_requests'
+  | 'edit_po_lines'
+  | 'cancel_po'
+  | 'override_sod';
 
 export interface FeatureFlags {
   previewEnabled: boolean;
@@ -80,6 +99,13 @@ export interface RoleDefinition {
     description: string;
     permissions: PermissionId[];
     isSystem: boolean; // System roles cannot be deleted
+    maxApprovalLimit?: number; // Max $ amount role can approve (0 = unlimited)
+    maxOrderLimit?: number;    // Max $ amount role can create (0 = unlimited)
+    siteScopeMode?: 'ALL' | 'ASSIGNED' | 'REGIONAL';
+    allowedCategories?: string[];
+    enforceSod?: boolean;      // Prevent self-approval & self-receipting
+    parentRoleId?: string;
+    isTemplate?: boolean;
 }
 
 export interface UserPreferences {

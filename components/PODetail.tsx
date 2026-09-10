@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, Shield, ShieldCheck, ShoppingCart, CheckCheck, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X, MapPin } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, AlertCircle, Shield, ShieldCheck, ShoppingCart, CheckCheck, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X, MapPin } from 'lucide-react';
 import { DeliveryHeader, Item, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
@@ -49,7 +49,7 @@ interface PODetailEditDraft {
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, suppliers, items, sites, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO } = useApp();
+  const { pos, suppliers, items, sites, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -88,18 +88,18 @@ const PODetail = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _supplier = po ? suppliers.find(s => s.id === po.supplierId) : undefined;
 
-  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
+  const isAdmin = isUserAdmin();
 
   const canEditRequest = Boolean(
     po &&
     currentUser &&
-    (isAdmin || (['PENDING_APPROVAL', 'DRAFT'].includes(po.status) && currentUser.id === po.requesterId))
+    (isAdmin || hasPermission('edit_po_lines') || (['PENDING_APPROVAL', 'DRAFT'].includes(po.status) && currentUser.id === po.requesterId))
   );
 
   const canDelete = Boolean(
     po &&
     currentUser &&
-    (isAdmin || (['DRAFT', 'PENDING_APPROVAL', 'REJECTED'].includes(po.status) && currentUser.id === po.requesterId))
+    (isAdmin || hasPermission('delete_requests') || (['DRAFT', 'PENDING_APPROVAL', 'REJECTED'].includes(po.status) && currentUser.id === po.requesterId))
   );
 
   useEffect(() => {
@@ -365,16 +365,33 @@ const PODetail = () => {
     return events.sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [po]);
 
-  const canApprove = hasPermission('approve_requests') && po?.status === 'PENDING_APPROVAL';
+  const canApprove = Boolean(po && po.status === 'PENDING_APPROVAL' && canApproveOrder(po));
   const canLinkConcurRequest = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR_REQUEST';
   const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id || isAdmin) && ['APPROVED_PENDING_CONCUR', 'ACTIVE'].includes(po?.status || '');
-  const canReceive = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
-  const canClose = (hasPermission('receive_goods') || po?.requesterId === currentUser?.id) && (po?.status === 'ACTIVE' || po?.status === 'RECEIVED' || po?.status === 'VARIANCE_PENDING');
+  const canReceive = Boolean(po && (po.status === 'ACTIVE' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') && canReceiveOrder(po));
+  const canClose = canReceive;
   // isAdmin is defined at the top of the component
   const canEditDeliveries = Boolean(
     po &&
     currentUser &&
-    (isAdmin || (hasPermission('receive_goods') && (!po.siteId || currentUser.siteIds.includes(po.siteId))))
+    (isAdmin || canReceiveOrder(po))
+  );
+
+  const isSodApprovalBlocked = Boolean(
+    po &&
+    po.status === 'PENDING_APPROVAL' &&
+    hasPermission('approve_requests') &&
+    !isAdmin &&
+    !hasPermission('override_sod') &&
+    po.requesterId === currentUser?.id
+  );
+
+  const isSpendLimitApprovalBlocked = Boolean(
+    po &&
+    po.status === 'PENDING_APPROVAL' &&
+    hasPermission('approve_requests') &&
+    !isAdmin &&
+    !canApproveAmount(po.totalAmount || 0)
   );
   
   const editDraftSnapshot = useMemo<PODetailEditDraft>(() => ({

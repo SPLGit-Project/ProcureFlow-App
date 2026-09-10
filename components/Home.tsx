@@ -291,8 +291,8 @@ export function getPOStageInfo(po: PORequest, currentUser: any, hasPermission: (
   let actionType: 'APPROVE' | 'CONCUR_REQ' | 'CONCUR_PO' | 'DELIVERY' | 'QUICK_VIEW' = 'APPROVE';
   let canAction = false;
 
-  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
-  const isApprover = currentUser?.role === 'APPROVER' || currentUser?.roleIds?.includes('APPROVER') || hasPermission('approve_requests');
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN') || hasPermission('manage_settings');
+  const isApprover = isAdmin || hasPermission('approve_requests');
   const canLinkConcur = hasPermission('link_concur');
   const isRequester = po.requesterId === currentUser?.id;
 
@@ -384,11 +384,12 @@ export default function Home() {
     updatePOStatus,
     linkConcurRequest,
     linkConcurPO,
-    addDelivery
+    addDelivery,
+    isUserAdmin
   } = useApp();
   const navigate = useNavigate();
-  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
-  const isApprover = currentUser?.role === 'APPROVER' || currentUser?.roleIds?.includes('APPROVER') || hasPermission('approve_requests');
+  const isAdmin = isUserAdmin();
+  const isApprover = isAdmin || hasPermission('approve_requests');
   const canLinkConcur = hasPermission('link_concur');
 
   // Selected stage filter (null = "REQUESTS AWAITING COMPLETION" | 1 | 2 | 3 | 4 | 5 | 6)

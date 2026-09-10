@@ -48,12 +48,19 @@ export const db = {
     getRoles: async (): Promise<RoleDefinition[]> => {
         const { data, error } = await supabase.from('roles').select('*');
         if (error) throw error;
-        return (data || []).map((r: { id: string; name: string; description: string; is_system: boolean; permissions: string[] }) => ({
+        return (data || []).map((r: any) => ({
             id: r.id,
             name: r.name,
             description: r.description,
             isSystem: r.is_system,
-            permissions: (r.permissions || []) as PermissionId[]
+            permissions: (r.permissions || []) as PermissionId[],
+            maxApprovalLimit: r.max_approval_limit != null ? Number(r.max_approval_limit) : 0,
+            maxOrderLimit: r.max_order_limit != null ? Number(r.max_order_limit) : 0,
+            siteScopeMode: r.site_scope_mode || 'ASSIGNED',
+            allowedCategories: r.allowed_categories || [],
+            enforceSod: r.enforce_sod !== false,
+            parentRoleId: r.parent_role_id || undefined,
+            isTemplate: Boolean(r.is_template)
         }));
     },
     
@@ -63,7 +70,14 @@ export const db = {
             name: role.name,
             description: role.description,
             is_system: role.isSystem,
-            permissions: role.permissions
+            permissions: role.permissions,
+            max_approval_limit: role.maxApprovalLimit ?? 0,
+            max_order_limit: role.maxOrderLimit ?? 0,
+            site_scope_mode: role.siteScopeMode ?? 'ASSIGNED',
+            allowed_categories: role.allowedCategories ?? [],
+            enforce_sod: role.enforceSod !== false,
+            parent_role_id: role.parentRoleId || null,
+            is_template: Boolean(role.isTemplate)
         });
         if (error) throw error;
     },

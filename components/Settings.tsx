@@ -14,7 +14,7 @@ import {
     GitMerge, Fingerprint, Palette, Package, Layers, Type,
     Eye, Calendar as CalendarIcon, Wand2, XCircle, DollarSign, CheckSquare, Activity,
     Mail, Mail as MailIcon, Slack, Smartphone, ArrowDown, History, HelpCircle, Image, Tag, Save, Phone, Code, AlertCircle, Check, Info, ArrowRight, MessageSquare, GripVertical, PlayCircle, StopCircle, Network, ListFilter, Clock, CheckCircle, MinusCircle, Archive, UserPlus, Loader2, BookOpen, Zap, BarChart3, Sparkles,
-    Building2, Files, FileSpreadsheet, Volume2, Moon, Sliders
+    Building2, Files, FileSpreadsheet, Volume2, Moon, Sliders, Grid, Copy
 } from 'lucide-react';
 import { useToast, ToastContainer } from './ToastNotification.tsx';
 import { getTimeUntilExpiry, formatInviteDate } from '../utils/inviteHelpers.ts';
@@ -52,41 +52,9 @@ import { ShieldCheck } from 'lucide-react';
 
 
 import RoleTreeManager from './RoleTreeManager.tsx';
-
-
-const AVAILABLE_PERMISSIONS: { id: PermissionId, label: string, description: string, icon: React.ElementType, category: 'Sidebar Navigation' | 'Admin Portal' | 'Operational Actions' | 'Development' }[] = [
-    // Sidebar Navigation
-    { id: 'view_dashboard', label: 'Dashboard', description: 'Access dashboard overview', icon: Layout, category: 'Sidebar Navigation' },
-    { id: 'view_items', label: 'Items', description: 'View master item list', icon: Box, category: 'Sidebar Navigation' },
-    { id: 'view_stock', label: 'Stock', description: 'View stock levels', icon: Database, category: 'Sidebar Navigation' },
-    { id: 'view_suppliers', label: 'Suppliers', description: 'View supplier list', icon: Truck, category: 'Sidebar Navigation' },
-    { id: 'view_sites', label: 'Sites', description: 'View site list', icon: MapPin, category: 'Sidebar Navigation' },
-    { id: 'view_finance', label: 'Finance Review', description: 'Access finance review and cost coding', icon: DollarSign, category: 'Sidebar Navigation' },
-    { id: 'view_reports', label: 'Reports', description: 'Access to financial and operational reports', icon: BarChart3, category: 'Sidebar Navigation' },
-    { id: 'view_active_requests', label: 'Active Requests', description: 'Access active/pending concur requests', icon: Activity, category: 'Sidebar Navigation' },
-    { id: 'view_completed_requests', label: 'Completed Requests', description: 'Access history of completed requests', icon: Clock, category: 'Sidebar Navigation' },
-
-    // Admin Portal
-    { id: 'view_mapping', label: 'Product Mapping', description: 'View and manage mappings', icon: GitMerge, category: 'Admin Portal' },
-    { id: 'view_workflow', label: 'Workflow Designer', description: 'View approval workflows', icon: Wand2, category: 'Admin Portal' },
-    { id: 'view_security', label: 'Security & Roles', description: 'View users and roles', icon: Shield, category: 'Admin Portal' },
-    { id: 'view_notifications', label: 'Notifications', description: 'View notification settings', icon: Bell, category: 'Admin Portal' },
-    { id: 'view_branding', label: 'Branding', description: 'View branding settings', icon: Palette, category: 'Admin Portal' },
-    { id: 'manage_settings', label: 'Menu Config', description: 'Manage system settings', icon: ListFilter, category: 'Admin Portal' },
-
-    // Operational Actions
-    { id: 'create_request', label: 'Create Request', description: 'Create new purchase orders', icon: Plus, category: 'Operational Actions' },
-    { id: 'approve_requests', label: 'Approve POs', description: 'Approve purchase orders', icon: CheckSquare, category: 'Operational Actions' },
-    { id: 'view_all_requests', label: 'View All POs', description: 'View POs from all sites/users', icon: Eye, category: 'Operational Actions' },
-    { id: 'link_concur', label: 'Link Concur', description: 'Link POs to Concur', icon: LinkIcon, category: 'Operational Actions' },
-    { id: 'receive_goods', label: 'Receive Goods', description: 'Mark items as received', icon: Package, category: 'Operational Actions' },
-    { id: 'manage_finance', label: 'Finance Management', description: 'Edit finance codes', icon: DollarSign, category: 'Operational Actions' },
-    { id: 'manage_items', label: 'Manage Items', description: 'Create/Edit/Delete Items', icon: Layers, category: 'Operational Actions' },
-    { id: 'manage_suppliers', label: 'Manage Suppliers', description: 'Create/Edit/Delete Suppliers', icon: Truck, category: 'Operational Actions' },
-    
-    // Development
-    { id: 'manage_development', label: 'Development Admin', description: 'Access to Smart Buying and Data Ingest tools', icon: Code, category: 'Development' }
-];
+import RoleCreationWizard from './RoleCreationWizard.tsx';
+import RoleMatrixView from './RoleMatrixView.tsx';
+import RoleMembersPanel from './RoleMembersPanel.tsx';
 
 type AdminTab = 'PROFILE' | 'CATALOG' | 'STOCK' | 'MAPPING' | 'SUPPLIERS' | 'SITES' | 'BRANDING' | 'MENU' | 'USERS' | 'SECURITY' | 'WORKFLOW' | 'NOTIFICATIONS' | 'MIGRATION' | 'EMAIL' | 'AUDIT' | 'DATA_SYNC' | 'SMART_BUYING' | 'ITEM_CREATION' | 'EOM_RECONCILIATION' | 'LIFECYCLE_TRIGGERS';
 
@@ -379,7 +347,7 @@ const Settings = () => {
       }
       
       const tabConfig = allTabs.find(t => t.id === activeTab);
-      if (tabConfig?.permission && !hasPermission(tabConfig.permission)) {
+      if (tabConfig?.permission && !hasPermission(tabConfig.permission) && !(tabConfig.fallbackPermission && hasPermission(tabConfig.fallbackPermission))) {
           setActiveTab('PROFILE');
       }
   }, [currentUser, activeTab, hasPermission]);
@@ -918,6 +886,10 @@ const Settings = () => {
   // --- Security State ---
   const [activeRole, setActiveRole] = useState<RoleDefinition | null>(null);
   const [isRoleEditorOpen, setIsRoleEditorOpen] = useState(false);
+  const [isRoleMatrixOpen, setIsRoleMatrixOpen] = useState(false);
+  const [roleSubTab, setRoleSubTab] = useState<'PERMISSIONS' | 'LIMITS' | 'MEMBERS'>('PERMISSIONS');
+  const [roleToClone, setRoleToClone] = useState<RoleDefinition | null>(null);
+  const [isSavingRoleLimits, setIsSavingRoleLimits] = useState(false);
   const [roleFormName, setRoleFormName] = useState('');
   const [roleFormDesc, setRoleFormDesc] = useState('');
   const [roleFormPerms, setRoleFormPerms] = useState<PermissionId[]>([]);
@@ -2837,7 +2809,7 @@ const Settings = () => {
       return matchesSupplier && matchesFrom && matchesTo && matchesStatus;
   }).sort((a,b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime());
 
-  const allTabs: { id: AdminTab, icon: React.ElementType, label: string, permission?: PermissionId }[] = [
+  const allTabs: { id: AdminTab, icon: React.ElementType, label: string, permission?: PermissionId, fallbackPermission?: PermissionId }[] = [
       { id: 'CATALOG', icon: BookOpen, label: 'Item Setup', permission: 'view_items' },
       { id: 'MAPPING', label: 'Mapping', icon: GitMerge, permission: 'view_mapping' },
       { id: 'SUPPLIERS', label: 'Suppliers', icon: Truck, permission: 'view_suppliers' },
@@ -2847,19 +2819,19 @@ const Settings = () => {
       { id: 'SECURITY', label: 'Security Roles', icon: Shield, permission: 'view_security' },
       { id: 'BRANDING', label: 'Branding', icon: Palette, permission: 'view_branding' },
       { id: 'MENU', label: 'Menu Config', icon: ListFilter, permission: 'manage_settings' },
-      { id: 'MIGRATION', label: 'Data Migration', icon: Upload, permission: 'manage_settings' },
-      { id: 'EMAIL', label: 'Email Templates', icon: Mail, permission: 'manage_settings' },
+      { id: 'MIGRATION', label: 'Data Migration', icon: Upload, permission: 'manage_data_migration', fallbackPermission: 'manage_settings' },
+      { id: 'EMAIL', label: 'Email Templates', icon: Mail, permission: 'manage_email_templates', fallbackPermission: 'manage_settings' },
       { id: 'AUDIT', label: 'System Audit', icon: History, permission: 'view_audit_logs' },
-      { id: 'DATA_SYNC', label: 'Data Sync', icon: Database, permission: 'manage_settings' },
+      { id: 'DATA_SYNC', label: 'Data Sync', icon: Database, permission: 'manage_data_sync', fallbackPermission: 'manage_settings' },
       { id: 'SMART_BUYING',    label: 'Smart Buying',   icon: BarChart3, permission: 'manage_settings' },
       { id: 'ITEM_CREATION',   label: 'Item Creation',  icon: Package,   permission: 'manage_items' },
-      { id: 'EOM_RECONCILIATION', label: 'EOM P&L Reconciliation', icon: ShieldCheck, permission: 'manage_settings' },
-      { id: 'LIFECYCLE_TRIGGERS', label: 'Lifecycle Triggers & SLAs', icon: Activity, permission: 'manage_settings' }
+      { id: 'EOM_RECONCILIATION', label: 'EOM P&L Reconciliation', icon: ShieldCheck, permission: 'manage_eom_reconciliation', fallbackPermission: 'manage_settings' },
+      { id: 'LIFECYCLE_TRIGGERS', label: 'Lifecycle Triggers & SLAs', icon: Activity, permission: 'manage_lifecycle_triggers', fallbackPermission: 'manage_settings' }
   ];
 
   const visibleTabs: { id: AdminTab, icon: React.ElementType, label: string }[] = [
       { id: 'PROFILE', icon: User, label: 'My Profile' },
-      ...allTabs.filter(tab => !tab.permission || hasPermission(tab.permission))
+      ...allTabs.filter(tab => !tab.permission || hasPermission(tab.permission) || (tab.fallbackPermission && hasPermission(tab.fallbackPermission)))
   ];
 
   // --- Helper Functions ---
@@ -5707,26 +5679,44 @@ if __name__ == "__main__":
               {/* Sidebar: Roles List */}
               <div className="w-full md:w-80 flex-shrink-0 bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden max-h-[400px] md:max-h-none">
                   <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-white/5">
-                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Security Roles</h3>
-                      <button type="button" onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl text-[var(--color-brand)] transition-all active:scale-95 shadow-sm bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800"><Plus size={18}/></button>
+                      <div className="flex items-center gap-2">
+                          <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Security Roles</h3>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                          <button 
+                              type="button" 
+                              title="Audit Matrix"
+                              onClick={() => setIsRoleMatrixOpen(true)}
+                              className="h-8 px-2.5 flex items-center gap-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl text-gray-600 dark:text-gray-300 text-[10px] font-bold uppercase transition-all bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800 shadow-sm"
+                          >
+                              <Grid size={13} /> Matrix
+                          </button>
+                          <button 
+                              type="button" 
+                              title="Create New Role"
+                              onClick={() => { setRoleToClone(null); setIsRoleEditorOpen(true); }} 
+                              className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl text-[var(--color-brand)] transition-all active:scale-95 shadow-sm bg-white dark:bg-[#15171e] border border-gray-100 dark:border-gray-800"
+                          >
+                              <Plus size={18}/>
+                          </button>
+                      </div>
                   </div>
                   
                   <div className="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar">
-                      
-                      <div className="pt-4 px-4 pb-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Security Roles</div>
+                      <div className="pt-2 px-4 pb-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Configured Roles</div>
                       
                       <div className="space-y-1">
                           {roles.map(role => (
                               <button type="button"
                                   key={role.id}
-                                  onClick={() => { setActiveRole(role); setUserSearch(''); }}
+                                  onClick={() => { setActiveRole(role); setUserSearch(''); setRoleSubTab('PERMISSIONS'); }}
                                   className={`w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3 transition-all ${activeRole?.id === role.id ? 'bg-[var(--color-brand)] text-white shadow-lg shadow-[var(--color-brand)]/20 scale-[1.02]' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300 group'}`}
                               >
                                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${activeRole?.id === role.id ? 'bg-white/20 text-white' : role.id === 'ADMIN' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 group-hover:bg-purple-100' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 group-hover:bg-blue-100'}`}>
                                       <Shield size={18}/>
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                  <div className="font-bold text-sm truncate tracking-tight">{role.name}</div>
+                                      <div className="font-bold text-sm truncate tracking-tight">{role.name}</div>
                                       <div className={`text-[10px] font-bold ${activeRole?.id === role.id ? 'text-white/80' : 'text-gray-400'}`}>{users.filter(u => (u.roleIds || [u.role]).includes(role.id) && u.status !== 'ARCHIVED').length} members</div>
                                   </div>
                                   {activeRole?.id !== role.id && <ChevronRight size={14} className="text-gray-300 dark:text-gray-700 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all"/>}
@@ -5741,61 +5731,210 @@ if __name__ == "__main__":
                   {activeRole && activeRole.id !== 'ALL' && activeRole.id !== 'PENDING_TAB' ? (
                       <>
                           {/* Header */}
-                          <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-start">
+                          <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex flex-wrap justify-between items-start gap-4">
                               <div>
                                   <div className="flex items-center gap-3 mb-1">
                                       <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{activeRole.name}</h2>
-                                      {activeRole.isSystem && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-100 dark:bg-gray-800 text-gray-500">System Role</span>}
+                                      <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">{activeRole.id}</span>
+                                      {activeRole.isSystem && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-50 dark:bg-purple-900/20 text-purple-600">System Role</span>}
                                   </div>
-                                  <p className="text-sm text-gray-500 dark:text-gray-400">{activeRole.description}</p>
+                                  <p className="text-sm text-gray-500 dark:text-gray-400">{activeRole.description || 'No description provided.'}</p>
                               </div>
-                              {!activeRole.isSystem && (
-                                  <button type="button" onClick={() => deleteRole(activeRole.id)} className="btn-secondary text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 px-3 py-2 text-xs flex items-center gap-2">
-                                      <Trash2 size={14}/> Delete Role
+                              <div className="flex items-center gap-2">
+                                  <button
+                                      type="button"
+                                      onClick={() => { setRoleToClone(activeRole); setIsRoleEditorOpen(true); }}
+                                      className="btn-secondary px-3 py-2 text-xs flex items-center gap-1.5 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-white/5"
+                                      title="Duplicate this role configuration"
+                                  >
+                                      <Copy size={13}/> Clone Role
                                   </button>
-                              )}
+                                  {!activeRole.isSystem && (
+                                      <button type="button" onClick={() => deleteRole(activeRole.id)} className="btn-secondary text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 px-3 py-2 text-xs flex items-center gap-1.5">
+                                          <Trash2 size={13}/> Delete Role
+                                      </button>
+                                  )}
+                              </div>
+                          </div>
+
+                          {/* Role Sub-Tabs Navigation */}
+                          <div className="px-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/[0.02] flex items-center gap-6">
+                              {[
+                                  { id: 'PERMISSIONS', label: 'Permissions Tree', icon: Shield },
+                                  { id: 'LIMITS', label: 'Governance & Limits', icon: Sliders },
+                                  { id: 'MEMBERS', label: `Assigned Members (${users.filter(u => (u.roleIds || [u.role]).includes(activeRole.id) && u.status !== 'ARCHIVED').length})`, icon: Users },
+                              ].map(subTab => (
+                                  <button
+                                      type="button"
+                                      key={subTab.id}
+                                      onClick={() => setRoleSubTab(subTab.id as any)}
+                                      className={`py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+                                          roleSubTab === subTab.id 
+                                              ? 'border-[var(--color-brand)] text-[var(--color-brand)]' 
+                                              : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                      }`}
+                                  >
+                                      <subTab.icon size={14} />
+                                      {subTab.label}
+                                  </button>
+                              ))}
                           </div>
 
                           {/* Main Content Body */}
                           <div className="flex-1 overflow-y-auto custom-scrollbar">
-                                  <div className="p-6 space-y-8">
-                                      {activeRole.id !== 'ALL' && (
-                                          <RoleTreeManager 
-                                              activeRole={activeRole}
-                                              saveStatus={roleSaveStatus}
-                                              onUpdatePermissions={async (newPerms) => {
-                                                  const updatedRole = { ...activeRole, permissions: newPerms };
-                                                  setRoleSaveStatus('saving');
-                                                  try {
-                                                      await updateRole(updatedRole);
-                                                      setRoleSaveStatus('saved');
-                                                      setActiveRole(updatedRole);
-                                                      setTimeout(() => setRoleSaveStatus('idle'), 3000);
-                                                  } catch (e) {
-                                                      console.error("Failed to save role", e);
-                                                      setRoleSaveStatus('idle');
-                                                  }
-                                              }}
-                                          />
-                                      )}
+                              <div className="p-6">
+                                  {roleSubTab === 'PERMISSIONS' && (
+                                      <RoleTreeManager 
+                                          activeRole={activeRole}
+                                          saveStatus={roleSaveStatus}
+                                          onUpdatePermissions={async (newPerms) => {
+                                              const updatedRole = { ...activeRole, permissions: newPerms };
+                                              setRoleSaveStatus('saving');
+                                              try {
+                                                  await updateRole(updatedRole);
+                                                  setRoleSaveStatus('saved');
+                                                  setActiveRole(updatedRole);
+                                                  setTimeout(() => setRoleSaveStatus('idle'), 3000);
+                                              } catch (e) {
+                                                  console.error("Failed to save role", e);
+                                                  setRoleSaveStatus('idle');
+                                              }
+                                          }}
+                                      />
+                                  )}
 
-                                  </div>
+                                  {roleSubTab === 'LIMITS' && (
+                                      <div className="max-w-2xl space-y-6">
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                              <div className="p-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] space-y-3">
+                                                  <label className="block text-xs font-black uppercase tracking-wider text-gray-400">Max Order Creation Limit ($)</label>
+                                                  <div className="relative">
+                                                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                                                      <input
+                                                          type="number"
+                                                          min={0}
+                                                          step={500}
+                                                          value={activeRole.maxOrderLimit || 0}
+                                                          onChange={(e) => setActiveRole({ ...activeRole, maxOrderLimit: Math.max(0, Number(e.target.value)) })}
+                                                          className="w-full pl-8 pr-4 py-2.5 bg-gray-50 dark:bg-[#181a24] border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                                      />
+                                                  </div>
+                                                  <p className="text-[10px] text-gray-400 italic">0 = Unlimited ordering total</p>
+                                              </div>
+
+                                              <div className="p-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] space-y-3">
+                                                  <label className="block text-xs font-black uppercase tracking-wider text-gray-400">Max Approval Authority Limit ($)</label>
+                                                  <div className="relative">
+                                                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                                                      <input
+                                                          type="number"
+                                                          min={0}
+                                                          step={1000}
+                                                          value={activeRole.maxApprovalLimit || 0}
+                                                          onChange={(e) => setActiveRole({ ...activeRole, maxApprovalLimit: Math.max(0, Number(e.target.value)) })}
+                                                          className="w-full pl-8 pr-4 py-2.5 bg-gray-50 dark:bg-[#181a24] border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                                      />
+                                                  </div>
+                                                  <p className="text-[10px] text-gray-400 italic">0 = Unlimited approval authority</p>
+                                              </div>
+                                          </div>
+
+                                          <div className="p-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] space-y-3">
+                                              <label className="block text-xs font-black uppercase tracking-wider text-gray-400">Site Scope & Visibility Mode</label>
+                                              <select
+                                                  value={activeRole.siteScopeMode || 'ASSIGNED'}
+                                                  onChange={(e) => setActiveRole({ ...activeRole, siteScopeMode: e.target.value as any })}
+                                                  className="w-full p-3 bg-gray-50 dark:bg-[#181a24] border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+                                              >
+                                                  <option value="ASSIGNED">Assigned Sites Only (Strict Isolation)</option>
+                                                  <option value="REGIONAL">Regional Scope (All Sites in User's Region)</option>
+                                                  <option value="ALL">All Sites (Enterprise-Wide Access)</option>
+                                              </select>
+                                          </div>
+
+                                          <div className="p-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] flex items-center justify-between">
+                                              <div>
+                                                  <div className="font-bold text-xs text-gray-900 dark:text-white">Enforce Segregation of Duties (SoD)</div>
+                                                  <p className="text-[10px] text-gray-400 mt-0.5">Blocks user from approving or receipting their own purchase orders</p>
+                                              </div>
+                                              <button
+                                                  type="button"
+                                                  onClick={() => setActiveRole({ ...activeRole, enforceSod: activeRole.enforceSod === false })}
+                                                  className={`w-11 h-6 rounded-full transition-colors relative ${activeRole.enforceSod !== false ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'}`}
+                                              >
+                                                  <div className={`w-4 h-4 rounded-full bg-white shadow-sm absolute top-1 transition-transform ${activeRole.enforceSod !== false ? 'right-1' : 'left-1'}`} />
+                                              </button>
+                                          </div>
+
+                                          <div className="flex justify-end pt-2">
+                                              <button
+                                                  type="button"
+                                                  disabled={isSavingRoleLimits}
+                                                  onClick={async () => {
+                                                      setIsSavingRoleLimits(true);
+                                                      try {
+                                                          await updateRole(activeRole);
+                                                          success(`Governance limits updated for ${activeRole.name}`);
+                                                      } catch (err) {
+                                                          error('Failed to update governance limits');
+                                                      } finally {
+                                                          setIsSavingRoleLimits(false);
+                                                      }
+                                                  }}
+                                                  className="btn-primary text-xs py-2 px-5 flex items-center gap-2"
+                                              >
+                                                  <Save size={14} /> {isSavingRoleLimits ? 'Saving...' : 'Save Governance Limits'}
+                                              </button>
+                                          </div>
+                                      </div>
+                                  )}
+
+                                  {roleSubTab === 'MEMBERS' && (
+                                      <RoleMembersPanel
+                                          role={activeRole}
+                                          allUsers={users}
+                                          allSites={sites}
+                                          onAssignUserToRole={async (userId, roleId) => {
+                                              const targetUser = users.find(u => u.id === userId);
+                                              if (!targetUser) return;
+                                              const currentRoleIds = targetUser.roleIds || [targetUser.role];
+                                              const newRoleIds = Array.from(new Set([...currentRoleIds, roleId]));
+                                              await updateUserAccess(targetUser.id, targetUser.role, newRoleIds, targetUser.siteIds || []);
+                                              await reloadData();
+                                              success(`Role assigned to ${targetUser.name}`);
+                                          }}
+                                          onRemoveUserFromRole={async (userId, roleId) => {
+                                              const targetUser = users.find(u => u.id === userId);
+                                              if (!targetUser) return;
+                                              const currentRoleIds = targetUser.roleIds || [targetUser.role];
+                                              const newRoleIds = currentRoleIds.filter(id => id !== roleId);
+                                              const newPrimaryRole = targetUser.role === roleId ? (newRoleIds[0] || 'SITE_USER') : targetUser.role;
+                                              await updateUserAccess(targetUser.id, newPrimaryRole, newRoleIds, targetUser.siteIds || []);
+                                              await reloadData();
+                                              success(`Role removed from ${targetUser.name}`);
+                                          }}
+                                      />
+                                  )}
                               </div>
-                          </>
-                      ) : (
-                          <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
-                              <div className="w-20 h-20 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
-                                  <Shield size={40} className="opacity-20"/>
-                              </div>
-                              <div>
-                                  <h3 className="text-lg font-bold text-gray-900 dark:text-white text-center">Select a Role</h3>
-                                  <p className="text-sm">Select a role from the sidebar to configure permissions and view users.</p>
-                              </div>
-                              <button type="button" onClick={() => { setActiveRole(null); setIsRoleEditorOpen(true); }} className="btn-primary">Create New Role</button>
                           </div>
-                      )}
-                  </div>
+                      </>
+                  ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
+                          <div className="w-20 h-20 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center">
+                              <Shield size={40} className="opacity-20"/>
+                          </div>
+                          <div>
+                              <h3 className="text-lg font-bold text-gray-900 dark:text-white text-center">Select a Security Role</h3>
+                              <p className="text-sm">Select a role from the sidebar to manage permissions, authority limits, and team members.</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                              <button type="button" onClick={() => { setRoleToClone(null); setIsRoleEditorOpen(true); }} className="btn-primary">Create New Role</button>
+                              <button type="button" onClick={() => setIsRoleMatrixOpen(true)} className="btn-secondary border border-gray-200 dark:border-gray-700">Audit Matrix</button>
+                          </div>
+                      </div>
+                  )}
               </div>
+          </div>
           </div>
       )}
       {activeTab === 'MIGRATION' && (
@@ -6422,43 +6561,50 @@ if __name__ == "__main__":
                  );
              })()}
 
-              {/* Role Creator Modal (Only for creating new roles now) */}
-              {isRoleEditorOpen && !activeRole && (
-                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl w-[95%] max-w-lg p-6 animate-slide-up">
-                        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Create New Role</h2>
-                        <div className="space-y-5">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Role name</label>
-                                <input className="input-field" value={roleFormName} onChange={e => setRoleFormName(e.target.value)}/>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
-                                <input className="input-field" value={roleFormDesc} onChange={e => setRoleFormDesc(e.target.value)}/>
-                            </div>
-                            <div className="flex justify-end gap-3 pt-4">
-                                <button type="button" onClick={() => setIsRoleEditorOpen(false)} className="px-4 py-2 text-gray-500 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
-                                <button type="button" onClick={() => {
-                                    // Handle Create
-                                    const newRole: RoleDefinition = {
-                                        id: roleFormName.toUpperCase().replace(/\s+/g, '_'),
-                                        name: roleFormName,
-                                        description: roleFormDesc,
-                                        permissions: [], // Start empty
-                                        isSystem: false
-                                    };
-                                    createRole(newRole);
-                                    setActiveRole(newRole); // Switch to it
-                                    setIsRoleEditorOpen(false);
-                                    // Reset form
-                                    setRoleFormName('');
-                                    setRoleFormDesc('');
-                                }} className="btn-primary">Create Role</button>
-                            </div>
-                        </div>
-                    </div>
-                 </div>
-              )}
+              {/* Role Creator Wizard Modal */}
+              <RoleCreationWizard
+                  isOpen={isRoleEditorOpen}
+                  onClose={() => { setIsRoleEditorOpen(false); setRoleToClone(null); }}
+                  existingRoles={roles}
+                  users={users}
+                  cloneFromRole={roleToClone}
+                  onSave={async (newRole, assignedUserIds) => {
+                      await createRole(newRole);
+                      if (assignedUserIds.length > 0) {
+                          for (const uid of assignedUserIds) {
+                              const u = users.find(x => x.id === uid);
+                              if (u) {
+                                  const currentRoleIds = u.roleIds || [u.role];
+                                  const newRoleIds = Array.from(new Set([...currentRoleIds, newRole.id]));
+                                  await updateUserAccess(u.id, u.role, newRoleIds, u.siteIds || []);
+                              }
+                          }
+                          await reloadData();
+                      }
+                      setActiveRole(newRole);
+                      setRoleSubTab('PERMISSIONS');
+                      success(`Security Role "${newRole.name}" deployed successfully`);
+                  }}
+              />
+
+              {/* Role Audit Matrix Modal */}
+              <RoleMatrixView
+                  isOpen={isRoleMatrixOpen}
+                  onClose={() => setIsRoleMatrixOpen(false)}
+                  roles={roles}
+                  onTogglePermission={async (roleId, permId) => {
+                      const targetRole = roles.find(r => r.id === roleId);
+                      if (!targetRole) return;
+                      if (targetRole.id === 'ADMIN' && permId === 'manage_settings') return; // Protect admin
+                      const isEnabled = targetRole.permissions.includes(permId);
+                      const newPerms = isEnabled ? targetRole.permissions.filter(p => p !== permId) : [...targetRole.permissions, permId];
+                      const updated = { ...targetRole, permissions: newPerms };
+                      await updateRole(updated);
+                      if (activeRole?.id === roleId) {
+                          setActiveRole(updated);
+                      }
+                  }}
+              />
                {/* Invite User Wizard (Replaces Directory Modal) */}
                {isDirectoryModalOpen && (
                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">

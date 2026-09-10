@@ -76,14 +76,26 @@ export async function getApprovalInstancesForRequest(requestId: string): Promise
   return (data ?? []) as ApprovalInstance[];
 }
 
-// Get all pending approvals for the current user's role
-export async function getPendingApprovalsForCurrentUser(userRole: string): Promise<ApprovalInstance[]> {
-  const { data, error } = await supabase
+// Get all pending approvals for the current user's role(s)
+export async function getPendingApprovalsForCurrentUser(userRole: string | string[]): Promise<ApprovalInstance[]> {
+  const roles = (Array.isArray(userRole) ? userRole : [userRole])
+    .filter(Boolean)
+    .map(r => r.toUpperCase());
+
+  if (roles.length === 0) return [];
+
+  let query = supabase
     .from('item_approval_instances')
     .select('*, item_requests!inner(*)')
-    .eq('status', 'PENDING')
-    .eq('approver_role', userRole.toUpperCase())
-    .order('sla_deadline', { ascending: true });  // Most urgent first
+    .eq('status', 'PENDING');
+
+  if (roles.length === 1) {
+    query = query.eq('approver_role', roles[0]);
+  } else {
+    query = query.in('approver_role', roles);
+  }
+
+  const { data, error } = await query.order('sla_deadline', { ascending: true }); // Most urgent first
 
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as ApprovalInstance[];

@@ -217,6 +217,16 @@ interface AppContextType {
   updateRole: (role: RoleDefinition) => Promise<void>;
   deleteRole: (roleId: string) => Promise<void>;
   isUserAdmin: () => boolean;
+  canApproveAmount: (amount: number) => boolean;
+  canCreateOrderAmount: (amount: number) => boolean;
+  canReceiveOrder: (po: PORequest) => boolean;
+  canApproveOrder: (po: PORequest) => boolean;
+  getUserAuthorityLimits: () => {
+      maxApprovalLimit: number;
+      maxOrderLimit: number;
+      siteScopeMode: 'ALL' | 'ASSIGNED' | 'REGIONAL';
+      enforceSod: boolean;
+  };
 
   
   // Teams Integration
@@ -560,8 +570,15 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const isEffectiveAdminUser = (user?: User | null): boolean => {
       if (!user) return false;
-      if (sessionRoleOverrideRef.current && user.role !== 'ADMIN') return false;
-      return userHasAssignedRole(user, 'ADMIN');
+      const overrideRole = sessionRoleOverrideRef.current;
+      if (overrideRole) {
+          if (overrideRole === 'ADMIN') return true;
+          const overrideDef = (rolesRef.current || []).find(r => r.id === overrideRole);
+          return !!overrideDef && (overrideDef.permissions?.includes('manage_settings') || overrideDef.permissions?.includes('manage_roles'));
+      }
+      if (userHasAssignedRole(user, 'ADMIN')) return true;
+      const assignedRoleIds = getAssignedRoleIds(user);
+      return (rolesRef.current || []).some(r => assignedRoleIds.includes(r.id) && (r.permissions?.includes('manage_settings') || r.permissions?.includes('manage_roles')));
   };
 
   useEffect(() => {
@@ -628,7 +645,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     const setActiveSiteIds = (ids: string[]) => {
         // SECURITY: Validate that non-admin users can only select sites they have access to
         let validatedIds = ids;
-        if (currentUser && !isEffectiveAdminUser(currentUser) && currentUser.siteIds && currentUser.siteIds.length > 0) {
+        const assignedRoleIds = sessionRoleOverrideRef.current ? [currentUser?.role] : getAssignedRoleIds(currentUser);
+        const hasAllSites = isEffectiveAdminUser(currentUser) || (roles || []).some(r => assignedRoleIds.includes(r.id) && r.siteScopeMode === 'ALL');
+        if (currentUser && !hasAllSites && currentUser.siteIds && currentUser.siteIds.length > 0) {
             validatedIds = ids.filter(id => currentUser.siteIds.includes(id));
         }
 
@@ -703,12 +722,18 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         if (!currentUser) return [];
         // Admins see all sites
         if (isEffectiveAdminUser(currentUser)) return sites;
+        // Roles with siteScopeMode === 'ALL' see all sites
+        const assignedRoleIds = sessionRoleOverrideRef.current
+            ? [currentUser.role]
+            : getAssignedRoleIds(currentUser);
+        const hasAllSites = roles.some(r => assignedRoleIds.includes(r.id) && r.siteScopeMode === 'ALL');
+        if (hasAllSites) return sites;
         // Non-admins only see their assigned sites
         if (currentUser.siteIds && currentUser.siteIds.length > 0) {
             return sites.filter(s => currentUser.siteIds.includes(s.id));
         }
         return [];
-    }, [currentUser, sites]);
+    }, [currentUser, sites, roles]);
 
     // --- Helper for Site Name ---
     const siteName = useCallback((siteId?: string) => {
@@ -1823,6 +1848,134 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const isUserAdmin = (): boolean => isEffectiveAdminUser(currentUser);
 
+  const canApproveAmount = useCallback((amount: number): boolean => {
+      if (!currentUser) return false;
+      if (isEffectiveAdminUser(currentUser)) return true;
+      if (!hasPermission('approve_requests')) return false;
+      const assignedRoleIds = sessionRoleOverrideRef.current
+          ? [currentUser.role]
+          : getAssignedRoleIds(currentUser);
+      const approvingRoles = roles.filter(r => assignedRoleIds.includes(r.id) && r.permissions.includes('approve_requests'));
+      if (approvingRoles.length === 0) return false;
+      const hasUnlimited = approvingRoles.some(r => !r.maxApprovalLimit || r.maxApprovalLimit <= 0);
+      if (hasUnlimited) return true;
+      const maxLimit = Math.max(...approvingRoles.map(r => r.maxApprovalLimit || 0));
+      return maxLimit <= 0 || amount <= maxLimit;
+  }, [currentUser, roles]);
+
+  const canCreateOrderAmount = useCallback((amount: number): boolean => {
+      if (!currentUser) return false;
+      if (isEffectiveAdminUser(currentUser)) return true;
+      if (!hasPermission('create_request')) return false;
+      const assignedRoleIds = sessionRoleOverrideRef.current
+          ? [currentUser.role]
+          : getAssignedRoleIds(currentUser);
+      const orderingRoles = roles.filter(r => assignedRoleIds.includes(r.id) && r.permissions.includes('create_request'));
+      if (orderingRoles.length === 0) return false;
+      const hasUnlimited = orderingRoles.some(r => !r.maxOrderLimit || r.maxOrderLimit <= 0);
+      if (hasUnlimited) return true;
+      const maxLimit = Math.max(...orderingRoles.map(r => r.maxOrderLimit || 0));
+      return maxLimit <= 0 || amount <= maxLimit;
+  }, [currentUser, roles]);
+
+  const canReceiveOrder = useCallback((po: PORequest): boolean => {
+      if (!currentUser || !po) return false;
+      if (isEffectiveAdminUser(currentUser)) return true;
+      if (!hasPermission('receive_goods')) return false;
+
+      const assignedRoleIds = sessionRoleOverrideRef.current
+          ? [currentUser.role]
+          : getAssignedRoleIds(currentUser);
+      const assignedRoles = roles.filter(r => assignedRoleIds.includes(r.id));
+
+      // Check Segregation of Duties (SoD)
+      if (!hasPermission('override_sod')) {
+          const sodEnforced = assignedRoles.some(r => r.enforceSod !== false);
+          if (sodEnforced && po.requesterId === currentUser.id) {
+              return false;
+          }
+      }
+
+      // Check site scoping
+      const hasAllSiteScope = assignedRoles.some(r => r.siteScopeMode === 'ALL');
+      if (!hasAllSiteScope && po.siteId && currentUser.siteIds && currentUser.siteIds.length > 0) {
+          if (!currentUser.siteIds.includes(po.siteId)) {
+              return false;
+          }
+      }
+
+      return true;
+  }, [currentUser, roles]);
+
+  const canApproveOrder = useCallback((po: PORequest): boolean => {
+      if (!currentUser || !po) return false;
+      if (isEffectiveAdminUser(currentUser)) return true;
+      if (!hasPermission('approve_requests')) return false;
+
+      const assignedRoleIds = sessionRoleOverrideRef.current
+          ? [currentUser.role]
+          : getAssignedRoleIds(currentUser);
+      const assignedRoles = roles.filter(r => assignedRoleIds.includes(r.id));
+
+      // Check Segregation of Duties (SoD)
+      if (!hasPermission('override_sod')) {
+          const sodEnforced = assignedRoles.some(r => r.enforceSod !== false);
+          if (sodEnforced && po.requesterId === currentUser.id) {
+              return false;
+          }
+      }
+
+      // Check financial authority limit
+      const approvingRoles = assignedRoles.filter(r => r.permissions.includes('approve_requests'));
+      const hasUnlimited = approvingRoles.some(r => !r.maxApprovalLimit || r.maxApprovalLimit <= 0);
+      if (!hasUnlimited) {
+          const maxLimit = Math.max(...approvingRoles.map(r => r.maxApprovalLimit || 0));
+          if (maxLimit > 0 && (po.totalAmount || 0) > maxLimit) {
+              return false;
+          }
+      }
+
+      // Check site scoping
+      const hasAllSiteScope = assignedRoles.some(r => r.siteScopeMode === 'ALL');
+      if (!hasAllSiteScope && po.siteId && currentUser.siteIds && currentUser.siteIds.length > 0) {
+          if (!currentUser.siteIds.includes(po.siteId)) {
+              return false;
+          }
+      }
+
+      return true;
+  }, [currentUser, roles]);
+
+  const getUserAuthorityLimits = useCallback(() => {
+      if (!currentUser) {
+          return { maxApprovalLimit: 0, maxOrderLimit: 0, siteScopeMode: 'ASSIGNED' as const, enforceSod: true };
+      }
+      if (isEffectiveAdminUser(currentUser)) {
+          return { maxApprovalLimit: Infinity, maxOrderLimit: Infinity, siteScopeMode: 'ALL' as const, enforceSod: false };
+      }
+      const assignedRoleIds = sessionRoleOverrideRef.current
+          ? [currentUser.role]
+          : getAssignedRoleIds(currentUser);
+      const assignedRoles = roles.filter(r => assignedRoleIds.includes(r.id));
+
+      const approvingRoles = assignedRoles.filter(r => r.permissions.includes('approve_requests'));
+      const maxApprovalLimit = approvingRoles.some(r => !r.maxApprovalLimit || r.maxApprovalLimit <= 0)
+          ? Infinity
+          : (approvingRoles.length > 0 ? Math.max(...approvingRoles.map(r => r.maxApprovalLimit || 0)) : 0);
+
+      const orderingRoles = assignedRoles.filter(r => r.permissions.includes('create_request'));
+      const maxOrderLimit = orderingRoles.some(r => !r.maxOrderLimit || r.maxOrderLimit <= 0)
+          ? Infinity
+          : (orderingRoles.length > 0 ? Math.max(...orderingRoles.map(r => r.maxOrderLimit || 0)) : 0);
+
+      const hasAllSiteScope = assignedRoles.some(r => r.siteScopeMode === 'ALL');
+      const siteScopeMode = hasAllSiteScope ? ('ALL' as const) : ('ASSIGNED' as const);
+      const hasOverrideSod = hasPermission('override_sod');
+      const enforceSod = !hasOverrideSod && assignedRoles.some(r => r.enforceSod !== false);
+
+      return { maxApprovalLimit, maxOrderLimit, siteScopeMode, enforceSod };
+  }, [currentUser, roles]);
+
 
   const createRole = async (role: RoleDefinition) => {
     setRoles(prev => [...prev, role]);
@@ -2321,7 +2474,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       const isAdmin = isEffectiveAdminUser(currentUser);
       const isRequesterEditable = ['PENDING_APPROVAL', 'DRAFT'].includes(existing.status) && existing.requesterId === currentUser.id;
-      const canEdit = isAdmin || isRequesterEditable;
+      const canEdit = isAdmin || isRequesterEditable || hasPermission('edit_po_lines');
 
       if (!canEdit) {
           throw new Error('You do not have permission to edit this request.');
@@ -2435,14 +2588,15 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           if (!target) throw new Error('Request not found.');
 
           const isAdmin = isEffectiveAdminUser(currentUser);
+          const hasDeletePermission = hasPermission('delete_requests');
           const isRequesterPending = Boolean(
               currentUser &&
               target.requesterId === currentUser.id &&
               ['PENDING_APPROVAL', 'DRAFT'].includes(target.status)
           );
 
-          if (!isAdmin && !isRequesterPending) {
-              throw new Error('Only pending or draft requests can be deleted by the requester.');
+          if (!isAdmin && !hasDeletePermission && !isRequesterPending) {
+              throw new Error('Only pending or draft requests can be deleted by the requester, or you need delete authority.');
           }
 
           // Optimistic remove
@@ -3118,6 +3272,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     currentUser, isAuthenticated, activeSiteIds, setActiveSiteIds, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
     users, updateUserRole, updateUserAccess, addUser, archiveUser, reinstateUser, reloadData,
     roles, permissions: [], hasPermission, createRole, updateRole, deleteRole, isUserAdmin,
+    canApproveAmount, canCreateOrderAmount, canReceiveOrder, canApproveOrder, getUserAuthorityLimits,
     teamsWebhookUrl, updateTeamsWebhook,
     inboundEmailAddress, updateInboundEmailAddress,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
@@ -3191,7 +3346,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     workflowSteps, notificationRules,
     notifications, unreadNotificationCount, isNotificationDrawerOpen, isNotificationPrefsOpen, refreshNotifications,
     notificationPopups, dismissNotificationPopup, triggerNotificationPopup,
-    reloadData, siteName, featureFlags, marginThresholds, cachedReports, cachedRunTimes, setReportCache
+    reloadData, siteName, featureFlags, marginThresholds, cachedReports, cachedRunTimes, setReportCache,
+    canApproveAmount, canCreateOrderAmount, canReceiveOrder, canApproveOrder, getUserAuthorityLimits
   ]);
 
   return (

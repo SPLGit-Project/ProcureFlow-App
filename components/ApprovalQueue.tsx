@@ -110,7 +110,8 @@ export default function ApprovalQueue() {
     try {
       if (!currentUser?.role) return;
       
-      const data = await getPendingApprovalsForCurrentUser(currentUser.role);
+      const userRoles = currentUser.roleIds?.length ? currentUser.roleIds : [currentUser.role];
+      const data = await getPendingApprovalsForCurrentUser(userRoles);
       
       // Get total stages for each request to show "Stage X of Y"
       const requestIds = [...new Set(data.map(a => a.request_id))];

@@ -5,7 +5,8 @@ import {
     Layout, 
     Zap, 
     Search,
-    Filter
+    Filter,
+    Download
 } from 'lucide-react';
 import { PermissionId, RoleDefinition } from '../types.ts';
 import { PERMISSION_GROUPS } from '../constants/permissions.ts';
@@ -23,7 +24,7 @@ const RoleTreeManager: React.FC<RoleTreeManagerProps> = ({
 }) => {
     const [expandedGroups, setExpandedGroups] = useState<string[]>(PERMISSION_GROUPS.map(g => g.id));
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterType, setFilterType] = useState<'ALL' | 'SCREEN' | 'ACTION'>('ALL');
+    const [filterType, setFilterType] = useState<'ALL' | 'SCREEN' | 'ACTION' | 'EXPORT'>('ALL');
 
     const toggleGroup = (groupId: string) => {
         setExpandedGroups(prev => 
@@ -102,14 +103,14 @@ const RoleTreeManager: React.FC<RoleTreeManagerProps> = ({
                         />
                     </div>
                     <div className="flex bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl p-1">
-                        {(['ALL', 'SCREEN', 'ACTION'] as const).map(t => (
+                        {(['ALL', 'SCREEN', 'ACTION', 'EXPORT'] as const).map(t => (
                             <button
                                 type="button"
                                 key={t}
                                 onClick={() => setFilterType(t)}
                                 className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-tight transition-all ${filterType === t ? 'bg-[var(--color-brand)] text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
                             >
-                                {t === 'ALL' ? 'Everything' : t === 'SCREEN' ? 'Screens' : 'Actions'}
+                                {t === 'ALL' ? 'Everything' : t === 'SCREEN' ? 'Screens' : t === 'ACTION' ? 'Actions' : 'Exports'}
                             </button>
                         ))}
                     </div>
@@ -211,12 +212,16 @@ const RoleTreeManager: React.FC<RoleTreeManagerProps> = ({
                                                         </div>
 
                                                         <div className={`p-2 rounded-lg transition-colors ${isEnabled ? 'bg-[var(--color-brand)]/10 text-[var(--color-brand)]' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
-                                                            {perm.type === 'SCREEN' ? <Layout size={14} /> : <Zap size={14} />}
+                                                            {perm.type === 'SCREEN' ? <Layout size={14} /> : perm.type === 'EXPORT' ? <Download size={14} /> : <Zap size={14} />}
                                                         </div>
                                                         <div className="min-w-0">
                                                             <div className="flex items-center gap-2">
                                                                 <span className={`text-xs font-bold transition-colors ${isEnabled ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>{perm.label}</span>
-                                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${perm.type === 'SCREEN' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${
+                                                                    perm.type === 'SCREEN' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 
+                                                                    perm.type === 'EXPORT' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                                                    'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+                                                                }`}>
                                                                     {perm.type}
                                                                 </span>
                                                             </div>
@@ -264,6 +269,10 @@ const RoleTreeManager: React.FC<RoleTreeManagerProps> = ({
                     <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full bg-amber-400" />
                         Actions: {activeRole.permissions.filter(id => PERMISSION_GROUPS.flatMap(g => g.permissions).find(p => p.id === id && p.type === 'ACTION')).length}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                        Exports: {activeRole.permissions.filter(id => PERMISSION_GROUPS.flatMap(g => g.permissions).find(p => p.id === id && p.type === 'EXPORT')).length}
                     </div>
                 </div>
                 <div className="text-[10px] font-medium text-gray-400 italic">
