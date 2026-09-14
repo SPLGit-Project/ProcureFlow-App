@@ -25,10 +25,13 @@ import {
   Save,
   Filter,
   AlertTriangle,
+  Clock3,
+  Check,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp.tsx';
 import PageHeader from './PageHeader';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations.ts';
@@ -64,6 +67,7 @@ interface POCreateDraft {
   reasonForRequest: 'Depletion' | 'New Customer' | 'Other';
   comments: string;
   requestDate: string;
+  defaultNeedByDate?: string;
   cart: POLineItem[];
   quantityDrafts: Record<string, string>;
   isCartExpanded: boolean;
@@ -140,6 +144,20 @@ const POCreate = () => {
   const [reasonForRequest, setReasonForRequest] = useState<'Depletion' | 'New Customer' | 'Other'>(initialDraft?.reasonForRequest || 'Depletion');
   const [comments, setComments] = useState(initialDraft?.comments || '');
   const [requestDate, setRequestDate] = useState(initialDraft?.requestDate || getLocalDateInputValue());
+  const [defaultNeedByDate, setDefaultNeedByDate] = useState(initialDraft?.defaultNeedByDate || '');
+  const [cartBatchNeedByDate, setCartBatchNeedByDate] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   const inferCategoryFromCustomer = (cust: string): SpendCategory | null => {
     const upper = cust.toUpperCase();
@@ -247,6 +265,7 @@ const POCreate = () => {
     reasonForRequest,
     comments,
     requestDate,
+    defaultNeedByDate,
     cart,
     quantityDrafts,
     isCartExpanded,
@@ -257,6 +276,7 @@ const POCreate = () => {
     comments,
     customerName,
     sector,
+    defaultNeedByDate,
     isCartExpanded,
     isCatalogExpanded,
     isHeaderExpanded,
@@ -272,6 +292,7 @@ const POCreate = () => {
     !draft.selectedSupplierId &&
     !draft.customerName.trim() &&
     !draft.comments.trim() &&
+    !draft.defaultNeedByDate &&
     draft.reasonForRequest === 'Depletion' &&
     draft.cart.length === 0 &&
     !draft.searchTerm.trim()
@@ -471,12 +492,46 @@ const POCreate = () => {
   const updateLineNeedByDate = (lineId: string, newDate: string) => {
     setCart(prev => prev.map(line => line.id === lineId ? { ...line, needByDate: newDate } : line));
   };
+
+  const handlePromptApplyNeedByDateToAll = (targetDate: string) => {
+    if (!targetDate || cart.length === 0) return;
+    let formattedDate = targetDate;
+    try {
+      const parsed = new Date(targetDate.includes('T') ? targetDate : `${targetDate}T00:00:00`);
+      if (!isNaN(parsed.getTime())) {
+        formattedDate = parsed.toLocaleDateString('en-AU', {
+          weekday: 'short',
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        });
+      }
+    } catch {
+      formattedDate = targetDate;
+    }
+
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Are you sure?',
+      message: `Are you sure you want to apply this need-by date (${formattedDate}) to all ${cart.length} item(s) on this request?`,
+      confirmLabel: `Yes, Apply to All (${cart.length})`,
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        setCart(prev => prev.map(line => ({
+          ...line,
+          needByDate: targetDate
+        })));
+        setDefaultNeedByDate(targetDate);
+        setCartBatchNeedByDate(targetDate);
+      }
+    });
+  };
   
   // Modal Handlers
   const openItemDetail = (item: POCreateCatalogItem) => {
       setSelectedDetailItem(item);
       setModalQuantity(1);
-      setModalNeedByDate(requestDate ? requestDate.split('T')[0] : getLocalDateInputValue());
+      setModalNeedByDate(defaultNeedByDate || (requestDate ? requestDate.split('T')[0] : getLocalDateInputValue()));
       
       const baseOptions = normalizeItemPriceOptions(item);
       const hasEstimatedMatch = baseOptions.some(opt => Math.abs(opt.price - Number(item.price || 0)) < 0.0001);
@@ -531,7 +586,7 @@ const POCreate = () => {
                       totalPriceIncGst: mergedPricing.totalPriceIncGst,
                       priceOptionId: line.priceOptionId ?? selectedPriceOptionId,
                       priceOptionLabel: line.priceOptionLabel ?? selectedPriceOptionLabel,
-                      needByDate: modalNeedByDate || line.needByDate || (requestDate ? requestDate.split('T')[0] : undefined)
+                      needByDate: modalNeedByDate || line.needByDate || defaultNeedByDate || (requestDate ? requestDate.split('T')[0] : undefined)
                     }
                   : line
               );
@@ -552,7 +607,7 @@ const POCreate = () => {
               upq: upq,
               priceOptionId: selectedPriceOptionId,
               priceOptionLabel: selectedPriceOptionLabel,
-              needByDate: modalNeedByDate || (requestDate ? requestDate.split('T')[0] : undefined)
+              needByDate: modalNeedByDate || defaultNeedByDate || (requestDate ? requestDate.split('T')[0] : undefined)
           }];
       });
 
@@ -584,11 +639,20 @@ const POCreate = () => {
     // Commit any uncommitted quantity drafts before submitting
     const finalCart = cart.map(line => {
         const draft = quantityDrafts[line.id];
+        const lineNeedByDate = line.needByDate || defaultNeedByDate || (requestDate ? requestDate.split('T')[0] : undefined);
         if (draft !== undefined && draft !== String(line.quantityOrdered)) {
             const committedQty = sanitizeQuantity(draft, line.quantityOrdered);
-            return { ...line, quantityOrdered: committedQty, totalPrice: committedQty * line.unitPrice };
+            return {
+                ...line,
+                quantityOrdered: committedQty,
+                totalPrice: committedQty * line.unitPrice,
+                needByDate: lineNeedByDate
+            };
         }
-        return line;
+        return {
+            ...line,
+            needByDate: lineNeedByDate
+        };
     });
     setCart(finalCart);
     setQuantityDrafts({});
@@ -636,6 +700,7 @@ const POCreate = () => {
     }
     const finalCart = cart.map(line => {
         const draft = quantityDrafts[line.id];
+        const lineNeedByDate = line.needByDate || defaultNeedByDate || (requestDate ? requestDate.split('T')[0] : undefined);
         if (draft !== undefined && draft !== String(line.quantityOrdered)) {
             const committedQty = sanitizeQuantity(draft, line.quantityOrdered);
             const pricing = calculateLinePricing(committedQty, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
@@ -646,10 +711,14 @@ const POCreate = () => {
                 taxCode: pricing.taxCode,
                 taxRate: pricing.taxRate,
                 taxAmount: pricing.taxAmount,
-                totalPriceIncGst: pricing.totalPriceIncGst
+                totalPriceIncGst: pricing.totalPriceIncGst,
+                needByDate: lineNeedByDate
             };
         }
-        return line;
+        return {
+            ...line,
+            needByDate: lineNeedByDate
+        };
     });
     const totals = calculatePOTotals(finalCart);
     const draftPO: PORequest = {
@@ -693,14 +762,61 @@ const POCreate = () => {
   const CartContent = () => (
       <div className="flex flex-col h-full animate-fade-in">
          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {cart.length === 0 ? (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-600 text-sm flex flex-col items-center">
-                    <ShoppingCart size={48} className="mb-3 opacity-20" />
-                    <p>Your cart is empty.</p>
-                    <p className="text-xs text-gray-400">Add items from the catalog.</p>
-                </div>
-            ) : (
-                cart.map(line => (
+             {cart.length === 0 ? (
+                 <div className="text-center py-12 text-gray-500 dark:text-gray-600 text-sm flex flex-col items-center">
+                     <ShoppingCart size={48} className="mb-3 opacity-20" />
+                     <p>Your cart is empty.</p>
+                     <p className="text-xs text-gray-400">Add items from the catalog.</p>
+                 </div>
+             ) : (
+                 <>
+                     {/* Batch Need-by Date Toolbar */}
+                     <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-gray-800 space-y-2">
+                         <div className="flex items-center justify-between">
+                             <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+                                 <Clock3 size={13} className="text-indigo-600 dark:text-indigo-400" />
+                                 Need-by for All Lines
+                             </span>
+                             <div className="flex items-center gap-1">
+                                 {[
+                                     { label: '+7d', days: 7 },
+                                     { label: '+14d', days: 14 },
+                                     { label: '+30d', days: 30 }
+                                 ].map(preset => (
+                                     <button
+                                         key={preset.label}
+                                         type="button"
+                                         onClick={() => {
+                                             const base = requestDate ? new Date(requestDate) : new Date();
+                                             const target = new Date(base.getTime() + preset.days * 24 * 60 * 60 * 1000);
+                                             setCartBatchNeedByDate(getLocalDateInputValue(target));
+                                         }}
+                                         className="px-1.5 py-0.5 text-[10px] font-bold rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600 text-gray-600 dark:text-gray-300 transition-colors cursor-pointer"
+                                     >
+                                         {preset.label}
+                                     </button>
+                                 ))}
+                             </div>
+                         </div>
+                         <div className="flex items-center gap-2">
+                             <input 
+                                 type="date"
+                                 className="flex-1 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 dark:text-gray-200 focus:border-[var(--color-brand)] outline-none"
+                                 value={cartBatchNeedByDate || defaultNeedByDate || ''}
+                                 onChange={(e) => setCartBatchNeedByDate(e.target.value)}
+                             />
+                             <button
+                                 type="button"
+                                 disabled={!(cartBatchNeedByDate || defaultNeedByDate)}
+                                 onClick={() => handlePromptApplyNeedByDateToAll(cartBatchNeedByDate || defaultNeedByDate)}
+                                 className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg shadow-xs transition-colors shrink-0 cursor-pointer"
+                             >
+                                 Apply to All ({cart.length})
+                             </button>
+                         </div>
+                     </div>
+
+                     {cart.map(line => (
                     <div key={line.id} className="flex flex-col gap-3 border-b border-gray-100 dark:border-gray-800 pb-4 last:border-0">
                          <div className="flex justify-between items-start gap-2">
                              <div className="min-w-0">
@@ -796,14 +912,15 @@ const POCreate = () => {
                          <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800/60 text-xs text-gray-500 dark:text-gray-400">
                              <span className="text-[11px] font-semibold">Need by:</span>
                              <input 
-                                 type="date"
+                                 type="date" 
                                  className="bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-0.5 text-xs text-gray-800 dark:text-gray-200 focus:border-[var(--color-brand)] outline-none"
-                                 value={line.needByDate || (requestDate ? requestDate.split('T')[0] : '')}
+                                 value={line.needByDate || defaultNeedByDate || (requestDate ? requestDate.split('T')[0] : '')}
                                  onChange={(e) => updateLineNeedByDate(line.id, e.target.value)}
                              />
                          </div>
                     </div>
-                ))
+                ))}
+                </>
             )}
          </div>
          <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#15171e] shrink-0 pb-safe-or-4">
@@ -915,6 +1032,28 @@ const POCreate = () => {
                         </div>
                      </>
                  )}
+
+                 {/* Need-by Date Summary (if set) */}
+                 {defaultNeedByDate && (
+                     <>
+                        <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 hidden xl:block"></div>
+                        <div className="hidden xl:flex items-center gap-2 min-w-0">
+                            <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                                <Clock3 size={18} /> 
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Need-by (All)</span>
+                                <span className="text-sm font-bold text-gray-900 dark:text-white truncate max-w-[150px]">
+                                    {new Date(defaultNeedByDate.includes('T') ? defaultNeedByDate : `${defaultNeedByDate}T00:00:00`).toLocaleDateString('en-AU', {
+                                        day: '2-digit',
+                                        month: 'short',
+                                        year: 'numeric'
+                                    })}
+                                </span>
+                            </div>
+                        </div>
+                     </>
+                 )}
              </div>
 
              <div className="flex items-center gap-3">
@@ -1015,7 +1154,7 @@ const POCreate = () => {
                         </div>
                     </div>
 
-                    {/* Column 3: Request Details */}
+                    {/* Column 3: Request Details & Timing */}
                     <div className="space-y-4">
                         <div>
                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Reason for Request <span className="text-red-500">*</span></label>
@@ -1033,6 +1172,74 @@ const POCreate = () => {
                                      </button>
                                  ))}
                              </div>
+                        </div>
+
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                    <Clock3 size={14} className="text-gray-400" />
+                                    Need-by Date (All Items)
+                                </label>
+                                {cart.length > 0 && defaultNeedByDate && (
+                                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                                        {cart.filter(l => (l.needByDate || defaultNeedByDate) === defaultNeedByDate).length}/{cart.length} matched
+                                    </span>
+                                )}
+                            </div>
+                            <div className="relative">
+                                <Calendar size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                <input 
+                                    type="date"
+                                    className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
+                                    value={defaultNeedByDate}
+                                    onChange={(e) => setDefaultNeedByDate(e.target.value)}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between mt-2 flex-wrap gap-1.5">
+                                <div className="flex items-center gap-1">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-0.5">Quick:</span>
+                                    {[
+                                        { label: '+7d', days: 7 },
+                                        { label: '+14d', days: 14 },
+                                        { label: '+30d', days: 30 }
+                                    ].map(preset => (
+                                        <button
+                                            key={preset.label}
+                                            type="button"
+                                            onClick={() => {
+                                                const base = requestDate ? new Date(requestDate) : new Date();
+                                                const target = new Date(base.getTime() + preset.days * 24 * 60 * 60 * 1000);
+                                                setDefaultNeedByDate(getLocalDateInputValue(target));
+                                            }}
+                                            className="px-2 py-0.5 text-[11px] font-bold rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#15171e] hover:border-gray-300 dark:hover:border-gray-600 text-gray-600 dark:text-gray-300 transition-colors cursor-pointer"
+                                        >
+                                            {preset.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {defaultNeedByDate && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setDefaultNeedByDate('')}
+                                        className="text-[11px] text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                            {cart.length > 0 && defaultNeedByDate && (
+                                <button
+                                    type="button"
+                                    onClick={() => handlePromptApplyNeedByDateToAll(defaultNeedByDate)}
+                                    className="w-full mt-2.5 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800 rounded-xl transition-all cursor-pointer shadow-xs"
+                                >
+                                    <Check size={14} />
+                                    Apply to All Items in Cart ({cart.length})
+                                </button>
+                            )}
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 leading-tight">
+                                Defaults new items to this delivery date. You can still customize dates per item.
+                            </p>
                         </div>
                     </div>
 
@@ -1454,6 +1661,16 @@ const POCreate = () => {
               </div>
           </div>
       )}
+
+      {/* Confirmation Pop-up Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel || 'Yes, Apply to All'}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };
