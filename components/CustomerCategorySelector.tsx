@@ -46,7 +46,7 @@ export const CustomerCategorySelector: React.FC<CustomerCategorySelectorProps> =
         {CUSTOMER_CATEGORY_OPTIONS.map((cat) => {
           const Icon = cat.icon;
           const isSelected = value === cat.id;
-          const tooltipText = `${cat.label} • ${cat.description}`;
+          const tooltipText = cat.label;
 
           return (
             <div key={cat.id} className="relative group">
@@ -70,11 +70,10 @@ export const CustomerCategorySelector: React.FC<CustomerCategorySelectorProps> =
                 />
               </button>
 
-              {/* Floating Hover Tooltip */}
+              {/* Floating Hover Tooltip: Only displays category name on hover */}
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all duration-150 transform translate-y-1 group-hover:translate-y-0 z-50 whitespace-nowrap shadow-xl">
-                <div className="bg-gray-900 dark:bg-gray-800 text-white text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-700/70 flex flex-col items-center">
-                  <span className="font-bold">{cat.label}</span>
-                  <span className="text-[9px] text-gray-300 font-normal">{cat.description}</span>
+                <div className="bg-gray-900 dark:bg-gray-800 text-white text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-700/70 shadow-md">
+                  {cat.label}
                 </div>
                 <div className="w-2 h-1 mx-auto -mt-px border-solid border-t-gray-900 dark:border-t-gray-800 border-t-4 border-x-transparent border-x-4 border-b-0" />
               </div>

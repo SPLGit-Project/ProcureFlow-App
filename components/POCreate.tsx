@@ -137,7 +137,20 @@ const POCreate = () => {
   const { isSubmitting, guardedSubmit } = useSubmitGuard();
   const [isSavingDraft, setIsSavingDraft] = useState(false);
 
-  const [selectedSiteId, setSelectedSiteId] = useState(initialDraft?.selectedSiteId || '');
+  const [selectedSiteId, setSelectedSiteId] = useState(() => {
+    if (sites.length === 1) {
+      return sites[0]?.id || '';
+    }
+    if (
+      sites.length > 1 &&
+      initialDraft?.selectedSiteId &&
+      (initialDraft.selectedSupplierId || (initialDraft.cart && initialDraft.cart.length > 0)) &&
+      sites.some(s => s.id === initialDraft.selectedSiteId)
+    ) {
+      return initialDraft.selectedSiteId;
+    }
+    return '';
+  });
   const [selectedSupplierId, setSelectedSupplierId] = useState(initialDraft?.selectedSupplierId || '');
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(initialDraft?.isHeaderExpanded ?? true);
   
@@ -233,9 +246,14 @@ const POCreate = () => {
   const [modalNeedByDate, setModalNeedByDate] = useState('');
 
   useEffect(() => {
-    if (selectedSiteId && sites.some(site => site.id === selectedSiteId)) return;
-    if (sites[0]?.id) {
-      setSelectedSiteId(sites[0].id);
+    if (sites.length === 1) {
+      if (selectedSiteId !== sites[0].id) {
+        setSelectedSiteId(sites[0].id);
+      }
+    } else if (sites.length > 1) {
+      if (selectedSiteId && !sites.some(site => site.id === selectedSiteId)) {
+        setSelectedSiteId('');
+      }
     }
   }, [selectedSiteId, sites]);
 
@@ -619,7 +637,21 @@ const POCreate = () => {
   const [submissionId, setSubmissionId] = useState<string | null>(null);
 
   const handleSubmit = async () => {
-    if (!currentUser || !selectedSupplier || !selectedSite || cart.length === 0) return;
+    if (!currentUser) return;
+
+    if (!selectedSiteId || !selectedSite) {
+        setIsHeaderExpanded(true);
+        alert('Please select a delivery site before submitting.');
+        return;
+    }
+
+    if (!selectedSupplier) {
+        setIsHeaderExpanded(true);
+        alert('Please select a supplier before submitting.');
+        return;
+    }
+
+    if (cart.length === 0) return;
 
     // Stable submission ID to prevent duplicates if UI lock is bypassed
     const currentSubmissionId = submissionId || uuidv4();
@@ -990,13 +1022,13 @@ const POCreate = () => {
              <div className="flex items-center gap-4 sm:gap-6 overflow-hidden">
                  {/* Site Summary */}
                  <div className="flex items-center gap-2 min-w-0">
-                     <div className={`p-2 rounded-lg transition-colors ${selectedSite ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
+                     <div className={`p-2 rounded-lg transition-colors ${selectedSite ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
                          <MapPin size={18} />
                      </div>
                      <div className="flex flex-col">
                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Delivery Site</span>
-                         <span className="text-sm font-bold text-gray-900 dark:text-white truncate">
-                             {selectedSite ? selectedSite.name : 'Select Site...'}
+                         <span className={`text-sm font-bold truncate ${selectedSite ? 'text-gray-900 dark:text-white' : 'text-amber-600 dark:text-amber-400 font-medium'}`}>
+                             {selectedSite ? selectedSite.name : 'Select site...'}
                          </span>
                      </div>
                  </div>
@@ -1084,6 +1116,9 @@ const POCreate = () => {
                                 value={selectedSiteId}
                                 onChange={(e) => setSelectedSiteId(e.target.value)}
                             >
+                                {sites.length !== 1 && (
+                                    <option value="">Select site...</option>
+                                )}
                                 {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         </div>
