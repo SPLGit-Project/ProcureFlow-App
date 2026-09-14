@@ -516,7 +516,7 @@ export const RoleCreationWizard: React.FC<RoleCreationWizardProps> = ({
                                         <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-600"><Lock size={16} /></div>
                                         <div>
                                             <div className="font-bold text-xs text-gray-900 dark:text-white">Enforce Segregation of Duties (SoD)</div>
-                                            <div className="text-[10px] text-gray-400">Institutional compliance protection against self-approval and self-receipting.</div>
+                                            <div className="text-[10px] text-gray-400">Institutional compliance protection against self-approval.</div>
                                         </div>
                                     </div>
                                     <button
@@ -528,7 +528,7 @@ export const RoleCreationWizard: React.FC<RoleCreationWizardProps> = ({
                                     </button>
                                 </div>
                                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                                    When enabled, users with this role will be blocked from approving their own purchase orders, and blocked from receipting delivery of orders they created, ensuring dual-custody verification.
+                                    When enabled, users with this role will be blocked from approving their own purchase orders, ensuring dual-custody verification.
                                 </p>
                             </div>
                         </div>

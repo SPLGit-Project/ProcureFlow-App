@@ -42,7 +42,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
             { id: 'edit_po_lines', label: 'Edit Order Lines', description: 'Modify PO lines, quantities, or prices prior to approval', type: 'ACTION' },
             { id: 'cancel_po', label: 'Cancel Orders', description: 'Cancel active or pending purchase orders', type: 'ACTION' },
             { id: 'delete_requests', label: 'Delete POs', description: 'Permanently remove draft or rejected purchase orders', type: 'ACTION' },
-            { id: 'override_sod', label: 'Bypass Segregation of Duties', description: 'Allow approving or receiving own orders in emergencies', type: 'ACTION' },
+            { id: 'override_sod', label: 'Bypass Segregation of Duties', description: 'Allow approving own orders in emergencies', type: 'ACTION' },
         ]
     },
     {

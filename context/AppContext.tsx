@@ -1881,29 +1881,26 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const canReceiveOrder = useCallback((po: PORequest): boolean => {
       if (!currentUser || !po) return false;
       if (isEffectiveAdminUser(currentUser)) return true;
-      if (!hasPermission('receive_goods')) return false;
 
       const assignedRoleIds = sessionRoleOverrideRef.current
           ? [currentUser.role]
           : getAssignedRoleIds(currentUser);
       const assignedRoles = roles.filter(r => assignedRoleIds.includes(r.id));
 
-      // Check Segregation of Duties (SoD)
-      if (!hasPermission('override_sod')) {
-          const sodEnforced = assignedRoles.some(r => r.enforceSod !== false);
-          if (sodEnforced && po.requesterId === currentUser.id) {
-              return false;
-          }
-      }
-
-      // Check site scoping
+      // Roles with siteScopeMode === 'ALL' see and can receive across all sites
       const hasAllSiteScope = assignedRoles.some(r => r.siteScopeMode === 'ALL');
-      if (!hasAllSiteScope && po.siteId && currentUser.siteIds && currentUser.siteIds.length > 0) {
-          if (!currentUser.siteIds.includes(po.siteId)) {
+      if (hasAllSiteScope) return true;
+
+      // User must have access to the site where the request was made
+      if (po.siteId) {
+          const userSiteIds = currentUser.siteIds || [];
+          if (!userSiteIds.includes(po.siteId)) {
               return false;
           }
       }
 
+      // Anyone with access to the site where the request was made can record deliveries,
+      // not just the ones they personally raised, and without self-receipting restrictions.
       return true;
   }, [currentUser, roles]);
 

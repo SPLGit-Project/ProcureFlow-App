@@ -5855,7 +5855,7 @@ if __name__ == "__main__":
                                           <div className="p-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] flex items-center justify-between">
                                               <div>
                                                   <div className="font-bold text-xs text-gray-900 dark:text-white">Enforce Segregation of Duties (SoD)</div>
-                                                  <p className="text-[10px] text-gray-400 mt-0.5">Blocks user from approving or receipting their own purchase orders</p>
+                                                  <p className="text-[10px] text-gray-400 mt-0.5">Blocks user from approving their own purchase orders</p>
                                               </div>
                                               <button
                                                   type="button"

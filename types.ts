@@ -103,7 +103,7 @@ export interface RoleDefinition {
     maxOrderLimit?: number;    // Max $ amount role can create (0 = unlimited)
     siteScopeMode?: 'ALL' | 'ASSIGNED' | 'REGIONAL';
     allowedCategories?: string[];
-    enforceSod?: boolean;      // Prevent self-approval & self-receipting
+    enforceSod?: boolean;      // Prevent self-approval of requests
     parentRoleId?: string;
     isTemplate?: boolean;
 }

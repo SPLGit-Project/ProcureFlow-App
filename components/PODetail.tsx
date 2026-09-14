@@ -1679,6 +1679,22 @@ const PODetail = () => {
           
           {activeTab === 'DELIVERIES' && (
                <div className="p-4 md:p-6 space-y-6">
+                    {canReceive && (
+                        <div className="flex justify-between items-center pb-2 border-b border-gray-100 dark:border-gray-800">
+                            <div>
+                                <h3 className="text-sm font-bold text-primary dark:text-white">Delivery Shipments</h3>
+                                <p className="text-xs text-secondary dark:text-gray-400">Record arriving dockets and receipted quantities against this order</p>
+                            </div>
+                            <button
+                                type="button"
+                                disabled={isSubmitting}
+                                onClick={() => setIsDeliveryModalOpen(true)}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                            >
+                                <Truck size={14} /> {po.status === 'RECEIVED' ? 'Record Extra Delivery' : 'Record Delivery'}
+                            </button>
+                        </div>
+                    )}
                     {po.deliveries.length === 0 ? (
                         <div className="text-center text-tertiary dark:text-gray-400 py-12 flex flex-col items-center border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
                             <Package size={48} className="mb-2 opacity-20"/>
