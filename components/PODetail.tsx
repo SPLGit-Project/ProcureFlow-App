@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Packag
 import { DeliveryHeader, Item, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { db } from '../services/db.ts';
 import { supabase } from '../lib/supabaseClient.ts';
 import { v4 as uuidv4 } from 'uuid';
@@ -70,6 +71,19 @@ const PODetail = () => {
   const [modalAllNeedByDate, setModalAllNeedByDate] = useState<string>('');
   const [modalLineDates, setModalLineDates] = useState<Record<string, string>>({});
   const [isSavingNeedByDates, setIsSavingNeedByDates] = useState(false);
+  const [isNeedByAllConfirmed, setIsNeedByAllConfirmed] = useState<boolean>(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
   
   // Local state for edits
   const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: 'Depletion', comments: '', concurRequestNumber: '', concurPoNumber: '', siteId: '' });
@@ -650,10 +664,20 @@ const PODetail = () => {
 
   const handleApplyBatchNeedByDateToEditableLines = () => {
     if (!editBatchNeedByDate) return;
-    setEditableLines(prev => prev.map(line => ({
-      ...line,
-      needByDate: editBatchNeedByDate
-    })));
+    const formattedDate = formatDisplayDate(editBatchNeedByDate);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Are you sure?',
+      message: `Are you sure you want to apply this mass edit? This will update the need-by date for all ${editableLines.length} line items to ${formattedDate}.`,
+      confirmLabel: `Yes, Apply to All (${editableLines.length})`,
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        setEditableLines(prev => prev.map(line => ({
+          ...line,
+          needByDate: editBatchNeedByDate
+        })));
+      }
+    });
   };
 
   const handleOpenNeedByModal = () => {
@@ -666,6 +690,7 @@ const PODetail = () => {
     const earliest = po.lines.find(l => l.needByDate)?.needByDate || (po.requestDate ? po.requestDate.split('T')[0] : '');
     setModalAllNeedByDate(earliest);
     setNeedByModalMode('ALL');
+    setIsNeedByAllConfirmed(false);
     setIsNeedByModalOpen(true);
   };
 
@@ -679,7 +704,7 @@ const PODetail = () => {
     setModalLineDates(updated);
   };
 
-  const handleSaveNeedByDates = async () => {
+  const executeSaveNeedByDates = async () => {
     if (!po) return;
     setIsSavingNeedByDates(true);
     try {
@@ -696,10 +721,30 @@ const PODetail = () => {
       await updatePOLinesNeedByDate(po.id, lineUpdates);
       alert('Need-by dates updated successfully.');
       setIsNeedByModalOpen(false);
+      setIsNeedByAllConfirmed(false);
     } catch (err: any) {
       alert(`Failed to save need-by dates: ${err.message}`);
     } finally {
       setIsSavingNeedByDates(false);
+    }
+  };
+
+  const handleSaveNeedByDates = () => {
+    if (!po) return;
+    if (needByModalMode === 'ALL') {
+      const formattedDate = formatDisplayDate(modalAllNeedByDate);
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Are you sure?',
+        message: `Are you sure you want to save this mass edit? This will update the need-by delivery date to ${formattedDate} for all ${po.lines.length} lines in this purchase order. Please confirm to proceed.`,
+        confirmLabel: 'Yes, Confirm & Apply',
+        onConfirm: () => {
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+          executeSaveNeedByDates();
+        }
+      });
+    } else {
+      executeSaveNeedByDates();
     }
   };
 
@@ -2221,6 +2266,26 @@ const PODetail = () => {
                     </span>
                   </p>
                 </div>
+
+                {/* Mandatory Confirmation Checkbox */}
+                <div className="p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+                  <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={isNeedByAllConfirmed}
+                      onChange={(e) => setIsNeedByAllConfirmed(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded text-indigo-600 border-gray-300 dark:border-gray-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <div className="text-xs">
+                      <span className="font-bold text-amber-950 dark:text-amber-200">
+                        I confirm that I want to apply this date to all {po?.lines.length} lines
+                      </span>
+                      <p className="text-[11px] text-amber-800/80 dark:text-amber-300/70 mt-0.5">
+                        You must check this box to confirm before applying the mass update.
+                      </p>
+                    </div>
+                  </label>
+                </div>
               </div>
             ) : (
               /* Mode 2: Line by Line */
@@ -2266,7 +2331,10 @@ const PODetail = () => {
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
               <button
                 type="button"
-                onClick={() => setIsNeedByModalOpen(false)}
+                onClick={() => {
+                  setIsNeedByModalOpen(false);
+                  setIsNeedByAllConfirmed(false);
+                }}
                 disabled={isSavingNeedByDates}
                 className="px-4 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer"
               >
@@ -2275,8 +2343,8 @@ const PODetail = () => {
               <button
                 type="button"
                 onClick={handleSaveNeedByDates}
-                disabled={isSavingNeedByDates || (needByModalMode === 'ALL' && !modalAllNeedByDate)}
-                className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer"
+                disabled={isSavingNeedByDates || (needByModalMode === 'ALL' && (!modalAllNeedByDate || !isNeedByAllConfirmed))}
+                className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isSavingNeedByDates ? (
                   <>
@@ -2294,6 +2362,18 @@ const PODetail = () => {
           </div>
         </div>
       )}
+
+      {/* Confirmation Pop-up Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel || 'Yes, Confirm & Apply'}
+        cancelLabel="Cancel"
+        variant="warning"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

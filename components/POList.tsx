@@ -18,6 +18,7 @@ import {
   CheckSquare,
   Square,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   Sparkles,
   Check,
@@ -28,6 +29,7 @@ import type { POStatus, PORequest } from '../types.ts';
 import ContextHelp from './ContextHelp';
 import PageHeader from './PageHeader';
 import { useSetPageMeta } from '../context/PageMetaContext.tsx';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { ToastContainer, useToast } from './ToastNotification';
 import { formatCurrency } from '../utils/taxCalculations.ts';
 
@@ -182,6 +184,19 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
   const [massNeedByDate, setMassNeedByDate] = useState<string>('');
   const [isMassUpdating, setIsMassUpdating] = useState<boolean>(false);
   const [showMassUpdateModal, setShowMassUpdateModal] = useState<boolean>(false);
+  const [isMassUpdateConfirmed, setIsMassUpdateConfirmed] = useState<boolean>(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
   const masterCheckboxRef = useRef<HTMLInputElement | null>(null);
   const quickFilters = useMemo(() => quickFilterConfigByPage(filter), [filter]);
   const [selectedQuickFilterId, setSelectedQuickFilterId] = useState<string>(quickFilters[0]?.id ?? 'all');
@@ -680,6 +695,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                     alert('Please select a target need-by date first.');
                     return;
                   }
+                  setIsMassUpdateConfirmed(false);
                   setShowMassUpdateModal(true);
                 }}
                 disabled={!massNeedByDate || isMassUpdating}
@@ -934,36 +950,43 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
           <div className="w-full max-w-lg bg-white dark:bg-[#1a1d26] border border-gray-200 dark:border-gray-700 rounded-3xl shadow-2xl p-6 space-y-5 animate-scale-up">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                  <Calendar size={20} />
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <AlertTriangle size={20} />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                    Confirm Need-by Date Mass Update
+                    Confirm Mass Update
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Target Date:{' '}
-                    <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                      {new Date(massNeedByDate).toLocaleDateString('en-AU', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
-                    </span>
+                    Are you sure you want to apply this mass edit?
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setShowMassUpdateModal(false)}
+                onClick={() => {
+                  setShowMassUpdateModal(false);
+                  setIsMassUpdateConfirmed(false);
+                }}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 text-xs text-indigo-950 dark:text-indigo-200">
-              <p className="font-semibold">
-                You are about to update the need-by delivery date across <span className="font-bold">{selectedPoIds.length} purchase order(s)</span>.
+            <div className="p-3.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-xs text-amber-950 dark:text-amber-200 space-y-1">
+              <p className="font-bold flex items-center gap-1.5 text-amber-900 dark:text-amber-300">
+                <AlertCircle size={14} className="shrink-0" />
+                <span>Are you sure you want to update {selectedPoIds.length} purchase orders?</span>
               </p>
-              <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-1">
-                Every line item in each selected order will have its need-by date synchronized to this date.
+              <p className="text-[11px] text-amber-800/90 dark:text-amber-300/80">
+                Target Need-by Date:{' '}
+                <span className="font-bold underline text-amber-950 dark:text-amber-100">
+                  {new Date(massNeedByDate).toLocaleDateString('en-AU', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+                </span>
+              </p>
+              <p className="text-[11px] text-amber-800/90 dark:text-amber-300/80">
+                This will synchronize the need-by delivery date across all line items in every selected order.
               </p>
             </div>
 
@@ -971,7 +994,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
               <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
                 Selected Purchase Orders ({selectedPoIds.length}):
               </span>
-              <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 text-xs">
+              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1 text-xs">
                 {pos.filter((p) => selectedPoIds.includes(p.id)).slice(0, 10).map((p) => {
                   const { dateStr } = getPONeedByDate(p);
                   return (
@@ -997,10 +1020,33 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
               </div>
             </div>
 
+            {/* Mandatory Confirmation Checkbox */}
+            <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isMassUpdateConfirmed}
+                  onChange={(e) => setIsMassUpdateConfirmed(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-indigo-600 border-gray-300 dark:border-gray-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <div className="text-xs">
+                  <span className="font-bold text-gray-900 dark:text-white">
+                    I confirm that I want to apply this mass edit
+                  </span>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                    You must check this box to confirm before applying the update.
+                  </p>
+                </div>
+              </label>
+            </div>
+
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
               <button
                 type="button"
-                onClick={() => setShowMassUpdateModal(false)}
+                onClick={() => {
+                  setShowMassUpdateModal(false);
+                  setIsMassUpdateConfirmed(false);
+                }}
                 disabled={isMassUpdating}
                 className="px-4 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer"
               >
@@ -1008,19 +1054,36 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
               </button>
               <button
                 type="button"
-                onClick={handleExecuteMassUpdate}
-                disabled={isMassUpdating}
-                className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer"
+                onClick={() => {
+                  const formattedDate = new Date(massNeedByDate).toLocaleDateString('en-AU', {
+                    weekday: 'short',
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric'
+                  });
+                  setConfirmDialog({
+                    isOpen: true,
+                    title: 'Are you sure?',
+                    message: `Are you sure you want to save this mass edit? You are about to update the need-by delivery date to ${formattedDate} across ${selectedPoIds.length} purchase orders. Every line item in each selected order will be updated to this date.`,
+                    confirmLabel: `Yes, Apply to ${selectedPoIds.length} Orders`,
+                    onConfirm: () => {
+                      setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                      handleExecuteMassUpdate();
+                    }
+                  });
+                }}
+                disabled={!isMassUpdateConfirmed || isMassUpdating}
+                className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isMassUpdating ? (
                   <>
                     <Loader2 size={14} className="animate-spin" />
-                    <span>Applying...</span>
+                    <span>Applying Changes...</span>
                   </>
                 ) : (
                   <>
                     <Check size={14} />
-                    <span>Confirm &amp; Update ({selectedPoIds.length})</span>
+                    <span>Confirm &amp; Apply Mass Edit ({selectedPoIds.length})</span>
                   </>
                 )}
               </button>
@@ -1028,6 +1091,18 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
           </div>
         </div>
       )}
+
+      {/* Confirmation Pop-up Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel || `Yes, Apply to ${selectedPoIds.length} Orders`}
+        cancelLabel="Cancel"
+        variant="warning"
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
