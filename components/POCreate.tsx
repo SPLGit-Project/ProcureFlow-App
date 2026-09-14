@@ -32,6 +32,8 @@ import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp.tsx';
 import PageHeader from './PageHeader';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
+import CustomerCategorySelector from './CustomerCategorySelector.tsx';
+import CustomerCategoryBadge from './CustomerCategoryBadge.tsx';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations.ts';
@@ -1025,9 +1027,12 @@ const POCreate = () => {
                             </div>
                             <div className="flex flex-col">
                                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">For Customer</span>
-                                <span className="text-sm font-bold text-gray-900 dark:text-white truncate max-w-[150px]">
-                                    {customerName}
-                                </span>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="text-sm font-bold text-gray-900 dark:text-white truncate max-w-[150px]">
+                                        {customerName}
+                                    </span>
+                                    <CustomerCategoryBadge category={sector} size="xs" />
+                                </div>
                             </div>
                         </div>
                      </>
@@ -1123,34 +1128,12 @@ const POCreate = () => {
                                 onChange={(e) => handleCustomerNameChange(e.target.value)}
                              />
 
-                             {/* Category / Sector Selector */}
-                             <div className="mt-3">
-                               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                                 Customer Category
-                               </label>
-                               <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
-                                 {[
-                                   { id: 'ACCOMMODATION', label: 'Accommodation' },
-                                   { id: 'HEALTHCARE', label: 'Healthcare' },
-                                   { id: 'MINING', label: 'Mining' },
-                                   { id: 'LINEN_HUB', label: 'Linen Hub' },
-                                   { id: 'OTHER', label: 'Other' },
-                                 ].map((cat) => (
-                                   <button
-                                     key={cat.id}
-                                     type="button"
-                                     onClick={() => setSector(cat.id as SpendCategory)}
-                                     className={`py-1.5 px-2 text-[11px] font-bold rounded-lg border transition-all ${
-                                       sector === cat.id
-                                         ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)] shadow-xs'
-                                         : 'bg-white dark:bg-[#15171e] text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-gray-300'
-                                     }`}
-                                   >
-                                     {cat.label}
-                                   </button>
-                                 ))}
-                               </div>
-                             </div>
+                              {/* Customer Category Selector with Icons & Tooltips */}
+                              <CustomerCategorySelector
+                                value={sector}
+                                onChange={setSector}
+                                className="mt-3"
+                              />
                         </div>
                     </div>
 

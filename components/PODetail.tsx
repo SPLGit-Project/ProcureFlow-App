@@ -7,6 +7,7 @@ import { DeliveryHeader, Item, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
+import CustomerCategoryBadge from './CustomerCategoryBadge.tsx';
 import { db } from '../services/db.ts';
 import { supabase } from '../lib/supabaseClient.ts';
 import { v4 as uuidv4 } from 'uuid';
@@ -1037,6 +1038,7 @@ const PODetail = () => {
                     }`}>
                     {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur PO' : po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'Pending Concur Request' : po.status === 'DRAFT' ? 'Draft' : po.status.replace(/_/g, ' ')}
                   </span>
+                  <CustomerCategoryBadge category={po.sector} size="sm" showLabel />
               </div>
                <p className="text-secondary dark:text-gray-400 text-sm flex items-center gap-1">
                    <Calendar size={14}/> {new Date(po.requestDate).toLocaleDateString()} by <span className="text-primary dark:text-gray-300 font-medium">{po.requesterName}</span>
@@ -1152,7 +1154,10 @@ const PODetail = () => {
                                 onChange={e => setHeaderEdits({...headerEdits, clientName: e.target.value})}
                             />
                         ) : (
-                            <p className="text-sm font-medium text-primary dark:text-white">{po.customerName || '-'}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <span className="text-sm font-medium text-primary dark:text-white">{po.customerName || '-'}</span>
+                                <CustomerCategoryBadge category={po.sector} size="xs" />
+                            </div>
                         )}
                     </div>
                 </div>

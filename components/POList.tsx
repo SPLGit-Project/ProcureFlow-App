@@ -32,6 +32,7 @@ import { useSetPageMeta } from '../context/PageMetaContext.tsx';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { ToastContainer, useToast } from './ToastNotification';
 import { formatCurrency } from '../utils/taxCalculations.ts';
+import CustomerCategoryBadge from './CustomerCategoryBadge.tsx';
 
 const getPONeedByDate = (po: PORequest): { dateStr: string | null; isOverdue: boolean } => {
   const unfulfilledWithNeedBy = po.lines.find(l => (l.quantityReceived || 0) < l.quantityOrdered && l.needByDate);
@@ -768,9 +769,14 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                     </td>
                     <td className="px-5 py-4 font-mono text-xs">
                       {po.customerName ? (
-                        <span className="inline-flex max-w-[200px] truncate bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
-                          {po.customerName}
-                        </span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <CustomerCategoryBadge category={po.sector} size="xs" />
+                          <span className="inline-flex max-w-[180px] truncate bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
+                            {po.customerName}
+                          </span>
+                        </div>
+                      ) : po.sector ? (
+                        <CustomerCategoryBadge category={po.sector} size="xs" />
                       ) : (
                         <span className="text-gray-300 dark:text-gray-700">-</span>
                       )}
@@ -912,8 +918,9 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                     </div>
 
                     <div className="flex items-center justify-between text-sm gap-3 pt-2 border-t border-gray-100 dark:border-gray-800/60">
-                      <div className="text-secondary dark:text-gray-500 flex items-center gap-1 min-w-0 text-xs">
+                      <div className="text-secondary dark:text-gray-500 flex items-center gap-1.5 min-w-0 text-xs">
                         <span className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Customer</span>
+                        <CustomerCategoryBadge category={po.sector} size="xs" />
                         <span className="truncate font-semibold text-gray-700 dark:text-gray-300">
                           {po.customerName || '-'}
                         </span>

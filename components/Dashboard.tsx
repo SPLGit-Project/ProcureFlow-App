@@ -8,12 +8,14 @@ import {
   TrendingUp, ArrowRight, Package,
   Calendar, Layers, Building2,
   DollarSign, BarChart3,
-  X, Activity, Compass, Tag
+  X, Activity, Compass, Tag,
+  Hotel, HeartPulse, Pickaxe, Warehouse, Shapes
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from './PageHeader';
 import { formatCurrency } from '../utils/taxCalculations';
 import { PORequest, POLineItem, SpendCategory } from '../types';
+import CustomerCategoryBadge from './CustomerCategoryBadge.tsx';
 import {
   classifyLegacyPO,
   normalizeBranchCode,
@@ -896,8 +898,8 @@ export default function Dashboard() {
                       Hotels &amp; Resorts
                     </p>
                   </div>
-                  <div className="w-7 h-7 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold shrink-0">
-                    <Building2 size={15} />
+                  <div className="w-7 h-7 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold shrink-0" title="Accommodation • Hotels, Resorts & Hospitality">
+                    <Hotel size={15} />
                   </div>
                 </div>
                 <div>
@@ -972,8 +974,8 @@ export default function Dashboard() {
                       Hospitals &amp; Clinical
                     </p>
                   </div>
-                  <div className="w-7 h-7 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold shrink-0">
-                    <Activity size={15} />
+                  <div className="w-7 h-7 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold shrink-0" title="Healthcare • Hospitals, Clinics & Aged Care">
+                    <HeartPulse size={15} />
                   </div>
                 </div>
                 <div>
@@ -1048,8 +1050,8 @@ export default function Dashboard() {
                       Resources &amp; Camps
                     </p>
                   </div>
-                  <div className="w-7 h-7 rounded-xl bg-amber-600/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
-                    <Compass size={15} />
+                  <div className="w-7 h-7 rounded-xl bg-amber-600/10 text-amber-600 flex items-center justify-center font-bold shrink-0" title="Mining • Mining Camps, Resources & Remote Sites">
+                    <Pickaxe size={15} />
                   </div>
                 </div>
                 <div>
@@ -1124,8 +1126,8 @@ export default function Dashboard() {
                       Central Holding
                     </p>
                   </div>
-                  <div className="w-7 h-7 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center font-bold shrink-0">
-                    <Layers size={15} />
+                  <div className="w-7 h-7 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center font-bold shrink-0" title="Linen Hub • Central Linen Hub & Inventory Holding">
+                    <Warehouse size={15} />
                   </div>
                 </div>
                 <div>
@@ -1200,8 +1202,8 @@ export default function Dashboard() {
                       Special &amp; Custom
                     </p>
                   </div>
-                  <div className="w-7 h-7 rounded-xl bg-slate-500/10 text-slate-600 flex items-center justify-center font-bold shrink-0">
-                    <Tag size={15} />
+                  <div className="w-7 h-7 rounded-xl bg-slate-500/10 text-slate-600 flex items-center justify-center font-bold shrink-0" title="Other • Special, Custom or Miscellaneous">
+                    <Shapes size={15} />
                   </div>
                 </div>
                 <div>
@@ -1354,19 +1356,7 @@ export default function Dashboard() {
                     {formatCurrency(s.actualSpendInc)}
                   </td>
                   <td className="p-3 text-center">
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                      s.primaryCategory === 'Accommodation'
-                        ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
-                        : s.primaryCategory === 'Healthcare'
-                          ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
-                          : s.primaryCategory === 'Mining'
-                            ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-                            : s.primaryCategory === 'Linen Hub'
-                              ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300'
-                              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                    }`}>
-                      {s.primaryCategory}
-                    </span>
+                    <CustomerCategoryBadge category={s.primaryCategory} showLabel size="xs" />
                   </td>
                   <td className="p-3 text-center">
                     <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
