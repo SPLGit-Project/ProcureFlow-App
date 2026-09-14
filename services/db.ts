@@ -1999,6 +1999,35 @@ export const db = {
         if (count === 0) throw new Error('Failed to update line item. Permission denied.');
     },
 
+    updatePOsNeedByDate: async (poIds: string[], needByDate: string): Promise<void> => {
+        if (!poIds || poIds.length === 0) return;
+        const dateVal = needByDate ? needByDate.split('T')[0] : null;
+        const { error } = await supabase
+            .from('po_lines')
+            .update({ need_by_date: dateVal })
+            .in('po_request_id', poIds);
+            
+        if (error) throw error;
+    },
+
+    updateLinesNeedByDate: async (poId: string, lineUpdates: { lineId: string; needByDate: string }[]): Promise<void> => {
+        if (!lineUpdates || lineUpdates.length === 0) return;
+        
+        const promises = lineUpdates.map(u => {
+            const dateVal = u.needByDate ? u.needByDate.split('T')[0] : null;
+            return supabase
+                .from('po_lines')
+                .update({ need_by_date: dateVal })
+                .eq('id', u.lineId)
+                .eq('po_request_id', poId);
+        });
+
+        const results = await Promise.all(promises);
+        for (const res of results) {
+            if (res.error) throw res.error;
+        }
+    },
+
     getMigrationMappings: async (): Promise<Record<string, string>> => {
         const { data, error } = await supabase.from('migration_mappings').select('excel_variant, item_id');
         if (error) {

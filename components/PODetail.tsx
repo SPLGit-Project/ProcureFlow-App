@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, AlertCircle, Shield, ShieldCheck, ShoppingCart, CheckCheck, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X, MapPin } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, AlertCircle, Shield, ShieldCheck, ShoppingCart, CheckCheck, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X, MapPin, Clock3, Check, Loader2 } from 'lucide-react';
 import { DeliveryHeader, Item, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
@@ -49,7 +49,7 @@ interface PODetailEditDraft {
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, suppliers, items, sites, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount } = useApp();
+  const { pos, suppliers, items, sites, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -62,6 +62,14 @@ const PODetail = () => {
   const [concurInput, setConcurInput] = useState('');
   const [concurRequestInput, setConcurRequestInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+
+  // Need-by Date Management State
+  const [editBatchNeedByDate, setEditBatchNeedByDate] = useState<string>('');
+  const [isNeedByModalOpen, setIsNeedByModalOpen] = useState(false);
+  const [needByModalMode, setNeedByModalMode] = useState<'ALL' | 'LINE_BY_LINE'>('ALL');
+  const [modalAllNeedByDate, setModalAllNeedByDate] = useState<string>('');
+  const [modalLineDates, setModalLineDates] = useState<Record<string, string>>({});
+  const [isSavingNeedByDates, setIsSavingNeedByDates] = useState(false);
   
   // Local state for edits
   const [headerEdits, setHeaderEdits] = useState({ clientName: '', reason: 'Depletion', comments: '', concurRequestNumber: '', concurPoNumber: '', siteId: '' });
@@ -640,6 +648,61 @@ const PODetail = () => {
       }));
   };
 
+  const handleApplyBatchNeedByDateToEditableLines = () => {
+    if (!editBatchNeedByDate) return;
+    setEditableLines(prev => prev.map(line => ({
+      ...line,
+      needByDate: editBatchNeedByDate
+    })));
+  };
+
+  const handleOpenNeedByModal = () => {
+    if (!po) return;
+    const initialLineDates: Record<string, string> = {};
+    po.lines.forEach(l => {
+      initialLineDates[l.id] = l.needByDate || (po.requestDate ? po.requestDate.split('T')[0] : '');
+    });
+    setModalLineDates(initialLineDates);
+    const earliest = po.lines.find(l => l.needByDate)?.needByDate || (po.requestDate ? po.requestDate.split('T')[0] : '');
+    setModalAllNeedByDate(earliest);
+    setNeedByModalMode('ALL');
+    setIsNeedByModalOpen(true);
+  };
+
+  const handleApplyModalAllDate = (dateVal: string) => {
+    setModalAllNeedByDate(dateVal);
+    if (!po) return;
+    const updated: Record<string, string> = {};
+    po.lines.forEach(l => {
+      updated[l.id] = dateVal;
+    });
+    setModalLineDates(updated);
+  };
+
+  const handleSaveNeedByDates = async () => {
+    if (!po) return;
+    setIsSavingNeedByDates(true);
+    try {
+      const lineUpdates = po.lines.map(l => {
+        const targetDate = needByModalMode === 'ALL'
+          ? modalAllNeedByDate
+          : (modalLineDates[l.id] !== undefined ? modalLineDates[l.id] : l.needByDate || '');
+        return {
+          lineId: l.id,
+          needByDate: targetDate
+        };
+      });
+
+      await updatePOLinesNeedByDate(po.id, lineUpdates);
+      alert('Need-by dates updated successfully.');
+      setIsNeedByModalOpen(false);
+    } catch (err: any) {
+      alert(`Failed to save need-by dates: ${err.message}`);
+    } finally {
+      setIsSavingNeedByDates(false);
+    }
+  };
+
   const handleRemoveDraftLine = (lineId: string) => {
       setEditableLines(prev => prev.filter(line => line.id !== lineId));
   };
@@ -1201,8 +1264,32 @@ const PODetail = () => {
       <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[300px]">
           {activeTab === 'LINES' && (
               <div className="overflow-x-auto">
+                  {/* Delivery schedule & quick update trigger for admin / editors when viewing */}
+                  {!isEditing && (isAdmin || hasPermission('edit_po_lines')) && (
+                      <div className="px-4 py-3 bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                              <Clock3 size={15} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                              <span className="font-semibold">Delivery Timing:</span>
+                              <span className="font-bold text-gray-900 dark:text-white">
+                                  {po.lines.some(l => l.needByDate)
+                                      ? `${po.lines.filter(l => l.needByDate).length} of ${po.lines.length} lines scheduled`
+                                      : 'No need-by dates set'}
+                              </span>
+                          </div>
+
+                          <button
+                              type="button"
+                              onClick={handleOpenNeedByModal}
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800/60 rounded-xl transition-all cursor-pointer w-fit"
+                          >
+                              <Calendar size={13} />
+                              <span>Update Need-by Dates</span>
+                          </button>
+                      </div>
+                  )}
+
                   {isEditing && (
-                      <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+                      <div className="p-4 border-b border-gray-200 dark:border-gray-800 space-y-3">
                           {!isAddItemPanelOpen ? (
                               /* ── Collapsed trigger ── */
                               <button
@@ -1372,6 +1459,32 @@ const PODetail = () => {
                                   </div>
                               </div>
                           )}
+
+                          {/* Batch Need-by Date for All Lines in Edit Mode */}
+                          <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/25 border border-indigo-200/80 dark:border-indigo-800/40 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                              <div className="flex items-center gap-2">
+                                  <Calendar size={15} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                  <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                                      Apply Need-by Date to All Lines:
+                                  </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                  <input
+                                      type="date"
+                                      value={editBatchNeedByDate}
+                                      onChange={(e) => setEditBatchNeedByDate(e.target.value)}
+                                      className="px-2.5 py-1 text-xs border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none cursor-pointer"
+                                  />
+                                  <button
+                                      type="button"
+                                      onClick={handleApplyBatchNeedByDateToEditableLines}
+                                      disabled={!editBatchNeedByDate}
+                                      className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer shrink-0"
+                                  >
+                                      Apply to All ({editableLines.length})
+                                  </button>
+                              </div>
+                          </div>
                       </div>
                   )}
 
@@ -1990,6 +2103,195 @@ const PODetail = () => {
                     <button type="button" onClick={() => setIsStatusModalOpen(false)} disabled={isDeletingRequest} className="px-4 py-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-lg font-medium text-sm disabled:opacity-60 disabled:cursor-not-allowed">Cancel</button>
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* Update Need-by Dates Modal */}
+      {isNeedByModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-xl bg-white dark:bg-[#1a1d26] border border-gray-200 dark:border-gray-700 rounded-3xl shadow-2xl p-6 space-y-5 animate-scale-up">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <Calendar size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                    Update Need-by Delivery Dates
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {po?.displayId || po?.id} · {po?.supplierName} ({po?.lines.length} lines)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNeedByModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Mode Tabs */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 dark:bg-gray-800/80 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setNeedByModalMode('ALL')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  needByModalMode === 'ALL'
+                    ? 'bg-white dark:bg-[#15171e] text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                }`}
+              >
+                Apply Same Date to All Lines
+              </button>
+              <button
+                type="button"
+                onClick={() => setNeedByModalMode('LINE_BY_LINE')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  needByModalMode === 'LINE_BY_LINE'
+                    ? 'bg-white dark:bg-[#15171e] text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                }`}
+              >
+                Set Dates Line-by-Line
+              </button>
+            </div>
+
+            {/* Mode 1: All Lines At Once */}
+            {needByModalMode === 'ALL' ? (
+              <div className="space-y-4 p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
+                <div>
+                  <label htmlFor="modal-all-date" className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+                    Select Target Need-by Delivery Date:
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      id="modal-all-date"
+                      type="date"
+                      value={modalAllNeedByDate}
+                      onChange={(e) => handleApplyModalAllDate(e.target.value)}
+                      className="px-3 py-2 text-sm border rounded-xl bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none cursor-pointer flex-1 min-w-[180px]"
+                    />
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 7);
+                          handleApplyModalAllDate(d.toISOString().split('T')[0]);
+                        }}
+                        className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 cursor-pointer"
+                      >
+                        +7d
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 14);
+                          handleApplyModalAllDate(d.toISOString().split('T')[0]);
+                        }}
+                        className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 cursor-pointer"
+                      >
+                        +14d
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 30);
+                          handleApplyModalAllDate(d.toISOString().split('T')[0]);
+                        }}
+                        className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 cursor-pointer"
+                      >
+                        +30d
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 text-xs text-indigo-900 dark:text-indigo-300">
+                  <p className="font-semibold">
+                    Will update all {po?.lines.length} lines to:{' '}
+                    <span className="font-bold underline">
+                      {modalAllNeedByDate ? formatDisplayDate(modalAllNeedByDate) : 'Not set'}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            ) : (
+              /* Mode 2: Line by Line */
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                  Set Delivery Date per Line Item:
+                </span>
+                <div className="max-h-60 overflow-y-auto space-y-2 pr-1 text-xs">
+                  {po?.lines.map((line) => (
+                    <div
+                      key={line.id}
+                      className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-gray-900 dark:text-white truncate">{line.itemName}</div>
+                        <div className="text-gray-400 font-mono text-[11px] flex items-center gap-2">
+                          <span>{line.sku}</span>
+                          <span>· Qty: {line.quantityOrdered}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] font-bold uppercase text-gray-400">Need by:</span>
+                        <input
+                          type="date"
+                          value={modalLineDates[line.id] || ''}
+                          onChange={(e) =>
+                            setModalLineDates((prev) => ({
+                              ...prev,
+                              [line.id]: e.target.value
+                            }))
+                          }
+                          className="px-2.5 py-1 text-xs border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={() => setIsNeedByModalOpen(false)}
+                disabled={isSavingNeedByDates}
+                className="px-4 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveNeedByDates}
+                disabled={isSavingNeedByDates || (needByModalMode === 'ALL' && !modalAllNeedByDate)}
+                className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {isSavingNeedByDates ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Saving Dates...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    <span>Save Need-by Dates</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -13,15 +13,35 @@ import {
   MapPin,
   Search,
   Truck,
-  XCircle
+  XCircle,
+  Calendar,
+  CheckSquare,
+  Square,
+  AlertCircle,
+  Loader2,
+  Sparkles,
+  Check,
+  X
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { POStatus } from '../types.ts';
+import type { POStatus, PORequest } from '../types.ts';
 import ContextHelp from './ContextHelp';
 import PageHeader from './PageHeader';
 import { useSetPageMeta } from '../context/PageMetaContext.tsx';
 import { ToastContainer, useToast } from './ToastNotification';
 import { formatCurrency } from '../utils/taxCalculations.ts';
+
+const getPONeedByDate = (po: PORequest): { dateStr: string | null; isOverdue: boolean } => {
+  const unfulfilledWithNeedBy = po.lines.find(l => (l.quantityReceived || 0) < l.quantityOrdered && l.needByDate);
+  const rawDate = unfulfilledWithNeedBy?.needByDate || po.lines.find(l => l.needByDate)?.needByDate || null;
+  if (!rawDate) return { dateStr: null, isOverdue: false };
+
+  const targetDate = new Date(rawDate).getTime();
+  const now = Date.now();
+  const isComplete = po.status === 'CLOSED' || po.status === 'RECEIVED';
+  const isOverdue = !isComplete && targetDate < now;
+  return { dateStr: rawDate, isOverdue };
+};
 
 type BaseFilter = 'ALL' | 'PENDING' | 'COMPLETED';
 
@@ -148,7 +168,7 @@ const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
 };
 
 const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
-  const { pos, hasPermission, currentUser, userSites, siteName: resolveSiteName, reloadData } = useApp();
+  const { pos, hasPermission, currentUser, userSites, siteName: resolveSiteName, reloadData, updatePOsNeedByDate } = useApp();
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
   useSetPageMeta({ disableBodyScroll: true });
   const location = useLocation();
@@ -156,6 +176,13 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
   const { toasts, dismissToast, success } = useToast();
   const handledDeleteNotificationRef = useRef<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Need-by Date Mass Update State (Admin)
+  const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
+  const [massNeedByDate, setMassNeedByDate] = useState<string>('');
+  const [isMassUpdating, setIsMassUpdating] = useState<boolean>(false);
+  const [showMassUpdateModal, setShowMassUpdateModal] = useState<boolean>(false);
+  const masterCheckboxRef = useRef<HTMLInputElement | null>(null);
   const quickFilters = useMemo(() => quickFilterConfigByPage(filter), [filter]);
   const [selectedQuickFilterId, setSelectedQuickFilterId] = useState<string>(quickFilters[0]?.id ?? 'all');
   const [selectedSiteFilterId, setSelectedSiteFilterId] = useState<string>('all-sites');
@@ -358,6 +385,56 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     return [...bySearch].sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
   }, [siteScopedPos, searchTerm, selectedQuickFilter]);
 
+  const allVisibleSelected = useMemo(() => {
+    return filteredPos.length > 0 && filteredPos.every((po) => selectedPoIds.includes(po.id));
+  }, [filteredPos, selectedPoIds]);
+
+  const someVisibleSelected = useMemo(() => {
+    return filteredPos.some((po) => selectedPoIds.includes(po.id));
+  }, [filteredPos, selectedPoIds]);
+
+  useEffect(() => {
+    if (masterCheckboxRef.current) {
+      masterCheckboxRef.current.indeterminate = someVisibleSelected && !allVisibleSelected;
+    }
+  }, [someVisibleSelected, allVisibleSelected]);
+
+  const handleToggleSelectAll = () => {
+    if (allVisibleSelected) {
+      const visibleIdSet = new Set(filteredPos.map((p) => p.id));
+      setSelectedPoIds((prev) => prev.filter((id) => !visibleIdSet.has(id)));
+    } else {
+      const combined = new Set([...selectedPoIds, ...filteredPos.map((p) => p.id)]);
+      setSelectedPoIds(Array.from(combined));
+    }
+  };
+
+  const toggleSelectPo = (id: string) => {
+    setSelectedPoIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleExecuteMassUpdate = async () => {
+    if (!massNeedByDate || selectedPoIds.length === 0) return;
+    setIsMassUpdating(true);
+    try {
+      await updatePOsNeedByDate(selectedPoIds, massNeedByDate);
+      const formattedDate = new Date(massNeedByDate).toLocaleDateString('en-AU', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+      success(`Successfully updated Need-by Date to ${formattedDate} across ${selectedPoIds.length} request(s).`, 4000);
+      setSelectedPoIds([]);
+      setShowMassUpdateModal(false);
+    } catch (err: any) {
+      alert(`Failed to update need-by dates: ${err.message}`);
+    } finally {
+      setIsMassUpdating(false);
+    }
+  };
+
   const StatusBadge = ({ status }: { status: POStatus }) => {
     let colorClass =
       'bg-gray-100 dark:bg-gray-700/30 text-secondary dark:text-gray-400 border-gray-200 dark:border-gray-700';
@@ -510,74 +587,241 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
           </div>
         </div>
 
+        {/* Admin Mass Update Bar */}
+        {isAdmin && selectedPoIds.length > 0 && (
+          <div className="p-3.5 mx-4 mt-3 bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm animate-fade-in shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Calendar size={16} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black uppercase text-indigo-950 dark:text-indigo-200">
+                    {selectedPoIds.length} request{selectedPoIds.length !== 1 ? 's' : ''} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPoIds([])}
+                    className="text-[11px] font-bold text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 underline cursor-pointer"
+                  >
+                    Deselect all
+                  </button>
+                </div>
+                {selectedPoIds.length < filteredPos.length && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPoIds(Array.from(new Set([...selectedPoIds, ...filteredPos.map((p) => p.id)])))}
+                    className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer block"
+                  >
+                    Select all {filteredPos.length} visible requests
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-2.5 py-1.5 shadow-2xs">
+                <label htmlFor="mass-need-by-date" className="text-[10px] font-bold uppercase text-gray-400 shrink-0">
+                  Need by:
+                </label>
+                <input
+                  id="mass-need-by-date"
+                  type="date"
+                  value={massNeedByDate}
+                  onChange={(e) => setMassNeedByDate(e.target.value)}
+                  className="text-xs bg-transparent text-gray-900 dark:text-white font-medium outline-none cursor-pointer"
+                />
+              </div>
+
+              {/* Quick Date Presets */}
+              <div className="hidden lg:flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 7);
+                    setMassNeedByDate(d.toISOString().split('T')[0]);
+                  }}
+                  className="px-2 py-1 text-[10px] font-bold rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 cursor-pointer"
+                  title="7 days from today"
+                >
+                  +7d
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 14);
+                    setMassNeedByDate(d.toISOString().split('T')[0]);
+                  }}
+                  className="px-2 py-1 text-[10px] font-bold rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 cursor-pointer"
+                  title="14 days from today"
+                >
+                  +14d
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 30);
+                    setMassNeedByDate(d.toISOString().split('T')[0]);
+                  }}
+                  className="px-2 py-1 text-[10px] font-bold rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 cursor-pointer"
+                  title="30 days from today"
+                >
+                  +30d
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!massNeedByDate) {
+                    alert('Please select a target need-by date first.');
+                    return;
+                  }
+                  setShowMassUpdateModal(true);
+                }}
+                disabled={!massNeedByDate || isMassUpdating}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+              >
+                <Calendar size={13} />
+                <span>Apply to Selected ({selectedPoIds.length})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Desktop Table View */}
         <div className="hidden md:block overflow-auto flex-1 min-h-0">
           <table className="w-full text-left text-sm text-secondary dark:text-gray-400 relative">
             <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-semibold border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
               <tr>
-                <th className="px-6 py-4">Site</th>
-                <th className="px-6 py-4">Customer</th>
-                <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Supplier</th>
-                <th className="px-6 py-4">Concur PR #</th>
-                <th className="px-6 py-4">Concur PO #</th>
-                {filter === 'PENDING' && <th className="px-6 py-4">Requester</th>}
-                <th className="px-6 py-4 text-right">Total (Inc GST)</th>
-                <th className="px-6 py-4 text-center">Status</th>
-                <th className="px-6 py-4 text-center">Action</th>
+                {isAdmin && (
+                  <th className="px-4 py-4 w-10 text-center">
+                    <input
+                      ref={masterCheckboxRef}
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={handleToggleSelectAll}
+                      className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      title={allVisibleSelected ? 'Deselect all visible' : 'Select all visible'}
+                    />
+                  </th>
+                )}
+                <th className="px-5 py-4">Site</th>
+                <th className="px-5 py-4">Customer</th>
+                <th className="px-5 py-4">Date</th>
+                <th className="px-5 py-4">Need By</th>
+                <th className="px-5 py-4">Supplier</th>
+                <th className="px-5 py-4">Concur PR #</th>
+                <th className="px-5 py-4">Concur PO #</th>
+                {filter === 'PENDING' && <th className="px-5 py-4">Requester</th>}
+                <th className="px-5 py-4 text-right">Total (Inc GST)</th>
+                <th className="px-5 py-4 text-center">Status</th>
+                <th className="px-5 py-4 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-              {filteredPos.map((po) => (
-                <tr key={po.id} className="hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors group">
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
-                      <MapPin size={11} className="text-gray-400" />
-                      {po.site || 'Unknown'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-mono text-xs">
-                    {po.customerName ? (
-                      <span className="inline-flex max-w-[220px] truncate bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
-                        {po.customerName}
-                      </span>
-                    ) : (
-                      <span className="text-gray-300 dark:text-gray-700">-</span>
+              {filteredPos.map((po) => {
+                const isSelected = selectedPoIds.includes(po.id);
+                const { dateStr: poNeedBy, isOverdue } = getPONeedByDate(po);
+
+                return (
+                  <tr
+                    key={po.id}
+                    className={`hover:bg-gray-50 dark:hover:bg-[#2b2d3b] transition-colors group ${
+                      isSelected ? 'bg-indigo-50/40 dark:bg-indigo-950/25' : ''
+                    }`}
+                  >
+                    {isAdmin && (
+                      <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectPo(po.id)}
+                          className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </td>
                     )}
-                  </td>
-                  <td className="px-6 py-4">{new Date(po.requestDate).toLocaleDateString()}</td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-gray-300 font-medium">{po.supplierName}</td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-gray-300 font-medium">{po.concurRequestNumber || '-'}</td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-gray-300 font-medium">{po.lines.find(l => l.concurPoNumber)?.concurPoNumber || '-'}</td>
-                  {filter === 'PENDING' && (
-                    <td className="px-6 py-4 flex items-center gap-2">
-                      <img
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${po.requesterName}`}
-                        className="w-6 h-6 rounded-full bg-gray-100"
-                      />
-                      <span className="truncate max-w-[100px]">{po.requesterName}</span>
+                    <td className="px-5 py-4">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                        <MapPin size={11} className="text-gray-400" />
+                        {po.site || 'Unknown'}
+                      </span>
                     </td>
-                  )}
-                  <td className="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">
-                    <div className="font-semibold">{formatCurrency(po.totalAmountIncGst ?? (po.totalAmount * 1.10))}</div>
-                    <div className="text-[10px] text-gray-400 dark:text-gray-500 font-normal">({formatCurrency(po.subtotalAmount ?? po.totalAmount)} ex)</div>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <StatusBadge status={po.status} />
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <Link
-                      to={`/requests/${po.id}`}
-                      className="text-gray-400 hover:text-[var(--color-brand)] p-2 rounded-lg inline-block transition-colors"
-                    >
-                      <Eye size={18} />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+                    <td className="px-5 py-4 font-mono text-xs">
+                      {po.customerName ? (
+                        <span className="inline-flex max-w-[200px] truncate bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
+                          {po.customerName}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-700">-</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-xs text-gray-600 dark:text-gray-400">
+                      {new Date(po.requestDate).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-4 font-sans text-xs">
+                      {poNeedBy ? (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-semibold text-xs ${
+                            isOverdue
+                              ? 'text-amber-800 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800'
+                              : 'text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800/80'
+                          }`}
+                          title={`Need-by delivery date: ${poNeedBy}${isOverdue ? ' (OVERDUE)' : ''}`}
+                        >
+                          <Clock3 size={11} className={isOverdue ? 'text-amber-600 dark:text-amber-400 animate-pulse' : 'text-gray-400'} />
+                          <span>{new Date(poNeedBy).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}</span>
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-700 font-mono">-</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-gray-700 dark:text-gray-300 font-medium truncate max-w-[160px]" title={po.supplierName}>
+                      {po.supplierName}
+                    </td>
+                    <td className="px-5 py-4 text-gray-700 dark:text-gray-300 font-medium font-mono text-xs">
+                      {po.concurRequestNumber || '-'}
+                    </td>
+                    <td className="px-5 py-4 text-gray-700 dark:text-gray-300 font-medium font-mono text-xs">
+                      {po.lines.find(l => l.concurPoNumber)?.concurPoNumber || '-'}
+                    </td>
+                    {filter === 'PENDING' && (
+                      <td className="px-5 py-4 flex items-center gap-2">
+                        <img
+                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${po.requesterName}`}
+                          className="w-6 h-6 rounded-full bg-gray-100"
+                        />
+                        <span className="truncate max-w-[100px]">{po.requesterName}</span>
+                      </td>
+                    )}
+                    <td className="px-5 py-4 text-right font-medium text-gray-900 dark:text-white">
+                      <div className="font-semibold">{formatCurrency(po.totalAmountIncGst ?? (po.totalAmount * 1.10))}</div>
+                      <div className="text-[10px] text-gray-400 dark:text-gray-500 font-normal">({formatCurrency(po.subtotalAmount ?? po.totalAmount)} ex)</div>
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <StatusBadge status={po.status} />
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <Link
+                        to={`/requests/${po.id}`}
+                        className="text-gray-400 hover:text-[var(--color-brand)] p-2 rounded-lg inline-block transition-colors"
+                        title="View Details"
+                      >
+                        <Eye size={18} />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
               {filteredPos.length === 0 && (
                 <tr>
-                  <td colSpan={filter === 'PENDING' ? 9 : 8} className="text-center py-12 text-tertiary dark:text-gray-600">
+                  <td
+                    colSpan={isAdmin ? (filter === 'PENDING' ? 12 : 11) : (filter === 'PENDING' ? 11 : 10)}
+                    className="text-center py-12 text-tertiary dark:text-gray-600"
+                  >
                     No requests found matching your filters.
                   </td>
                 </tr>
@@ -588,56 +832,202 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
 
         {/* Mobile Card View */}
         <div className="md:hidden overflow-y-auto flex-1 min-h-0 divide-y divide-gray-100 dark:divide-gray-800">
-          {filteredPos.map((po) => (
-            <Link key={po.id} to={`/requests/${po.id}`} className="block p-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-              <div className="mb-3 space-y-2">
-                <div className="font-bold text-gray-900 dark:text-white truncate">{po.supplierName}</div>
-                <div className="text-xs text-tertiary dark:text-gray-500 flex items-center gap-2 flex-wrap">
-                  <span className="font-mono">{po.displayId || po.id}</span>
-                  <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">
-                    |
-                  </span>
-                  <span>{new Date(po.requestDate).toLocaleDateString()}</span>
-                  <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">
-                    |
-                  </span>
-                  <span className="inline-flex min-w-0 items-center gap-1">
-                    <MapPin size={10} />
-                    <span className="truncate">{po.site || 'Unknown'}</span>
-                  </span>
-                </div>
-                <StatusBadge status={po.status} />
-              </div>
+          {filteredPos.map((po) => {
+            const isSelected = selectedPoIds.includes(po.id);
+            const { dateStr: poNeedBy, isOverdue } = getPONeedByDate(po);
 
-              <div className="flex items-center justify-between text-sm gap-3">
-                <div className="text-secondary dark:text-gray-500 flex items-center gap-1 min-w-0 text-xs">
-                  <span className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Customer</span>
-                  <span className="truncate font-semibold text-gray-700 dark:text-gray-300">
-                    {po.customerName || '-'}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <div className="font-bold text-gray-900 dark:text-white text-base">{formatCurrency(po.totalAmountIncGst ?? (po.totalAmount * 1.10))}</div>
-                  <div className="text-[10px] text-gray-400 dark:text-gray-500">({formatCurrency(po.subtotalAmount ?? po.totalAmount)} ex)</div>
+            return (
+              <div
+                key={po.id}
+                className={`p-4 transition-colors ${
+                  isSelected ? 'bg-indigo-50/50 dark:bg-indigo-950/30' : 'hover:bg-gray-50 dark:hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSelectPo(po.id)}
+                      className="mt-1 p-1 text-gray-400 hover:text-indigo-600 focus:outline-none shrink-0"
+                      aria-label={isSelected ? 'Deselect order' : 'Select order'}
+                    >
+                      {isSelected ? (
+                        <CheckSquare size={20} className="text-indigo-600" />
+                      ) : (
+                        <Square size={20} className="text-gray-400" />
+                      )}
+                    </button>
+                  )}
+
+                  <Link to={`/requests/${po.id}`} className="block flex-1 min-w-0">
+                    <div className="mb-2 space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-bold text-gray-900 dark:text-white truncate">{po.supplierName}</div>
+                        <StatusBadge status={po.status} />
+                      </div>
+
+                      <div className="text-xs text-tertiary dark:text-gray-500 flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-semibold">{po.displayId || po.id}</span>
+                        <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">|</span>
+                        <span>{new Date(po.requestDate).toLocaleDateString()}</span>
+                        <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">|</span>
+                        <span className="inline-flex min-w-0 items-center gap-1">
+                          <MapPin size={10} />
+                          <span className="truncate">{po.site || 'Unknown'}</span>
+                        </span>
+                      </div>
+
+                      {poNeedBy && (
+                        <div className="flex items-center gap-1.5 text-xs mt-1">
+                          <span className="text-[10px] font-bold uppercase text-gray-400">Need by:</span>
+                          <span
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded font-semibold text-[11px] ${
+                              isOverdue
+                                ? 'text-amber-800 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800'
+                                : 'text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800'
+                            }`}
+                          >
+                            <Clock3 size={10} className={isOverdue ? 'text-amber-500' : 'text-gray-400'} />
+                            <span>{new Date(poNeedBy).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}</span>
+                            {isOverdue && <span className="text-[9px] font-bold uppercase text-amber-600 dark:text-amber-400 ml-0.5">Overdue</span>}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm gap-3 pt-2 border-t border-gray-100 dark:border-gray-800/60">
+                      <div className="text-secondary dark:text-gray-500 flex items-center gap-1 min-w-0 text-xs">
+                        <span className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Customer</span>
+                        <span className="truncate font-semibold text-gray-700 dark:text-gray-300">
+                          {po.customerName || '-'}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-gray-900 dark:text-white text-base">{formatCurrency(po.totalAmountIncGst ?? (po.totalAmount * 1.10))}</div>
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500">({formatCurrency(po.subtotalAmount ?? po.totalAmount)} ex)</div>
+                      </div>
+                    </div>
+
+                    {filter === 'PENDING' && (
+                      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 text-xs text-tertiary dark:text-gray-500">
+                        <img
+                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${po.requesterName}`}
+                          className="w-5 h-5 rounded-full bg-gray-100"
+                        />
+                        <span>Requested by {po.requesterName}</span>
+                      </div>
+                    )}
+                  </Link>
                 </div>
               </div>
-
-              {filter === 'PENDING' && (
-                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 text-xs text-tertiary dark:text-gray-500">
-                  <img
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${po.requesterName}`}
-                    className="w-5 h-5 rounded-full bg-gray-100"
-                  />
-                  <span>Requested by {po.requesterName}</span>
-                </div>
-              )}
-            </Link>
-          ))}
+            );
+          })}
           {filteredPos.length === 0 && (
             <div className="text-center py-12 text-tertiary dark:text-gray-600 px-4">No requests found.</div>
           )}
         </div>
       </div>
+
+      {/* Mass Update Confirmation Modal */}
+      {showMassUpdateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-lg bg-white dark:bg-[#1a1d26] border border-gray-200 dark:border-gray-700 rounded-3xl shadow-2xl p-6 space-y-5 animate-scale-up">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <Calendar size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                    Confirm Need-by Date Mass Update
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Target Date:{' '}
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                      {new Date(massNeedByDate).toLocaleDateString('en-AU', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMassUpdateModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 text-xs text-indigo-950 dark:text-indigo-200">
+              <p className="font-semibold">
+                You are about to update the need-by delivery date across <span className="font-bold">{selectedPoIds.length} purchase order(s)</span>.
+              </p>
+              <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-1">
+                Every line item in each selected order will have its need-by date synchronized to this date.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                Selected Purchase Orders ({selectedPoIds.length}):
+              </span>
+              <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 text-xs">
+                {pos.filter((p) => selectedPoIds.includes(p.id)).slice(0, 10).map((p) => {
+                  const { dateStr } = getPONeedByDate(p);
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between p-2 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 text-gray-700 dark:text-gray-300"
+                    >
+                      <div className="min-w-0 flex items-center gap-2">
+                        <span className="font-mono font-bold text-gray-900 dark:text-white">{p.displayId || p.id}</span>
+                        <span className="truncate text-gray-500">· {p.supplierName}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-400 shrink-0">
+                        Current: {dateStr ? new Date(dateStr).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' }) : 'None'}
+                      </div>
+                    </div>
+                  );
+                })}
+                {selectedPoIds.length > 10 && (
+                  <p className="text-[11px] text-gray-400 text-center pt-1 font-medium">
+                    + {selectedPoIds.length - 10} more orders
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={() => setShowMassUpdateModal(false)}
+                disabled={isMassUpdating}
+                className="px-4 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteMassUpdate}
+                disabled={isMassUpdating}
+                className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {isMassUpdating ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Applying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    <span>Confirm &amp; Update ({selectedPoIds.length})</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );

@@ -298,6 +298,8 @@ interface AppContextType {
   submitDraftPO: (poId: string) => Promise<void>;
   updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; concurRequestNumber?: string; concurPoNumber?: string; siteId?: string; lines: POLineItem[]; }) => Promise<void>;
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
+  updatePOsNeedByDate: (poIds: string[], needByDate: string) => Promise<void>;
+  updatePOLinesNeedByDate: (poId: string, lineUpdates: { lineId: string; needByDate: string }[]) => Promise<void>;
   linkConcurRequest: (poId: string, concurRequestNumber: string) => void;
   linkConcurPO: (poId: string, concurPoNumber: string) => void;
   addDelivery: (poId: string, delivery: DeliveryHeader, closedLineIds?: string[], newLines?: POLineItem[]) => Promise<void>;
@@ -2579,6 +2581,98 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   };
 
+  const updatePOsNeedByDate = async (poIds: string[], needByDate: string) => {
+      if (!currentUser) throw new Error('You must be signed in to update delivery dates.');
+      if (!poIds || poIds.length === 0) return;
+
+      const isAdmin = isEffectiveAdminUser(currentUser);
+      if (!isAdmin && !hasPermission('edit_po_lines')) {
+          throw new Error('You do not have permission to update need-by delivery dates.');
+      }
+
+      const formattedDate = needByDate ? needByDate.split('T')[0] : '';
+      const poIdSet = new Set(poIds);
+
+      // Optimistic update
+      setPos(prev => prev.map(p => {
+          if (!poIdSet.has(p.id)) return p;
+          return {
+              ...p,
+              lines: p.lines.map(l => ({
+                  ...l,
+                  needByDate: formattedDate || undefined
+              }))
+          };
+      }));
+
+      try {
+          await db.updatePOsNeedByDate(poIds, formattedDate);
+          await reloadData(true, true);
+          logAction('PO_NEED_BY_MASS_UPDATED', {
+              poCount: poIds.length,
+              poIds,
+              needByDate: formattedDate
+          });
+      } catch (e) {
+          console.error("Failed to mass update need-by dates:", e);
+          reloadData();
+          logAction('PO_NEED_BY_MASS_UPDATE_FAILED', {
+              poCount: poIds.length,
+              error: (e as Error).message
+          });
+          throw e;
+      }
+  };
+
+  const updatePOLinesNeedByDate = async (poId: string, lineUpdates: { lineId: string; needByDate: string }[]) => {
+      if (!currentUser) throw new Error('You must be signed in to update delivery dates.');
+      if (!lineUpdates || lineUpdates.length === 0) return;
+
+      const target = pos.find(p => p.id === poId);
+      if (!target) throw new Error('Request not found.');
+
+      const isAdmin = isEffectiveAdminUser(currentUser);
+      const isRequesterEditable = ['PENDING_APPROVAL', 'DRAFT'].includes(target.status) && target.requesterId === currentUser.id;
+      const canEdit = isAdmin || isRequesterEditable || hasPermission('edit_po_lines');
+      if (!canEdit) {
+          throw new Error('You do not have permission to update line delivery dates.');
+      }
+
+      const updateMap = new Map(lineUpdates.map(u => [u.lineId, u.needByDate ? u.needByDate.split('T')[0] : undefined]));
+
+      // Optimistic update
+      setPos(prev => prev.map(p => {
+          if (p.id !== poId) return p;
+          return {
+              ...p,
+              lines: p.lines.map(l => {
+                  if (!updateMap.has(l.id)) return l;
+                  return {
+                      ...l,
+                      needByDate: updateMap.get(l.id)
+                  };
+              })
+          };
+      }));
+
+      try {
+          await db.updateLinesNeedByDate(poId, lineUpdates);
+          await reloadData(true, true);
+          logAction('PO_LINES_NEED_BY_UPDATED', {
+              poId,
+              lineCount: lineUpdates.length
+          });
+      } catch (e) {
+          console.error("Failed to update line need-by dates:", e);
+          reloadData();
+          logAction('PO_LINES_NEED_BY_UPDATE_FAILED', {
+              poId,
+              error: (e as Error).message
+          });
+          throw e;
+      }
+  };
+
   const deletePO = async (id: string) => {
       try {
           const target = pos.find(p => p.id === id);
@@ -3320,6 +3414,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     linkConcurRequest,
     sendNotification,
     deletePO,
+    updatePOsNeedByDate,
+    updatePOLinesNeedByDate,
 
     featureFlags,
     updateFeatureFlag: async (key: keyof FeatureFlags, value: boolean) => {
