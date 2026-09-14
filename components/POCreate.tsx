@@ -27,6 +27,7 @@ import {
   AlertTriangle,
   Clock3,
   Check,
+  Loader2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ContextHelp from './ContextHelp.tsx';
@@ -160,7 +161,6 @@ const POCreate = () => {
   const [comments, setComments] = useState(initialDraft?.comments || '');
   const [requestDate, setRequestDate] = useState(initialDraft?.requestDate || getLocalDateInputValue());
   const [defaultNeedByDate, setDefaultNeedByDate] = useState(initialDraft?.defaultNeedByDate || '');
-  const [cartBatchNeedByDate, setCartBatchNeedByDate] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -542,7 +542,6 @@ const POCreate = () => {
           needByDate: targetDate
         })));
         setDefaultNeedByDate(targetDate);
-        setCartBatchNeedByDate(targetDate);
       }
     });
   };
@@ -804,52 +803,6 @@ const POCreate = () => {
                  </div>
              ) : (
                  <>
-                     {/* Batch Need-by Date Toolbar */}
-                     <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-gray-800 space-y-2">
-                         <div className="flex items-center justify-between">
-                             <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
-                                 <Clock3 size={13} className="text-indigo-600 dark:text-indigo-400" />
-                                 Need-by for All Lines
-                             </span>
-                             <div className="flex items-center gap-1">
-                                 {[
-                                     { label: '+7d', days: 7 },
-                                     { label: '+14d', days: 14 },
-                                     { label: '+30d', days: 30 }
-                                 ].map(preset => (
-                                     <button
-                                         key={preset.label}
-                                         type="button"
-                                         onClick={() => {
-                                             const base = requestDate ? new Date(requestDate) : new Date();
-                                             const target = new Date(base.getTime() + preset.days * 24 * 60 * 60 * 1000);
-                                             setCartBatchNeedByDate(getLocalDateInputValue(target));
-                                         }}
-                                         className="px-1.5 py-0.5 text-[10px] font-bold rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2029] hover:border-gray-300 dark:hover:border-gray-600 text-gray-600 dark:text-gray-300 transition-colors cursor-pointer"
-                                     >
-                                         {preset.label}
-                                     </button>
-                                 ))}
-                             </div>
-                         </div>
-                         <div className="flex items-center gap-2">
-                             <input 
-                                 type="date"
-                                 className="flex-1 bg-white dark:bg-[#1e2029] border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 dark:text-gray-200 focus:border-[var(--color-brand)] outline-none"
-                                 value={cartBatchNeedByDate || defaultNeedByDate || ''}
-                                 onChange={(e) => setCartBatchNeedByDate(e.target.value)}
-                             />
-                             <button
-                                 type="button"
-                                 disabled={!(cartBatchNeedByDate || defaultNeedByDate)}
-                                 onClick={() => handlePromptApplyNeedByDateToAll(cartBatchNeedByDate || defaultNeedByDate)}
-                                 className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg shadow-xs transition-colors shrink-0 cursor-pointer"
-                             >
-                                 Apply to All ({cart.length})
-                             </button>
-                         </div>
-                     </div>
-
                      {cart.map(line => (
                     <div key={line.id} className="flex flex-col gap-3 border-b border-gray-100 dark:border-gray-800 pb-4 last:border-0">
                          <div className="flex justify-between items-start gap-2">
@@ -977,14 +930,6 @@ const POCreate = () => {
                      </span>
                  </div>
              </div>
-             <button
-               type="button"
-               onClick={handleSaveDraft}
-               disabled={!selectedSupplier || isSavingDraft || isSubmitting}
-               className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 py-2.5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex justify-center items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed mb-2"
-             >
-               {isSavingDraft ? 'Saving...' : <><Save size={15} /> Save as Draft</>}
-             </button>
              <button
                type="button"
                onClick={() => guardedSubmit(handleSubmit)}
@@ -1574,8 +1519,29 @@ const POCreate = () => {
                             <ShoppingCart size={20} className="text-[var(--color-brand)]" /> Order Summary
                         </h3>
                         <div className="flex items-center gap-2 shrink-0">
+                            {/* Save Draft Icon Button with Hover Tooltip */}
+                            <div className="relative group">
+                                <button
+                                    type="button"
+                                    onClick={handleSaveDraft}
+                                    disabled={!selectedSupplier || isSavingDraft || isSubmitting}
+                                    title="Save Draft"
+                                    aria-label="Save Draft"
+                                    className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center cursor-pointer"
+                                >
+                                    {isSavingDraft ? <Loader2 size={15} className="animate-spin text-[var(--color-brand)]" /> : <Save size={15} />}
+                                </button>
+                                {/* Floating Tooltip: Displays name only when hovering */}
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-all duration-150 transform translate-y-1 group-hover:translate-y-0 z-50 whitespace-nowrap shadow-xl">
+                                    <div className="bg-gray-900 dark:bg-gray-800 text-white text-[11px] font-semibold px-2 py-0.5 rounded-md border border-gray-700/70 shadow-md">
+                                        Save Draft
+                                    </div>
+                                    <div className="w-2 h-1 mx-auto -mt-px border-solid border-t-gray-900 dark:border-t-gray-800 border-t-4 border-x-transparent border-x-4 border-b-0" />
+                                </div>
+                            </div>
+
                             <span className="text-xs font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 px-2.5 py-1 rounded-full">{cart.length}</span>
-                            <button type="button" onClick={() => setIsCartExpanded(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors">
+                            <button type="button" onClick={() => setIsCartExpanded(false)} title="Collapse Cart" aria-label="Collapse Cart" className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full text-gray-400 transition-colors cursor-pointer">
                                 <ChevronRight size={18}/>
                             </button>
                         </div>
@@ -1645,19 +1611,29 @@ const POCreate = () => {
                       </div>
                   </button>
                   <div className="flex gap-2.5">
-                      <button
-                          type="button"
-                          onClick={handleSaveDraft}
-                          disabled={!selectedSupplier || isSavingDraft || isSubmitting}
-                          className="flex-1 min-h-[44px] border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-3 py-3 rounded-xl font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-                      >
-                          <Save size={16} /> {isSavingDraft ? 'Saving…' : 'Draft'}
-                      </button>
+                      <div className="relative group shrink-0">
+                          <button
+                              type="button"
+                              onClick={handleSaveDraft}
+                              disabled={!selectedSupplier || isSavingDraft || isSubmitting}
+                              title="Save Draft"
+                              aria-label="Save Draft"
+                              className="min-h-[44px] px-3.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                          >
+                              {isSavingDraft ? <Loader2 size={18} className="animate-spin text-[var(--color-brand)]" /> : <Save size={18} />}
+                          </button>
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-all duration-150 transform translate-y-1 group-hover:translate-y-0 z-50 whitespace-nowrap shadow-xl">
+                              <div className="bg-gray-900 dark:bg-gray-800 text-white text-[11px] font-semibold px-2 py-0.5 rounded-md border border-gray-700/70 shadow-md">
+                                  Save Draft
+                              </div>
+                              <div className="w-2 h-1 mx-auto -mt-px border-solid border-t-gray-900 dark:border-t-gray-800 border-t-4 border-x-transparent border-x-4 border-b-0" />
+                          </div>
+                      </div>
                       <button
                           type="button"
                           onClick={() => guardedSubmit(handleSubmit)}
                           disabled={cart.length === 0 || isSubmitting}
-                          className="flex-[2] min-h-[44px] bg-[var(--color-brand)] hover:opacity-90 active:scale-95 text-white px-5 py-3 rounded-xl font-black text-sm shadow-lg disabled:opacity-50 disabled:shadow-none transition-all"
+                          className="flex-1 min-h-[44px] bg-[var(--color-brand)] hover:opacity-90 active:scale-95 text-white px-5 py-3 rounded-xl font-black text-sm shadow-lg disabled:opacity-50 disabled:shadow-none transition-all"
                       >
                           {isSubmitting ? 'Submitting...' : 'Review & Submit'}
                       </button>
@@ -1672,8 +1648,31 @@ const POCreate = () => {
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsMobileCartOpen(false)}></div>
               <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-nocturne rounded-t-2xl shadow-2xl h-[85vh] flex flex-col transition-transform transform translate-y-0 pb-safe">
                   <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between shrink-0">
-                      <h3 className="font-bold text-lg text-gray-900 dark:text-white">Current Order</h3>
-                      <button type="button" onClick={() => setIsMobileCartOpen(false)} className="p-2 bg-gray-100 dark:bg-white/10 rounded-full"><X size={18}/></button>
+                      <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-lg text-gray-900 dark:text-white">Current Order</h3>
+                          <span className="text-xs font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 px-2.5 py-0.5 rounded-full">{cart.length}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                          <div className="relative group">
+                              <button
+                                  type="button"
+                                  onClick={handleSaveDraft}
+                                  disabled={!selectedSupplier || isSavingDraft || isSubmitting}
+                                  title="Save Draft"
+                                  aria-label="Save Draft"
+                                  className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center cursor-pointer"
+                              >
+                                  {isSavingDraft ? <Loader2 size={16} className="animate-spin text-[var(--color-brand)]" /> : <Save size={16} />}
+                              </button>
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-all duration-150 transform translate-y-1 group-hover:translate-y-0 z-50 whitespace-nowrap shadow-xl">
+                                  <div className="bg-gray-900 dark:bg-gray-800 text-white text-[11px] font-semibold px-2 py-0.5 rounded-md border border-gray-700/70 shadow-md">
+                                      Save Draft
+                                  </div>
+                                  <div className="w-2 h-1 mx-auto -mt-px border-solid border-t-gray-900 dark:border-t-gray-800 border-t-4 border-x-transparent border-x-4 border-b-0" />
+                              </div>
+                          </div>
+                          <button type="button" onClick={() => setIsMobileCartOpen(false)} className="p-2 bg-gray-100 dark:bg-white/10 rounded-full cursor-pointer"><X size={18}/></button>
+                      </div>
                   </div>
                   <CartContent />
               </div>
