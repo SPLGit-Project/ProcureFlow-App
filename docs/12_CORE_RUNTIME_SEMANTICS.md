@@ -188,8 +188,10 @@ localStorage.getItem('sb-<project-ref>-auth-token')
 ### 5.1 Enforcement Point
 
 ```typescript
-if (!email?.toLowerCase().endsWith('@splservices.com.au')) {
-    alert("Access Restricted: Only @splservices.com.au accounts are allowed.");
+const allowedDomains = ['splservices.com.au', 'linenhub.com.au', 'splaundry.com.au', 'southpacificlaundry.com.au', 'southpacificlaundry.onmicrosoft.com', 'procureflow.dev'];
+const userDomain = email.includes('@') ? email.split('@')[1] : '';
+if (!email || !userDomain || !allowedDomains.includes(userDomain)) {
+    alert("Access Restricted: Only @splservices.com.au and @linenhub.com.au accounts are allowed.");
     await supabase.auth.signOut();
     return;
 }

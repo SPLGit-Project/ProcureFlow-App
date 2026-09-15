@@ -278,12 +278,14 @@ SELECT COUNT(*) FROM roles;
    - Add to Supabase Azure provider config
 
 ### D.3 Domain Restriction
-[OBSERVED: context/AppContext.tsx:505-511]
+[OBSERVED: context/AppContext.tsx]
 
 ```typescript
-if (!email?.toLowerCase().endsWith('@splservices.com.au')) {
+const allowedDomains = ['splservices.com.au', 'linenhub.com.au', 'splaundry.com.au', 'southpacificlaundry.com.au', 'southpacificlaundry.onmicrosoft.com', 'procureflow.dev'];
+const userDomain = email.includes('@') ? email.split('@')[1] : '';
+if (!email || !userDomain || !allowedDomains.includes(userDomain)) {
     console.error("Auth: Unauthorized domain:", email);
-    alert("Access Restricted: Only @splservices.com.au accounts are allowed.");
+    alert("Access Restricted: Only @splservices.com.au and @linenhub.com.au accounts are allowed.");
     await supabase.auth.signOut();
     return;
 }
@@ -291,14 +293,14 @@ if (!email?.toLowerCase().endsWith('@splservices.com.au')) {
 
 **Enforcement Point**: Client-side, after OAuth completes, before user record creation.
 
-**Verification**: Attempt login with non-@splservices.com.au email → Should see alert and immediate signout.
+**Verification**: Attempt login with non-whitelisted email (e.g. gmail.com) → Should see alert and immediate signout.
 
 ### D.4 Auth Failure Mode Table
 
 | Error | Symptom | Root Cause | Fix |
 |-------|---------|------------|-----|
 | Redirect fails | Browser stays on Azure login | Incorrect redirect URI | Check Supabase + Azure AD redirect URIs match exactly |
-| "Access Restricted" alert | User signed out immediately | Non-@splservices email | Use correct @splservices.com.au account |
+| "Access Restricted" alert | User signed out immediately | Non-whitelisted domain email | Use authorized @splservices.com.au or @linenhub.com.au account |
 | White screen after login | Token not parsed | URL fragment handling issue | Check `detectSessionInUrl: true`, clear localStorage |
 | Session lost on refresh | Token not persisting | `persistSession: false` or storage issue | Verify localStorage access, check storage setting |
 | Graph API fails | No job title/photo | Missing User.Read scope | Add scope in Azure AD, re-consent |

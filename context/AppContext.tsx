@@ -1163,11 +1163,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             console.log("Auth: Handling user auth for", email);
 
             // 1. Security: Domain Lock
-            const allowedDomains = ['splservices.com.au', 'splaundry.com.au', 'southpacificlaundry.com.au', 'southpacificlaundry.onmicrosoft.com', 'procureflow.dev'];
+            const allowedDomains = ['splservices.com.au', 'linenhub.com.au', 'splaundry.com.au', 'southpacificlaundry.com.au', 'southpacificlaundry.onmicrosoft.com', 'procureflow.dev'];
             const userDomain = email.includes('@') ? email.split('@')[1] : '';
             if (!email || !userDomain || !allowedDomains.includes(userDomain)) {
                 console.error("Auth: Unauthorized domain:", email);
-                alert("Access Restricted: Only @splservices.com.au accounts are allowed.");
+                alert("Access Restricted: Only @splservices.com.au and @linenhub.com.au accounts are allowed.");
                 await supabase.auth.signOut();
                 logAction('AUTH_FAILED_DOMAIN_RESTRICTION', { email });
                 return;

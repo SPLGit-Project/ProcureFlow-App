@@ -1510,7 +1510,7 @@ const Settings = () => {
                   // A. Try direct sender email (if sent directly by supplier)
                   if (item.fromAddress) {
                       const domain = item.fromAddress.split('@').pop()?.toLowerCase();
-                      if (domain && domain !== 'splservices.com.au' && domain !== 'company.com') {
+                      if (domain && domain !== 'splservices.com.au' && domain !== 'linenhub.com.au' && domain !== 'company.com') {
                           detectedSupplier = findSupplierByContactEmail(visibleSuppliers, item.fromAddress);
                       }
                   }

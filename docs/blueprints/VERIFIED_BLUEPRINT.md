@@ -45,10 +45,10 @@ This document provides a verified, structured technical blueprint for the Procur
 ### Subsystem: Authentication & Identity
 *   **What it is**: Azure AD integrated Supabase Auth.
 *   **Where configured**: `AppContext.tsx`, Supabase Dashboard (Auth Providers).
-*   **How it works**: OAuth2 flow with domain locking to `@splservices.com.au`. Auto-syncs Job Title/Department from MS Graph. [Verified]
-*   **Proof it works**: `handleUserAuth` logic in `AppContext.tsx` (Lines 490-745). [Verified]
+*   **How it works**: OAuth2 flow with domain locking to `@splservices.com.au` and `@linenhub.com.au`. Auto-syncs Job Title/Department from MS Graph. [Verified]
+*   **Proof it works**: `handleUserAuth` logic in `AppContext.tsx`. [Verified]
 *   **How to rebuild**: Enable Azure AD provider in Supabase; Add domain lock logic in `handleUserAuth`.
-*   **Validation**: Attempt login with non-SPL email (Should fail). [Verified]
+*   **Validation**: Attempt login with unauthorized email (Should fail). [Verified]
 *   **Failure Modes**: `sb-lock` localStorage deadlocks (handled via cleanup in `initializeAuth`). [Verified]
 
 ### Subsystem: Multi-Site Data Isolation
@@ -113,7 +113,7 @@ This document provides a verified, structured technical blueprint for the Procur
 ---
 
 ## 8. Security [Verified]
-1.  **Domain Lock**: Strict `@splservices.com.au` check in frontend auth.
+1.  **Domain Lock**: `@splservices.com.au` and `@linenhub.com.au` check in frontend auth.
 2.  **RLS Policies**: Default "Allow all" for most tables (Current State), but `users` table restricted to `auth.uid() = id`.
 3.  **Role Controls**: `is_system` flag on roles prevents deletion of core access tiers.
 

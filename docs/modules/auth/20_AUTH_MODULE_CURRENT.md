@@ -125,8 +125,10 @@ Add delegated permissions:
 ### Implementation
 
 ```typescript
-if (!email?.toLowerCase().endsWith('@splservices.com.au')) {
-    alert("Access Restricted: Only @splservices.com.au accounts are allowed.");
+const allowedDomains = ['splservices.com.au', 'linenhub.com.au', 'splaundry.com.au', 'southpacificlaundry.com.au', 'southpacificlaundry.onmicrosoft.com', 'procureflow.dev'];
+const userDomain = email.includes('@') ? email.split('@')[1] : '';
+if (!email || !userDomain || !allowedDomains.includes(userDomain)) {
+    alert("Access Restricted: Only @splservices.com.au and @linenhub.com.au accounts are allowed.");
     await supabase.auth.signOut();
     return;
 }
@@ -137,12 +139,12 @@ if (!email?.toLowerCase().endsWith('@splservices.com.au')) {
 | Aspect | Value |
 |--------|-------|
 | Enforcement Point | Client-side, after OAuth, before user creation |
-| Configurable | Hardcoded in AppContext.tsx |
+| Configurable | Hardcoded in AppContext.tsx (`allowedDomains`) |
 | Bypass Risk | Client-side only; server validation recommended |
 
-[REQUIRES-OPERATOR] To change domain:
-1. Edit `context/AppContext.tsx` line ~506
-2. Replace `@splservices.com.au` with target domain
+[REQUIRES-OPERATOR] To change or add allowed domains:
+1. Edit `context/AppContext.tsx` (`allowedDomains`)
+2. Update the domain restriction list (e.g. `splservices.com.au`, `linenhub.com.au`)
 3. Rebuild and redeploy
 
 ---
