@@ -2,29 +2,23 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Activity,
-  Bookmark,
-  CheckCircle2,
-  ChevronDown,
-  Clock3,
-  Eye,
-  Link2,
-  ListFilter,
-  MapPin,
-  Search,
-  Truck,
-  XCircle,
   Calendar,
   CheckSquare,
   Square,
   AlertCircle,
   AlertTriangle,
   Loader2,
-  Sparkles,
   Check,
-  X
+  X,
+  Search,
+  MapPin,
+  Clock3,
+  Eye,
+  Filter,
+  RotateCcw,
+  SlidersHorizontal,
+  ChevronDown
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import type { POStatus, PORequest } from '../types.ts';
 import ContextHelp from './ContextHelp';
 import PageHeader from './PageHeader';
@@ -33,6 +27,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { ToastContainer, useToast } from './ToastNotification';
 import { formatCurrency } from '../utils/taxCalculations.ts';
 import CustomerCategoryBadge from './CustomerCategoryBadge.tsx';
+import ExcelColumnFilter, { SortDirection } from './ExcelColumnFilter.tsx';
 
 const getPONeedByDate = (po: PORequest): { dateStr: string | null; isOverdue: boolean } => {
   const unfulfilledWithNeedBy = po.lines.find(l => (l.quantityReceived || 0) < l.quantityOrdered && l.needByDate);
@@ -48,22 +43,6 @@ const getPONeedByDate = (po: PORequest): { dateStr: string | null; isOverdue: bo
 
 type BaseFilter = 'ALL' | 'PENDING' | 'COMPLETED';
 
-type QuickFilterOption = {
-  id: string;
-  label: string;
-  statuses: POStatus[];
-  icon: LucideIcon;
-};
-
-type SiteFilterOption = {
-  id: string;
-  label: string;
-  count: number;
-  siteId?: string;
-  normalizedSiteName?: string;
-};
-
-const IN_PROGRESS_STATUSES: POStatus[] = ['ACTIVE', 'VARIANCE_PENDING'];
 const COMPLETED_STATUSES: POStatus[] = ['RECEIVED', 'CLOSED'];
 
 const statusLabel = (status: POStatus) => {
@@ -75,103 +54,8 @@ const statusLabel = (status: POStatus) => {
   return status.replace(/_/g, ' ');
 };
 
-const quickFilterConfigByPage = (filter: BaseFilter): QuickFilterOption[] => {
-  if (filter === 'PENDING') {
-    return [
-      {
-        id: 'pending-approval',
-        label: 'Pending Approval',
-        statuses: ['PENDING_APPROVAL'],
-        icon: Clock3
-      }
-    ];
-  }
-
-  if (filter === 'COMPLETED') {
-    return [
-      {
-        id: 'all-completed',
-        label: 'All Completed',
-        statuses: COMPLETED_STATUSES,
-        icon: CheckCircle2
-      },
-      {
-        id: 'received',
-        label: 'Received',
-        statuses: ['RECEIVED'],
-        icon: Truck
-      },
-      {
-        id: 'closed',
-        label: 'Closed',
-        statuses: ['CLOSED'],
-        icon: CheckCircle2
-      }
-    ];
-  }
-
-  return [
-    {
-      id: 'all',
-      label: 'All Requests',
-      statuses: [
-        'PENDING_APPROVAL',
-        'APPROVED_PENDING_CONCUR_REQUEST',
-        'APPROVED_PENDING_CONCUR',
-        ...IN_PROGRESS_STATUSES,
-        ...COMPLETED_STATUSES,
-        'REJECTED',
-        'DRAFT'
-      ],
-      icon: ListFilter
-    },
-    {
-      id: 'drafts',
-      label: 'Drafts',
-      statuses: ['DRAFT'],
-      icon: Bookmark
-    },
-    {
-      id: 'pending-approval',
-      label: 'Pending Approval',
-      statuses: ['PENDING_APPROVAL'],
-      icon: Clock3
-    },
-    {
-      id: 'pending-concur',
-      label: 'Pending Concur',
-      statuses: ['APPROVED_PENDING_CONCUR_REQUEST', 'APPROVED_PENDING_CONCUR'],
-      icon: Link2
-    },
-    {
-      id: 'in-progress',
-      label: 'In Progress',
-      statuses: IN_PROGRESS_STATUSES,
-      icon: Activity
-    },
-    {
-      id: 'received',
-      label: 'Received',
-      statuses: ['RECEIVED'],
-      icon: Truck
-    },
-    {
-      id: 'closed',
-      label: 'Closed',
-      statuses: ['CLOSED'],
-      icon: CheckCircle2
-    },
-    {
-      id: 'rejected',
-      label: 'Rejected',
-      statuses: ['REJECTED'],
-      icon: XCircle
-    }
-  ];
-};
-
 const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
-  const { pos, hasPermission, currentUser, userSites, siteName: resolveSiteName, reloadData, updatePOsNeedByDate } = useApp();
+  const { pos, hasPermission, currentUser, reloadData, updatePOsNeedByDate } = useApp();
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN');
   useSetPageMeta({ disableBodyScroll: true });
   const location = useLocation();
@@ -179,6 +63,24 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
   const { toasts, dismissToast, success } = useToast();
   const handledDeleteNotificationRef = useRef<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Column filter & sorting state (Excel-like experience)
+  const [openColumnFilter, setOpenColumnFilter] = useState<string | null>(null);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[] | null>>({
+    site: null,
+    customer: null,
+    date: null,
+    needBy: null,
+    supplier: null,
+    concurPr: null,
+    concurPo: null,
+    requester: null,
+    status: null,
+  });
+  const [sortConfig, setSortConfig] = useState<{ column: string; direction: 'asc' | 'desc' } | null>(null);
+  const [amountFilter, setAmountFilter] = useState<{ min?: number; max?: number } | null>(null);
+  const [onlyOverdue, setOnlyOverdue] = useState<boolean>(false);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState<boolean>(false);
 
   // Need-by Date Mass Update State (Admin)
   const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
@@ -199,48 +101,6 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     onConfirm: () => {}
   });
   const masterCheckboxRef = useRef<HTMLInputElement | null>(null);
-  const quickFilters = useMemo(() => quickFilterConfigByPage(filter), [filter]);
-  const [selectedQuickFilterId, setSelectedQuickFilterId] = useState<string>(quickFilters[0]?.id ?? 'all');
-  const [selectedSiteFilterId, setSelectedSiteFilterId] = useState<string>('all-sites');
-  const [hydratedQuickStorageKey, setHydratedQuickStorageKey] = useState<string | null>(null);
-  const [hydratedSiteStorageKey, setHydratedSiteStorageKey] = useState<string | null>(null);
-  const quickFilterStorageKey = useMemo(
-    () => `pf_requests_last_filter:${currentUser?.id ?? 'anonymous'}:${filter}`,
-    [currentUser?.id, filter]
-  );
-  const siteFilterStorageKey = useMemo(
-    () => `pf_requests_last_site_filter:${currentUser?.id ?? 'anonymous'}:${filter}`,
-    [currentUser?.id, filter]
-  );
-
-  useEffect(() => {
-    if (quickFilters.length === 0) return;
-    let nextFilterId = quickFilters[0].id;
-
-    try {
-      const storedFilterId = localStorage.getItem(quickFilterStorageKey);
-      if (storedFilterId && quickFilters.some((option) => option.id === storedFilterId)) {
-        nextFilterId = storedFilterId;
-      }
-    } catch (error) {
-      console.warn('POList: Unable to read quick filter preference', error);
-    }
-
-    setSelectedQuickFilterId(nextFilterId);
-    setHydratedQuickStorageKey(quickFilterStorageKey);
-  }, [quickFilters, quickFilterStorageKey]);
-
-  useEffect(() => {
-    if (!selectedQuickFilterId) return;
-    if (hydratedQuickStorageKey !== quickFilterStorageKey) return;
-    if (!quickFilters.some((option) => option.id === selectedQuickFilterId)) return;
-
-    try {
-      localStorage.setItem(quickFilterStorageKey, selectedQuickFilterId);
-    } catch (error) {
-      console.warn('POList: Unable to persist quick filter preference', error);
-    }
-  }, [selectedQuickFilterId, quickFilterStorageKey, hydratedQuickStorageKey, quickFilters]);
 
   useEffect(() => {
     const state = location.state as { deletedRequest?: { id?: string; displayId?: string } } | null;
@@ -269,137 +129,403 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     return pos;
   }, [pos, filter]);
 
-  const siteFilterOptions = useMemo(() => {
-    const siteOptionsMap = new Map<string, SiteFilterOption>();
-
-    for (const po of routeScopedPos) {
-      const trimmedSiteId = po.siteId?.trim() || '';
-      const normalizedSiteName = (po.site || '').trim().toLowerCase();
-      const key = trimmedSiteId ? `site:${trimmedSiteId}` : normalizedSiteName ? `name:${normalizedSiteName}` : 'unknown';
-
-      if (!siteOptionsMap.has(key)) {
-        const labelFromUserSites = trimmedSiteId ? userSites.find((site) => site.id === trimmedSiteId)?.name : '';
-        const labelFromSiteName = trimmedSiteId ? resolveSiteName(trimmedSiteId) : '';
-        const label = (po.site || '').trim() || labelFromUserSites || labelFromSiteName || 'Unknown Site';
-
-        siteOptionsMap.set(key, {
-          id: key,
-          label,
-          count: 0,
-          siteId: trimmedSiteId || undefined,
-          normalizedSiteName: normalizedSiteName || undefined
-        });
-      }
-
-      const option = siteOptionsMap.get(key);
-      if (option) {
-        option.count += 1;
-      }
+  const handleSort = (column: string, direction: SortDirection) => {
+    if (!direction) {
+      setSortConfig(null);
+    } else {
+      setSortConfig({ column, direction });
     }
+  };
 
-    const sortedSiteOptions = Array.from(siteOptionsMap.values()).sort((a, b) => a.label.localeCompare(b.label));
-    return [{ id: 'all-sites', label: 'All Sites', count: routeScopedPos.length }, ...sortedSiteOptions];
-  }, [routeScopedPos, userSites, resolveSiteName]);
-
-  useEffect(() => {
-    if (siteFilterOptions.length === 0) return;
-    let nextSiteFilterId = siteFilterOptions[0].id;
-
-    try {
-      const storedSiteFilterId = localStorage.getItem(siteFilterStorageKey);
-      if (storedSiteFilterId && siteFilterOptions.some((option) => option.id === storedSiteFilterId)) {
-        nextSiteFilterId = storedSiteFilterId;
-      }
-    } catch (error) {
-      console.warn('POList: Unable to read site filter preference', error);
-    }
-
-    setSelectedSiteFilterId(nextSiteFilterId);
-    setHydratedSiteStorageKey(siteFilterStorageKey);
-  }, [siteFilterOptions, siteFilterStorageKey]);
-
-  useEffect(() => {
-    if (!selectedSiteFilterId) return;
-    if (hydratedSiteStorageKey !== siteFilterStorageKey) return;
-    if (!siteFilterOptions.some((option) => option.id === selectedSiteFilterId)) return;
-
-    try {
-      localStorage.setItem(siteFilterStorageKey, selectedSiteFilterId);
-    } catch (error) {
-      console.warn('POList: Unable to persist site filter preference', error);
-    }
-  }, [selectedSiteFilterId, siteFilterStorageKey, hydratedSiteStorageKey, siteFilterOptions]);
-
-  const selectedSiteFilter = useMemo(
-    () => siteFilterOptions.find((option) => option.id === selectedSiteFilterId) ?? siteFilterOptions[0],
-    [siteFilterOptions, selectedSiteFilterId]
-  );
-
-  const siteScopedPos = useMemo(() => {
-    if (!selectedSiteFilter || selectedSiteFilter.id === 'all-sites') {
-      return routeScopedPos;
-    }
-
-    return routeScopedPos.filter((po) => {
-      if (selectedSiteFilter.siteId) {
-        return po.siteId === selectedSiteFilter.siteId;
-      }
-
-      const normalizedPoSiteName = (po.site || '').trim().toLowerCase();
-      if (selectedSiteFilter.normalizedSiteName) {
-        return normalizedPoSiteName === selectedSiteFilter.normalizedSiteName;
-      }
-
-      return !po.siteId && !normalizedPoSiteName;
+  const handleClearAllFilters = () => {
+    setColumnFilters({
+      site: null,
+      customer: null,
+      date: null,
+      needBy: null,
+      supplier: null,
+      concurPr: null,
+      concurPo: null,
+      requester: null,
+      status: null,
     });
-  }, [routeScopedPos, selectedSiteFilter]);
+    setOnlyOverdue(false);
+    setAmountFilter(null);
+    setSortConfig(null);
+    setSearchTerm('');
+  };
 
-  const quickFilterCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const option of quickFilters) {
-      counts[option.id] = siteScopedPos.filter((po) => {
-        if (!option.statuses.includes(po.status)) return false;
-        if (po.status === 'DRAFT' && !isAdmin && po.requesterId !== currentUser?.id) return false;
-        return true;
-      }).length;
+  const columnData = useMemo(() => {
+    const baseList = routeScopedPos.filter((po) => {
+      if (po.status === 'DRAFT' && !isAdmin && po.requesterId !== currentUser?.id) return false;
+      return true;
+    });
+
+    const siteCounts: Record<string, number> = {};
+    const customerCounts: Record<string, number> = {};
+    const dateCounts: Record<string, number> = {};
+    const needByCounts: Record<string, number> = {};
+    const supplierCounts: Record<string, number> = {};
+    const concurPrCounts: Record<string, number> = {};
+    const concurPoCounts: Record<string, number> = {};
+    const requesterCounts: Record<string, number> = {};
+    const statusCounts: Record<string, number> = {};
+    let overdueCount = 0;
+
+    for (const po of baseList) {
+      const siteVal = (po.site || '').trim() || 'Unknown';
+      siteCounts[siteVal] = (siteCounts[siteVal] || 0) + 1;
+
+      const custVal = (po.customerName || '').trim() || '(Blanks)';
+      customerCounts[custVal] = (customerCounts[custVal] || 0) + 1;
+
+      const dateVal = new Date(po.requestDate).toLocaleDateString();
+      dateCounts[dateVal] = (dateCounts[dateVal] || 0) + 1;
+
+      const { dateStr, isOverdue } = getPONeedByDate(po);
+      if (isOverdue) overdueCount++;
+      const needByVal = dateStr
+        ? new Date(dateStr).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+        : '(Blanks)';
+      needByCounts[needByVal] = (needByCounts[needByVal] || 0) + 1;
+
+      const suppVal = (po.supplierName || '').trim() || 'Unknown';
+      supplierCounts[suppVal] = (supplierCounts[suppVal] || 0) + 1;
+
+      const prVal = (po.concurRequestNumber || po.concurPrNumber || '').trim() || '(Blanks)';
+      concurPrCounts[prVal] = (concurPrCounts[prVal] || 0) + 1;
+
+      const poVal = (po.lines.find((l) => l.concurPoNumber)?.concurPoNumber || po.concurPoNumber || '').trim() || '(Blanks)';
+      concurPoCounts[poVal] = (concurPoCounts[poVal] || 0) + 1;
+
+      const reqVal = (po.requesterName || '').trim() || 'Unknown';
+      requesterCounts[reqVal] = (requesterCounts[reqVal] || 0) + 1;
+
+      statusCounts[po.status] = (statusCounts[po.status] || 0) + 1;
     }
-    return counts;
-  }, [quickFilters, siteScopedPos, isAdmin, currentUser?.id]);
 
-  const selectedQuickFilter = useMemo(
-    () => quickFilters.find((option) => option.id === selectedQuickFilterId) ?? quickFilters[0],
-    [quickFilters, selectedQuickFilterId]
-  );
+    return {
+      site: {
+        values: Object.keys(siteCounts).sort((a, b) => a.localeCompare(b)),
+        counts: siteCounts
+      },
+      customer: {
+        values: Object.keys(customerCounts).sort((a, b) => {
+          if (a === '(Blanks)') return 1;
+          if (b === '(Blanks)') return -1;
+          return a.localeCompare(b);
+        }),
+        counts: customerCounts
+      },
+      date: {
+        values: Object.keys(dateCounts).sort((a, b) => new Date(b).getTime() - new Date(a).getTime()),
+        counts: dateCounts
+      },
+      needBy: {
+        values: Object.keys(needByCounts).sort((a, b) => {
+          if (a === '(Blanks)') return 1;
+          if (b === '(Blanks)') return -1;
+          return new Date(a).getTime() - new Date(b).getTime();
+        }),
+        counts: needByCounts,
+        overdueCount
+      },
+      supplier: {
+        values: Object.keys(supplierCounts).sort((a, b) => a.localeCompare(b)),
+        counts: supplierCounts
+      },
+      concurPr: {
+        values: Object.keys(concurPrCounts).sort((a, b) => {
+          if (a === '(Blanks)') return 1;
+          if (b === '(Blanks)') return -1;
+          return a.localeCompare(b);
+        }),
+        counts: concurPrCounts
+      },
+      concurPo: {
+        values: Object.keys(concurPoCounts).sort((a, b) => {
+          if (a === '(Blanks)') return 1;
+          if (b === '(Blanks)') return -1;
+          return a.localeCompare(b);
+        }),
+        counts: concurPoCounts
+      },
+      requester: {
+        values: Object.keys(requesterCounts).sort((a, b) => a.localeCompare(b)),
+        counts: requesterCounts
+      },
+      status: {
+        values: Object.keys(statusCounts).sort((a, b) => statusLabel(a as POStatus).localeCompare(statusLabel(b as POStatus))),
+        counts: statusCounts
+      }
+    };
+  }, [routeScopedPos, isAdmin, currentUser?.id]);
 
   const filteredPos = useMemo(() => {
+    let result = routeScopedPos;
+
+    // Non-admins only see their own drafts
+    if (!isAdmin) {
+      result = result.filter((po) => po.status !== 'DRAFT' || po.requesterId === currentUser?.id);
+    }
+
+    // 1. Global Search
     const searchValue = searchTerm.trim().toLowerCase();
+    if (searchValue) {
+      result = result.filter((po) => {
+        return (
+          po.supplierName.toLowerCase().includes(searchValue) ||
+          (po.displayId || po.id).toLowerCase().includes(searchValue) ||
+          (po.site || '').toLowerCase().includes(searchValue) ||
+          po.requesterName.toLowerCase().includes(searchValue) ||
+          (po.customerName || '').toLowerCase().includes(searchValue) ||
+          po.totalAmount.toString().includes(searchValue) ||
+          po.concurRequestNumber?.toLowerCase().includes(searchValue) ||
+          po.lines.some((line) => line.concurPoNumber?.toLowerCase().includes(searchValue))
+        );
+      });
+    }
 
-    const byStatus = selectedQuickFilter
-      ? siteScopedPos.filter((po) => {
-          if (!selectedQuickFilter.statuses.includes(po.status)) return false;
-          // Non-admins only see their own drafts
-          if (po.status === 'DRAFT' && !isAdmin && po.requesterId !== currentUser?.id) return false;
-          return true;
-        })
-      : siteScopedPos;
+    // 2. Column filters
+    if (columnFilters.site && columnFilters.site.length > 0) {
+      const allowed = new Set(columnFilters.site);
+      result = result.filter((po) => allowed.has((po.site || '').trim() || 'Unknown'));
+    }
 
-    const bySearch = searchValue
-      ? byStatus.filter((po) => {
-          return (
-            po.supplierName.toLowerCase().includes(searchValue) ||
-            (po.displayId || po.id).toLowerCase().includes(searchValue) ||
-            (po.site || '').toLowerCase().includes(searchValue) ||
-            po.requesterName.toLowerCase().includes(searchValue) ||
-            (po.customerName || '').toLowerCase().includes(searchValue) ||
-            po.totalAmount.toString().includes(searchValue) ||
-            po.concurRequestNumber?.toLowerCase().includes(searchValue) ||
-            po.lines.some((line) => line.concurPoNumber?.toLowerCase().includes(searchValue))
-          );
-        })
-      : byStatus;
+    if (columnFilters.customer && columnFilters.customer.length > 0) {
+      const allowed = new Set(columnFilters.customer);
+      result = result.filter((po) => allowed.has((po.customerName || '').trim() || '(Blanks)'));
+    }
 
-    return [...bySearch].sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
-  }, [siteScopedPos, searchTerm, selectedQuickFilter]);
+    if (columnFilters.date && columnFilters.date.length > 0) {
+      const allowed = new Set(columnFilters.date);
+      result = result.filter((po) => allowed.has(new Date(po.requestDate).toLocaleDateString()));
+    }
+
+    if (onlyOverdue) {
+      result = result.filter((po) => getPONeedByDate(po).isOverdue);
+    }
+
+    if (columnFilters.needBy && columnFilters.needBy.length > 0) {
+      const allowed = new Set(columnFilters.needBy);
+      result = result.filter((po) => {
+        const { dateStr } = getPONeedByDate(po);
+        const needByVal = dateStr
+          ? new Date(dateStr).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '(Blanks)';
+        return allowed.has(needByVal);
+      });
+    }
+
+    if (columnFilters.supplier && columnFilters.supplier.length > 0) {
+      const allowed = new Set(columnFilters.supplier);
+      result = result.filter((po) => allowed.has((po.supplierName || '').trim() || 'Unknown'));
+    }
+
+    if (columnFilters.concurPr && columnFilters.concurPr.length > 0) {
+      const allowed = new Set(columnFilters.concurPr);
+      result = result.filter((po) => allowed.has((po.concurRequestNumber || po.concurPrNumber || '').trim() || '(Blanks)'));
+    }
+
+    if (columnFilters.concurPo && columnFilters.concurPo.length > 0) {
+      const allowed = new Set(columnFilters.concurPo);
+      result = result.filter((po) => {
+        const poVal = (po.lines.find((l) => l.concurPoNumber)?.concurPoNumber || po.concurPoNumber || '').trim() || '(Blanks)';
+        return allowed.has(poVal);
+      });
+    }
+
+    if (columnFilters.requester && columnFilters.requester.length > 0) {
+      const allowed = new Set(columnFilters.requester);
+      result = result.filter((po) => allowed.has((po.requesterName || '').trim() || 'Unknown'));
+    }
+
+    if (columnFilters.status && columnFilters.status.length > 0) {
+      const allowed = new Set(columnFilters.status);
+      result = result.filter((po) => allowed.has(po.status));
+    }
+
+    if (amountFilter) {
+      if (amountFilter.min !== undefined) {
+        result = result.filter((po) => {
+          const amt = po.totalAmountIncGst ?? (po.totalAmount * 1.10);
+          return amt >= amountFilter.min!;
+        });
+      }
+      if (amountFilter.max !== undefined) {
+        result = result.filter((po) => {
+          const amt = po.totalAmountIncGst ?? (po.totalAmount * 1.10);
+          return amt <= amountFilter.max!;
+        });
+      }
+    }
+
+    // 3. Sorting
+    if (sortConfig) {
+      const { column, direction } = sortConfig;
+      const dir = direction === 'asc' ? 1 : -1;
+
+      return [...result].sort((a, b) => {
+        switch (column) {
+          case 'site':
+            return (a.site || '').localeCompare(b.site || '') * dir;
+          case 'customer':
+            return (a.customerName || '').localeCompare(b.customerName || '') * dir;
+          case 'date':
+            return (new Date(a.requestDate).getTime() - new Date(b.requestDate).getTime()) * dir;
+          case 'needBy': {
+            const dateA = getPONeedByDate(a).dateStr;
+            const dateB = getPONeedByDate(b).dateStr;
+            if (!dateA && !dateB) return 0;
+            if (!dateA) return 1;
+            if (!dateB) return -1;
+            return (new Date(dateA).getTime() - new Date(dateB).getTime()) * dir;
+          }
+          case 'supplier':
+            return (a.supplierName || '').localeCompare(b.supplierName || '') * dir;
+          case 'concurPr':
+            return (a.concurRequestNumber || a.concurPrNumber || '').localeCompare(b.concurRequestNumber || b.concurPrNumber || '') * dir;
+          case 'concurPo': {
+            const poA = a.lines.find((l) => l.concurPoNumber)?.concurPoNumber || a.concurPoNumber || '';
+            const poB = b.lines.find((l) => l.concurPoNumber)?.concurPoNumber || b.concurPoNumber || '';
+            return poA.localeCompare(poB) * dir;
+          }
+          case 'requester':
+            return (a.requesterName || '').localeCompare(b.requesterName || '') * dir;
+          case 'total': {
+            const amtA = a.totalAmountIncGst ?? (a.totalAmount * 1.10);
+            const amtB = b.totalAmountIncGst ?? (b.totalAmount * 1.10);
+            return (amtA - amtB) * dir;
+          }
+          case 'status':
+            return statusLabel(a.status).localeCompare(statusLabel(b.status)) * dir;
+          default:
+            return 0;
+        }
+      });
+    }
+
+    return [...result].sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+  }, [routeScopedPos, isAdmin, currentUser?.id, searchTerm, columnFilters, onlyOverdue, amountFilter, sortConfig]);
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { id: string; label: string; onRemove: () => void }[] = [];
+
+    if (columnFilters.site && columnFilters.site.length > 0) {
+      chips.push({
+        id: 'site',
+        label: `Site: ${columnFilters.site.length === 1 ? columnFilters.site[0] : `${columnFilters.site[0]} (+${columnFilters.site.length - 1})`}`,
+        onRemove: () => setColumnFilters((p) => ({ ...p, site: null }))
+      });
+    }
+
+    if (columnFilters.customer && columnFilters.customer.length > 0) {
+      chips.push({
+        id: 'customer',
+        label: `Customer: ${columnFilters.customer.length === 1 ? columnFilters.customer[0] : `${columnFilters.customer[0]} (+${columnFilters.customer.length - 1})`}`,
+        onRemove: () => setColumnFilters((p) => ({ ...p, customer: null }))
+      });
+    }
+
+    if (columnFilters.date && columnFilters.date.length > 0) {
+      chips.push({
+        id: 'date',
+        label: `Date: ${columnFilters.date.length === 1 ? columnFilters.date[0] : `${columnFilters.date.length} dates`}`,
+        onRemove: () => setColumnFilters((p) => ({ ...p, date: null }))
+      });
+    }
+
+    if (onlyOverdue) {
+      chips.push({
+        id: 'overdue',
+        label: 'Need By: Overdue only',
+        onRemove: () => setOnlyOverdue(false)
+      });
+    }
+
+    if (columnFilters.needBy && columnFilters.needBy.length > 0) {
+      chips.push({
+        id: 'needBy',
+        label: `Need By: ${columnFilters.needBy.length === 1 ? columnFilters.needBy[0] : `${columnFilters.needBy.length} dates`}`,
+        onRemove: () => setColumnFilters((p) => ({ ...p, needBy: null }))
+      });
+    }
+
+    if (columnFilters.supplier && columnFilters.supplier.length > 0) {
+      chips.push({
+        id: 'supplier',
+        label: `Supplier: ${columnFilters.supplier.length === 1 ? columnFilters.supplier[0] : `${columnFilters.supplier[0]} (+${columnFilters.supplier.length - 1})`}`,
+        onRemove: () => setColumnFilters((p) => ({ ...p, supplier: null }))
+      });
+    }
+
+    if (columnFilters.concurPr && columnFilters.concurPr.length > 0) {
+      chips.push({
+        id: 'concurPr',
+        label: `Concur PR: ${columnFilters.concurPr.length === 1 ? columnFilters.concurPr[0] : `${columnFilters.concurPr.length} PRs`}`,
+        onRemove: () => setColumnFilters((p) => ({ ...p, concurPr: null }))
+      });
+    }
+
+    if (columnFilters.concurPo && columnFilters.concurPo.length > 0) {
+      chips.push({
+        id: 'concurPo',
+        label: `Concur PO: ${columnFilters.concurPo.length === 1 ? columnFilters.concurPo[0] : `${columnFilters.concurPo.length} POs`}`,
+        onRemove: () => setColumnFilters((p) => ({ ...p, concurPo: null }))
+      });
+    }
+
+    if (columnFilters.requester && columnFilters.requester.length > 0) {
+      chips.push({
+        id: 'requester',
+        label: `Requester: ${columnFilters.requester.length === 1 ? columnFilters.requester[0] : `${columnFilters.requester[0]} (+${columnFilters.requester.length - 1})`}`,
+        onRemove: () => setColumnFilters((p) => ({ ...p, requester: null }))
+      });
+    }
+
+    if (columnFilters.status && columnFilters.status.length > 0) {
+      const statusNames = columnFilters.status.map((s) => statusLabel(s as POStatus));
+      chips.push({
+        id: 'status',
+        label: `Status: ${statusNames.length === 1 ? statusNames[0] : `${statusNames[0]} (+${statusNames.length - 1})`}`,
+        onRemove: () => setColumnFilters((p) => ({ ...p, status: null }))
+      });
+    }
+
+    if (amountFilter && (amountFilter.min !== undefined || amountFilter.max !== undefined)) {
+      let amtLabel = 'Amount: ';
+      if (amountFilter.min !== undefined && amountFilter.max !== undefined) {
+        amtLabel += `$${amountFilter.min} - $${amountFilter.max}`;
+      } else if (amountFilter.min !== undefined) {
+        amtLabel += `> $${amountFilter.min}`;
+      } else {
+        amtLabel += `< $${amountFilter.max}`;
+      }
+      chips.push({
+        id: 'amount',
+        label: amtLabel,
+        onRemove: () => setAmountFilter(null)
+      });
+    }
+
+    if (sortConfig) {
+      const sortColName =
+        sortConfig.column === 'needBy'
+          ? 'Need By'
+          : sortConfig.column === 'concurPr'
+          ? 'Concur PR'
+          : sortConfig.column === 'concurPo'
+          ? 'Concur PO'
+          : sortConfig.column.charAt(0).toUpperCase() + sortConfig.column.slice(1);
+      chips.push({
+        id: 'sort',
+        label: `Sort: ${sortColName} (${sortConfig.direction === 'asc' ? 'Asc' : 'Desc'})`,
+        onRemove: () => setSortConfig(null)
+      });
+    }
+
+    return chips;
+  }, [columnFilters, onlyOverdue, amountFilter, sortConfig]);
 
   const allVisibleSelected = useMemo(() => {
     return filteredPos.length > 0 && filteredPos.every((po) => selectedPoIds.includes(po.id));
@@ -520,87 +646,154 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
             />
           </div>
 
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {quickFilters.map((option) => {
-                const Icon = option.icon;
-                const isActive = option.id === selectedQuickFilterId;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setSelectedQuickFilterId(option.id)}
-                    aria-pressed={isActive}
-                    aria-label={option.label}
-                    title={option.label}
-                    className={`group flex h-9 sm:h-10 shrink-0 items-center rounded-full border transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/40 ${
-                      isActive
-                        ? 'bg-[var(--color-brand)]/12 border-[var(--color-brand)]/40 text-[var(--color-brand)] pl-3 pr-3.5 shadow-sm'
-                        : 'bg-gray-50 dark:bg-[#15171e] border-gray-200 dark:border-gray-700 text-secondary dark:text-gray-300 pl-2.5 pr-2.5 sm:pl-3 sm:pr-3 hover:bg-gray-100 dark:hover:bg-[#20232e] hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-                  >
-                    <Icon size={16} className={`transition-transform duration-300 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`} />
+          {/* Active Filter Chips & Results Summary Row */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pt-1">
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+              {activeFilterChips.length > 0 ? (
+                <>
+                  <span className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1 shrink-0 mr-1">
+                    <Filter size={13} className="text-[var(--color-brand)]" />
+                    <span>Active Filters ({activeFilterChips.length}):</span>
+                  </span>
+                  {activeFilterChips.map((chip) => (
                     <span
-                      className={`overflow-hidden whitespace-nowrap text-xs sm:text-sm font-semibold transition-all duration-300 ${
-                        isActive
-                          ? 'ml-2 max-w-[11rem] opacity-100'
-                          : 'ml-1.5 max-w-[11rem] opacity-90 sm:ml-0 sm:max-w-0 sm:opacity-0 sm:group-hover:ml-2 sm:group-hover:max-w-[11rem] sm:group-hover:opacity-100'
-                      }`}
+                      key={chip.id}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--color-brand)]/10 text-[var(--color-brand)] border border-[var(--color-brand)]/20 shadow-2xs"
                     >
-                      {option.label}
-                    </span>
-                    <span
-                      className={`overflow-hidden transition-all duration-300 ${
-                        isActive
-                          ? 'ml-1.5 max-w-[4rem] opacity-100'
-                          : 'ml-1 max-w-[4rem] opacity-90 sm:ml-0 sm:max-w-0 sm:opacity-0 sm:group-hover:ml-2 sm:group-hover:max-w-[4rem] sm:group-hover:opacity-100'
-                      }`}
-                    >
-                      <span
-                        className={`inline-flex min-w-5 sm:min-w-6 items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] sm:text-xs font-bold ${
-                          isActive
-                            ? 'bg-[var(--color-brand)]/20 text-[var(--color-brand)]'
-                            : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                        }`}
+                      <span>{chip.label}</span>
+                      <button
+                        type="button"
+                        onClick={chip.onRemove}
+                        className="p-0.5 rounded-full hover:bg-[var(--color-brand)]/20 transition-colors cursor-pointer"
+                        title="Remove filter"
                       >
-                        {quickFilterCounts[option.id] ?? 0}
-                      </span>
+                        <X size={12} />
+                      </button>
                     </span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between xl:justify-end">
-              <div className="relative sm:min-w-[220px]">
-                <label htmlFor="requests-site-filter" className="sr-only">
-                  Filter requests by site
-                </label>
-                <MapPin
-                  size={14}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-                <ChevronDown
-                  size={14}
-                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
-                <select
-                  id="requests-site-filter"
-                  value={selectedSiteFilterId}
-                  onChange={(event) => setSelectedSiteFilterId(event.target.value)}
-                  className="w-full appearance-none pl-9 pr-8 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#15171e] text-sm text-gray-900 dark:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]"
-                >
-                  {siteFilterOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label} ({option.count})
-                    </option>
                   ))}
-                </select>
+                  <button
+                    type="button"
+                    onClick={handleClearAllFilters}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-red-600 dark:text-red-400 hover:underline cursor-pointer ml-1"
+                  >
+                    <RotateCcw size={11} />
+                    <span>Clear all</span>
+                  </button>
+                </>
+              ) : (
+                <span className="text-xs text-tertiary dark:text-gray-500 flex items-center gap-1.5">
+                  <SlidersHorizontal size={13} className="text-gray-400" />
+                  <span>Click column headers to filter or sort data (Excel-style)</span>
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+              {/* Mobile Filter Button (since table headers are hidden on small screens) */}
+              <div className="md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobileFilterOpen((prev) => !prev)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#15171e] text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 cursor-pointer"
+                >
+                  <Filter size={12} className="text-[var(--color-brand)]" />
+                  <span>Filter Columns</span>
+                  <ChevronDown size={12} />
+                </button>
               </div>
-              <p className="text-xs text-tertiary dark:text-gray-500 sm:text-right">
-                Showing {filteredPos.length} of {siteScopedPos.length} requests
+
+              <p className="text-xs font-medium text-tertiary dark:text-gray-500 whitespace-nowrap">
+                Showing <span className="font-bold text-gray-900 dark:text-white">{filteredPos.length}</span> of {routeScopedPos.length} requests
               </p>
             </div>
           </div>
+
+          {/* Mobile Filter Drawer / Panel */}
+          {mobileFilterOpen && (
+            <div className="md:hidden p-3.5 bg-gray-50 dark:bg-[#15171e] rounded-2xl border border-gray-200 dark:border-gray-700 space-y-3 animate-scale-up">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <Filter size={13} className="text-[var(--color-brand)]" />
+                  Filter Columns
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMobileFilterOpen(false)}
+                  className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <ExcelColumnFilter
+                    title="Site"
+                    columnId="site"
+                    values={columnData.site.values}
+                    valueCounts={columnData.site.counts}
+                    selectedValues={columnFilters.site ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, site: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, site: null }))}
+                    sortDirection={sortConfig?.column === 'site' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('site', dir)}
+                    isOpen={openColumnFilter === 'mobile-site'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'mobile-site' ? null : 'mobile-site'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </div>
+                <div>
+                  <ExcelColumnFilter
+                    title="Status"
+                    columnId="status"
+                    values={columnData.status.values}
+                    valueCounts={columnData.status.counts}
+                    selectedValues={columnFilters.status ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, status: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, status: null }))}
+                    renderValueLabel={(val) => <StatusBadge status={val as POStatus} />}
+                    sortDirection={sortConfig?.column === 'status' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('status', dir)}
+                    isOpen={openColumnFilter === 'mobile-status'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'mobile-status' ? null : 'mobile-status'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </div>
+                <div>
+                  <ExcelColumnFilter
+                    title="Supplier"
+                    columnId="supplier"
+                    values={columnData.supplier.values}
+                    valueCounts={columnData.supplier.counts}
+                    selectedValues={columnFilters.supplier ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, supplier: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, supplier: null }))}
+                    sortDirection={sortConfig?.column === 'supplier' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('supplier', dir)}
+                    isOpen={openColumnFilter === 'mobile-supplier'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'mobile-supplier' ? null : 'mobile-supplier'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </div>
+                <div>
+                  <ExcelColumnFilter
+                    title="Customer"
+                    columnId="customer"
+                    values={columnData.customer.values}
+                    valueCounts={columnData.customer.counts}
+                    selectedValues={columnFilters.customer ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, customer: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, customer: null }))}
+                    sortDirection={sortConfig?.column === 'customer' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('customer', dir)}
+                    isOpen={openColumnFilter === 'mobile-customer'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'mobile-customer' ? null : 'mobile-customer'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Admin Mass Update Bar */}
@@ -715,7 +908,7 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
             <thead className="bg-gray-50 dark:bg-[#15171e] text-xs uppercase text-tertiary dark:text-gray-500 font-semibold border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
               <tr>
                 {isAdmin && (
-                  <th className="px-4 py-4 w-10 text-center">
+                  <th className="px-4 py-3.5 w-10 text-center">
                     <input
                       ref={masterCheckboxRef}
                       type="checkbox"
@@ -726,17 +919,258 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                     />
                   </th>
                 )}
-                <th className="px-5 py-4">Site</th>
-                <th className="px-5 py-4">Customer</th>
-                <th className="px-5 py-4">Date</th>
-                <th className="px-5 py-4">Need By</th>
-                <th className="px-5 py-4">Supplier</th>
-                <th className="px-5 py-4">Concur PR #</th>
-                <th className="px-5 py-4">Concur PO #</th>
-                {filter === 'PENDING' && <th className="px-5 py-4">Requester</th>}
-                <th className="px-5 py-4 text-right">Total (Inc GST)</th>
-                <th className="px-5 py-4 text-center">Status</th>
-                <th className="px-5 py-4 text-center">Action</th>
+                <th className="px-3 py-3 whitespace-nowrap">
+                  <ExcelColumnFilter
+                    title="Site"
+                    columnId="site"
+                    values={columnData.site.values}
+                    valueCounts={columnData.site.counts}
+                    selectedValues={columnFilters.site ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, site: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, site: null }))}
+                    sortDirection={sortConfig?.column === 'site' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('site', dir)}
+                    isOpen={openColumnFilter === 'site'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'site' ? null : 'site'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </th>
+                <th className="px-3 py-3 whitespace-nowrap">
+                  <ExcelColumnFilter
+                    title="Customer"
+                    columnId="customer"
+                    values={columnData.customer.values}
+                    valueCounts={columnData.customer.counts}
+                    selectedValues={columnFilters.customer ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, customer: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, customer: null }))}
+                    sortDirection={sortConfig?.column === 'customer' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('customer', dir)}
+                    isOpen={openColumnFilter === 'customer'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'customer' ? null : 'customer'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </th>
+                <th className="px-3 py-3 whitespace-nowrap">
+                  <ExcelColumnFilter
+                    title="Date"
+                    columnId="date"
+                    sortType="date"
+                    values={columnData.date.values}
+                    valueCounts={columnData.date.counts}
+                    selectedValues={columnFilters.date ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, date: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, date: null }))}
+                    sortDirection={sortConfig?.column === 'date' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('date', dir)}
+                    isOpen={openColumnFilter === 'date'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'date' ? null : 'date'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </th>
+                <th className="px-3 py-3 whitespace-nowrap">
+                  <ExcelColumnFilter
+                    title="Need By"
+                    columnId="needBy"
+                    sortType="date"
+                    values={columnData.needBy.values}
+                    valueCounts={columnData.needBy.counts}
+                    selectedValues={columnFilters.needBy ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, needBy: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, needBy: null }))}
+                    sortDirection={sortConfig?.column === 'needBy' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('needBy', dir)}
+                    extraContent={
+                      <label className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={onlyOverdue}
+                          onChange={(e) => setOnlyOverdue(e.target.checked)}
+                          className="w-3.5 h-3.5 rounded border-amber-300 dark:border-amber-600 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                          <Clock3 size={12} className="text-amber-600" />
+                          <span>Show Overdue Only ({columnData.needBy.overdueCount})</span>
+                        </span>
+                      </label>
+                    }
+                    isOpen={openColumnFilter === 'needBy'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'needBy' ? null : 'needBy'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </th>
+                <th className="px-3 py-3 whitespace-nowrap">
+                  <ExcelColumnFilter
+                    title="Supplier"
+                    columnId="supplier"
+                    values={columnData.supplier.values}
+                    valueCounts={columnData.supplier.counts}
+                    selectedValues={columnFilters.supplier ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, supplier: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, supplier: null }))}
+                    sortDirection={sortConfig?.column === 'supplier' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('supplier', dir)}
+                    isOpen={openColumnFilter === 'supplier'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'supplier' ? null : 'supplier'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </th>
+                <th className="px-3 py-3 whitespace-nowrap">
+                  <ExcelColumnFilter
+                    title="Concur PR #"
+                    columnId="concurPr"
+                    values={columnData.concurPr.values}
+                    valueCounts={columnData.concurPr.counts}
+                    selectedValues={columnFilters.concurPr ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, concurPr: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, concurPr: null }))}
+                    sortDirection={sortConfig?.column === 'concurPr' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('concurPr', dir)}
+                    isOpen={openColumnFilter === 'concurPr'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'concurPr' ? null : 'concurPr'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </th>
+                <th className="px-3 py-3 whitespace-nowrap">
+                  <ExcelColumnFilter
+                    title="Concur PO #"
+                    columnId="concurPo"
+                    values={columnData.concurPo.values}
+                    valueCounts={columnData.concurPo.counts}
+                    selectedValues={columnFilters.concurPo ?? null}
+                    onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, concurPo: sel }))}
+                    onClearFilter={() => setColumnFilters((p) => ({ ...p, concurPo: null }))}
+                    sortDirection={sortConfig?.column === 'concurPo' ? sortConfig.direction : null}
+                    onSort={(dir) => handleSort('concurPo', dir)}
+                    isOpen={openColumnFilter === 'concurPo'}
+                    onToggle={() => setOpenColumnFilter((p) => (p === 'concurPo' ? null : 'concurPo'))}
+                    onClose={() => setOpenColumnFilter(null)}
+                  />
+                </th>
+                {filter === 'PENDING' && (
+                  <th className="px-3 py-3 whitespace-nowrap">
+                    <ExcelColumnFilter
+                      title="Requester"
+                      columnId="requester"
+                      values={columnData.requester.values}
+                      valueCounts={columnData.requester.counts}
+                      selectedValues={columnFilters.requester ?? null}
+                      onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, requester: sel }))}
+                      onClearFilter={() => setColumnFilters((p) => ({ ...p, requester: null }))}
+                      sortDirection={sortConfig?.column === 'requester' ? sortConfig.direction : null}
+                      onSort={(dir) => handleSort('requester', dir)}
+                      isOpen={openColumnFilter === 'requester'}
+                      onToggle={() => setOpenColumnFilter((p) => (p === 'requester' ? null : 'requester'))}
+                      onClose={() => setOpenColumnFilter(null)}
+                    />
+                  </th>
+                )}
+                <th className="px-3 py-3 text-right whitespace-nowrap">
+                  <div className="flex justify-end">
+                    <ExcelColumnFilter
+                      title="Total (Inc GST)"
+                      columnId="total"
+                      align="right"
+                      sortType="numeric"
+                      values={[]}
+                      selectedValues={amountFilter && (amountFilter.min !== undefined || amountFilter.max !== undefined) ? ['filtered'] : null}
+                      onApplyFilter={() => {}}
+                      onClearFilter={() => setAmountFilter(null)}
+                      sortDirection={sortConfig?.column === 'total' ? sortConfig.direction : null}
+                      onSort={(dir) => handleSort('total', dir)}
+                      extraContent={
+                        <div className="space-y-2 text-left">
+                          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                            Filter Amount Range (Inc GST)
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              placeholder="Min $"
+                              value={amountFilter?.min ?? ''}
+                              onChange={(e) =>
+                                setAmountFilter((prev) => ({
+                                  ...prev,
+                                  min: e.target.value ? Number(e.target.value) : undefined
+                                }))
+                              }
+                              className="w-full px-2 py-1.5 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg text-xs"
+                            />
+                            <span className="text-gray-400 font-bold">-</span>
+                            <input
+                              type="number"
+                              placeholder="Max $"
+                              value={amountFilter?.max ?? ''}
+                              onChange={(e) =>
+                                setAmountFilter((prev) => ({
+                                  ...prev,
+                                  max: e.target.value ? Number(e.target.value) : undefined
+                                }))
+                              }
+                              className="w-full px-2 py-1.5 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-lg text-xs"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setAmountFilter({ max: 1000 })}
+                              className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-200 cursor-pointer"
+                            >
+                              &lt; $1k
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAmountFilter({ min: 1000, max: 10000 })}
+                              className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-200 cursor-pointer"
+                            >
+                              $1k - $10k
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAmountFilter({ min: 10000 })}
+                              className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-200 cursor-pointer"
+                            >
+                              &gt; $10k
+                            </button>
+                            {(amountFilter?.min !== undefined || amountFilter?.max !== undefined) && (
+                              <button
+                                type="button"
+                                onClick={() => setAmountFilter(null)}
+                                className="px-2 py-1 text-[10px] font-bold text-red-500 hover:underline ml-auto cursor-pointer"
+                              >
+                                Reset
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      }
+                      isOpen={openColumnFilter === 'total'}
+                      onToggle={() => setOpenColumnFilter((p) => (p === 'total' ? null : 'total'))}
+                      onClose={() => setOpenColumnFilter(null)}
+                    />
+                  </div>
+                </th>
+                <th className="px-3 py-3 text-center whitespace-nowrap">
+                  <div className="flex justify-center">
+                    <ExcelColumnFilter
+                      title="Status"
+                      columnId="status"
+                      align="right"
+                      values={columnData.status.values}
+                      valueCounts={columnData.status.counts}
+                      selectedValues={columnFilters.status ?? null}
+                      onApplyFilter={(sel) => setColumnFilters((p) => ({ ...p, status: sel }))}
+                      onClearFilter={() => setColumnFilters((p) => ({ ...p, status: null }))}
+                      renderValueLabel={(val) => <StatusBadge status={val as POStatus} />}
+                      sortDirection={sortConfig?.column === 'status' ? sortConfig.direction : null}
+                      onSort={(dir) => handleSort('status', dir)}
+                      isOpen={openColumnFilter === 'status'}
+                      onToggle={() => setOpenColumnFilter((p) => (p === 'status' ? null : 'status'))}
+                      onClose={() => setOpenColumnFilter(null)}
+                    />
+                  </div>
+                </th>
+                <th className="px-4 py-3.5 text-center whitespace-nowrap text-tertiary dark:text-gray-500">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
