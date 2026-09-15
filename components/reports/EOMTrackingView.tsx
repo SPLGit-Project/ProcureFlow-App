@@ -53,7 +53,8 @@ import {
 } from '../../utils/budgetTracking.ts';
 import { 
   LifecycleStageConfig, 
-  getLifecycleStageByStatus 
+  getLifecycleStageByStatus,
+  getPOStageNumber
 } from '../Home.tsx';
 
 type ActiveTab = 'TRACKING_GRID' | 'PIVOT_BREAKDOWN' | 'CONCUR_RECONCILIATION';
@@ -610,9 +611,10 @@ export default function EOMTrackingView() {
     );
 
     // 2. Filter ProcureFlow POs across the enterprise (effectiveAllPos) for this reconciliation
-    // Strictly include approved requests only (Stage 2: at PR# stage and beyond).
-    // Requisitions before Stage 2 (DRAFT, PENDING_APPROVAL, REJECTED) are not yet approved
-    // and therefore cannot be missing in Concur or counted in reconciliation.
+    // Active Requests Scope: Only compare Stage 4 onwards (ACTIVE, RECEIVED, VARIANCE_PENDING, CLOSED)
+    // or requests with a direct Concur match.
+    // Pre-Concur requests (Stage 1 Draft/Approval, Stage 2 Approved Pending Concur Req, Stage 3 Pending Concur PO)
+    // are internal pipeline orders not yet in Concur, so they must not be compared or marked as missing in Concur.
     const monthPos = effectiveAllPos.filter(p => {
       if (p.status === 'REJECTED' || p.status === 'DRAFT' || p.status === 'PENDING_APPROVAL') return false;
 
@@ -629,6 +631,11 @@ export default function EOMTrackingView() {
         pLinesConcurPos.some(lp => lp && concurPoSet.has(lp));
 
       if (hasDirectConcurMatch) return true;
+
+      // Active Requests Scope: Only compare Stage 4 onwards (ACTIVE, RECEIVED, VARIANCE_PENDING, CLOSED).
+      // Stage 2 & 3 requests are still in internal approval/logging pipeline and not yet active in Concur.
+      const stageNum = getPOStageNumber(p.status);
+      if (stageNum < 4) return false;
 
       // Match B: Strict Calendar month & year match
       const dateStr = p.requestDate || (p as any).submitDate || p.createdAt;
@@ -797,10 +804,14 @@ export default function EOMTrackingView() {
       }
     });
 
-    // Check for ProcureFlow approved POs in this month missing in Concur
+    // Check for ProcureFlow active POs in this month missing in Concur (Stage 4+ only)
     let missingInConcurCount = 0;
     monthPos.forEach(p => {
       if (!matchedPfIds.has(p.id)) {
+        // Double-check: Pipeline requests before Stage 4 are not yet in Concur and cannot be missing
+        const stageNum = getPOStageNumber(p.status);
+        if (stageNum < 4) return;
+
         const pfEx = p.subtotalAmount || p.totalAmount || calculateExGst(p.totalAmountIncGst || 0);
         missingInConcurCount++;
         const isCL = isClassicLinenRecord(p.comments, p.site, p.concurPoNumber, p.site) ||
@@ -2113,7 +2124,7 @@ export default function EOMTrackingView() {
                       <span className="px-2 py-0.5 rounded text-xs font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" title="In Concur but missing in ProcureFlow">
                         {reconciliationResults.missingInPfCount} Missing in PF
                       </span>
-                      <span className="px-2 py-0.5 rounded text-xs font-black bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300" title="Approved in ProcureFlow but not in Concur">
+                      <span className="px-2 py-0.5 rounded text-xs font-black bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300" title="Active in ProcureFlow (Stage 4+) but not in Concur">
                         {reconciliationResults.missingInConcurCount} Missing in Concur
                       </span>
                     </div>
@@ -2134,7 +2145,7 @@ export default function EOMTrackingView() {
                         )}
                         {reconciliationResults.missingInConcurCount > 0 && (
                           <li>
-                            <strong>{reconciliationResults.missingInConcurCount} approved ProcureFlow PO(s)</strong> for {reconciliationResults.targetMonthLabel} have not yet been created in Concur.
+                            <strong>{reconciliationResults.missingInConcurCount} active ProcureFlow PO(s)</strong> for {reconciliationResults.targetMonthLabel} have not yet been created in Concur.
                           </li>
                         )}
                         {reconciliationResults.missingInPfCount > 0 && (
@@ -2148,7 +2159,7 @@ export default function EOMTrackingView() {
                           </li>
                         )}
                         <li className="text-gray-700 dark:text-gray-300 font-medium">
-                          <strong>Approved requests scope:</strong> Reconciliation audits approved requests only (Stage 2: PR # Logging and above). Unapproved requests in Draft or awaiting approval are excluded from missing checks.
+                          <strong>Active requests scope:</strong> Reconciliation audits active requests only (Stage 4: Active Concur PO and above). Pipeline requests in Draft, Approval, or Pending Concur PO (Stage 1–3) are not yet in Concur and are excluded from missing checks until activated.
                         </li>
                       </ul>
                     </div>
