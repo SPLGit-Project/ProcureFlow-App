@@ -138,3 +138,20 @@ export const findSupplierByContactEmail = (suppliers: Supplier[], email?: string
   if (!normalized) return undefined;
   return suppliers.find(supplier => normalizeSupplierContacts(supplier).some(contact => normalizedEmail(contact.email) === normalized));
 };
+
+export const DEFAULT_SUPPLIER_KEY = 'NCC';
+
+/**
+ * Checks whether a given supplier name matches the default preferred supplier (NCC).
+ */
+export const isDefaultSupplier = (supplierName?: string): boolean => {
+  if (!supplierName) return false;
+  return supplierName.toUpperCase().includes('NCC');
+};
+
+/**
+ * Finds the default preferred supplier record (NCC) from a list of suppliers.
+ */
+export const findDefaultSupplier = (suppliers: Supplier[]): Supplier | undefined => {
+  return suppliers.find(s => isDefaultSupplier(s.name));
+};

@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
 import { Item, ItemPriceOption, POLineItem, PORequest, SpendCategory } from '../types.ts';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
-import { canonicalSupplierName, dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
+import { canonicalSupplierName, dedupeSuppliersForDisplay, isDefaultSupplier, findDefaultSupplier } from '../utils/suppliers.ts';
 import {
   ShoppingCart,
   Search,
@@ -27,9 +27,10 @@ import {
   AlertTriangle,
   Clock3,
   Check,
+  CheckCircle,
   Loader2,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import ContextHelp from './ContextHelp.tsx';
 import PageHeader from './PageHeader';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
@@ -120,6 +121,11 @@ const POCreate = () => {
   // records for the same supplier (e.g. one per mapping entry).
   const displaySuppliers = useMemo(() => dedupeSuppliersForDisplay(suppliers), [suppliers]);
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const urlSupplierId = searchParams.get('supplierId') || '';
+  const urlReason = searchParams.get('reason') || '';
+
   const draftKey = currentUser ? `pf_draft:${currentUser.id}:po-create` : '';
   const initialDraft = useMemo(
     () => draftKey
@@ -152,7 +158,13 @@ const POCreate = () => {
     }
     return '';
   });
-  const [selectedSupplierId, setSelectedSupplierId] = useState(initialDraft?.selectedSupplierId || '');
+  const [selectedSupplierId, setSelectedSupplierId] = useState(() => {
+    if (urlSupplierId) return urlSupplierId;
+    return initialDraft?.selectedSupplierId || '';
+  });
+  const [nonDefaultSupplierReason, setNonDefaultSupplierReason] = useState<string>(
+    urlReason || 'NCC Stockout / Unavailable'
+  );
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(initialDraft?.isHeaderExpanded ?? true);
   
   const [customerName, setCustomerName] = useState(initialDraft?.customerName || '');
@@ -258,6 +270,13 @@ const POCreate = () => {
   }, [selectedSiteId, sites]);
 
   useEffect(() => {
+    if (!selectedSupplierId && displaySuppliers.length > 0) {
+      const defaultSupplier = findDefaultSupplier(displaySuppliers);
+      if (defaultSupplier) {
+        setSelectedSupplierId(defaultSupplier.id);
+      }
+      return;
+    }
     if (!selectedSupplierId) return;
     if (displaySuppliers.some(supplier => supplier.id === selectedSupplierId)) return;
     setSelectedSupplierId('');
@@ -275,6 +294,10 @@ const POCreate = () => {
 
   const selectedSite = sites.find(s => s.id === selectedSiteId);
   const selectedSupplier = displaySuppliers.find(s => s.id === selectedSupplierId);
+  const isSelectedSupplierDefault = useMemo(() => {
+    if (!selectedSupplier) return true;
+    return isDefaultSupplier(selectedSupplier.name);
+  }, [selectedSupplier]);
 
   const createDraftSnapshot = useMemo<POCreateDraft>(() => ({
     selectedSiteId,
@@ -714,7 +737,9 @@ const POCreate = () => {
       customerName,
       sector,
       reasonForRequest,
-      comments
+      comments,
+      isNonDefaultSupplier: !isSelectedSupplierDefault,
+      nonDefaultSupplierReason: !isSelectedSupplierDefault ? nonDefaultSupplierReason : undefined
     };
 
     const didCreate = await createPO(newPO);
@@ -776,6 +801,8 @@ const POCreate = () => {
         customerName,
         reasonForRequest,
         comments,
+        isNonDefaultSupplier: !isSelectedSupplierDefault,
+        nonDefaultSupplierReason: !isSelectedSupplierDefault ? nonDefaultSupplierReason : undefined
     };
     setIsSavingDraft(true);
     try {
@@ -1069,17 +1096,67 @@ const POCreate = () => {
                         </div>
                         
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Supplier <span className="text-red-500">*</span></label>
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                    Supplier <span className="text-red-500">*</span>
+                                </label>
+                                {isSelectedSupplierDefault && selectedSupplier && (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/40">
+                                        <CheckCircle size={12} /> Default Preferred
+                                    </span>
+                                )}
+                            </div>
                             <select 
-                                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all"
+                                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all font-medium"
                                 value={selectedSupplierId}
                                 onChange={(e) => {
                                     handleSupplierChange(e.target.value);
                                 }}
                             >
                                 <option value="">Select a supplier...</option>
-                                {displaySuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                {displaySuppliers.map(s => {
+                                    const isDefault = isDefaultSupplier(s.name);
+                                    return (
+                                        <option key={s.id} value={s.id}>
+                                            {s.name} {isDefault ? '★ (Default Preferred Supplier)' : ''}
+                                        </option>
+                                    );
+                                })}
                             </select>
+
+                            {/* Non-Default Supplier Alert Callout */}
+                            {!isSelectedSupplierDefault && selectedSupplier && (
+                                <div className="mt-3 p-3.5 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded-xl shadow-sm">
+                                    <div className="flex items-start gap-2.5">
+                                        <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center justify-between">
+                                                <span>Non-Default Supplier Selected</span>
+                                                <span className="text-[10px] uppercase tracking-wider font-extrabold bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded">Special Review</span>
+                                            </div>
+                                            <p className="text-[11px] text-amber-800 dark:text-amber-300/90 mt-1 leading-relaxed">
+                                                <b>NCC Apparel</b> is SPL's primary contracted supplier. Requisitions requesting an alternate supplier are flagged and require review and sign-off by <b>Ashish Chhabra (Procurement & Inventory Manager)</b>.
+                                            </p>
+                                            <div className="mt-2.5 pt-2 border-t border-amber-200 dark:border-amber-800/40">
+                                                <label className="block text-[10px] font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider mb-1">
+                                                    Reason for Alternate Supplier <span className="text-red-500">*</span>
+                                                </label>
+                                                <select
+                                                    value={nonDefaultSupplierReason}
+                                                    onChange={(e) => setNonDefaultSupplierReason(e.target.value)}
+                                                    className="w-full bg-white dark:bg-[#1a1d26] border border-amber-300 dark:border-amber-700 rounded-lg p-2 text-xs text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500/20 font-medium"
+                                                >
+                                                    <option value="NCC Stockout / Unavailable">NCC Stockout / Unavailable</option>
+                                                    <option value="Specialised Technical Specification">Specialised Technical Specification</option>
+                                                    <option value="Customer Mandated Requirement">Customer Mandated Requirement</option>
+                                                    <option value="Urgent Delivery Lead Time">Urgent Delivery Lead Time</option>
+                                                    <option value="Other Business Justification">Other Business Justification</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                     

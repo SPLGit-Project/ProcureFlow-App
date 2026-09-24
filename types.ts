@@ -581,6 +581,8 @@ export interface PORequest {
   concurLinkedAt?: string;
   cancellationReason?: string;
   autoCancelledAt?: string;
+  isNonDefaultSupplier?: boolean;
+  nonDefaultSupplierReason?: string;
 }
 
 export interface POLineItem {

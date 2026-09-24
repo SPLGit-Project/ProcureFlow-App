@@ -23,6 +23,7 @@ import type { POStatus, PORequest } from '../types.ts';
 import ContextHelp from './ContextHelp';
 import PageHeader from './PageHeader';
 import { useSetPageMeta } from '../context/PageMetaContext.tsx';
+import { isDefaultSupplier } from '../utils/suppliers.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { ToastContainer, useToast } from './ToastNotification';
 import { formatCurrency } from '../utils/taxCalculations.ts';
@@ -1240,7 +1241,14 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
                       )}
                     </td>
                     <td className="px-5 py-4 text-gray-700 dark:text-gray-300 font-medium truncate max-w-[160px]" title={po.supplierName}>
-                      {po.supplierName}
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate">{po.supplierName}</span>
+                        {(!isDefaultSupplier(po.supplierName) || po.isNonDefaultSupplier) && (
+                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700/60" title="Non-default supplier requested">
+                            Alt
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-4 text-gray-700 dark:text-gray-300 font-medium font-mono text-xs">
                       {po.concurRequestNumber || '-'}

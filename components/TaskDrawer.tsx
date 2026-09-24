@@ -7,6 +7,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 
 import { getReservationTimeRemaining } from '../utils/reservationUtils.ts';
+import { isDefaultSupplier } from '../utils/suppliers.ts';
 
 interface TaskDrawerProps {
     isOpen: boolean;
@@ -42,14 +43,17 @@ const TaskDrawer: FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
     const tasks = useMemo(() => {
         const t = [];
         if (myPendingApprovals.length > 0) {
+            const nonDefaultCount = myPendingApprovals.filter(p => !isDefaultSupplier(p.supplierName) || p.isNonDefaultSupplier).length;
             t.push({
                 id: 'approvals',
                 title: 'Pending Approvals',
                 count: myPendingApprovals.length,
-                desc: 'Review and approve/reject purchase requests.',
+                desc: nonDefaultCount > 0
+                    ? `⚠️ ${nonDefaultCount} request(s) request alternate suppliers (Non-NCC). Review justification before approving.`
+                    : 'Review and approve/reject purchase requests.',
                 icon: CheckCircle2,
-                color: 'amber',
-                path: '/approvals'
+                color: nonDefaultCount > 0 ? 'amber' : 'emerald',
+                path: '/requests'
             });
         }
         if (actionConcur.length > 0) {

@@ -64,6 +64,7 @@ const ReportingView = lazy(() => import('./components/ReportingView.tsx'));
 const HistoryView = lazy(() => import('./components/HistoryView.tsx'));
 const ActiveRequestsView = lazy(() => import('./components/ActiveRequestsView.tsx'));
 const SmartBuyingDashboard = lazy(() => import('./components/SmartBuyingDashboard.tsx'));
+const SupplierStockDirectory = lazy(() => import('./components/SupplierStockDirectory.tsx'));
 const DataIngestion = lazy(() => import('./components/DataIngestion.tsx'));
 const ApprovalQueue       = lazy(() => import('./components/ApprovalQueue.tsx'));
 const ItemCatalogue       = lazy(() => import('./components/ItemCatalogue.tsx'));
@@ -149,6 +150,7 @@ function App() {
               <Route path="history" element={<Suspense fallback={<LoadingSpinner />}><HistoryView /></Suspense>} />
               <Route path="help"  element={<Suspense fallback={<LoadingSpinner />}><HelpGuide /></Suspense>} />
               <Route path="notifications" element={<Suspense fallback={<LoadingSpinner />}><NotificationCenter /></Suspense>} />
+              <Route path="supplier-stock" element={<Suspense fallback={<LoadingSpinner />}><SupplierStockDirectory /></Suspense>} />
               <Route path="admin/workflows" element={<Suspense fallback={<LoadingSpinner />}><WorkflowNotificationHub /></Suspense>} />
               <Route path="smart-buying" element={<Suspense fallback={<LoadingSpinner />}><SmartBuyingDashboard /></Suspense>} />
               <Route path="data-ingest" element={<Suspense fallback={<LoadingSpinner />}><DataIngestion /></Suspense>} />

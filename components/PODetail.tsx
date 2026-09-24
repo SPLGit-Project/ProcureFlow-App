@@ -16,6 +16,7 @@ import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorag
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations.ts';
 import { getReservationTimeRemaining, isPOReservingStock } from '../utils/reservationUtils.ts';
+import { isDefaultSupplier } from '../utils/suppliers.ts';
 
 const PO_DETAIL_EDIT_DRAFT_VERSION = 1;
 const PO_DETAIL_EDIT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -52,7 +53,7 @@ interface PODetailEditDraft {
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, suppliers, items, sites, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
+  const { pos, allPos, suppliers, items, sites, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -108,7 +109,7 @@ const PODetail = () => {
     didRestoreEditDraftRef.current = false;
   }, [editDraftKey]);
 
-  const po = pos.find(p => p.id === id);
+  const po = (allPos?.length ? allPos : pos).find(p => p.id === id);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _supplier = po ? suppliers.find(s => s.id === po.supplierId) : undefined;
 
@@ -1023,6 +1024,48 @@ const PODetail = () => {
         </div>
       )}
 
+      {/* Non-Default Supplier Alert Banner */}
+      {(!isDefaultSupplier(po.supplierName) || po.isNonDefaultSupplier) && (
+        <div className="mb-6 p-4 bg-amber-50/90 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-600 rounded-2xl shadow-sm">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-amber-500/20">
+              <AlertTriangle size={20} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-amber-950 dark:text-amber-100">
+                    Non-Default Supplier Requisition: {po.supplierName}
+                  </h4>
+                  <span className="text-[10px] uppercase tracking-wider font-extrabold bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-100 px-2 py-0.5 rounded-full">
+                    Ashish Chhabra Review Required
+                  </span>
+                </div>
+                {canApprove && (
+                  <span className="text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-2.5 py-1 rounded-lg border border-amber-300 dark:border-amber-700">
+                    Alternate Supplier Approval Decision
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-amber-900/90 dark:text-amber-200/90 mt-1 leading-relaxed">
+                <b>NCC Apparel</b> is SPL's primary contracted supplier. This requisition has been raised against an alternate supplier and requires verification of pricing, specifications, or stockout conditions before sign-off.
+              </p>
+              <div className="mt-3 p-3 bg-white/90 dark:bg-black/30 rounded-xl border border-amber-200 dark:border-amber-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div>
+                  <span className="font-semibold text-slate-500 dark:text-slate-400 mr-2">Stated Justification:</span>
+                  <span className="font-bold text-amber-950 dark:text-white">
+                    {po.nonDefaultSupplierReason || 'No specific justification recorded by requester'}
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                  Review before deciding to approve or reject
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header Info */}
       <div className="bg-white dark:bg-nocturne rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-4 md:p-6 mb-6">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-6">
@@ -1273,8 +1316,19 @@ const PODetail = () => {
                 <div className="flex gap-3 items-start">
                     <div className="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg"><Building size={16}/></div>
                     <div className="w-full">
-                        <p className="text-xs text-secondary uppercase font-bold">Supplier</p>
-                        <p className="text-sm font-medium text-primary dark:text-white">{po.supplierName}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-xs text-secondary uppercase font-bold">Supplier</p>
+                            {(!isDefaultSupplier(po.supplierName) || po.isNonDefaultSupplier) ? (
+                                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                    Alternate (Non-NCC)
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                                    Default (NCC)
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-sm font-medium text-primary dark:text-white mt-0.5">{po.supplierName}</p>
                     </div>
                 </div>
 

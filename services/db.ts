@@ -14,7 +14,7 @@ type DbSupplierProductMapRow = { id: string; supplier_id: string; product_id: st
 type DbProductAvailabilityRow = { id: string; product_id: string; supplier_id: string; available_units: number; available_order_qty: number; updated_at: string };
 type DbCatalogItemRow = { id: string; item_id: string; supplier_id: string; supplier_sku: string; price: number };
 type DbStockSnapshotRow = { id: string; supplier_id: string; supplier_sku: string; product_name: string; available_qty: number; stock_on_hand: number; committed_qty: number; back_ordered_qty: number; total_stock_qty: number; snapshot_date: string; source_report_name: string; customer_stock_code: string; range_name: string; category: string; sub_category: string; stock_type: string; carton_qty: number; soh_value_at_sell: number; sell_price: number; incoming_stock: SupplierStockSnapshot['incomingStock']; customer_stock_code_raw: string; customer_stock_code_norm: string; customer_stock_code_alt_norm: string };
-type DbPORequestRow = { id: string; display_id: string; request_date: string; requester_id: string; requester: { name: string }; site_id: string; site: { name: string }; supplier_id: string; supplier: { name: string }; status: PORequest['status']; total_amount: number; subtotal_amount?: number; tax_total_amount?: number; total_amount_inc_gst?: number; approvals: { id: string; action: ApprovalEvent['action']; date: string; approver_name: string; comments: string }[]; lines: { id: string; item_id: string; item_name: string; sku: string; quantity_ordered: number; quantity_received: number; unit_price: number; total_price: number; tax_code?: string; tax_rate?: number; tax_amount?: number; total_price_inc_gst?: number; concur_po_number: string; need_by_date?: string }[]; deliveries: { id: string; date: string; docket_number: string; received_by: string; received_by_id: string; lines: { id: string; po_line_id: string; quantity: number; invoice_number: string; is_capitalised: boolean; capitalised_date: string; freight_amount: number }[] }[]; reason_for_request: PORequest['reasonForRequest']; customer_name: string; concur_request_number: string; po_lines: { concur_po_number: string }[]; comments: string; approved_at?: string; reservation_expires_at?: string; concur_linked_at?: string; cancellation_reason?: string; auto_cancelled_at?: string; created_at?: string; updated_at?: string; };
+type DbPORequestRow = { id: string; display_id: string; request_date: string; requester_id: string; requester: { name: string }; site_id: string; site: { name: string }; supplier_id: string; supplier: { name: string }; status: PORequest['status']; total_amount: number; subtotal_amount?: number; tax_total_amount?: number; total_amount_inc_gst?: number; approvals: { id: string; action: ApprovalEvent['action']; date: string; approver_name: string; comments: string }[]; lines: { id: string; item_id: string; item_name: string; sku: string; quantity_ordered: number; quantity_received: number; unit_price: number; total_price: number; tax_code?: string; tax_rate?: number; tax_amount?: number; total_price_inc_gst?: number; concur_po_number: string; need_by_date?: string }[]; deliveries: { id: string; date: string; docket_number: string; received_by: string; received_by_id: string; lines: { id: string; po_line_id: string; quantity: number; invoice_number: string; is_capitalised: boolean; capitalised_date: string; freight_amount: number }[] }[]; reason_for_request: PORequest['reasonForRequest']; customer_name: string; concur_request_number: string; po_lines: { concur_po_number: string }[]; comments: string; approved_at?: string; reservation_expires_at?: string; concur_linked_at?: string; cancellation_reason?: string; auto_cancelled_at?: string; is_non_default_supplier?: boolean; non_default_supplier_reason?: string; created_at?: string; updated_at?: string; };
 type DbWorkflowStepRow = { id: string; step_name: string; approver_role: string; approver_type: WorkflowStep['approverType']; approver_id: string; condition_type: WorkflowStep['conditionType']; condition_value: number; order: number; is_active: boolean };
 type DbNotificationRuleRow = { id: string; event_type: NotificationRule['eventType']; label: string; is_active: boolean; recipients: NotificationRule['recipients'] };
 type DbAppNotificationRow = { id: string; user_id: string; title: string; message: string; is_read: boolean; link: string; created_at: string };
@@ -717,7 +717,12 @@ export const db = {
             return [];
         }
 
-        const { data } = await query;
+        const { data, error } = await query;
+        if (error) {
+            console.error("Error in getPOs:", error);
+            throw error;
+        }
+        if (!data || !Array.isArray(data)) return [];
 
         return data.map((p: DbPORequestRow) => ({
             id: p.id,
@@ -783,6 +788,8 @@ export const db = {
             concurLinkedAt: p.concur_linked_at,
             cancellationReason: p.cancellation_reason,
             autoCancelledAt: p.auto_cancelled_at,
+            isNonDefaultSupplier: Boolean(p.is_non_default_supplier),
+            nonDefaultSupplierReason: p.non_default_supplier_reason,
             createdAt: p.created_at,
             updatedAt: p.updated_at
         }));
@@ -947,7 +954,9 @@ export const db = {
             total_amount_inc_gst: totals.totalAmountIncGst,
             customer_name: po.customerName,
             reason_for_request: po.reasonForRequest,
-            comments: po.comments
+            comments: po.comments,
+            is_non_default_supplier: Boolean(po.isNonDefaultSupplier),
+            non_default_supplier_reason: po.nonDefaultSupplierReason || null
         };
 
         const approval = po.approvalHistory && po.approvalHistory.length > 0 ? {
