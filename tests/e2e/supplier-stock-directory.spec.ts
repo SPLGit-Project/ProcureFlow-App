@@ -137,7 +137,12 @@ test.describe('Supplier Stock Directory & Alternate Supplier Requisition Suite',
             const nonNcc = optionData.find(o => !o.text.includes('NCC') && !o.text.includes('Select') && o.value);
             if (nonNcc) {
                 await supplierSelect.selectOption(nonNcc.value);
-                await page.waitForTimeout(800);
+                await page.waitForTimeout(600);
+                const cautionIcon = page.locator('div[aria-label="Non-default supplier warning"]');
+                if (await cautionIcon.isVisible()) {
+                    await cautionIcon.hover();
+                    await page.waitForTimeout(400);
+                }
                 await page.screenshot({ path: path.join(briefAssetsDir, 'po_create_alternate_supplier_alert.png') });
                 await page.screenshot({ path: path.join(artifactsDir, 'po_create_alternate_supplier_alert.png') });
             }

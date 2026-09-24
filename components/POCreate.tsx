@@ -163,8 +163,9 @@ const POCreate = () => {
     return initialDraft?.selectedSupplierId || '';
   });
   const [nonDefaultSupplierReason, setNonDefaultSupplierReason] = useState<string>(
-    urlReason || 'NCC Stockout / Unavailable'
+    urlReason || 'Alternate Supplier Selected'
   );
+  const [isSupplierWarningHovered, setIsSupplierWarningHovered] = useState(false);
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(initialDraft?.isHeaderExpanded ?? true);
   
   const [customerName, setCustomerName] = useState(initialDraft?.customerName || '');
@@ -1106,57 +1107,56 @@ const POCreate = () => {
                                     </span>
                                 )}
                             </div>
-                            <select 
-                                className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] transition-all font-medium"
-                                value={selectedSupplierId}
-                                onChange={(e) => {
-                                    handleSupplierChange(e.target.value);
-                                }}
-                            >
-                                <option value="">Select a supplier...</option>
-                                {displaySuppliers.map(s => {
-                                    const isDefault = isDefaultSupplier(s.name);
-                                    return (
-                                        <option key={s.id} value={s.id}>
-                                            {s.name} {isDefault ? '★ (Default Preferred Supplier)' : ''}
-                                        </option>
-                                    );
-                                })}
-                            </select>
+                            <div className="flex items-center gap-2">
+                                <select 
+                                    className={`w-full bg-gray-50 dark:bg-[#15171e] border ${
+                                        !isSelectedSupplierDefault && selectedSupplier 
+                                            ? 'border-amber-300 dark:border-amber-700/70 focus:border-amber-500 focus:ring-amber-500/20' 
+                                            : 'border-gray-200 dark:border-gray-700 focus:border-[var(--color-brand)] focus:ring-[var(--color-brand)]/20'
+                                    } rounded-xl p-3 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 transition-all font-medium`}
+                                    value={selectedSupplierId}
+                                    onChange={(e) => {
+                                        handleSupplierChange(e.target.value);
+                                    }}
+                                >
+                                    <option value="">Select a supplier...</option>
+                                    {displaySuppliers.map(s => {
+                                        const isDefault = isDefaultSupplier(s.name);
+                                        return (
+                                            <option key={s.id} value={s.id}>
+                                                {s.name} {isDefault ? '★ (Default Preferred Supplier)' : ''}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
 
-                            {/* Non-Default Supplier Alert Callout */}
-                            {!isSelectedSupplierDefault && selectedSupplier && (
-                                <div className="mt-3 p-3.5 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded-xl shadow-sm">
-                                    <div className="flex items-start gap-2.5">
-                                        <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center justify-between">
-                                                <span>Non-Default Supplier Selected</span>
-                                                <span className="text-[10px] uppercase tracking-wider font-extrabold bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded">Special Review</span>
+                                {/* Caution Icon with Hover Tooltip next to selected supplier */}
+                                {!isSelectedSupplierDefault && selectedSupplier && (
+                                    <div 
+                                        className="relative group shrink-0 cursor-help"
+                                        aria-label="Non-default supplier warning"
+                                        onMouseEnter={() => setIsSupplierWarningHovered(true)}
+                                        onMouseLeave={() => setIsSupplierWarningHovered(false)}
+                                        onClick={() => setIsSupplierWarningHovered(prev => !prev)}
+                                    >
+                                        <div 
+                                            className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/70 flex items-center justify-center text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors shadow-sm"
+                                            title="Non-default supplier selected. Ash will catch this during the approval process."
+                                        >
+                                            <AlertTriangle size={20} />
+                                        </div>
+                                        <div className={`pointer-events-none absolute right-0 top-full mt-2 z-50 ${isSupplierWarningHovered ? 'flex' : 'hidden group-hover:flex'} flex-col w-64 rounded-xl bg-gray-900 dark:bg-gray-800 p-2.5 text-xs text-white shadow-xl border border-gray-700`}>
+                                            <div className="font-bold text-amber-400 flex items-center gap-1.5 mb-1">
+                                                <AlertTriangle size={14} className="shrink-0" />
+                                                <span>Non-Default Supplier</span>
                                             </div>
-                                            <p className="text-[11px] text-amber-800 dark:text-amber-300/90 mt-1 leading-relaxed">
-                                                <b>NCC Apparel</b> is SPL's primary contracted supplier. Requisitions requesting an alternate supplier are flagged and require review and sign-off by <b>Ashish Chhabra (Procurement & Inventory Manager)</b>.
+                                            <p className="text-gray-300 text-[11px] leading-relaxed">
+                                                NCC Apparel is SPL's default preferred supplier. Selecting an alternate supplier will be flagged for Ash to review during the approval process.
                                             </p>
-                                            <div className="mt-2.5 pt-2 border-t border-amber-200 dark:border-amber-800/40">
-                                                <label className="block text-[10px] font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider mb-1">
-                                                    Reason for Alternate Supplier <span className="text-red-500">*</span>
-                                                </label>
-                                                <select
-                                                    value={nonDefaultSupplierReason}
-                                                    onChange={(e) => setNonDefaultSupplierReason(e.target.value)}
-                                                    className="w-full bg-white dark:bg-[#1a1d26] border border-amber-300 dark:border-amber-700 rounded-lg p-2 text-xs text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500/20 font-medium"
-                                                >
-                                                    <option value="NCC Stockout / Unavailable">NCC Stockout / Unavailable</option>
-                                                    <option value="Specialised Technical Specification">Specialised Technical Specification</option>
-                                                    <option value="Customer Mandated Requirement">Customer Mandated Requirement</option>
-                                                    <option value="Urgent Delivery Lead Time">Urgent Delivery Lead Time</option>
-                                                    <option value="Other Business Justification">Other Business Justification</option>
-                                                </select>
-                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     </div>
                     
