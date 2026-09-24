@@ -11,13 +11,17 @@ import {
   Send,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   LayoutGrid,
   List,
   Scale,
   Check,
   TrendingDown,
   TrendingUp,
-  PackageCheck
+  PackageCheck,
+  Filter,
+  RotateCcw
 } from 'lucide-react';
 import PageHeader from './PageHeader.tsx';
 import { isDefaultSupplier, dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
@@ -35,8 +39,11 @@ export interface DirectoryRow {
   supplierName: string;
   isDefault: boolean;
   supplierSku: string;
-  category: string;
+  itemPool: string;
+  itemCatalog: string;
   itemType: string;
+  category: string;
+  subCategory: string;
   unitPrice: number;
   packMultiple: number;
   breakdown: StockBreakdown;
@@ -60,8 +67,11 @@ export interface ItemComparisonGroup {
   itemId: string;
   itemName: string;
   internalSku: string;
-  category: string;
+  itemPool: string;
+  itemCatalog: string;
   itemType: string;
+  category: string;
+  subCategory: string;
   defaultOffer?: SupplierOffer;
   alternateOffers: SupplierOffer[];
   totalOffers: number;
@@ -72,21 +82,66 @@ export interface ItemComparisonGroup {
 }
 
 /**
- * Resolves itemType and category directly leveraging Admin Classification Tiers:
- * Tier 3: Item Types (type === 'TYPE' in attribute_options)
- * Tier 4: Categories (type === 'CATEGORY' in attribute_options)
- * Uses MASTER_HIERARCHY and standardized procurement definitions for unclassified items.
+ * Collects distinct, non-empty, case-insensitive badges across itemType, category, and subCategory.
+ * Completely eliminates duplicate pills (e.g. 'Table Linen · Table Linen') when itemType and category share the same value.
+ */
+export function getItemTaxonomyBadges(itemOrRow: {
+  itemPool?: string;
+  itemCatalog?: string;
+  itemType?: string;
+  category?: string;
+  subCategory?: string;
+}): string[] {
+  const seen = new Set<string>();
+  const badges: string[] = [];
+
+  const candidates = [itemOrRow.itemType, itemOrRow.category, itemOrRow.subCategory];
+  for (const c of candidates) {
+    if (!c) continue;
+    const trimmed = c.trim();
+    if (!trimmed || trimmed === 'Unassigned' || trimmed === 'Unclassified' || trimmed === 'Other' || trimmed === 'TBA') continue;
+    const lower = trimmed.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      badges.push(trimmed);
+    }
+  }
+
+  return badges;
+}
+
+/**
+ * Resolves all 5 Classification Hierarchy Tiers directly leveraging Admin Classification Tiers:
+ * Tier 1: Pools (POOL)
+ * Tier 2: Catalogues (CATALOG)
+ * Tier 3: Item Types (TYPE)
+ * Tier 4: Categories (CATEGORY)
+ * Tier 5: Sub-categories (SUB_CATEGORY)
  */
 export function resolveItemClassification(
   itemOrSnap: {
-    category?: string;
-    itemType?: string;
+    itemPool?: string;
     itemCatalog?: string;
+    itemType?: string;
+    category?: string;
+    subCategory?: string;
     name?: string;
     productName?: string;
   },
   attributeOptions?: AttributeOption[]
-): { itemType: string; category: string } {
+): {
+  itemPool: string;
+  itemCatalog: string;
+  itemType: string;
+  category: string;
+  subCategory: string;
+} {
+  let resolvedPool = (itemOrSnap.itemPool || '').trim();
+  let resolvedCatalog = (itemOrSnap.itemCatalog || '').trim();
+  let resolvedType = (itemOrSnap.itemType || '').trim();
+  let resolvedCat = (itemOrSnap.category || '').trim();
+  let resolvedSub = (itemOrSnap.subCategory || '').trim();
+
   const catToTypeMap = new Map<string, string>();
 
   if (attributeOptions && attributeOptions.length > 0) {
@@ -117,8 +172,7 @@ export function resolveItemClassification(
     }
   }
 
-  // 1. Resolve Category (Admin Tier: Categories)
-  let resolvedCat = (itemOrSnap.category || '').trim();
+  // 1. Resolve Category (Tier 4: Categories)
   if (!resolvedCat || resolvedCat === 'Unassigned' || resolvedCat === 'Other' || resolvedCat === 'TBA') {
     const rawName = (itemOrSnap.name || itemOrSnap.productName || '').toUpperCase();
     if (rawName.includes('SHEET')) resolvedCat = 'Sheet';
@@ -139,8 +193,7 @@ export function resolveItemClassification(
     else if (rawName.includes('UNIFORM') || rawName.includes('SHIRT')) resolvedCat = 'Uniform';
   }
 
-  // 2. Resolve Item Type (Admin Tier: Item Types)
-  let resolvedType = (itemOrSnap.itemType || '').trim();
+  // 2. Resolve Item Type (Tier 3: Item Types)
   if (!resolvedType || resolvedType === 'Unclassified' || resolvedType === 'Other') {
     if (resolvedCat && catToTypeMap.has(resolvedCat.toLowerCase())) {
       resolvedType = catToTypeMap.get(resolvedCat.toLowerCase())!;
@@ -162,9 +215,30 @@ export function resolveItemClassification(
     }
   }
 
+  // 3. Resolve Catalogue (Tier 2: Catalogues)
+  if (!resolvedCatalog) {
+    if (resolvedType === 'Table Linen' || resolvedType === 'Kitchen Linen') {
+      resolvedCatalog = 'Food & Beverages';
+    } else if (resolvedType === 'Hospital Wear' || resolvedType === 'Theatre') {
+      resolvedCatalog = 'Health Care';
+    } else if (resolvedType === 'Bed Linen' || resolvedType === 'Bath Linen') {
+      resolvedCatalog = 'Accommodation';
+    } else {
+      resolvedCatalog = 'Accommodation';
+    }
+  }
+
+  // 4. Resolve Pool (Tier 1: Pools)
+  if (!resolvedPool) {
+    resolvedPool = 'General Pool';
+  }
+
   return {
+    itemPool: resolvedPool,
+    itemCatalog: resolvedCatalog,
     itemType: resolvedType,
-    category: resolvedCat
+    category: resolvedCat,
+    subCategory: resolvedSub
   };
 }
 
@@ -186,14 +260,20 @@ const SupplierStockDirectory: React.FC = () => {
 
   const displaySuppliers = useMemo(() => dedupeSuppliersForDisplay(suppliers), [suppliers]);
 
-  // Filters state
+  // Filters state - 5-Tier Classification Hierarchy
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('ALL');
+  const [selectedPool, setSelectedPool] = useState<string>('ALL');
+  const [selectedCatalog, setSelectedCatalog] = useState<string>('ALL');
   const [selectedItemType, setSelectedItemType] = useState<string>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [selectedSubCategory, setSelectedSubCategory] = useState<string>('ALL');
   const [stockStatusFilter, setStockStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'PRESSURE' | 'OUT_OF_STOCK'>('ALL');
   const [viewMode, setViewMode] = useState<'TABLE' | 'COMPARE' | 'GRID'>('TABLE');
   const [compareOnlyMatches, setCompareOnlyMatches] = useState<boolean>(true);
+
+  // Table Comparison expansion state
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
 
   // Pagination state (displays 25 items at a time by default)
   const [pageSize, setPageSize] = useState<number>(25);
@@ -202,7 +282,19 @@ const SupplierStockDirectory: React.FC = () => {
   // Reset pagination when any filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedSupplierId, selectedItemType, selectedCategory, stockStatusFilter, viewMode, compareOnlyMatches, pageSize]);
+  }, [
+    searchTerm,
+    selectedSupplierId,
+    selectedPool,
+    selectedCatalog,
+    selectedItemType,
+    selectedCategory,
+    selectedSubCategory,
+    stockStatusFilter,
+    viewMode,
+    compareOnlyMatches,
+    pageSize
+  ]);
 
   // Contact Ash modal state
   const [selectedItemForRequest, setSelectedItemForRequest] = useState<DirectoryRow | null>(null);
@@ -212,7 +304,7 @@ const SupplierStockDirectory: React.FC = () => {
   const [requestNotes, setRequestNotes] = useState('');
   const [isCopiedEmail, setIsCopiedEmail] = useState(false);
 
-  // Build directory rows with clean category and distinct itemType
+  // Build directory rows with clean 5-tier classification
   const directoryRows = useMemo<DirectoryRow[]>(() => {
     const rows: DirectoryRow[] = [];
     const processedKeys = new Set<string>();
@@ -274,7 +366,7 @@ const SupplierStockDirectory: React.FC = () => {
           stockStatus = 'LOW_STOCK';
         }
 
-        const { itemType, category } = resolveItemClassification(item, attributeOptions);
+        const classification = resolveItemClassification(item, attributeOptions);
 
         rows.push({
           key: rowKey,
@@ -285,8 +377,11 @@ const SupplierStockDirectory: React.FC = () => {
           supplierName: supplier.name,
           isDefault,
           supplierSku,
-          category,
-          itemType,
+          itemPool: classification.itemPool,
+          itemCatalog: classification.itemCatalog,
+          itemType: classification.itemType,
+          category: classification.category,
+          subCategory: classification.subCategory,
           unitPrice: item.unitPrice || 0,
           packMultiple: item.defaultOrderMultiple || breakdown.packConversionFactor || 1,
           breakdown,
@@ -330,8 +425,10 @@ const SupplierStockDirectory: React.FC = () => {
         stockStatus = 'LOW_STOCK';
       }
 
-      const { itemType, category } = resolveItemClassification({
+      const classification = resolveItemClassification({
+        itemPool: snap.stockType,
         category: snap.category,
+        subCategory: snap.subCategory,
         name: snap.productName,
         productName: snap.productName
       }, attributeOptions);
@@ -345,8 +442,11 @@ const SupplierStockDirectory: React.FC = () => {
         supplierName: supplier.name,
         isDefault,
         supplierSku: snap.supplierSku,
-        category,
-        itemType,
+        itemPool: classification.itemPool,
+        itemCatalog: classification.itemCatalog,
+        itemType: classification.itemType,
+        category: classification.category,
+        subCategory: classification.subCategory,
         unitPrice: snap.sellPrice || snap.unitPrice || 0,
         packMultiple: snap.cartonQty || 1,
         breakdown,
@@ -362,67 +462,184 @@ const SupplierStockDirectory: React.FC = () => {
     });
   }, [items, suppliers, mappings, stockSnapshots, pos, attributeOptions]);
 
-  // 1. Available Master Categories (Admin Classification Tier: Item Types)
-  const availableItemTypes = useMemo(() => {
+  // ── 5-Tier Classification Hierarchy Dropdown Options ──
+
+  // 1. Available Pools (Admin Tier: POOL)
+  const availablePools = useMemo(() => {
     const set = new Set<string>();
-
-    // Seed with configured active TYPE options from Admin Classification Tiers
     (attributeOptions || [])
-      .filter(o => o.type === 'TYPE' && o.activeFlag !== false)
-      .forEach(o => {
-        if (o.value && o.value.trim()) set.add(o.value.trim());
-      });
-
-    // Also include any itemType present in the active directory rows
-    directoryRows.forEach(r => {
-      if (r.itemType && r.itemType.trim()) set.add(r.itemType.trim());
-    });
-
+      .filter(o => o.type === 'POOL' && o.activeFlag !== false)
+      .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+    directoryRows.forEach(r => r.itemPool?.trim() && set.add(r.itemPool.trim()));
     return Array.from(set).filter(Boolean).sort();
   }, [attributeOptions, directoryRows]);
 
-  // 2. Available Items (Admin Classification Tier: Categories) - dynamically scoped when a Category (Item Type) is selected
-  const availableCategories = useMemo(() => {
+  // 2. Available Catalogues (Admin Tier: CATALOG - optionally scoped by selectedPool)
+  const availableCatalogs = useMemo(() => {
     const set = new Set<string>();
-
-    if (selectedItemType === 'ALL') {
-      // Seed with configured active CATEGORY options from Admin Classification Tiers
+    if (selectedPool === 'ALL') {
       (attributeOptions || [])
-        .filter(o => o.type === 'CATEGORY' && o.activeFlag !== false)
-        .forEach(o => {
-          if (o.value && o.value.trim()) set.add(o.value.trim());
-        });
-
-      // Also include any category present in directory rows
+        .filter(o => o.type === 'CATALOG' && o.activeFlag !== false)
+        .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+      directoryRows.forEach(r => r.itemCatalog?.trim() && set.add(r.itemCatalog.trim()));
+    } else {
       directoryRows.forEach(r => {
-        if (r.category && r.category.trim()) set.add(r.category.trim());
+        if (r.itemPool === selectedPool && r.itemCatalog?.trim()) {
+          set.add(r.itemCatalog.trim());
+        }
+      });
+      const poolOpt = (attributeOptions || []).find(o => o.type === 'POOL' && o.value === selectedPool);
+      if (poolOpt) {
+        (attributeOptions || [])
+          .filter(o => o.type === 'CATALOG' && o.activeFlag !== false && (o.parentId === poolOpt.id || o.parentIds?.includes(poolOpt.id)))
+          .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+      }
+    }
+    return Array.from(set).filter(Boolean).sort();
+  }, [attributeOptions, directoryRows, selectedPool]);
+
+  // 3. Available Item Types (Admin Tier: TYPE - optionally scoped by selectedCatalog/Pool)
+  const availableItemTypes = useMemo(() => {
+    const set = new Set<string>();
+    if (selectedCatalog === 'ALL') {
+      (attributeOptions || [])
+        .filter(o => o.type === 'TYPE' && o.activeFlag !== false)
+        .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+      directoryRows.forEach(r => {
+        if (selectedPool === 'ALL' || r.itemPool === selectedPool) {
+          if (r.itemType?.trim()) set.add(r.itemType.trim());
+        }
       });
     } else {
-      // Scoped: rows matching the selected Category (Item Type)
       directoryRows.forEach(r => {
-        if (r.itemType === selectedItemType && r.category && r.category.trim()) {
+        if (r.itemCatalog === selectedCatalog && (selectedPool === 'ALL' || r.itemPool === selectedPool) && r.itemType?.trim()) {
+          set.add(r.itemType.trim());
+        }
+      });
+      const catOpt = (attributeOptions || []).find(o => o.type === 'CATALOG' && o.value === selectedCatalog);
+      if (catOpt) {
+        (attributeOptions || [])
+          .filter(o => o.type === 'TYPE' && o.activeFlag !== false && (o.parentId === catOpt.id || o.parentIds?.includes(catOpt.id)))
+          .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+      }
+    }
+    return Array.from(set).filter(Boolean).sort();
+  }, [attributeOptions, directoryRows, selectedPool, selectedCatalog]);
+
+  // 4. Available Categories (Admin Tier: CATEGORY - optionally scoped by selectedItemType)
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>();
+    if (selectedItemType === 'ALL') {
+      (attributeOptions || [])
+        .filter(o => o.type === 'CATEGORY' && o.activeFlag !== false)
+        .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+      directoryRows.forEach(r => {
+        if (
+          (selectedPool === 'ALL' || r.itemPool === selectedPool) &&
+          (selectedCatalog === 'ALL' || r.itemCatalog === selectedCatalog)
+        ) {
+          if (r.category?.trim()) set.add(r.category.trim());
+        }
+      });
+    } else {
+      directoryRows.forEach(r => {
+        if (r.itemType === selectedItemType && r.category?.trim()) {
           set.add(r.category.trim());
         }
       });
-
-      // Also include CATEGORY options from Admin whose parent matches the selected Item Type
       const selectedTypeOpt = (attributeOptions || []).find(o => o.type === 'TYPE' && o.value === selectedItemType);
       if (selectedTypeOpt) {
         (attributeOptions || [])
           .filter(o => o.type === 'CATEGORY' && o.activeFlag !== false && (o.parentId === selectedTypeOpt.id || o.parentIds?.includes(selectedTypeOpt.id)))
-          .forEach(o => {
-            if (o.value && o.value.trim()) set.add(o.value.trim());
-          });
+          .forEach(o => o.value?.trim() && set.add(o.value.trim()));
       }
     }
-
     return Array.from(set).filter(Boolean).sort();
-  }, [attributeOptions, directoryRows, selectedItemType]);
+  }, [attributeOptions, directoryRows, selectedPool, selectedCatalog, selectedItemType]);
+
+  // 5. Available Sub-categories (Admin Tier: SUB_CATEGORY - optionally scoped by selectedCategory)
+  const availableSubCategories = useMemo(() => {
+    const set = new Set<string>();
+    if (selectedCategory === 'ALL') {
+      (attributeOptions || [])
+        .filter(o => o.type === 'SUB_CATEGORY' && o.activeFlag !== false)
+        .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+      directoryRows.forEach(r => {
+        if (
+          (selectedItemType === 'ALL' || r.itemType === selectedItemType) &&
+          (selectedCatalog === 'ALL' || r.itemCatalog === selectedCatalog) &&
+          (selectedPool === 'ALL' || r.itemPool === selectedPool)
+        ) {
+          if (r.subCategory?.trim()) set.add(r.subCategory.trim());
+        }
+      });
+    } else {
+      directoryRows.forEach(r => {
+        if (r.category === selectedCategory && r.subCategory?.trim()) {
+          set.add(r.subCategory.trim());
+        }
+      });
+      const selectedCatOpt = (attributeOptions || []).find(o => o.type === 'CATEGORY' && o.value === selectedCategory);
+      if (selectedCatOpt) {
+        (attributeOptions || [])
+          .filter(o => o.type === 'SUB_CATEGORY' && o.activeFlag !== false && (o.parentId === selectedCatOpt.id || o.parentIds?.includes(selectedCatOpt.id)))
+          .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+      }
+    }
+    return Array.from(set).filter(Boolean).sort();
+  }, [attributeOptions, directoryRows, selectedPool, selectedCatalog, selectedItemType, selectedCategory]);
+
+  // Cascading Hierarchy Handlers
+  const handlePoolChange = (newPool: string) => {
+    setSelectedPool(newPool);
+    setSelectedCatalog('ALL');
+    setSelectedItemType('ALL');
+    setSelectedCategory('ALL');
+    setSelectedSubCategory('ALL');
+  };
+
+  const handleCatalogChange = (newCat: string) => {
+    setSelectedCatalog(newCat);
+    setSelectedItemType('ALL');
+    setSelectedCategory('ALL');
+    setSelectedSubCategory('ALL');
+  };
 
   const handleItemTypeChange = (newType: string) => {
     setSelectedItemType(newType);
     setSelectedCategory('ALL');
+    setSelectedSubCategory('ALL');
   };
+
+  const handleCategoryChange = (newCat: string) => {
+    setSelectedCategory(newCat);
+    setSelectedSubCategory('ALL');
+  };
+
+  const handleSubCategoryChange = (newSub: string) => {
+    setSelectedSubCategory(newSub);
+  };
+
+  const handleClearAllFilters = () => {
+    setSearchTerm('');
+    setSelectedSupplierId('ALL');
+    setSelectedPool('ALL');
+    setSelectedCatalog('ALL');
+    setSelectedItemType('ALL');
+    setSelectedCategory('ALL');
+    setSelectedSubCategory('ALL');
+    setStockStatusFilter('ALL');
+  };
+
+  const hasActiveFilters =
+    searchTerm !== '' ||
+    selectedSupplierId !== 'ALL' ||
+    selectedPool !== 'ALL' ||
+    selectedCatalog !== 'ALL' ||
+    selectedItemType !== 'ALL' ||
+    selectedCategory !== 'ALL' ||
+    selectedSubCategory !== 'ALL' ||
+    stockStatusFilter !== 'ALL';
 
   // Build comparison groups (side-by-side comparison of items across suppliers)
   const comparisonGroups = useMemo<ItemComparisonGroup[]>(() => {
@@ -439,8 +656,11 @@ const SupplierStockDirectory: React.FC = () => {
           itemId: row.itemId,
           itemName: row.itemName,
           internalSku: row.internalSku,
-          category: row.category,
+          itemPool: row.itemPool,
+          itemCatalog: row.itemCatalog,
           itemType: row.itemType,
+          category: row.category,
+          subCategory: row.subCategory,
           alternateOffers: [],
           totalOffers: 0,
           hasMatch: false,
@@ -508,12 +728,15 @@ const SupplierStockDirectory: React.FC = () => {
     });
   }, [directoryRows]);
 
-  // Filtered rows for Table and Grid view
+  // Filtered rows for Table and Grid view across all 5 classification tiers
   const filteredRows = useMemo(() => {
     return directoryRows.filter(row => {
       if (selectedSupplierId !== 'ALL' && row.supplierId !== selectedSupplierId) return false;
-      if (selectedCategory !== 'ALL' && row.category !== selectedCategory) return false;
+      if (selectedPool !== 'ALL' && row.itemPool !== selectedPool) return false;
+      if (selectedCatalog !== 'ALL' && row.itemCatalog !== selectedCatalog) return false;
       if (selectedItemType !== 'ALL' && row.itemType !== selectedItemType) return false;
+      if (selectedCategory !== 'ALL' && row.category !== selectedCategory) return false;
+      if (selectedSubCategory !== 'ALL' && row.subCategory !== selectedSubCategory) return false;
 
       if (stockStatusFilter === 'IN_STOCK' && row.breakdown.availableOrderQty <= 0) return false;
       if (stockStatusFilter === 'LOW_STOCK' && (row.stockStatus !== 'LOW_STOCK' || row.breakdown.availableOrderQty <= 0)) return false;
@@ -526,38 +749,50 @@ const SupplierStockDirectory: React.FC = () => {
         const matchesInternalSku = row.internalSku.toLowerCase().includes(query);
         const matchesSupplierSku = row.supplierSku.toLowerCase().includes(query);
         const matchesSupplierName = row.supplierName.toLowerCase().includes(query);
-        const matchesCategory = row.category.toLowerCase().includes(query);
-        const matchesItemType = row.itemType.toLowerCase().includes(query);
-        if (!matchesName && !matchesInternalSku && !matchesSupplierSku && !matchesSupplierName && !matchesCategory && !matchesItemType) {
+        const matchesPool = (row.itemPool || '').toLowerCase().includes(query);
+        const matchesCatalog = (row.itemCatalog || '').toLowerCase().includes(query);
+        const matchesItemType = (row.itemType || '').toLowerCase().includes(query);
+        const matchesCategory = (row.category || '').toLowerCase().includes(query);
+        const matchesSubCategory = (row.subCategory || '').toLowerCase().includes(query);
+
+        if (!matchesName && !matchesInternalSku && !matchesSupplierSku && !matchesSupplierName &&
+            !matchesPool && !matchesCatalog && !matchesItemType && !matchesCategory && !matchesSubCategory) {
           return false;
         }
       }
 
       return true;
     });
-  }, [directoryRows, selectedSupplierId, selectedCategory, selectedItemType, stockStatusFilter, searchTerm]);
+  }, [directoryRows, selectedSupplierId, selectedPool, selectedCatalog, selectedItemType, selectedCategory, selectedSubCategory, stockStatusFilter, searchTerm]);
 
-  // Filtered comparison groups
+  // Filtered comparison groups across all 5 classification tiers
   const filteredComparisonGroups = useMemo(() => {
     return comparisonGroups.filter(group => {
       if (compareOnlyMatches && !group.hasMatch) return false;
-      if (selectedCategory !== 'ALL' && group.category !== selectedCategory) return false;
+      if (selectedPool !== 'ALL' && group.itemPool !== selectedPool) return false;
+      if (selectedCatalog !== 'ALL' && group.itemCatalog !== selectedCatalog) return false;
       if (selectedItemType !== 'ALL' && group.itemType !== selectedItemType) return false;
+      if (selectedCategory !== 'ALL' && group.category !== selectedCategory) return false;
+      if (selectedSubCategory !== 'ALL' && group.subCategory !== selectedSubCategory) return false;
 
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
         const matchName = group.itemName.toLowerCase().includes(query);
         const matchSku = group.internalSku.toLowerCase().includes(query);
-        const matchCategory = group.category.toLowerCase().includes(query);
-        const matchItemType = group.itemType.toLowerCase().includes(query);
+        const matchPool = (group.itemPool || '').toLowerCase().includes(query);
+        const matchCatalog = (group.itemCatalog || '').toLowerCase().includes(query);
+        const matchType = (group.itemType || '').toLowerCase().includes(query);
+        const matchCategory = (group.category || '').toLowerCase().includes(query);
+        const matchSubCategory = (group.subCategory || '').toLowerCase().includes(query);
         const matchSupplier = group.alternateOffers.some(o => o.supplierName.toLowerCase().includes(query)) ||
           (group.defaultOffer && group.defaultOffer.supplierName.toLowerCase().includes(query));
-        if (!matchName && !matchSku && !matchCategory && !matchItemType && !matchSupplier) return false;
+
+        if (!matchName && !matchSku && !matchPool && !matchCatalog && !matchType && !matchCategory && !matchSubCategory && !matchSupplier) return false;
       }
 
       return true;
     });
-  }, [comparisonGroups, compareOnlyMatches, selectedCategory, selectedItemType, searchTerm]);
+  }, [comparisonGroups, compareOnlyMatches, selectedPool, selectedCatalog, selectedItemType, selectedCategory, selectedSubCategory, searchTerm]);
 
   // Total active count based on current view
   const activeTotalCount = viewMode === 'COMPARE' ? filteredComparisonGroups.length : filteredRows.length;
@@ -575,6 +810,26 @@ const SupplierStockDirectory: React.FC = () => {
     const start = (currentPage - 1) * pageSize;
     return filteredComparisonGroups.slice(start, start + pageSize);
   }, [filteredComparisonGroups, currentPage, pageSize]);
+
+  // Expansion helpers for Compare Table
+  const toggleExpandGroup = (key: string) => {
+    setExpandedGroupKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const allExpanded = paginatedComparisonGroups.length > 0 && paginatedComparisonGroups.every(g => expandedGroupKeys.has(g.key));
+
+  const toggleExpandAll = () => {
+    if (allExpanded) {
+      setExpandedGroupKeys(new Set());
+    } else {
+      setExpandedGroupKeys(new Set(paginatedComparisonGroups.map(g => g.key)));
+    }
+  };
 
   // Handles clicking Order: redirects to /create and translates the item & supplier directly into the order cart
   const handleOrder = (row: DirectoryRow | SupplierOffer) => {
@@ -646,6 +901,7 @@ const SupplierStockDirectory: React.FC = () => {
 
       {/* Filter and Control Bar */}
       <div className="bg-white dark:bg-nocturne rounded-2xl p-4 border border-default shadow-sm space-y-3">
+        {/* Top Controls: Search, Compare Prices Toggle, Table / Grid Toggle */}
         <div className="flex flex-col lg:flex-row gap-3 justify-between items-center">
           {/* Universal Search */}
           <div className="relative w-full lg:w-80">
@@ -661,7 +917,7 @@ const SupplierStockDirectory: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
               >
                 <X size={15} />
               </button>
@@ -669,60 +925,6 @@ const SupplierStockDirectory: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2.5 w-full lg:w-auto justify-end flex-wrap">
-            {/* 1. Master Category Filter (Admin Classification Tier: Item Types) */}
-            <select
-              value={selectedItemType}
-              onChange={e => handleItemTypeChange(e.target.value)}
-              className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              title="Filter by master category (Admin Tier: Item Types)"
-            >
-              <option value="ALL">All Categories</option>
-              {availableItemTypes.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-
-            {/* 2. Specific Item Filter (Admin Classification Tier: Categories) */}
-            <select
-              value={selectedCategory}
-              onChange={e => setSelectedCategory(e.target.value)}
-              className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              title="Filter by item classification (Admin Tier: Categories)"
-            >
-              <option value="ALL">All Items</option>
-              {availableCategories.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-
-            {/* Stock Status Filter (for Table/Grid) */}
-            {viewMode !== 'COMPARE' && (
-              <select
-                value={stockStatusFilter}
-                onChange={e => setStockStatusFilter(e.target.value as any)}
-                className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              >
-                <option value="ALL">All Stock Levels</option>
-                <option value="IN_STOCK">In Stock (&gt;0)</option>
-                <option value="LOW_STOCK">Low Stock (&lt;50)</option>
-                <option value="PRESSURE">Reservation Pressure</option>
-                <option value="OUT_OF_STOCK">Out of Stock (0)</option>
-              </select>
-            )}
-
-            {/* Comparison Match Toggle (when in Compare Mode) */}
-            {viewMode === 'COMPARE' && (
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2">
-                <input
-                  type="checkbox"
-                  checked={compareOnlyMatches}
-                  onChange={e => setCompareOnlyMatches(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span>Only genuine matches (2+ suppliers)</span>
-              </label>
-            )}
-
             {/* Compare Prices Dedicated Standalone Toggle Button */}
             <button
               type="button"
@@ -768,6 +970,120 @@ const SupplierStockDirectory: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* 5-Tier Classification Hierarchy Dropdowns + Contextual Controls */}
+        <div className="pt-2 border-t border-default flex items-center gap-2 flex-wrap text-xs">
+          <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-secondary mr-1 shrink-0">
+            <Filter size={12} />
+            <span>Hierarchy:</span>
+          </div>
+
+          {/* 1. Pool Filter (Admin Tier: POOL) */}
+          <select
+            value={selectedPool}
+            onChange={e => handlePoolChange(e.target.value)}
+            className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-2.5 py-1.5 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            title="Filter by Pool (Admin Tier 1)"
+          >
+            <option value="ALL">All Pools</option>
+            {availablePools.map(p => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+
+          {/* 2. Catalogue Filter (Admin Tier: CATALOG) */}
+          <select
+            value={selectedCatalog}
+            onChange={e => handleCatalogChange(e.target.value)}
+            className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-2.5 py-1.5 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            title="Filter by Catalogue (Admin Tier 2)"
+          >
+            <option value="ALL">All Catalogues</option>
+            {availableCatalogs.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+
+          {/* 3. Item Type Filter (Admin Tier: TYPE) */}
+          <select
+            value={selectedItemType}
+            onChange={e => handleItemTypeChange(e.target.value)}
+            className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-2.5 py-1.5 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            title="Filter by Item Type (Admin Tier 3)"
+          >
+            <option value="ALL">All Item Types</option>
+            {availableItemTypes.map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+
+          {/* 4. Category Filter (Admin Tier: CATEGORY) */}
+          <select
+            value={selectedCategory}
+            onChange={e => handleCategoryChange(e.target.value)}
+            className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-2.5 py-1.5 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            title="Filter by Category (Admin Tier 4)"
+          >
+            <option value="ALL">All Categories</option>
+            {availableCategories.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+
+          {/* 5. Sub-category Filter (Admin Tier: SUB_CATEGORY) */}
+          <select
+            value={selectedSubCategory}
+            onChange={e => handleSubCategoryChange(e.target.value)}
+            className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-2.5 py-1.5 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            title="Filter by Sub-category (Admin Tier 5)"
+          >
+            <option value="ALL">All Sub-categories</option>
+            {availableSubCategories.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+
+          {/* Stock Status Filter (for Table/Grid) */}
+          {viewMode !== 'COMPARE' && (
+            <select
+              value={stockStatusFilter}
+              onChange={e => setStockStatusFilter(e.target.value as any)}
+              className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-2.5 py-1.5 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            >
+              <option value="ALL">All Stock Levels</option>
+              <option value="IN_STOCK">In Stock (&gt;0)</option>
+              <option value="LOW_STOCK">Low Stock (&lt;50)</option>
+              <option value="PRESSURE">Reservation Pressure</option>
+              <option value="OUT_OF_STOCK">Out of Stock (0)</option>
+            </select>
+          )}
+
+          {/* Comparison Genuine Match Toggle (when in Compare Mode) */}
+          {viewMode === 'COMPARE' && (
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-2.5 py-1.5">
+              <input
+                type="checkbox"
+                checked={compareOnlyMatches}
+                onChange={e => setCompareOnlyMatches(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>Genuine matches only (2+ suppliers)</span>
+            </label>
+          )}
+
+          {/* Clear Filters Reset Button */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleClearAllFilters}
+              className="inline-flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 font-bold px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer ml-auto"
+              title="Reset all search and hierarchy filters"
+            >
+              <RotateCcw size={12} />
+              <span>Clear Filters</span>
+            </button>
+          )}
         </div>
 
         {/* Supplier Selector Pills (for Table and Grid views) */}
@@ -879,18 +1195,14 @@ const SupplierStockDirectory: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-1.5 text-[10px] text-tertiary mt-0.5 flex-wrap">
                           <span className="font-mono font-semibold">SKU: {row.internalSku}</span>
-                          {row.itemType && (
-                            <>
+                          {getItemTaxonomyBadges(row).map(badge => (
+                            <React.Fragment key={badge}>
                               <span>·</span>
-                              <span className="px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-medium">{row.itemType}</span>
-                            </>
-                          )}
-                          {row.category && (
-                            <>
-                              <span>·</span>
-                              <span className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-surface text-secondary font-medium">{row.category}</span>
-                            </>
-                          )}
+                              <span className="px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-medium">
+                                {badge}
+                              </span>
+                            </React.Fragment>
+                          ))}
                         </div>
                       </td>
 
@@ -1005,183 +1317,324 @@ const SupplierStockDirectory: React.FC = () => {
           </div>
         )}
 
-        {/* 2. COMPARE PRICES VIEW: Genuine Side-by-Side Supplier Matching */}
+        {/* 2. COMPARE PRICES VIEW: Collapsible Table View */}
         {viewMode === 'COMPARE' && (
-          <div className="divide-y divide-default">
-            {paginatedComparisonGroups.length > 0 ? (
-              paginatedComparisonGroups.map(group => {
-                const defaultPrice = group.defaultOffer?.unitPrice ?? 0;
-                return (
-                  <div key={group.key} className="p-4 hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors">
-                    {/* Item Heading */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-primary dark:text-white text-sm">
-                            {group.itemName}
-                          </h4>
-                          {group.hasMatch ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300">
-                              <Scale size={11} /> {group.totalOffers} Suppliers Matched
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700 dark:bg-surface dark:text-gray-300">
-                              Single Supplier (NCC Only)
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-tertiary mt-0.5 flex-wrap">
-                          <span className="font-mono">SKU: {group.internalSku}</span>
-                          {group.itemType && (
-                            <>
-                              <span>·</span>
-                              <span className="text-blue-600 dark:text-blue-400 font-semibold">{group.itemType}</span>
-                            </>
-                          )}
-                          {group.category && (
-                            <>
-                              <span>·</span>
-                              <span className="text-secondary">{group.category}</span>
-                            </>
-                          )}
-                          {group.hasMatch && group.minPrice > 0 && (
-                            <>
-                              <span>·</span>
-                              <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                                Lowest Price: {formatCurrency(group.minPrice)} ({group.cheapestSupplierName})
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Side-by-Side Supplier Cards Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                      {/* Default Preferred: NCC Apparel */}
-                      {group.defaultOffer ? (
-                        <div className="p-3.5 rounded-xl border-2 border-emerald-400/80 dark:border-emerald-600/60 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-sm flex flex-col justify-between">
-                          <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-xs font-black text-emerald-900 dark:text-emerald-200">
-                                {group.defaultOffer.supplierName}
-                              </span>
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500 text-white">
-                                <Check size={10} /> Default
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-emerald-800/80 dark:text-emerald-300 font-mono mb-2">
-                              Code: {group.defaultOffer.supplierSku}
-                            </div>
-                            <div className="flex items-baseline justify-between py-1 border-t border-emerald-200 dark:border-emerald-800/40">
-                              <span className="text-xs text-secondary">Unit Price:</span>
-                              <span className="text-sm font-black font-mono text-emerald-900 dark:text-white">
-                                {formatCurrency(group.defaultOffer.unitPrice)}
-                              </span>
-                            </div>
-                            <div className="flex items-baseline justify-between py-1 border-t border-emerald-200 dark:border-emerald-800/40 text-xs">
-                              <span className="text-secondary">Available Stock:</span>
-                              <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                                {group.defaultOffer.availableStock.toLocaleString()} units
-                              </span>
-                            </div>
-                          </div>
-                          <div className="mt-3 pt-2.5 border-t border-emerald-200 dark:border-emerald-800/40">
-                            <button
-                              type="button"
-                              onClick={() => handleOrder(group.defaultOffer!)}
-                              className="w-full py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <ShoppingCart size={13} /> Order NCC
-                            </button>
-                          </div>
-                        </div>
+          <div className="w-full">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead className="bg-gray-50 dark:bg-surface text-secondary uppercase font-bold text-[10px] tracking-wider border-b border-default">
+                <tr>
+                  <th className="px-3.5 py-3 w-[36%]">Product & Internal SKU</th>
+                  <th className="px-3 py-3 w-[16%]">NCC Preferred (Default)</th>
+                  <th className="px-3 py-3 w-[18%]">Lowest Market Offer</th>
+                  <th className="px-3 py-3 text-center w-[16%]">Pricing Variance</th>
+                  <th className="px-3 py-3 text-right w-[14%]">
+                    <button
+                      type="button"
+                      onClick={toggleExpandAll}
+                      className="inline-flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                    >
+                      {allExpanded ? (
+                        <>
+                          <ChevronUp size={13} />
+                          <span>Collapse All</span>
+                        </>
                       ) : (
-                        <div className="p-3.5 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/50 dark:bg-surface/50 text-xs text-tertiary flex items-center justify-center text-center">
-                          Not available via NCC Apparel
-                        </div>
+                        <>
+                          <ChevronDown size={13} />
+                          <span>Expand All</span>
+                        </>
                       )}
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-default font-medium">
+                {paginatedComparisonGroups.length > 0 ? (
+                  paginatedComparisonGroups.map(group => {
+                    const isExpanded = expandedGroupKeys.has(group.key);
+                    const defaultPrice = group.defaultOffer?.unitPrice ?? 0;
+                    const hasDefault = !!group.defaultOffer;
+                    const minPrice = group.minPrice;
+                    const priceDiff = hasDefault && minPrice > 0 ? defaultPrice - minPrice : 0;
+                    const pctDiff = hasDefault && defaultPrice > 0 ? (priceDiff / defaultPrice) * 100 : 0;
+                    const isCheaper = priceDiff > 0.001;
+                    const isMoreExpensive = priceDiff < -0.001;
 
-                      {/* Alternate Suppliers */}
-                      {group.alternateOffers.map(alt => {
-                        const priceDelta = defaultPrice > 0 ? alt.unitPrice - defaultPrice : 0;
-                        const percentDelta = defaultPrice > 0 ? ((alt.unitPrice - defaultPrice) / defaultPrice) * 100 : 0;
-                        const isCheaper = priceDelta < -0.001;
-                        const isMoreExpensive = priceDelta > 0.001;
+                    const allOffers = [
+                      ...(group.defaultOffer ? [group.defaultOffer] : []),
+                      ...group.alternateOffers
+                    ];
 
-                        return (
-                          <div
-                            key={alt.supplierId}
-                            className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-sm flex flex-col justify-between"
-                          >
-                            <div>
-                              <div className="flex items-center justify-between mb-1.5">
-                                <span className="text-xs font-bold text-gray-900 dark:text-white truncate max-w-[150px]">
-                                  {alt.supplierName || 'Alternate Supplier'}
-                                </span>
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                                  Alternate
-                                </span>
-                              </div>
-                              <div className="text-[10px] text-tertiary font-mono mb-2">
-                                Code: {alt.supplierSku}
-                              </div>
+                    const badges = getItemTaxonomyBadges(group);
 
-                              <div className="flex items-baseline justify-between py-1 border-t border-gray-100 dark:border-gray-800">
-                                <span className="text-xs text-secondary">Unit Price:</span>
-                                <div className="text-right">
-                                  <span className="text-sm font-black font-mono text-gray-900 dark:text-white">
-                                    {alt.unitPrice > 0 ? formatCurrency(alt.unitPrice) : 'Quote on Req.'}
-                                  </span>
-                                  {defaultPrice > 0 && (
-                                    <div className="text-[10px] font-bold">
-                                      {isCheaper && (
-                                        <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 justify-end">
-                                          <TrendingDown size={11} /> {formatCurrency(Math.abs(priceDelta))} ({Math.abs(percentDelta).toFixed(1)}% cheaper)
-                                        </span>
-                                      )}
-                                      {isMoreExpensive && (
-                                        <span className="text-rose-600 dark:text-rose-400 flex items-center gap-0.5 justify-end">
-                                          <TrendingUp size={11} /> +{formatCurrency(priceDelta)} (+{percentDelta.toFixed(1)}%)
-                                        </span>
-                                      )}
-                                      {!isCheaper && !isMoreExpensive && (
-                                        <span className="text-secondary">$0.00 Parity</span>
-                                      )}
-                                    </div>
+                    return (
+                      <React.Fragment key={group.key}>
+                        {/* Parent Item Row */}
+                        <tr
+                          onClick={() => toggleExpandGroup(group.key)}
+                          className={`cursor-pointer transition-colors ${
+                            isExpanded
+                              ? 'bg-blue-50/40 dark:bg-blue-950/20'
+                              : 'hover:bg-gray-50/80 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          {/* Product & SKU */}
+                          <td className="px-3.5 py-3">
+                            <div className="flex items-start gap-2">
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  toggleExpandGroup(group.key);
+                                }}
+                                className="p-1 rounded-lg text-secondary hover:text-primary hover:bg-gray-200 dark:hover:bg-white/10 transition-colors mt-0.5 shrink-0 cursor-pointer"
+                                aria-label={isExpanded ? 'Collapse suppliers' : 'Expand suppliers'}
+                              >
+                                {isExpanded ? <ChevronDown size={16} className="text-blue-600" /> : <ChevronRight size={16} />}
+                              </button>
+                              <div className="min-w-0">
+                                <div className="font-bold text-primary dark:text-white text-xs leading-snug line-clamp-2">
+                                  {group.itemName}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[10px] text-tertiary mt-1 flex-wrap">
+                                  <span className="font-mono font-semibold">SKU: {group.internalSku}</span>
+                                  {badges.map(b => (
+                                    <React.Fragment key={b}>
+                                      <span>·</span>
+                                      <span className="px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-medium">
+                                        {b}
+                                      </span>
+                                    </React.Fragment>
+                                  ))}
+                                  <span>·</span>
+                                  {group.hasMatch ? (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded font-extrabold text-[9px] bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300">
+                                      <Scale size={10} /> {group.totalOffers} Suppliers
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-gray-100 text-gray-700 dark:bg-surface dark:text-gray-300">
+                                      1 Supplier
+                                    </span>
                                   )}
                                 </div>
                               </div>
+                            </div>
+                          </td>
 
-                              <div className="flex items-baseline justify-between py-1 border-t border-default text-xs">
-                                <span className="text-secondary">Available Stock:</span>
-                                <span className={`font-mono font-bold ${alt.availableStock > 0 ? 'text-primary dark:text-white' : 'text-rose-500'}`}>
-                                  {alt.availableStock.toLocaleString()} units
-                                </span>
+                          {/* NCC Preferred Price */}
+                          <td className="px-3 py-3">
+                            {group.defaultOffer ? (
+                              <div>
+                                <div className="font-mono font-bold text-primary dark:text-white text-xs">
+                                  {formatCurrency(group.defaultOffer.unitPrice)}
+                                </div>
+                                <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5">
+                                  {group.defaultOffer.availableStock.toLocaleString()} units avail.
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <span className="text-secondary italic text-[11px]">Not supplied by NCC</span>
+                            )}
+                          </td>
 
-                            <div className="mt-3 pt-2.5 border-t border-default">
-                              <button
-                                type="button"
-                                onClick={() => handleOrder(alt)}
-                                className="w-full py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                              >
-                                <ShoppingCart size={13} /> Order Alternate
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="p-12 text-center text-secondary text-xs">
-                No matched items found for the current search or filters.
-              </div>
-            )}
+                          {/* Lowest Market Offer */}
+                          <td className="px-3 py-3">
+                            {minPrice > 0 ? (
+                              <div>
+                                <div className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-xs">
+                                  {formatCurrency(minPrice)}
+                                </div>
+                                <div className="text-[10px] text-tertiary truncate max-w-[150px] mt-0.5">
+                                  via {group.cheapestSupplierName}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-secondary">—</span>
+                            )}
+                          </td>
+
+                          {/* Pricing Variance */}
+                          <td className="px-3 py-3 text-center">
+                            {hasDefault && group.hasMatch ? (
+                              isCheaper ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
+                                  <TrendingDown size={11} /> Save {formatCurrency(priceDiff)} ({pctDiff.toFixed(1)}%)
+                                </span>
+                              ) : isMoreExpensive ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300">
+                                  <TrendingUp size={11} /> +{formatCurrency(Math.abs(priceDiff))}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-secondary border border-gray-200 dark:border-gray-800">
+                                  $0.00 Parity
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-secondary text-[11px]">—</span>
+                            )}
+                          </td>
+
+                          {/* Action: Expand Toggle / View Offers */}
+                          <td className="px-3 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                toggleExpandGroup(group.key);
+                              }}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                isExpanded
+                                  ? 'bg-blue-600 text-white shadow-sm'
+                                  : 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/40 hover:bg-blue-100'
+                              }`}
+                            >
+                              <span>{isExpanded ? 'Hide' : 'View Offers'}</span>
+                              <span className="px-1 py-0.2 rounded-full bg-black/10 text-[10px]">
+                                {group.totalOffers}
+                              </span>
+                              {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            </button>
+                          </td>
+                        </tr>
+
+                        {/* Collapsible Child Row: Nested Supplier Breakdown */}
+                        {isExpanded && (
+                          <tr className="bg-slate-50/80 dark:bg-white/[0.02]">
+                            <td colSpan={5} className="p-0 border-b border-default">
+                              <div className="p-3 pl-8 sm:pl-10 space-y-2 border-l-4 border-blue-500 bg-blue-50/20 dark:bg-blue-950/10">
+                                <div className="flex items-center justify-between text-[11px] font-bold text-secondary uppercase tracking-wider">
+                                  <span>Supplier Price & Stock Breakdown</span>
+                                  <span className="text-[10px] text-tertiary font-normal">
+                                    Click Order to load into requisition with pre-filled supplier & item
+                                  </span>
+                                </div>
+
+                                <table className="w-full text-left border-collapse text-xs bg-white dark:bg-nocturne rounded-xl border border-default overflow-hidden shadow-sm">
+                                  <thead className="bg-gray-100 dark:bg-surface text-secondary uppercase font-bold text-[9px] tracking-wider border-b border-default">
+                                    <tr>
+                                      <th className="px-3 py-2 w-[28%]">Supplier</th>
+                                      <th className="px-2.5 py-2 w-[16%]">Supplier Code</th>
+                                      <th className="px-3 py-2 text-right w-[14%]">Unit Price</th>
+                                      <th className="px-3 py-2 text-center w-[16%]">vs NCC Default</th>
+                                      <th className="px-3 py-2 text-right w-[14%]">Net Orderable</th>
+                                      <th className="px-3 py-2 text-right w-[12%]">Action</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-default font-medium">
+                                    {allOffers.map(offer => {
+                                      const isDefault = offer.isDefault;
+                                      const delta = defaultPrice > 0 ? offer.unitPrice - defaultPrice : 0;
+                                      const pct = defaultPrice > 0 ? (delta / defaultPrice) * 100 : 0;
+                                      const isBestPrice = offer.unitPrice === minPrice && group.hasMatch && minPrice > 0;
+
+                                      return (
+                                        <tr
+                                          key={offer.supplierId}
+                                          className={`hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors ${
+                                            isDefault ? 'bg-emerald-50/20 dark:bg-emerald-950/10' : ''
+                                          }`}
+                                        >
+                                          {/* Supplier */}
+                                          <td className="px-3 py-2.5">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                              <span className="font-bold text-primary dark:text-white text-xs truncate max-w-[160px]">
+                                                {offer.supplierName}
+                                              </span>
+                                              {isDefault ? (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
+                                                  <CheckCircle2 size={10} /> Default
+                                                </span>
+                                              ) : (
+                                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300">
+                                                  Alternate
+                                                </span>
+                                              )}
+                                            </div>
+                                          </td>
+
+                                          {/* Code */}
+                                          <td className="px-2.5 py-2.5 font-mono text-[11px] text-tertiary">
+                                            {offer.supplierSku}
+                                          </td>
+
+                                          {/* Unit Price */}
+                                          <td className="px-3 py-2.5 text-right">
+                                            <div className="font-mono font-bold text-primary dark:text-white text-xs">
+                                              {offer.unitPrice > 0 ? formatCurrency(offer.unitPrice) : 'Quote on Req.'}
+                                              {isBestPrice && (
+                                                <span className="ml-1.5 px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                                  Lowest
+                                                </span>
+                                              )}
+                                            </div>
+                                          </td>
+
+                                          {/* vs NCC Default */}
+                                          <td className="px-3 py-2.5 text-center">
+                                            {isDefault ? (
+                                              <span className="text-secondary font-mono text-[11px]">— (Baseline)</span>
+                                            ) : defaultPrice > 0 ? (
+                                              delta < -0.001 ? (
+                                                <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center justify-center gap-1 text-[11px]">
+                                                  <TrendingDown size={12} /> -{formatCurrency(Math.abs(delta))} ({Math.abs(pct).toFixed(1)}% cheaper)
+                                                </span>
+                                              ) : delta > 0.001 ? (
+                                                <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center justify-center gap-1 text-[11px]">
+                                                  <TrendingUp size={12} /> +{formatCurrency(delta)} (+{pct.toFixed(1)}%)
+                                                </span>
+                                              ) : (
+                                                <span className="text-secondary text-[11px]">$0.00 Parity</span>
+                                              )
+                                            ) : (
+                                              <span className="text-tertiary text-[11px]">—</span>
+                                            )}
+                                          </td>
+
+                                          {/* Net Orderable */}
+                                          <td className="px-3 py-2.5 text-right font-mono font-bold text-xs">
+                                            <span className={offer.availableStock > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                                              {offer.availableStock.toLocaleString()}
+                                            </span>
+                                            <span className="text-[10px] text-tertiary font-normal ml-1">units</span>
+                                          </td>
+
+                                          {/* Action */}
+                                          <td className="px-3 py-2.5 text-right">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleOrder(offer)}
+                                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-white font-bold text-xs shadow-sm transition-all cursor-pointer ml-auto ${
+                                                isDefault
+                                                  ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
+                                                  : 'bg-amber-600 hover:bg-amber-700 shadow-amber-500/20'
+                                              }`}
+                                              title={isDefault ? 'Order with NCC Apparel' : `Order with alternate supplier ${offer.supplierName}`}
+                                            >
+                                              <ShoppingCart size={12} />
+                                              <span>{isDefault ? 'Order NCC' : 'Order Alt'}</span>
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-12 text-center text-secondary">
+                      No matched items found for the current search or filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -1197,14 +1650,11 @@ const SupplierStockDirectory: React.FC = () => {
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="flex items-center gap-1 flex-wrap">
-                        <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40">
-                          {row.category}
-                        </span>
-                        {row.itemType && (
-                          <span className="text-[10px] font-bold text-tertiary px-2 py-0.5 rounded-full bg-gray-100 dark:bg-nocturne">
-                            {row.itemType}
+                        {getItemTaxonomyBadges(row).map(b => (
+                          <span key={b} className="text-[10px] font-bold text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40">
+                            {b}
                           </span>
-                        )}
+                        ))}
                       </div>
                       {row.isDefault ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
@@ -1223,18 +1673,6 @@ const SupplierStockDirectory: React.FC = () => {
                     <p className="text-[10px] text-tertiary font-mono mt-0.5">
                       SKU: {row.internalSku} · Code: {row.supplierSku}
                     </p>
-                    <div className="flex items-center gap-1 text-[10px] text-tertiary mt-1 flex-wrap">
-                      {row.itemType && (
-                        <span className="px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-medium">
-                          {row.itemType}
-                        </span>
-                      )}
-                      {row.category && (
-                        <span className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-surface text-secondary font-medium">
-                          {row.category}
-                        </span>
-                      )}
-                    </div>
                     <p className="text-xs text-secondary mt-1 font-semibold">{row.supplierName}</p>
 
                     <div className="mt-3 pt-3 border-t border-default flex items-baseline justify-between">

@@ -58,7 +58,15 @@ test.describe('Supplier Stock Directory & Alternate Supplier Requisition Suite',
         const compareBtn = page.locator('button:has-text("Compare Prices")').first();
         if (await compareBtn.isVisible()) {
             await compareBtn.click();
-            await page.waitForTimeout(800);
+            await page.waitForTimeout(1000);
+
+            // Expand the first matched item row to showcase the supplier breakdown table
+            const viewOffersBtn = page.locator('button:has-text("View Offers")').first();
+            if (await viewOffersBtn.isVisible()) {
+                await viewOffersBtn.click();
+                await page.waitForTimeout(600);
+            }
+
             await page.screenshot({ path: path.join(briefAssetsDir, 'supplier_stock_directory_compare.png') });
             await page.screenshot({ path: path.join(artifactsDir, 'supplier_stock_directory_compare.png') });
             
