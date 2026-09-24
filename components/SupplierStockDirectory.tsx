@@ -35,6 +35,7 @@ export interface DirectoryRow {
   isDefault: boolean;
   supplierSku: string;
   category: string;
+  itemType: string;
   unitPrice: number;
   packMultiple: number;
   breakdown: StockBreakdown;
@@ -59,6 +60,7 @@ export interface ItemComparisonGroup {
   itemName: string;
   internalSku: string;
   category: string;
+  itemType: string;
   defaultOffer?: SupplierOffer;
   alternateOffers: SupplierOffer[];
   totalOffers: number;
@@ -66,6 +68,116 @@ export interface ItemComparisonGroup {
   minPrice: number;
   maxPrice: number;
   cheapestSupplierName: string;
+}
+
+/**
+ * Resolves a clean, standardized high-level business category from product metadata.
+ */
+export function resolveItemCategory(itemOrSnap: {
+  category?: string;
+  itemType?: string;
+  itemCatalog?: string;
+  name?: string;
+  productName?: string;
+}): string {
+  const rawType = (itemOrSnap.itemType || '').trim();
+  const rawCat = (itemOrSnap.category || '').trim();
+  const rawName = (itemOrSnap.name || itemOrSnap.productName || '').toUpperCase();
+
+  if (
+    rawType === 'Bed Linen' ||
+    ['Sheet', 'Pillow Case', 'Pillow', 'Doona Cover', 'Doonas & Quilts', 'Bedspread', 'Blanket', 'Protector', 'Topper', 'Runner'].includes(rawCat) ||
+    rawName.includes('BEDSPREAD') || rawName.includes('SHEET') || rawName.includes('PILLOW') || rawName.includes('DOONA') || rawName.includes('QUILT')
+  ) {
+    return 'Bed Linen';
+  }
+
+  if (
+    rawType === 'Bath Linen' || rawType === 'Bathroom' ||
+    ['Towel', 'Towelling', 'Robe', 'Rug', 'Textiles'].includes(rawCat) ||
+    rawName.includes('BATH') || rawName.includes('TOWEL') || rawName.includes('ROBE') || rawName.includes('FACEWASHER')
+  ) {
+    return 'Bath & Towels';
+  }
+
+  if (
+    rawType === 'Table Linen' || rawType === 'Kitchen Linen' ||
+    ['Table Linen', 'Table', 'Napkin', 'Apron', 'Bib', 'Cloth'].includes(rawCat) ||
+    rawName.includes('NAPKIN') || rawName.includes('SERVIETTE') || rawName.includes('TABLE') || rawName.includes('APRON')
+  ) {
+    return 'Table & Kitchen Linen';
+  }
+
+  if (
+    rawType === 'Hospital Wear' || rawType === 'Theatre' || rawType === 'Surgeon Items' ||
+    ['Theatre', 'Theater Pack', 'Gown', 'Scrubs-Top', 'Scrubs-Bottom', 'Baby', 'Clothing-Baby', 'Sling', 'Pack', 'Packs'].includes(rawCat) ||
+    rawName.includes('GOWN') || rawName.includes('SCRUB') || rawName.includes('THEATRE') || rawName.includes('THEATER') || rawName.includes('PATIENT')
+  ) {
+    return 'Healthcare & Theatre';
+  }
+
+  if (
+    rawType === 'Work Wear' || rawType === 'Apparel' ||
+    ['Apparel', 'Workwear', 'Uniform', 'Uniform-Top', 'Shirt', 'Clothing-Top', 'Clothing-Bottom', 'Jacket', 'Cap', 'Hand Wear', 'Hood'].includes(rawCat) ||
+    rawName.includes('UNIFORM') || rawName.includes('WORKWEAR') || rawName.includes('JACKET') || rawName.includes('CARGO')
+  ) {
+    return 'Workwear & Apparel';
+  }
+
+  if (
+    rawType === 'Cleaning' ||
+    ['Mop', 'Duster', 'Mat', 'Mats', 'Rags', 'Linen Bags', 'Bag', 'Inserts & Liners', 'Trolleys & Tubs'].includes(rawCat) ||
+    rawName.includes('MOP') || rawName.includes('DUSTER') || rawName.includes('LINEN BAG') || rawName.includes('TROLLEY') || rawName.includes('TUB')
+  ) {
+    return 'Cleaning & Facility';
+  }
+
+  return 'Consumables & General';
+}
+
+/**
+ * Resolves a normalized specific item/product type from product metadata.
+ */
+export function resolveItemType(itemOrSnap: {
+  category?: string;
+  name?: string;
+  productName?: string;
+}): string {
+  const rawCat = (itemOrSnap.category || '').trim();
+  const rawName = (itemOrSnap.name || itemOrSnap.productName || '').toUpperCase();
+
+  if (rawCat && !['Unassigned', 'Other', 'Consumables', 'Textiles', 'Hospitality', 'TBA', 'Surcharge'].includes(rawCat)) {
+    if (rawCat === 'Scrubs-Top' || rawCat === 'Scrubs-Bottom') return 'Scrubs';
+    if (rawCat === 'Clothing-Top' || rawCat === 'Clothing-Bottom' || rawCat === 'Clothing-Baby' || rawCat === 'Baby') return 'Garments & PJs';
+    if (rawCat === 'Doonas & Quilts' || rawCat === 'Doona Cover') return 'Doonas & Quilts';
+    if (rawCat === 'Pillow Case' || rawCat === 'Pillow') return 'Pillows & Cases';
+    if (rawCat === 'Towelling') return 'Towel';
+    if (rawCat === 'Mats') return 'Mat';
+    if (rawCat === 'Packs' || rawCat === 'Theater Pack') return 'Theatre Packs';
+    if (rawCat === 'Curtains & Drapes') return 'Curtains';
+    return rawCat;
+  }
+
+  if (rawName.includes('PILLOW')) return 'Pillows & Cases';
+  if (rawName.includes('DOONA') || rawName.includes('QUILT') || rawName.includes('COMFORTER')) return 'Doonas & Quilts';
+  if (rawName.includes('BEDSPREAD')) return 'Bedspread';
+  if (rawName.includes('SHEET')) return 'Sheet';
+  if (rawName.includes('TOWEL') || rawName.includes('WASHER')) return 'Towel';
+  if (rawName.includes('ROBE')) return 'Robe';
+  if (rawName.includes('NAPKIN') || rawName.includes('SERVIETTE')) return 'Napkin';
+  if (rawName.includes('TABLE') || rawName.includes('TL ')) return 'Table Linen';
+  if (rawName.includes('APRON') || rawName.includes('BIB')) return 'Apron';
+  if (rawName.includes('GOWN')) return 'Gown';
+  if (rawName.includes('SCRUB')) return 'Scrubs';
+  if (rawName.includes('MOP')) return 'Mop';
+  if (rawName.includes('MAT')) return 'Mat';
+  if (rawName.includes('BLANKET')) return 'Blanket';
+  if (rawName.includes('PROTECTOR') || rawName.includes('BEDPAD') || rawName.includes('KYLIE')) return 'Protector';
+  if (rawName.includes('CURTAIN') || rawName.includes('DRAPE')) return 'Curtains';
+  if (rawName.includes('BAG')) return 'Linen Bags';
+  if (rawName.includes('UNIFORM') || rawName.includes('SHIRT') || rawName.includes('PANT')) return 'Uniform';
+
+  return 'General Items';
 }
 
 const SupplierStockDirectory: React.FC = () => {
@@ -82,6 +194,7 @@ const SupplierStockDirectory: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [selectedItemType, setSelectedItemType] = useState<string>('ALL');
   const [stockStatusFilter, setStockStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'PRESSURE' | 'OUT_OF_STOCK'>('ALL');
   const [viewMode, setViewMode] = useState<'TABLE' | 'COMPARE' | 'GRID'>('TABLE');
   const [compareOnlyMatches, setCompareOnlyMatches] = useState<boolean>(true);
@@ -93,7 +206,7 @@ const SupplierStockDirectory: React.FC = () => {
   // Reset pagination when any filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedSupplierId, selectedCategory, stockStatusFilter, viewMode, compareOnlyMatches, pageSize]);
+  }, [searchTerm, selectedSupplierId, selectedCategory, selectedItemType, stockStatusFilter, viewMode, compareOnlyMatches, pageSize]);
 
   // Contact Ash modal state
   const [selectedItemForRequest, setSelectedItemForRequest] = useState<DirectoryRow | null>(null);
@@ -103,19 +216,7 @@ const SupplierStockDirectory: React.FC = () => {
   const [requestNotes, setRequestNotes] = useState('');
   const [isCopiedEmail, setIsCopiedEmail] = useState(false);
 
-  // Categories list
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    items.forEach(i => {
-      if (i.category && i.category.trim()) set.add(i.category.trim());
-    });
-    (stockSnapshots || []).forEach(s => {
-      if (s.category && s.category.trim()) set.add(s.category.trim());
-    });
-    return Array.from(set).sort();
-  }, [items, stockSnapshots]);
-
-  // Build directory rows
+  // Build directory rows with clean category and distinct itemType
   const directoryRows = useMemo<DirectoryRow[]>(() => {
     const rows: DirectoryRow[] = [];
     const processedKeys = new Set<string>();
@@ -177,6 +278,9 @@ const SupplierStockDirectory: React.FC = () => {
           stockStatus = 'LOW_STOCK';
         }
 
+        const category = resolveItemCategory(item);
+        const itemType = resolveItemType(item);
+
         rows.push({
           key: rowKey,
           itemId: item.id,
@@ -186,7 +290,8 @@ const SupplierStockDirectory: React.FC = () => {
           supplierName: supplier.name,
           isDefault,
           supplierSku,
-          category: item.category || 'General',
+          category,
+          itemType,
           unitPrice: item.unitPrice || 0,
           packMultiple: item.defaultOrderMultiple || breakdown.packConversionFactor || 1,
           breakdown,
@@ -230,6 +335,17 @@ const SupplierStockDirectory: React.FC = () => {
         stockStatus = 'LOW_STOCK';
       }
 
+      const category = resolveItemCategory({
+        category: snap.category,
+        name: snap.productName,
+        productName: snap.productName
+      });
+      const itemType = resolveItemType({
+        category: snap.category,
+        name: snap.productName,
+        productName: snap.productName
+      });
+
       rows.push({
         key: rowKey,
         itemId: snap.id,
@@ -239,7 +355,8 @@ const SupplierStockDirectory: React.FC = () => {
         supplierName: supplier.name,
         isDefault,
         supplierSku: snap.supplierSku,
-        category: snap.category || 'General',
+        category,
+        itemType,
         unitPrice: snap.sellPrice || snap.unitPrice || 0,
         packMultiple: snap.cartonQty || 1,
         breakdown,
@@ -254,6 +371,31 @@ const SupplierStockDirectory: React.FC = () => {
       return a.itemName.localeCompare(b.itemName);
     });
   }, [items, suppliers, mappings, stockSnapshots, pos]);
+
+  // Master Categories list
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    directoryRows.forEach(r => {
+      if (r.category && r.category.trim()) set.add(r.category.trim());
+    });
+    return Array.from(set).sort();
+  }, [directoryRows]);
+
+  // Distinct Items list (dynamically scoped when a category is selected)
+  const availableItemTypes = useMemo(() => {
+    const set = new Set<string>();
+    directoryRows.forEach(r => {
+      if (selectedCategory === 'ALL' || r.category === selectedCategory) {
+        if (r.itemType && r.itemType.trim()) set.add(r.itemType.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [directoryRows, selectedCategory]);
+
+  const handleCategoryChange = (newCat: string) => {
+    setSelectedCategory(newCat);
+    setSelectedItemType('ALL');
+  };
 
   // Build comparison groups (side-by-side comparison of items across suppliers)
   const comparisonGroups = useMemo<ItemComparisonGroup[]>(() => {
@@ -271,6 +413,7 @@ const SupplierStockDirectory: React.FC = () => {
           itemName: row.itemName,
           internalSku: row.internalSku,
           category: row.category,
+          itemType: row.itemType,
           alternateOffers: [],
           totalOffers: 0,
           hasMatch: false,
@@ -343,6 +486,7 @@ const SupplierStockDirectory: React.FC = () => {
     return directoryRows.filter(row => {
       if (selectedSupplierId !== 'ALL' && row.supplierId !== selectedSupplierId) return false;
       if (selectedCategory !== 'ALL' && row.category !== selectedCategory) return false;
+      if (selectedItemType !== 'ALL' && row.itemType !== selectedItemType) return false;
 
       if (stockStatusFilter === 'IN_STOCK' && row.breakdown.availableOrderQty <= 0) return false;
       if (stockStatusFilter === 'LOW_STOCK' && (row.stockStatus !== 'LOW_STOCK' || row.breakdown.availableOrderQty <= 0)) return false;
@@ -356,34 +500,37 @@ const SupplierStockDirectory: React.FC = () => {
         const matchesSupplierSku = row.supplierSku.toLowerCase().includes(query);
         const matchesSupplierName = row.supplierName.toLowerCase().includes(query);
         const matchesCategory = row.category.toLowerCase().includes(query);
-        if (!matchesName && !matchesInternalSku && !matchesSupplierSku && !matchesSupplierName && !matchesCategory) {
+        const matchesItemType = row.itemType.toLowerCase().includes(query);
+        if (!matchesName && !matchesInternalSku && !matchesSupplierSku && !matchesSupplierName && !matchesCategory && !matchesItemType) {
           return false;
         }
       }
 
       return true;
     });
-  }, [directoryRows, selectedSupplierId, selectedCategory, stockStatusFilter, searchTerm]);
+  }, [directoryRows, selectedSupplierId, selectedCategory, selectedItemType, stockStatusFilter, searchTerm]);
 
   // Filtered comparison groups
   const filteredComparisonGroups = useMemo(() => {
     return comparisonGroups.filter(group => {
       if (compareOnlyMatches && !group.hasMatch) return false;
       if (selectedCategory !== 'ALL' && group.category !== selectedCategory) return false;
+      if (selectedItemType !== 'ALL' && group.itemType !== selectedItemType) return false;
 
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
         const matchName = group.itemName.toLowerCase().includes(query);
         const matchSku = group.internalSku.toLowerCase().includes(query);
         const matchCategory = group.category.toLowerCase().includes(query);
+        const matchItemType = group.itemType.toLowerCase().includes(query);
         const matchSupplier = group.alternateOffers.some(o => o.supplierName.toLowerCase().includes(query)) ||
           (group.defaultOffer && group.defaultOffer.supplierName.toLowerCase().includes(query));
-        if (!matchName && !matchSku && !matchCategory && !matchSupplier) return false;
+        if (!matchName && !matchSku && !matchCategory && !matchItemType && !matchSupplier) return false;
       }
 
       return true;
     });
-  }, [comparisonGroups, compareOnlyMatches, selectedCategory, searchTerm]);
+  }, [comparisonGroups, compareOnlyMatches, selectedCategory, selectedItemType, searchTerm]);
 
   // Total active count based on current view
   const activeTotalCount = viewMode === 'COMPARE' ? filteredComparisonGroups.length : filteredRows.length;
@@ -467,18 +614,18 @@ const SupplierStockDirectory: React.FC = () => {
       {/* Page Header with Direct, Crisp Subtitle */}
       <PageHeader
         title="Supplier Stock Directory"
-        subtitle="National supplier inventory directory and side-by-side price comparison. NCC Apparel is default preferred."
+        subtitle="Supplier inventory directory"
       />
 
       {/* Filter and Control Bar */}
       <div className="bg-white dark:bg-nocturne rounded-2xl p-4 border border-default shadow-sm space-y-3">
         <div className="flex flex-col lg:flex-row gap-3 justify-between items-center">
           {/* Universal Search */}
-          <div className="relative w-full lg:w-96">
+          <div className="relative w-full lg:w-80">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
             <input
               type="text"
-              placeholder="Search product, SKU, supplier, category..."
+              placeholder="Search product, SKU, supplier..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl pl-10 pr-9 py-2 text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium transition-all"
@@ -495,15 +642,29 @@ const SupplierStockDirectory: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2.5 w-full lg:w-auto justify-end flex-wrap">
-            {/* Category Filter */}
+            {/* 1. Category Filter */}
             <select
               value={selectedCategory}
-              onChange={e => setSelectedCategory(e.target.value)}
+              onChange={e => handleCategoryChange(e.target.value)}
               className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              title="Filter by master category"
             >
               <option value="ALL">All Categories</option>
               {categories.map(c => (
                 <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+
+            {/* 2. Distinct Item / Product Filter */}
+            <select
+              value={selectedItemType}
+              onChange={e => setSelectedItemType(e.target.value)}
+              className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              title="Filter by specific item"
+            >
+              <option value="ALL">All Items</option>
+              {availableItemTypes.map(it => (
+                <option key={it} value={it}>{it}</option>
               ))}
             </select>
 
@@ -535,30 +696,36 @@ const SupplierStockDirectory: React.FC = () => {
               </label>
             )}
 
-            {/* View Mode Switcher: Table | Compare Prices | Grid */}
-            <div className="flex border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-gray-100 dark:bg-[#15171e] p-0.5">
+            {/* Compare Prices Dedicated Standalone Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setViewMode(prev => prev === 'COMPARE' ? 'TABLE' : 'COMPARE')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
+                viewMode === 'COMPARE'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/20'
+                  : 'bg-white dark:bg-[#15171e] border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 hover:border-blue-400 hover:text-blue-600'
+              }`}
+              title="Toggle side-by-side supplier price comparison"
+            >
+              <Scale size={15} className={viewMode === 'COMPARE' ? 'text-white' : 'text-blue-600'} />
+              <span>Compare Prices</span>
+              {viewMode === 'COMPARE' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-white ml-0.5 animate-pulse" />
+              )}
+            </button>
+
+            {/* Table & Grid Paired Segmented Control */}
+            <div className="flex border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-gray-100 dark:bg-[#15171e] p-0.5 shadow-sm">
               <button
                 type="button"
                 onClick={() => setViewMode('TABLE')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                   viewMode === 'TABLE' ? 'bg-white dark:bg-nocturne text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:hover:text-white'
                 }`}
-                title="Directory table"
+                title="Directory table view"
               >
                 <List size={15} />
                 <span>Table</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode('COMPARE')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  viewMode === 'COMPARE' ? 'bg-white dark:bg-nocturne text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:hover:text-white'
-                }`}
-                title="Compare genuine matched items across suppliers"
-              >
-                <Scale size={15} />
-                <span>Compare Prices</span>
               </button>
 
               <button
@@ -683,10 +850,16 @@ const SupplierStockDirectory: React.FC = () => {
                         <div className="font-bold text-primary dark:text-white text-xs leading-snug line-clamp-2" title={row.itemName}>
                           {row.itemName}
                         </div>
-                        <div className="flex items-center gap-1.5 text-[10px] text-tertiary mt-0.5">
+                        <div className="flex items-center gap-1.5 text-[10px] text-tertiary mt-0.5 flex-wrap">
                           <span className="font-mono font-semibold">SKU: {row.internalSku}</span>
                           <span>·</span>
-                          <span className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-surface text-secondary">{row.category}</span>
+                          <span className="px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-medium">{row.category}</span>
+                          {row.itemType && (
+                            <>
+                              <span>·</span>
+                              <span className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-surface text-secondary font-medium">{row.itemType}</span>
+                            </>
+                          )}
                         </div>
                       </td>
 
@@ -826,10 +999,16 @@ const SupplierStockDirectory: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 text-[11px] text-tertiary mt-0.5">
+                        <div className="flex items-center gap-2 text-[11px] text-tertiary mt-0.5 flex-wrap">
                           <span className="font-mono">SKU: {group.internalSku}</span>
                           <span>·</span>
-                          <span className="text-secondary">{group.category}</span>
+                          <span className="text-blue-600 dark:text-blue-400 font-semibold">{group.category}</span>
+                          {group.itemType && (
+                            <>
+                              <span>·</span>
+                              <span className="text-secondary">{group.itemType}</span>
+                            </>
+                          )}
                           {group.hasMatch && group.minPrice > 0 && (
                             <>
                               <span>·</span>
@@ -982,9 +1161,16 @@ const SupplierStockDirectory: React.FC = () => {
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className="text-[10px] font-bold text-tertiary px-2 py-0.5 rounded-full bg-gray-100 dark:bg-nocturne">
-                        {row.category}
-                      </span>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40">
+                          {row.category}
+                        </span>
+                        {row.itemType && (
+                          <span className="text-[10px] font-bold text-tertiary px-2 py-0.5 rounded-full bg-gray-100 dark:bg-nocturne">
+                            {row.itemType}
+                          </span>
+                        )}
+                      </div>
                       {row.isDefault ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
                           NCC (Default)
