@@ -2,10 +2,11 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
-import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin, Download, CalendarRange, FunnelX, Edit2 } from 'lucide-react';
+import { Search, Link as LinkIcon, CheckCircle, Activity, List, MapPin, Download, CalendarRange, FunnelX, Edit2, Clock3 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { PORequest, POStatus } from '../types.ts';
 import { formatCurrency, calculatePOTotals } from '../utils/taxCalculations.ts';
+import { getReservationTimeRemaining, isPOReservingStock } from '../utils/reservationUtils.ts';
 import {
     buildActiveRequestsCsv,
     filterActiveRequests,
@@ -392,13 +393,30 @@ const ActiveRequestsView = () => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border
-                                            ${po.status === 'APPROVED_PENDING_CONCUR' || po.status === 'APPROVED_PENDING_CONCUR_REQUEST'
-                                                ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-900/30' 
-                                                : 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 border-green-200 dark:border-green-900/30'
-                                            }`}>
-                                            {formatActiveRequestStatus(po.status)}
-                                        </span>
+                                        <div className="flex flex-col items-center gap-1">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border
+                                                ${po.status === 'APPROVED_PENDING_CONCUR' || po.status === 'APPROVED_PENDING_CONCUR_REQUEST'
+                                                    ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-900/30' 
+                                                    : 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 border-green-200 dark:border-green-900/30'
+                                                }`}>
+                                                {formatActiveRequestStatus(po.status)}
+                                            </span>
+                                            {isPOReservingStock(po) && (() => {
+                                                const timeRemaining = getReservationTimeRemaining(po);
+                                                return (
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                                        timeRemaining.urgency === 'CRITICAL'
+                                                            ? 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/40 animate-pulse'
+                                                            : timeRemaining.urgency === 'WARNING'
+                                                            ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/40'
+                                                            : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/40'
+                                                    }`}>
+                                                        <Clock3 size={10} />
+                                                        {timeRemaining.label}
+                                                    </span>
+                                                );
+                                            })()}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                                         {po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? (
@@ -464,15 +482,32 @@ const ActiveRequestsView = () => {
                                             </p>
                                             <p className="text-xs text-gray-500 mt-0.5 truncate">{po.supplierName}</p>
                                         </div>
-                                        <span
-                                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                                                isPendingEntry
-                                                    ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/30'
-                                                    : 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-900/30'
-                                            }`}
-                                        >
-                                            {isPendingConcurPO ? 'Pending PO' : isPendingConcurReq ? 'Pending Req' : 'Active Linked'}
-                                        </span>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span
+                                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                                                    isPendingEntry
+                                                        ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/30'
+                                                        : 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-900/30'
+                                                }`}
+                                            >
+                                                {isPendingConcurPO ? 'Pending PO' : isPendingConcurReq ? 'Pending Req' : 'Active Linked'}
+                                            </span>
+                                            {isPOReservingStock(po) && (() => {
+                                                const timeRemaining = getReservationTimeRemaining(po);
+                                                return (
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                                        timeRemaining.urgency === 'CRITICAL'
+                                                            ? 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/40 animate-pulse'
+                                                            : timeRemaining.urgency === 'WARNING'
+                                                            ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/40'
+                                                            : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/40'
+                                                    }`}>
+                                                        <Clock3 size={10} />
+                                                        {timeRemaining.label}
+                                                    </span>
+                                                );
+                                            })()}
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3 text-xs text-gray-500">

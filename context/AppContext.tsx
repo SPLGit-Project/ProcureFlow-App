@@ -7,6 +7,7 @@ import { DirectoryService } from '../services/graphService.ts';
 import { notificationEngineService } from '../services/notificationEngineService.ts';
 import { realtimeNotificationService } from '../services/realtimeNotificationService.ts';
 import { canonicalSupplierName, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
+import { calculateItemRunningStock, StockBreakdown } from '../utils/reservationUtils.ts';
 import {
     getSessionActivityStorageKey,
     SESSION_ACTIVITY_WRITE_THROTTLE_MS,
@@ -341,6 +342,8 @@ interface AppContextType {
 
   // Misc
   getEffectiveStock: (itemId: string, supplierId: string) => number;
+  getStockBreakdown: (itemId: string, supplierId: string) => StockBreakdown;
+  checkReservationExpiries: () => Promise<void>;
 
   // Item Master CRUD
   addItem: (item: Item) => Promise<void>;
@@ -678,7 +681,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 : currentUser?.siteIds?.length
                     ? currentUser.siteIds
                     : availableSiteIds;
-            const defaults = sites.filter(s => allowedSiteIds.includes(s.id)).slice(0, 3).map(s => s.id);
+            const defaults = sites.length > 0 
+                ? sites.filter(s => allowedSiteIds.includes(s.id)).slice(0, 3).map(s => s.id) 
+                : allowedSiteIds;
             _setActiveSiteIds(defaults);
             localStorage.setItem('activeSiteIds', JSON.stringify(defaults));
             return;
@@ -799,9 +804,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             if (fixtures) {
                 setRoles([...fixtures.roles]);
                 hydrateDevelopmentData(fixtures);
+                if (!silent) setIsLoadingData(false);
+                return;
             }
-            if (!silent) setIsLoadingData(false);
-            return;
         }
 
         // Smart Sync Check
@@ -957,7 +962,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     setIsAuthenticated(true);
                     setIsPendingApproval(false);
                     setIsLoadingAuth(false);
-                    setIsLoadingData(false);
+                    if (fixtures) {
+                        setIsLoadingData(false);
+                    } else {
+                        await reloadData(false, true);
+                    }
                 })();
                 return () => { mounted = false; };
             } catch {
@@ -2551,19 +2560,39 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const updatePOStatus = async (poId: string, status: POStatus, event: ApprovalEvent) => {
+    const isApprovedStatus = status === 'APPROVED_PENDING_CONCUR' || status === 'APPROVED_PENDING_CONCUR_REQUEST';
+    const nowIso = new Date().toISOString();
+    const expiryIso = isApprovedStatus ? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() : undefined;
+
     // Optimistic
-    setPos(prev => prev.map(p => p.id === poId ? { ...p, status, approvalHistory: [...p.approvalHistory, event] } : p));
+    setPos(prev => prev.map(p => {
+        if (p.id !== poId) return p;
+        return { 
+            ...p, 
+            status, 
+            approvalHistory: [...p.approvalHistory, event],
+            ...(isApprovedStatus ? { approvedAt: nowIso, reservationExpiresAt: expiryIso } : {})
+        };
+    }));
     
     // Persist
     try {
-        await db.updatePOStatus(poId, status);
+        const extraUpdates: Record<string, unknown> = {};
+        if (isApprovedStatus) {
+            extraUpdates.approved_at = nowIso;
+            extraUpdates.reservation_expires_at = expiryIso;
+        } else if (status === 'ACTIVE') {
+            extraUpdates.concur_linked_at = nowIso;
+            extraUpdates.reservation_expires_at = null;
+        }
+        await db.updatePOStatus(poId, status, extraUpdates);
         await db.addPOApproval(poId, event);
         
         // NOTIFICATION TRIGGER
-        if (status === 'APPROVED_PENDING_CONCUR') {
+        if (status === 'APPROVED_PENDING_CONCUR' || status === 'APPROVED_PENDING_CONCUR_REQUEST') {
             const po = pos.find(p => p.id === poId);
             if (po) sendNotification('PO_APPROVED', { poId: po.displayId || po.id, approver: event.approverName });
-            logAction('PO_APPROVED', { id: poId, status });
+            logAction('PO_APPROVED', { id: poId, status, reservationExpiresAt: expiryIso });
         } else if (status === 'REJECTED') {
             const po = pos.find(p => p.id === poId);
             if (po) sendNotification('PO_REJECTED', { poId: po.displayId || po.id, rejector: event.approverName });
@@ -2740,10 +2769,18 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
 
       // 1. Optimistic Update (Immediate Feedback)
+      const nowIso = new Date().toISOString();
       setPos(prev => prev.map(p => {
           if (p.id !== poId) return p;
           const updatedLines = p.lines.map(l => ({ ...l, concurPoNumber: trimmedPoNumber }));
-          return { ...p, lines: updatedLines, status: 'ACTIVE' as POStatus };
+          return { 
+              ...p, 
+              lines: updatedLines, 
+              concurPoNumber: trimmedPoNumber,
+              concurLinkedAt: nowIso,
+              reservationExpiresAt: undefined,
+              status: 'ACTIVE' as POStatus 
+          };
       }));
       
       try {
@@ -2980,37 +3017,22 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   };
 
+  const getStockBreakdown = (itemId: string, supplierId: string): StockBreakdown => {
+      const item = items.find(i => i.id === itemId);
+      return calculateItemRunningStock(
+          itemId,
+          supplierId,
+          suppliers,
+          mappings,
+          stockSnapshots,
+          pos,
+          item?.defaultOrderMultiple || 1
+      );
+  };
+
   const getEffectiveStock = (itemId: string, supplierId: string): number => {
-      // Find all supplier IDs matching the same canonical supplier name
-      const targetSupplier = suppliers.find(s => s.id === supplierId);
-      const targetCanonical = targetSupplier ? canonicalSupplierName(targetSupplier.name) : '';
-      const equivalentSupplierIds = targetCanonical
-          ? suppliers.filter(s => canonicalSupplierName(s.name) === targetCanonical).map(s => s.id)
-          : [supplierId];
-
-      // 1. Find the confirmed mapping across equivalent supplier IDs
-      const mapping = mappings.find(m => m.productId === itemId && equivalentSupplierIds.includes(m.supplierId) && m.mappingStatus === 'CONFIRMED');
-      if (!mapping) return 0; 
-      
-      const relevantSnapshots = stockSnapshots
-        .filter(s => equivalentSupplierIds.includes(s.supplierId) && s.supplierSku === mapping.supplierSku)
-        .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime());
-
-      if (relevantSnapshots.length === 0) return 0; 
-      const latestSnapshot = relevantSnapshots[0];
-      
-      let pendingDemand = 0;
-      pos.forEach(po => {
-          if (new Date(po.requestDate) > new Date(latestSnapshot.snapshotDate)) {
-             if (['PENDING_APPROVAL', 'APPROVED_PENDING_CONCUR', 'ACTIVE'].includes(po.status)) {
-                 const demandForItem = po.lines
-                     .filter(l => l.itemId === itemId)
-                     .reduce((sum, line) => sum + (Number(line.quantityOrdered) || 0), 0);
-                 pendingDemand += demandForItem;
-             }
-          }
-      });
-      return Math.max(0, latestSnapshot.availableQty - pendingDemand);
+      const breakdown = getStockBreakdown(itemId, supplierId);
+      return breakdown.availableOrderQty;
   };
 
   // --- Master & Mapping Logic --
@@ -3040,37 +3062,32 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         const maps = mappingsOverride || mappings;
         const confirmed = maps.filter(m => m.mappingStatus === 'CONFIRMED');
         const snaps = snapshotsOverride || stockSnapshots;
-        const latestStockMap = new Map<string, SupplierStockSnapshot>();
-        snaps.forEach(s => {
-            const key = `${s.supplierId}:${s.supplierSku}`;
-            const existing = latestStockMap.get(key);
-            if (!existing || new Date(s.snapshotDate) > new Date(existing.snapshotDate)) {
-                latestStockMap.set(key, s);
-            }
-        });
         
         const newAvailabilityMap = new Map<string, ProductAvailability>();
         confirmed.forEach(map => {
-            const snapshot = latestStockMap.get(`${map.supplierId}:${map.supplierSku}`);
-            if (snapshot) {
-                const item = items.find(i => i.id === map.productId);
-                if (item) {
-                   const availableUnits = snapshot.availableQty * (map.packConversionFactor || 1);
-                   const orderMult = item.defaultOrderMultiple || 1;
-                   const availableOrderQty = Math.floor(availableUnits / orderMult) * orderMult;
-                   const key = `${map.productId}:${map.supplierId}`;
-                   
-                   if (!newAvailabilityMap.has(key)) {
-                       const existing = availability.find(a => a.productId === map.productId && a.supplierId === map.supplierId);
-                       newAvailabilityMap.set(key, {
-                           id: existing ? existing.id : crypto.randomUUID(), 
-                           productId: item.id,
-                           supplierId: map.supplierId,
-                           availableUnits,
-                           availableOrderQty,
-                           updatedAt: new Date().toISOString()
-                       } as ProductAvailability);
-                   }
+            const item = items.find(i => i.id === map.productId);
+            if (item) {
+                const breakdown = calculateItemRunningStock(
+                    item.id,
+                    map.supplierId,
+                    suppliers,
+                    maps,
+                    snaps,
+                    pos,
+                    item.defaultOrderMultiple || 1
+                );
+                
+                const key = `${map.productId}:${map.supplierId}`;
+                if (!newAvailabilityMap.has(key)) {
+                    const existing = availability.find(a => a.productId === map.productId && a.supplierId === map.supplierId);
+                    newAvailabilityMap.set(key, {
+                        id: existing ? existing.id : crypto.randomUUID(), 
+                        productId: item.id,
+                        supplierId: map.supplierId,
+                        availableUnits: breakdown.effectiveStockUnits,
+                        availableOrderQty: breakdown.availableOrderQty,
+                        updatedAt: new Date().toISOString()
+                    } as ProductAvailability);
                 }
             }
         });
@@ -3084,6 +3101,19 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         console.error('Failed to refresh availability', e);
         logAction('PRODUCT_AVAILABILITY_REFRESH_FAILED', { error: (e as Error).message });
     }
+  };
+
+  const checkReservationExpiries = async () => {
+      try {
+          const res = await db.expireStaleReservations();
+          if (res && res.cancelled_count > 0) {
+              console.log(`[ReservationEngine] Cancelled ${res.cancelled_count} expired reservation(s):`, res.cancelled_items);
+              logAction('RESERVATIONS_AUTO_CANCELLED', { count: res.cancelled_count, items: res.cancelled_items });
+              await reloadData(true, true);
+          }
+      } catch (err) {
+          console.warn('[ReservationEngine] Expiry sweep failed:', err);
+      }
   };
 
   const importMasterProducts = async (newItems: Partial<Item>[], archiveMissing: boolean = false) => {
@@ -3358,6 +3388,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       : `${Math.floor(idleSecondsRemaining / 60)}:${String(idleSecondsRemaining % 60).padStart(2, '0')}`;
 
 
+  // Periodic background sweep for expired reservations (runs on auth and every 60s)
+  useEffect(() => {
+      if (!isAuthenticated) return;
+      checkReservationExpiries();
+      const interval = setInterval(() => {
+          checkReservationExpiries();
+      }, 60 * 1000);
+      return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
   // --- Context Value Memoization ---
   const contextValue = React.useMemo(() => ({
     currentUser, isAuthenticated, activeSiteIds, setActiveSiteIds, siteName, login, logout, isLoadingAuth, isPendingApproval, isLoadingData,
@@ -3383,6 +3423,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: importMasterProducts,
     getAttributeOptions, upsertAttributeOption, deleteAttributeOption,
     getEffectiveStock,
+    getStockBreakdown,
+    checkReservationExpiries,
     addItem, updateItem, deleteItem, archiveItem, reactivateItem,
     addSupplier, updateSupplier, deleteSupplier,
     addSite, updateSite, deleteSite,

@@ -1,21 +1,28 @@
 import React, { useEffect, useMemo, useState, useRef, Fragment, type ComponentType } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
 import {
     AlertCircle,
+    AlertTriangle,
     AlignLeft,
     BarChart3,
     Building2,
     Check,
     CheckCircle2,
     ChevronDown,
+    Clock,
     Download,
+    ExternalLink,
     FileText,
     Filter,
     MapPin,
     Package,
     PackageCheck,
     Search,
+    ShieldAlert,
+    Timer,
     TrendingUp,
+    Truck,
     Layers,
     ArrowRight,
     ArrowRightLeft,
@@ -36,7 +43,8 @@ import {
     XAxis,
     YAxis
 } from 'recharts';
-import type { Item, PORequest, POStatus, Site } from '../types.ts';
+import type { Item, PORequest, POStatus, Site, Supplier, SupplierProductMap, ProductAvailability, SupplierStockSnapshot } from '../types.ts';
+import { calculateItemRunningStock, isPOReservingStock, getReservationTimeRemaining } from '../utils/reservationUtils.ts';
 import {
     DEFAULT_FY27_BUDGETS,
     buildEomReconciliation,
@@ -49,8 +57,32 @@ import {
 } from '../utils/budgetTracking.ts';
 
 
-type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY' | 'LINEN_INJECTION' | 'SUPPLIER_INVENTORY' | 'SUPPLIER_ITEM_MAPPING' | 'SUPPLIER_PRICE_VARIANCE' | 'EOM_BUDGET_RECONCILIATION';
+type ReportType = 'OUTSTANDING_DELIVERIES' | 'ALL_DELIVERIES' | 'DELIVERY_VARIANCE' | 'FINANCE_SUMMARY' | 'PO_STATUS' | 'DELIVERY_RECONCILIATION' | 'ITEM_REQUEST_HISTORY' | 'MONTHLY_SUMMARY' | 'LINEN_INJECTION' | 'SUPPLIER_INVENTORY' | 'SUPPLIER_ITEM_MAPPING' | 'SUPPLIER_PRICE_VARIANCE' | 'EOM_BUDGET_RECONCILIATION' | 'STOCK_RESERVATIONS';
 type ReportRow = Record<string, string | number>;
+
+interface StockReservationReportRow extends ReportRow {
+    id: string;
+    supplier: string;
+    supplierId: string;
+    supplierSku: string;
+    internalSku: string;
+    productName: string;
+    category: string;
+    unitPrice: number;
+    baselineSoh: number;
+    baselineAvailable: number;
+    activeReservedUnits: number;
+    activeReservedPOs: number;
+    committedActiveUnits: number;
+    committedActivePOs: number;
+    effectiveStock: number;
+    availableOrderableQty: number;
+    packMultiple: number;
+    reservationPressure: 'CRITICAL' | 'HIGH' | 'RESERVED' | 'HEALTHY';
+    totalReservedValue: number;
+    effectiveValue: number;
+    snapshotDate: string;
+}
 
 interface LinenInjectionReportRow extends ReportRow {
     id: string;
@@ -226,6 +258,7 @@ const REPORT_TITLES: Record<ReportType, string> = {
     ITEM_REQUEST_HISTORY: 'Item Request History by Site',
     MONTHLY_SUMMARY: 'Monthly PO & Receipting Summary',
     LINEN_INJECTION: 'Linen Injection Report',
+    STOCK_RESERVATIONS: 'Dynamic Stock & Reservation Insights',
     SUPPLIER_INVENTORY: 'Available Supplier Inventory Report',
     SUPPLIER_ITEM_MAPPING: 'Supplier Item Mapping Report',
     SUPPLIER_PRICE_VARIANCE: 'Supplier Price Sync Variance Report',
@@ -242,6 +275,7 @@ const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
     ITEM_REQUEST_HISTORY: 'Search and select an item to see its most recent request activity at each site, with a detailed line-level export for deeper review.',
     MONTHLY_SUMMARY: 'Reconcile PO requests since July 2025. Groups POs monthly, showing total issued PO values, goods received (GR) values, and remaining open values.',
     LINEN_INJECTION: 'Comprehensive breakdown of all linen injected into circulation from closed purchase orders, detailing item quantities, unit pricing, and total injected value across sites and suppliers.',
+    STOCK_RESERVATIONS: 'Live running stock totals reconciling weekly snapshots, active 48-hour reservations awaiting Concur PO numbers, committed orders in delivery, and net orderable supplier stock.',
     SUPPLIER_INVENTORY: 'Provides by supplier the most recent inventory stock data available within the app, including SOH, available quantities, and stock on backorder.',
     SUPPLIER_ITEM_MAPPING: 'Provides a complete overview of the mapping of supplier items to corresponding items in the internal catalogue.',
     SUPPLIER_PRICE_VARIANCE: 'Compares supplier price reports against the internal catalogue prices for confirmed mappings, highlighting variations and sync status.',
@@ -249,7 +283,7 @@ const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
 };
 
 const DELIVERY_REPORTS: ReportType[] = ['OUTSTANDING_DELIVERIES', 'DELIVERY_VARIANCE', 'DELIVERY_RECONCILIATION'];
-const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY', 'LINEN_INJECTION', 'SUPPLIER_INVENTORY', 'SUPPLIER_ITEM_MAPPING', 'SUPPLIER_PRICE_VARIANCE', 'EOM_BUDGET_RECONCILIATION'];
+const FILTERABLE_REPORTS: ReportType[] = [...DELIVERY_REPORTS, 'ITEM_REQUEST_HISTORY', 'MONTHLY_SUMMARY', 'LINEN_INJECTION', 'SUPPLIER_INVENTORY', 'SUPPLIER_ITEM_MAPPING', 'SUPPLIER_PRICE_VARIANCE', 'EOM_BUDGET_RECONCILIATION', 'STOCK_RESERVATIONS'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ACTIVE_DELIVERY_STATUSES: POStatus[] = ['ACTIVE', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST', 'VARIANCE_PENDING'];
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4'];
@@ -747,6 +781,94 @@ const buildSupplierInventoryRows = (
     return data.sort((a, b) => String(a.supplier).localeCompare(String(b.supplier)) || String(a.supplierSku).localeCompare(String(b.supplierSku)));
 };
 
+const buildStockReservationRows = (
+    itemsList: Item[],
+    suppliersList: Supplier[],
+    snapshots: SupplierStockSnapshot[],
+    posList: PORequest[],
+    availabilityList: ProductAvailability[],
+    mappingsList: SupplierProductMap[]
+): StockReservationReportRow[] => {
+    const rows: StockReservationReportRow[] = [];
+    const processedKeys = new Set<string>();
+
+    itemsList.forEach((item) => {
+        const itemSupplierId = item.supplierId;
+        const suppliersToProcess: string[] = [];
+
+        if (itemSupplierId) {
+            suppliersToProcess.push(itemSupplierId);
+        }
+
+        (mappingsList || []).filter(m => m.productId === item.id).forEach(m => {
+            if (!suppliersToProcess.includes(m.supplierId)) {
+                suppliersToProcess.push(m.supplierId);
+            }
+        });
+
+        suppliersToProcess.forEach((supId) => {
+            const supplier = suppliersList.find(s => s.id === supId);
+            const mapping = (mappingsList || []).find(m => m.productId === item.id && m.supplierId === supId);
+            const supplierSku = mapping?.supplierSku || item.sapItemCodeNorm || item.sku;
+            const rowKey = `${supId}:${supplierSku}:${item.id}`;
+
+            if (processedKeys.has(rowKey)) return;
+            processedKeys.add(rowKey);
+
+            const running = calculateItemRunningStock(
+                item.id,
+                supId,
+                suppliersList,
+                mappingsList,
+                snapshots,
+                posList,
+                item.defaultOrderMultiple || 1
+            );
+
+            const unitPrice = item.unitPrice || 0;
+            let pressure: 'CRITICAL' | 'HIGH' | 'RESERVED' | 'HEALTHY' = 'HEALTHY';
+            if (running.availableOrderQty <= 0 && running.baseAvailableUnits > 0) {
+                pressure = 'CRITICAL';
+            } else if (running.reservedUnits > 0 && running.availableOrderQty < running.baseAvailableUnits * 0.3) {
+                pressure = 'HIGH';
+            } else if (running.reservedUnits > 0) {
+                pressure = 'RESERVED';
+            }
+
+            rows.push({
+                id: rowKey,
+                supplier: supplier ? supplier.name : 'Unknown Supplier',
+                supplierId: supId,
+                supplierSku,
+                internalSku: item.sku || item.sapItemCodeNorm || '-',
+                productName: item.name,
+                category: item.category || 'General',
+                unitPrice,
+                baselineSoh: running.rawSnapshotQty,
+                baselineAvailable: running.baseAvailableUnits,
+                activeReservedUnits: running.reservedUnits,
+                activeReservedPOs: running.reservedPOs,
+                committedActiveUnits: running.committedUnits,
+                committedActivePOs: running.committedPOs,
+                effectiveStock: running.effectiveStockUnits,
+                availableOrderableQty: running.availableOrderQty,
+                packMultiple: running.packConversionFactor,
+                reservationPressure: pressure,
+                totalReservedValue: running.reservedUnits * unitPrice,
+                effectiveValue: running.availableOrderQty * unitPrice,
+                snapshotDate: running.snapshotDate ? new Date(running.snapshotDate).toLocaleDateString() : 'Active'
+            });
+        });
+    });
+
+    return rows.sort((a, b) => {
+        const order = { CRITICAL: 0, HIGH: 1, RESERVED: 2, HEALTHY: 3 };
+        const diff = order[a.reservationPressure] - order[b.reservationPressure];
+        if (diff !== 0) return diff;
+        return b.activeReservedUnits - a.activeReservedUnits || a.productName.localeCompare(b.productName);
+    });
+};
+
 const buildSupplierItemMappingRows = (
     mappingsList: any[],
     itemsList: any[],
@@ -1015,6 +1137,26 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'customerName', label: 'Customer / Project' },
             { key: 'requester', label: 'Requester' },
             { key: 'status', label: 'Status' }
+        ];
+    }
+
+    if (report === 'STOCK_RESERVATIONS') {
+        return [
+            { key: 'supplier', label: 'Supplier' },
+            { key: 'supplierSku', label: 'Supplier SKU' },
+            { key: 'internalSku', label: 'Internal SKU' },
+            { key: 'productName', label: 'Product Name' },
+            { key: 'category', label: 'Category' },
+            { key: 'baselineSoh', label: 'Baseline SOH' },
+            { key: 'activeReservedUnits', label: 'Active Reserved Units (<48h)' },
+            { key: 'activeReservedPOs', label: 'Active Reserved PO Count' },
+            { key: 'committedActiveUnits', label: 'Committed In Delivery' },
+            { key: 'availableOrderableQty', label: 'Net Available Orderable' },
+            { key: 'unitPrice', label: 'Unit Price' },
+            { key: 'totalReservedValue', label: 'Total Reserved Value ($)' },
+            { key: 'effectiveValue', label: 'Available Orderable Value ($)' },
+            { key: 'reservationPressure', label: 'Stock Pressure Status' },
+            { key: 'snapshotDate', label: 'Baseline Snapshot Date' }
         ];
     }
 
@@ -1300,7 +1442,8 @@ const MultiSiteSlicer: React.FC<MultiSiteSlicerProps> = ({
 };
 
 const ReportingView = () => {
-    const { pos, allPos, sites, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers, hasPermission } = useApp();
+    const { pos, allPos, sites, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers, availability, hasPermission } = useApp();
+    const navigate = useNavigate();
     const reportPos = (allPos && allPos.length > 0) ? allPos : pos;
     useSetPageMeta({ disableBodyScroll: true });
     const [activeReport, setActiveReport] = useState<ReportType>(() => {
@@ -1346,7 +1489,7 @@ const ReportingView = () => {
     const isLinenInjectionReport = activeReport === 'LINEN_INJECTION';
     const isDateFilterableReport = isItemHistoryReport || isLinenInjectionReport;
     const isFilterableReport = FILTERABLE_REPORTS.includes(activeReport);
-    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport || activeReport === 'MONTHLY_SUMMARY' || isLinenInjectionReport || activeReport === 'SUPPLIER_INVENTORY' || activeReport === 'SUPPLIER_ITEM_MAPPING' || activeReport === 'SUPPLIER_PRICE_VARIANCE';
+    const canUseChart = activeReport === 'ALL_DELIVERIES' || isDeliveryReport || isItemHistoryReport || activeReport === 'MONTHLY_SUMMARY' || isLinenInjectionReport || activeReport === 'SUPPLIER_INVENTORY' || activeReport === 'SUPPLIER_ITEM_MAPPING' || activeReport === 'SUPPLIER_PRICE_VARIANCE' || activeReport === 'STOCK_RESERVATIONS';
 
     const siteOptions = useMemo(() => {
         const fromData = reportData.map((row) => String(row.site || '')).filter(Boolean);
@@ -1414,7 +1557,11 @@ const ReportingView = () => {
                 row.supplier,
                 row.site,
                 row.item,
+                row.productName,
                 row.sku,
+                row.internalSku,
+                row.supplierSku,
+                row.reservationPressure,
                 row.category,
                 row.requester,
                 row.status,
@@ -1631,6 +1778,8 @@ const ReportingView = () => {
                 data = buildMonthlySummaryRows(reportPos, monthlyStartDate, monthlyEndDate);
             } else if (activeReport === 'LINEN_INJECTION') {
                 data = buildLinenInjectionRows(reportPos, items);
+            } else if (activeReport === 'STOCK_RESERVATIONS') {
+                data = buildStockReservationRows(items, suppliers, stockSnapshots, reportPos, availability, mappings);
             } else if (activeReport === 'SUPPLIER_INVENTORY') {
                 data = buildSupplierInventoryRows(stockSnapshots, suppliers);
             } else if (activeReport === 'SUPPLIER_ITEM_MAPPING') {
@@ -1856,6 +2005,7 @@ const ReportingView = () => {
                             <ReportButton active={activeReport === 'FINANCE_SUMMARY'} icon={TrendingUp} label="Finance Summary" onClick={() => switchReport('FINANCE_SUMMARY')} />
                             <ReportButton active={activeReport === 'PO_STATUS'} icon={FileText} label="PO Status Report" onClick={() => switchReport('PO_STATUS')} />
                             <div className="border-t border-gray-200 dark:border-gray-800 my-2 pt-2 text-[10px] font-black text-gray-400 uppercase tracking-widest px-4">Supplier Insights</div>
+                            <ReportButton active={activeReport === 'STOCK_RESERVATIONS'} icon={Layers} label="Dynamic Stock & Reservations" onClick={() => switchReport('STOCK_RESERVATIONS')} />
                             <ReportButton active={activeReport === 'SUPPLIER_INVENTORY'} icon={Package} label="Supplier Available Inventory" onClick={() => switchReport('SUPPLIER_INVENTORY')} />
                             <ReportButton active={activeReport === 'SUPPLIER_ITEM_MAPPING'} icon={ArrowRightLeft} label="Supplier Item Mapping" onClick={() => switchReport('SUPPLIER_ITEM_MAPPING')} />
                             <ReportButton active={activeReport === 'SUPPLIER_PRICE_VARIANCE'} icon={TrendingUp} label="Supplier Price Variance" onClick={() => switchReport('SUPPLIER_PRICE_VARIANCE')} />
@@ -2012,7 +2162,7 @@ const ReportingView = () => {
                                                     className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-nocturne border border-gray-200 dark:border-gray-800 rounded-lg text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] outline-none"
                                                 />
                                             </label>
-                                            {activeReport !== 'SUPPLIER_INVENTORY' && activeReport !== 'SUPPLIER_ITEM_MAPPING' && activeReport !== 'SUPPLIER_PRICE_VARIANCE' && (
+                                            {activeReport !== 'SUPPLIER_INVENTORY' && activeReport !== 'SUPPLIER_ITEM_MAPPING' && activeReport !== 'SUPPLIER_PRICE_VARIANCE' && activeReport !== 'STOCK_RESERVATIONS' && (
                                                 <MultiSiteSlicer
                                                     availableSites={siteOptions}
                                                     selectedSites={selectedSites}
@@ -2215,6 +2365,13 @@ const ReportingView = () => {
                                 <MonthlySummaryVisual rows={getMonthlySummaryData(visibleReportData as MonthlySummaryReportRow[])} />
                             ) : activeReport === 'ALL_DELIVERIES' && viewMode === 'CHART' ? (
                                 <AllDeliveriesVisual data={getChartData()} />
+                            ) : activeReport === 'STOCK_RESERVATIONS' && viewMode === 'CHART' ? (
+                                <StockReservationsVisual 
+                                    rows={visibleReportData} 
+                                    pos={reportPos} 
+                                    chartMetric={chartMetric} 
+                                    onViewPO={(poId) => navigate(`/requests/${poId}`)}
+                                />
                             ) : activeReport === 'SUPPLIER_INVENTORY' && viewMode === 'CHART' ? (
                                 <SupplierInventoryVisual rows={visibleReportData} chartMetric={chartMetric} />
                             ) : activeReport === 'SUPPLIER_ITEM_MAPPING' && viewMode === 'CHART' ? (
@@ -3480,6 +3637,20 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
     <table className="w-full min-w-[900px] text-sm text-left">
         <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
             <tr>
+                {activeReport === 'STOCK_RESERVATIONS' && (
+                    <>
+                        <th className="px-5 py-4">Supplier / SKU</th>
+                        <th className="px-5 py-4">Internal Item</th>
+                        <th className="px-5 py-4 text-center">Snapshot SOH</th>
+                        <th className="px-5 py-4 text-center">Active Reserved (&lt;48h)</th>
+                        <th className="px-5 py-4 text-center">In Delivery</th>
+                        <th className="px-5 py-4 text-center">Net Available</th>
+                        <th className="px-5 py-4 text-right">Unit Price</th>
+                        <th className="px-5 py-4 text-right">Available Value</th>
+                        <th className="px-5 py-4 text-center">Stock Pressure</th>
+                        <th className="px-5 py-4">Baseline Date</th>
+                    </>
+                )}
                 {activeReport === 'SUPPLIER_INVENTORY' && (
                     <>
                         <th className="px-5 py-4">Supplier / SKU</th>
@@ -3681,6 +3852,7 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         {activeReport === 'MONTHLY_SUMMARY' && <MonthlySummaryRow row={row as MonthlySummaryReportRow} />}
                         {activeReport === 'FINANCE_SUMMARY' && <FinanceRow row={row} />}
                         {activeReport === 'PO_STATUS' && <PoStatusRow row={row} />}
+                        {activeReport === 'STOCK_RESERVATIONS' && <StockReservationRowView row={row as StockReservationReportRow} />}
                         {activeReport === 'SUPPLIER_INVENTORY' && <SupplierInventoryRowView row={row} />}
                         {activeReport === 'SUPPLIER_ITEM_MAPPING' && <SupplierItemMappingRowView row={row} />}
                         {activeReport === 'SUPPLIER_PRICE_VARIANCE' && <SupplierPriceVarianceRowView row={row} />}
@@ -3956,6 +4128,59 @@ const VariancePill = ({ type }: { type: VarianceType }) => {
     return <span className={`inline-flex px-2 py-1 rounded-md text-[10px] font-bold uppercase border whitespace-nowrap ${className}`}>{type}</span>;
 };
 
+const StockReservationRowView = ({ row }: { row: StockReservationReportRow }) => (
+    <>
+        <td className="px-5 py-3">
+            <div className="font-bold text-gray-900 dark:text-white">{row.supplier}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.supplierSku}</div>
+        </td>
+        <td className="px-5 py-3">
+            <div className="font-medium text-gray-900 dark:text-white max-w-[220px] truncate" title={row.productName}>{row.productName}</div>
+            <div className="text-xs text-tertiary dark:text-gray-500 font-mono">SKU: {row.internalSku}</div>
+        </td>
+        <td className="px-5 py-3 text-center font-medium">{numberValue(row.baselineSoh)}</td>
+        <td className="px-5 py-3 text-center">
+            {row.activeReservedUnits > 0 ? (
+                <span className="inline-flex items-center gap-1 font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full text-xs border border-amber-200 dark:border-amber-800">
+                    <Clock size={12} />
+                    {numberValue(row.activeReservedUnits)} ({row.activeReservedPOs} PO{row.activeReservedPOs > 1 ? 's' : ''})
+                </span>
+            ) : (
+                <span className="text-gray-400 font-mono text-xs">0</span>
+            )}
+        </td>
+        <td className="px-5 py-3 text-center">
+            {row.committedActiveUnits > 0 ? (
+                <span className="inline-flex items-center gap-1 font-medium text-blue-600 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-full text-xs border border-blue-200 dark:border-blue-800">
+                    <Truck size={12} />
+                    {numberValue(row.committedActiveUnits)}
+                </span>
+            ) : (
+                <span className="text-gray-400 font-mono text-xs">0</span>
+            )}
+        </td>
+        <td className="px-5 py-3 text-center font-bold text-emerald-600">
+            {numberValue(row.availableOrderableQty)}
+        </td>
+        <td className="px-5 py-3 text-right font-medium">{currency(row.unitPrice)}</td>
+        <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(row.effectiveValue)}</td>
+        <td className="px-5 py-3 text-center">
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${
+                row.reservationPressure === 'CRITICAL' 
+                    ? 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800'
+                    : row.reservationPressure === 'HIGH'
+                    ? 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800'
+                    : row.reservationPressure === 'RESERVED'
+                    ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800'
+                    : 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
+            }`}>
+                {row.reservationPressure}
+            </span>
+        </td>
+        <td className="px-5 py-3 text-xs text-tertiary dark:text-gray-500 whitespace-nowrap">{row.snapshotDate}</td>
+    </>
+);
+
 const SupplierInventoryRowView = ({ row }: { row: any }) => (
     <>
         <td className="px-5 py-3">
@@ -4228,6 +4453,438 @@ const SupplierPriceVarianceVisual = ({ rows, chartMetric }: { rows: any[]; chart
                     </div>
                 </div>
             </div>
+        </div>
+    );
+};
+
+
+interface StockReservationsVisualProps {
+    rows: any[];
+    pos: PORequest[];
+    chartMetric: string;
+    onViewPO: (poId: string) => void;
+}
+
+const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
+    rows,
+    pos,
+    chartMetric,
+    onViewPO
+}) => {
+    const [subTab, setSubTab] = useState<'OVERVIEW' | 'ACTIVE_QUEUE' | 'AUTO_CANCELLED'>('OVERVIEW');
+    const [urgencyFilter, setUrgencyFilter] = useState<'ALL' | 'CRITICAL' | 'WARNING' | 'NORMAL'>('ALL');
+
+    const totalAvailableUnits = useMemo(() => rows.reduce((s, r) => s + (r.availableOrderableQty || 0), 0), [rows]);
+    const totalAvailableValue = useMemo(() => rows.reduce((s, r) => s + (r.effectiveValue || 0), 0), [rows]);
+    const totalReservedUnits = useMemo(() => rows.reduce((s, r) => s + (r.activeReservedUnits || 0), 0), [rows]);
+    const totalReservedValue = useMemo(() => rows.reduce((s, r) => s + (r.totalReservedValue || 0), 0), [rows]);
+    const totalCommittedUnits = useMemo(() => rows.reduce((s, r) => s + (r.committedActiveUnits || 0), 0), [rows]);
+
+    // Active Reservations holding stock
+    const activeReservations = useMemo(() => {
+        return pos.filter(p => isPOReservingStock(p)).map(p => {
+            const timeInfo = getReservationTimeRemaining(p);
+            const totalUnits = p.lines.reduce((s, l) => s + (l.quantityOrdered || 0), 0);
+            return {
+                po: p,
+                timeInfo,
+                totalUnits
+            };
+        }).sort((a, b) => {
+            const order = { CRITICAL: 0, WARNING: 1, NORMAL: 2 };
+            return order[a.timeInfo.urgency] - order[b.timeInfo.urgency] || a.timeInfo.totalHoursRemaining - b.timeInfo.totalHoursRemaining;
+        });
+    }, [pos]);
+
+    const criticalUrgencyCount = useMemo(() => activeReservations.filter(r => r.timeInfo.urgency === 'CRITICAL').length, [activeReservations]);
+    const warningUrgencyCount = useMemo(() => activeReservations.filter(r => r.timeInfo.urgency === 'WARNING').length, [activeReservations]);
+
+    // Auto-cancelled orders
+    const autoCancelledOrders = useMemo(() => {
+        return pos.filter(p => p.status === 'CANCELLED' || Boolean(p.autoCancelledAt)).map(p => {
+            const totalUnits = p.lines.reduce((s, l) => s + (l.quantityOrdered || 0), 0);
+            return {
+                po: p,
+                totalUnits
+            };
+        }).sort((a, b) => {
+            const dateA = new Date(a.po.autoCancelledAt || a.po.requestDate).getTime();
+            const dateB = new Date(b.po.autoCancelledAt || b.po.requestDate).getTime();
+            return dateB - dateA;
+        });
+    }, [pos]);
+
+    const totalCancelledUnits = useMemo(() => autoCancelledOrders.reduce((s, o) => s + o.totalUnits, 0), [autoCancelledOrders]);
+
+    // Filtered reservations for the queue tab
+    const filteredReservations = useMemo(() => {
+        if (urgencyFilter === 'ALL') return activeReservations;
+        return activeReservations.filter(r => r.timeInfo.urgency === urgencyFilter);
+    }, [activeReservations, urgencyFilter]);
+
+    // Stacked chart data by supplier
+    const chartData = useMemo(() => {
+        const grouped: Record<string, { name: string; available: number; reserved: number; committed: number }> = {};
+        rows.forEach(r => {
+            const sup = r.supplier || 'Unknown';
+            if (!grouped[sup]) {
+                grouped[sup] = { name: sup, available: 0, reserved: 0, committed: 0 };
+            }
+            grouped[sup].available += (r.availableOrderableQty || 0);
+            grouped[sup].reserved += (r.activeReservedUnits || 0);
+            grouped[sup].committed += (r.committedActiveUnits || 0);
+        });
+        return Object.values(grouped).sort((a, b) => (b.available + b.reserved + b.committed) - (a.available + a.reserved + a.committed)).slice(0, 8);
+    }, [rows]);
+
+    // Top critical/pressured items
+    const pressuredItems = useMemo(() => {
+        return rows.filter(r => r.reservationPressure === 'CRITICAL' || r.reservationPressure === 'HIGH').slice(0, 5);
+    }, [rows]);
+
+    return (
+        <div className="p-4 md:p-6 space-y-6">
+            {/* Top Metric Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+                <MetricCard 
+                    label="Net Available Orderable" 
+                    value={currency(totalAvailableValue)} 
+                    sub={`${numberValue(totalAvailableUnits)} units across ${rows.length} items`} 
+                    icon={Package} 
+                    color="bg-emerald-500" 
+                />
+                <MetricCard 
+                    label="Active 48h Reserved" 
+                    value={currency(totalReservedValue)} 
+                    sub={`${numberValue(totalReservedUnits)} units on ${activeReservations.length} POs`} 
+                    icon={Clock} 
+                    color="bg-amber-500" 
+                />
+                <MetricCard 
+                    label="Committed In Delivery" 
+                    value={numberValue(totalCommittedUnits)} 
+                    sub="Units on active POs with Concur #" 
+                    icon={Truck} 
+                    color="bg-sky-500" 
+                />
+                <MetricCard 
+                    label="Expiring Soon (<24h)" 
+                    value={String(criticalUrgencyCount + warningUrgencyCount)} 
+                    sub={`${criticalUrgencyCount} critical (<12h), ${warningUrgencyCount} warning`} 
+                    icon={AlertTriangle} 
+                    color="bg-rose-500" 
+                />
+                <MetricCard 
+                    label="Auto-Cancelled Orders" 
+                    value={String(autoCancelledOrders.length)} 
+                    sub={`${numberValue(totalCancelledUnits)} units released back to pool`} 
+                    icon={ShieldAlert} 
+                    color="bg-purple-500" 
+                />
+            </div>
+
+            {/* Sub-tab Navigation */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-800 pb-3">
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setSubTab('OVERVIEW')}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            subTab === 'OVERVIEW'
+                                ? 'bg-[var(--color-brand)] text-white shadow-md shadow-[var(--color-brand)]/20'
+                                : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
+                        }`}
+                    >
+                        Stock Breakdown & Pressure Analysis
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSubTab('ACTIVE_QUEUE')}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            subTab === 'ACTIVE_QUEUE'
+                                ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
+                                : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
+                        }`}
+                    >
+                        <Clock size={13} />
+                        Live 48h Reservations Queue
+                        {activeReservations.length > 0 && (
+                            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
+                                {activeReservations.length}
+                            </span>
+                        )}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSubTab('AUTO_CANCELLED')}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            subTab === 'AUTO_CANCELLED'
+                                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+                                : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
+                        }`}
+                    >
+                        <ShieldAlert size={13} />
+                        Auto-Cancelled Expiry Audit
+                        {autoCancelledOrders.length > 0 && (
+                            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
+                                {autoCancelledOrders.length}
+                            </span>
+                        )}
+                    </button>
+                </div>
+            </div>
+
+            {/* TAB 1: OVERVIEW */}
+            {subTab === 'OVERVIEW' && (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+                        {/* Stacked Bar Chart */}
+                        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-5 shadow-xs">
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Supplier Stock Allocation (Running Totals)</h3>
+                                    <p className="text-xs text-secondary dark:text-gray-400">Available vs Active Reserved vs Committed in Delivery</p>
+                                </div>
+                                <div className="flex items-center gap-3 text-xs">
+                                    <span className="flex items-center gap-1 text-emerald-600 font-medium"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Available</span>
+                                    <span className="flex items-center gap-1 text-amber-600 font-medium"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> Reserved (&lt;48h)</span>
+                                    <span className="flex items-center gap-1 text-sky-600 font-medium"><span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block" /> In Delivery</span>
+                                </div>
+                            </div>
+                            <div className="h-[320px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
+                                        <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
+                                        <XAxis dataKey="name" angle={-25} textAnchor="end" height={50} interval={0} tick={{ fontSize: 11, fill: '#888' }} />
+                                        <YAxis tickFormatter={(val) => Number(val).toLocaleString()} tick={{ fontSize: 11, fill: '#888' }} />
+                                        <RechartsTooltip formatter={(val: number) => numberValue(val) + ' units'} contentStyle={{ borderRadius: '8px', border: 'none' }} />
+                                        <Bar dataKey="available" name="Net Available" fill="#10b981" stackId="stock" radius={[0, 0, 0, 0]} />
+                                        <Bar dataKey="reserved" name="Active Reserved (<48h)" fill="#f59e0b" stackId="stock" radius={[0, 0, 0, 0]} />
+                                        <Bar dataKey="committed" name="In Delivery" fill="#0ea5e9" stackId="stock" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Critical Stock Pressure Panel */}
+                        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] p-5 shadow-xs flex flex-col">
+                            <div className="flex items-center gap-2 mb-3">
+                                <AlertTriangle className="text-amber-500" size={18} />
+                                <h3 className="text-sm font-bold text-gray-950 dark:text-white">High Reservation Pressure</h3>
+                            </div>
+                            <p className="text-xs text-secondary dark:text-gray-400 mb-4">SKUs where active reservations represent a high fraction of snapshot inventory.</p>
+
+                            <div className="space-y-3 flex-1 overflow-y-auto">
+                                {pressuredItems.length > 0 ? (
+                                    pressuredItems.map(item => (
+                                        <div key={item.id} className="p-3 rounded-lg border border-amber-200/50 dark:border-amber-900/30 bg-amber-50/50 dark:bg-amber-950/20 text-xs space-y-1.5">
+                                            <div className="flex justify-between items-start">
+                                                <p className="font-bold text-gray-900 dark:text-white truncate max-w-[200px]" title={item.productName}>{item.productName}</p>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                                    item.reservationPressure === 'CRITICAL' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400'
+                                                }`}>
+                                                    {item.reservationPressure}
+                                                </span>
+                                            </div>
+                                            <p className="text-tertiary dark:text-gray-500 font-mono text-[10px]">{item.supplier} • SKU: {item.supplierSku}</p>
+                                            <div className="grid grid-cols-3 gap-1 pt-1 text-[11px] border-t border-amber-200/40 dark:border-amber-900/40 font-mono">
+                                                <div>SOH: <span className="font-bold text-gray-700 dark:text-gray-300">{numberValue(item.baselineSoh)}</span></div>
+                                                <div>Res: <span className="font-bold text-amber-600">{numberValue(item.activeReservedUnits)}</span></div>
+                                                <div>Net: <span className="font-bold text-emerald-600">{numberValue(item.availableOrderableQty)}</span></div>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="p-6 text-center text-xs text-tertiary dark:text-gray-500 flex flex-col items-center gap-2">
+                                        <CheckCircle2 size={24} className="text-emerald-500" />
+                                        <span>All stock items are operating within healthy reservation thresholds.</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 2: ACTIVE RESERVATIONS QUEUE */}
+            {subTab === 'ACTIVE_QUEUE' && (
+                <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-50 dark:bg-white/5 p-3 rounded-xl border border-gray-200 dark:border-gray-800">
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="font-bold text-gray-700 dark:text-gray-300">Filter Urgency:</span>
+                            {(['ALL', 'CRITICAL', 'WARNING', 'NORMAL'] as const).map(tier => (
+                                <button
+                                    key={tier}
+                                    type="button"
+                                    onClick={() => setUrgencyFilter(tier)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                        urgencyFilter === tier
+                                            ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                                            : 'bg-white dark:bg-nocturne text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    {tier === 'ALL' ? `All (${activeReservations.length})` : 
+                                     tier === 'CRITICAL' ? `Critical <12h (${criticalUrgencyCount})` : 
+                                     tier === 'WARNING' ? `Warning 12-24h (${warningUrgencyCount})` : 
+                                     `Normal >24h (${activeReservations.length - criticalUrgencyCount - warningUrgencyCount})`}
+                                </button>
+                            ))}
+                        </div>
+                        <span className="text-xs text-tertiary dark:text-gray-400">
+                            Approved orders hold supplier stock for 48 hours until Concur PO is linked.
+                        </span>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-xs">
+                        <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="px-5 py-3.5">PO Request #</th>
+                                    <th className="px-5 py-3.5">Supplier</th>
+                                    <th className="px-5 py-3.5">Requester & Site</th>
+                                    <th className="px-5 py-3.5 text-center">Reserved Units</th>
+                                    <th className="px-5 py-3.5 text-right">Order Value</th>
+                                    <th className="px-5 py-3.5">Approved At</th>
+                                    <th className="px-5 py-3.5 text-center">Time Remaining</th>
+                                    <th className="px-5 py-3.5 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                                {filteredReservations.length > 0 ? (
+                                    filteredReservations.map(({ po, timeInfo, totalUnits }) => (
+                                        <tr key={po.id} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                            <td className="px-5 py-3 font-bold font-mono text-gray-900 dark:text-white">
+                                                {po.displayId || po.id}
+                                            </td>
+                                            <td className="px-5 py-3 text-gray-800 dark:text-gray-200 font-medium">
+                                                {po.supplierName}
+                                            </td>
+                                            <td className="px-5 py-3">
+                                                <div className="font-semibold text-gray-900 dark:text-white">{po.requesterName}</div>
+                                                <div className="text-[10px] text-tertiary dark:text-gray-400">{po.site}</div>
+                                            </td>
+                                            <td className="px-5 py-3 text-center font-bold text-amber-600 font-mono">
+                                                {numberValue(totalUnits)}
+                                            </td>
+                                            <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white font-mono">
+                                                {currency(po.totalAmount)}
+                                            </td>
+                                            <td className="px-5 py-3 text-tertiary dark:text-gray-400 whitespace-nowrap">
+                                                {po.approvedAt ? new Date(po.approvedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+                                            </td>
+                                            <td className="px-5 py-3 text-center">
+                                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                                                    timeInfo.urgency === 'CRITICAL'
+                                                        ? 'bg-rose-500 text-white animate-pulse'
+                                                        : timeInfo.urgency === 'WARNING'
+                                                        ? 'bg-amber-500 text-white'
+                                                        : 'bg-blue-600 text-white'
+                                                }`}>
+                                                    <Timer size={12} />
+                                                    {timeInfo.label}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-3 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onViewPO(po.id)}
+                                                    className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-lg text-xs font-bold transition-colors"
+                                                >
+                                                    Open PO <ExternalLink size={12} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={8} className="px-5 py-8 text-center text-tertiary dark:text-gray-400">
+                                            No active reservations match the selected urgency tier.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 3: AUTO-CANCELLED ORDERS AUDIT */}
+            {subTab === 'AUTO_CANCELLED' && (
+                <div className="space-y-4">
+                    <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                        <div>
+                            <h4 className="text-sm font-bold text-rose-900 dark:text-rose-300">Automated 48-Hour Cancellation Log</h4>
+                            <p className="text-xs text-rose-700 dark:text-rose-400">Orders that lapsed without a Concur PO # being entered within 48 hours of approval.</p>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs font-bold text-rose-800 dark:text-rose-300 shrink-0">
+                            <div>Total Orders: <span className="font-mono text-sm">{autoCancelledOrders.length}</span></div>
+                            <div>Units Recovered: <span className="font-mono text-sm">{numberValue(totalCancelledUnits)}</span></div>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-xs">
+                        <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-secondary dark:text-gray-500 uppercase bg-gray-50 dark:bg-[#15171e] font-bold border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="px-5 py-3.5">PO Request #</th>
+                                    <th className="px-5 py-3.5">Supplier</th>
+                                    <th className="px-5 py-3.5">Requester & Site</th>
+                                    <th className="px-5 py-3.5 text-center">Units Released</th>
+                                    <th className="px-5 py-3.5 text-right">Order Amount</th>
+                                    <th className="px-5 py-3.5">Cancelled At</th>
+                                    <th className="px-5 py-3.5">Reason</th>
+                                    <th className="px-5 py-3.5 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                                {autoCancelledOrders.length > 0 ? (
+                                    autoCancelledOrders.map(({ po, totalUnits }) => (
+                                        <tr key={po.id} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                            <td className="px-5 py-3 font-bold font-mono text-rose-600 dark:text-rose-400">
+                                                {po.displayId || po.id}
+                                            </td>
+                                            <td className="px-5 py-3 text-gray-800 dark:text-gray-200 font-medium">
+                                                {po.supplierName}
+                                            </td>
+                                            <td className="px-5 py-3">
+                                                <div className="font-semibold text-gray-900 dark:text-white">{po.requesterName}</div>
+                                                <div className="text-[10px] text-tertiary dark:text-gray-400">{po.site}</div>
+                                            </td>
+                                            <td className="px-5 py-3 text-center font-bold text-emerald-600 font-mono">
+                                                +{numberValue(totalUnits)}
+                                            </td>
+                                            <td className="px-5 py-3 text-right font-mono text-gray-700 dark:text-gray-300">
+                                                {currency(po.totalAmount)}
+                                            </td>
+                                            <td className="px-5 py-3 text-tertiary dark:text-gray-400 whitespace-nowrap">
+                                                {po.autoCancelledAt ? new Date(po.autoCancelledAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+                                            </td>
+                                            <td className="px-5 py-3 text-tertiary dark:text-gray-400 max-w-[240px] truncate" title={po.cancellationReason || '48-hour Concur PO linkage window expired'}>
+                                                {po.cancellationReason || '48-hour Concur PO linkage window expired'}
+                                            </td>
+                                            <td className="px-5 py-3 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onViewPO(po.id)}
+                                                    className="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 rounded-lg text-xs font-bold transition-colors text-gray-800 dark:text-gray-200"
+                                                >
+                                                    View Details <ExternalLink size={12} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={8} className="px-5 py-8 text-center text-tertiary dark:text-gray-400">
+                                            No purchase orders have been auto-cancelled.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

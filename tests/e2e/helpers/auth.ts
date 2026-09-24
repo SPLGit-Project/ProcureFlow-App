@@ -43,10 +43,8 @@ export async function injectTestUser(
 ) {
     const projectRef = getProjectRef(VITE_SUPABASE_URL);
     await page.addInitScript(({ perms, allowedSiteIds, overrides, serviceKey, ref }) => {
-        if (!localStorage.getItem('pf_test_user')) {
-            localStorage.removeItem('activeSiteIds');
-            localStorage.removeItem('activeSiteId');
-        }
+        localStorage.removeItem('activeSiteId');
+        localStorage.setItem('activeSiteIds', JSON.stringify(allowedSiteIds));
         const userObj = {
             id: overrides.id || 'test-user-id',
             name: overrides.name || 'Test User',

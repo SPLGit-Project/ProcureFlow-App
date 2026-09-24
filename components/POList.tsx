@@ -51,6 +51,7 @@ const statusLabel = (status: POStatus) => {
   if (status === 'PENDING_APPROVAL') return 'Pending Approval';
   if (status === 'VARIANCE_PENDING') return 'Variance Pending';
   if (status === 'DRAFT') return 'Draft';
+  if (status === 'CANCELLED') return 'Cancelled (Expired)';
   return status.replace(/_/g, ' ');
 };
 
@@ -599,6 +600,9 @@ const POList = ({ filter = 'ALL' }: { filter?: BaseFilter }) => {
     } else if (status === 'CLOSED') {
       colorClass =
         'bg-slate-100 dark:bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-500/20';
+    } else if (status === 'CANCELLED') {
+      colorClass =
+        'bg-rose-100 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-500/20';
     } else if (status === 'REJECTED') {
       colorClass =
         'bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-500 border-red-200 dark:border-red-500/20';

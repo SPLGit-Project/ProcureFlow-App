@@ -15,6 +15,7 @@ import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/i
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations.ts';
+import { getReservationTimeRemaining, isPOReservingStock } from '../utils/reservationUtils.ts';
 
 const PO_DETAIL_EDIT_DRAFT_VERSION = 1;
 const PO_DETAIL_EDIT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -1034,9 +1035,10 @@ const PODetail = () => {
                       po.status === 'PENDING_APPROVAL' ? 'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-500 border-yellow-200 dark:border-yellow-500/20' :
                       po.status === 'APPROVED_PENDING_CONCUR' || po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-500 border-blue-200 dark:border-blue-500/20' :
                       po.status === 'VARIANCE_PENDING' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-500 border-amber-200 dark:border-amber-500/20' :
+                      po.status === 'CANCELLED' ? 'bg-rose-100 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-500/20' :
                       po.status === 'REJECTED' ? 'bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-500 border-red-200 dark:border-red-500/20' : 'bg-gray-100 dark:bg-gray-700/30 text-secondary dark:text-gray-400 border-gray-200 dark:border-gray-700'
                     }`}>
-                    {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur PO' : po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'Pending Concur Request' : po.status === 'DRAFT' ? 'Draft' : po.status.replace(/_/g, ' ')}
+                    {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur PO' : po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'Pending Concur Request' : po.status === 'DRAFT' ? 'Draft' : po.status === 'CANCELLED' ? 'Cancelled (Expired)' : po.status.replace(/_/g, ' ')}
                   </span>
                   <CustomerCategoryBadge category={po.sector} size="sm" showLabel />
               </div>
@@ -1139,6 +1141,87 @@ const PODetail = () => {
               )}
            </div>
         </div>
+
+        {/* Dynamic 48-Hour Stock Reservation Status Banner */}
+        {isPOReservingStock(po) && (() => {
+            const timeRemaining = getReservationTimeRemaining(po);
+            const isCritical = timeRemaining.urgency === 'CRITICAL';
+            const isWarning = timeRemaining.urgency === 'WARNING';
+            
+            return (
+                <div className={`mb-6 rounded-2xl p-4 border transition-all ${
+                    isCritical 
+                        ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/50 text-red-900 dark:text-red-200' 
+                        : isWarning 
+                        ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-200'
+                        : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/50 text-blue-900 dark:text-blue-200'
+                }`}>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                            <div className={`p-2.5 rounded-xl shrink-0 ${
+                                isCritical ? 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400' :
+                                isWarning ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400' :
+                                'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400'
+                            }`}>
+                                <Clock3 size={22} className={isCritical ? 'animate-pulse' : ''} />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="font-bold text-sm sm:text-base">
+                                        Supplier Stock Reserved (48-Hour Window)
+                                    </h4>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                                        isCritical ? 'bg-red-200 dark:bg-red-800 text-red-900 dark:text-red-100' :
+                                        isWarning ? 'bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100' :
+                                        'bg-blue-200 dark:bg-blue-800 text-blue-900 dark:text-blue-100'
+                                    }`}>
+                                        ⏱ {timeRemaining.label}
+                                    </span>
+                                </div>
+                                <p className="text-xs sm:text-sm mt-1 opacity-90 leading-relaxed">
+                                    This request is holding a priority stock reservation. You have <strong>{timeRemaining.label}</strong> to enter the Concur PO # before this request is automatically cancelled and the reserved stock is returned to the available supplier pool.
+                                </p>
+                            </div>
+                        </div>
+                        {canLinkConcur && (
+                            <button
+                                type="button"
+                                onClick={() => setIsConcurModalOpen(true)}
+                                className={`shrink-0 w-full sm:w-auto px-4 py-2.5 rounded-xl font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
+                                    isCritical 
+                                        ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/20' 
+                                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
+                                }`}
+                            >
+                                <LinkIcon size={16} /> Link Concur PO #
+                            </button>
+                        )}
+                    </div>
+                </div>
+            );
+        })()}
+
+        {/* Cancelled PO Banner */}
+        {po.status === 'CANCELLED' && (
+            <div className="mb-6 rounded-2xl p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 text-rose-900 dark:text-rose-200">
+                <div className="flex items-start gap-3">
+                    <div className="p-2.5 bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 rounded-xl shrink-0">
+                        <XCircle size={22} />
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-sm sm:text-base">Request Cancelled</h4>
+                        <p className="text-xs sm:text-sm mt-1 opacity-90 leading-relaxed">
+                            {po.cancellationReason || 'This request was automatically cancelled because the 48-hour reservation window expired without a Concur PO # being linked. The reserved stock has been released.'}
+                        </p>
+                        {po.autoCancelledAt && (
+                            <p className="text-xs mt-2 text-rose-700 dark:text-rose-400 font-mono">
+                                Cancelled at: {new Date(po.autoCancelledAt).toLocaleString()}
+                            </p>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* Additional Request Details */}
         {(po.customerName || po.reasonForRequest || po.comments || po.site || po.siteId || isEditing) && (

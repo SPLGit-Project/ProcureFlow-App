@@ -82,7 +82,7 @@ test.describe('PO workflow regression', () => {
     });
 
     test('can close PO with outstanding delivery quantities with warning', async ({ page }) => {
-        // Inject a site user who is the requester for POR-202604-000038
+        // Inject a site user who is the requester for POR-202609-000041
         await injectTestUser(page, ['view_dashboard', 'receive_goods', 'view_all_requests'], ['66666666-6666-4666-8666-666666666666'], {
             id: '9ca1d17e-1e35-405d-83c8-b44201c2d80b',
             name: 'Test Requester',
@@ -92,7 +92,7 @@ test.describe('PO workflow regression', () => {
         });
         
         // Navigate to the specific PO detail page (which is in ACTIVE status and has outstanding quantities)
-        await gotoAndWait(page, '/requests/bd8bcf05-e98c-47ae-9d0d-e216ca19df24');
+        await gotoAndWait(page, '/requests/7ab8e8c3-c292-45b0-ae7e-954baa8f31a8');
         
         // Wait for the detail view to render
         const completeBtn = page.locator('button:has-text("Complete Order")').first();

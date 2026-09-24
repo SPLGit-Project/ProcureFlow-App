@@ -6,6 +6,8 @@ import {
 import { useApp } from '../context/AppContext.tsx';
 import { useNavigate } from 'react-router-dom';
 
+import { getReservationTimeRemaining } from '../utils/reservationUtils.ts';
+
 interface TaskDrawerProps {
     isOpen: boolean;
     onClose: () => void;
@@ -51,14 +53,21 @@ const TaskDrawer: FC<TaskDrawerProps> = ({ isOpen, onClose }) => {
             });
         }
         if (actionConcur.length > 0) {
+            const expiringSoonCount = actionConcur.filter(p => {
+                const rem = getReservationTimeRemaining(p);
+                return rem.urgency === 'CRITICAL' || rem.urgency === 'WARNING';
+            }).length;
+
             t.push({
                 id: 'concur',
-                title: 'Concur Linkage',
+                title: 'Concur Linkage (Stock Reserved)',
                 count: actionConcur.length,
-                desc: 'Links approved requests to Concur PO numbers.',
+                desc: expiringSoonCount > 0 
+                    ? `⚠️ ${expiringSoonCount} reservation(s) expiring within 24h. Link Concur PO # to prevent auto-cancellation.`
+                    : 'Links approved requests to Concur PO numbers within the 48-hour stock reservation window.',
                 icon: LinkIcon,
-                color: 'blue',
-                path: '/requests'
+                color: expiringSoonCount > 0 ? 'amber' : 'blue',
+                path: '/active-requests'
             });
         }
         if (myPendingDeliveries.length > 0) {

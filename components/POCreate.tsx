@@ -114,7 +114,7 @@ const isSameCartPriceLine = (
 };
 
 const POCreate = () => {
-  const { items, suppliers, userSites, mappings, stockSnapshots, currentUser, createPO, saveDraftPO, getEffectiveStock, reloadData, featureFlags } = useApp();
+  const { items, suppliers, userSites, mappings, stockSnapshots, currentUser, createPO, saveDraftPO, getEffectiveStock, getStockBreakdown, reloadData, featureFlags } = useApp();
   const sites = userSites;
   // Deduplicate suppliers by canonical name — raw DB list can contain multiple
   // records for the same supplier (e.g. one per mapping entry).
@@ -1388,6 +1388,38 @@ const POCreate = () => {
                                 </span>
                             </div>
                         </div>
+
+                        {(() => {
+                            const breakdown = selectedSupplierId ? getStockBreakdown(selectedDetailItem.id, selectedSupplierId) : null;
+                            if (!breakdown || (breakdown.reservedUnits === 0 && breakdown.committedUnits === 0)) return null;
+
+                            return (
+                                <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl border border-blue-100 dark:border-blue-900/30 text-xs space-y-1.5">
+                                    <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
+                                        <span>Supplier SOH:</span>
+                                        <span className="font-semibold text-gray-800 dark:text-gray-200">{breakdown.baseAvailableUnits}</span>
+                                    </div>
+                                    {breakdown.reservedUnits > 0 && (
+                                        <div className="flex items-center justify-between text-amber-600 dark:text-amber-400">
+                                            <span>Active Reserved (Approved):</span>
+                                            <span className="font-semibold">-{breakdown.reservedUnits}</span>
+                                        </div>
+                                    )}
+                                    {breakdown.committedUnits > 0 && (
+                                        <div className="flex items-center justify-between text-blue-600 dark:text-blue-400">
+                                            <span>Awaiting Delivery (Active):</span>
+                                            <span className="font-semibold">-{breakdown.committedUnits}</span>
+                                        </div>
+                                    )}
+                                    <div className="border-t border-blue-200 dark:border-blue-800/50 pt-1 flex items-center justify-between font-bold">
+                                        <span className="text-gray-900 dark:text-white">Net Orderable Qty:</span>
+                                        <span className={breakdown.availableOrderQty > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
+                                            {breakdown.availableOrderQty}
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })()}
 
                         {selectedDetailItem.description && (
                             <div>

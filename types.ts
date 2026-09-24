@@ -540,7 +540,8 @@ export type POStatus =
   | 'ACTIVE' // Created in Concur, ready for delivery
   | 'RECEIVED' 
   | 'VARIANCE_PENDING'
-  | 'CLOSED';
+  | 'CLOSED'
+  | 'CANCELLED';
 
 export interface PORequest {
   id: string;
@@ -575,6 +576,11 @@ export interface PORequest {
   updatedAt?: string;
   submitDate?: string;
   hasDiscrepancy?: boolean;
+  approvedAt?: string;
+  reservationExpiresAt?: string;
+  concurLinkedAt?: string;
+  cancellationReason?: string;
+  autoCancelledAt?: string;
 }
 
 export interface POLineItem {
@@ -610,7 +616,7 @@ export interface ApprovalEvent {
   id: string;
   approverName: string;
   date: string;
-  action: 'APPROVED' | 'REJECTED' | 'SUBMITTED' | 'ADMIN_OVERRIDE' | 'DRAFT_SAVED';
+  action: 'APPROVED' | 'REJECTED' | 'SUBMITTED' | 'ADMIN_OVERRIDE' | 'DRAFT_SAVED' | 'SYSTEM_CANCELLED';
   comments?: string;
 }
 
@@ -667,7 +673,15 @@ export interface WorkflowStep {
 }
 
 
-export type NotificationEventType = 'PO_CREATED' | 'PO_APPROVED' | 'PO_REJECTED' | 'DELIVERY_RECEIVED' | 'STOCK_LOW' | 'PO_CAPITALIZED';
+export type NotificationEventType = 
+  | 'PO_CREATED' 
+  | 'PO_APPROVED' 
+  | 'PO_REJECTED' 
+  | 'DELIVERY_RECEIVED' 
+  | 'STOCK_LOW' 
+  | 'PO_CAPITALIZED'
+  | 'PO_CANCELLED_RESERVATION_EXPIRED'
+  | 'PO_RESERVATION_WARNING';
 
 export interface NotificationRecipient {
     id: string; // Role ID, User ID, "requester", or email address

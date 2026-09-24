@@ -14,7 +14,7 @@ type DbSupplierProductMapRow = { id: string; supplier_id: string; product_id: st
 type DbProductAvailabilityRow = { id: string; product_id: string; supplier_id: string; available_units: number; available_order_qty: number; updated_at: string };
 type DbCatalogItemRow = { id: string; item_id: string; supplier_id: string; supplier_sku: string; price: number };
 type DbStockSnapshotRow = { id: string; supplier_id: string; supplier_sku: string; product_name: string; available_qty: number; stock_on_hand: number; committed_qty: number; back_ordered_qty: number; total_stock_qty: number; snapshot_date: string; source_report_name: string; customer_stock_code: string; range_name: string; category: string; sub_category: string; stock_type: string; carton_qty: number; soh_value_at_sell: number; sell_price: number; incoming_stock: SupplierStockSnapshot['incomingStock']; customer_stock_code_raw: string; customer_stock_code_norm: string; customer_stock_code_alt_norm: string };
-type DbPORequestRow = { id: string; display_id: string; request_date: string; requester_id: string; requester: { name: string }; site_id: string; site: { name: string }; supplier_id: string; supplier: { name: string }; status: PORequest['status']; total_amount: number; subtotal_amount?: number; tax_total_amount?: number; total_amount_inc_gst?: number; approvals: { id: string; action: ApprovalEvent['action']; date: string; approver_name: string; comments: string }[]; lines: { id: string; item_id: string; item_name: string; sku: string; quantity_ordered: number; quantity_received: number; unit_price: number; total_price: number; tax_code?: string; tax_rate?: number; tax_amount?: number; total_price_inc_gst?: number; concur_po_number: string; need_by_date?: string }[]; deliveries: { id: string; date: string; docket_number: string; received_by: string; received_by_id: string; lines: { id: string; po_line_id: string; quantity: number; invoice_number: string; is_capitalised: boolean; capitalised_date: string; freight_amount: number }[] }[]; reason_for_request: PORequest['reasonForRequest']; customer_name: string; concur_request_number: string; po_lines: { concur_po_number: string }[]; comments: string };
+type DbPORequestRow = { id: string; display_id: string; request_date: string; requester_id: string; requester: { name: string }; site_id: string; site: { name: string }; supplier_id: string; supplier: { name: string }; status: PORequest['status']; total_amount: number; subtotal_amount?: number; tax_total_amount?: number; total_amount_inc_gst?: number; approvals: { id: string; action: ApprovalEvent['action']; date: string; approver_name: string; comments: string }[]; lines: { id: string; item_id: string; item_name: string; sku: string; quantity_ordered: number; quantity_received: number; unit_price: number; total_price: number; tax_code?: string; tax_rate?: number; tax_amount?: number; total_price_inc_gst?: number; concur_po_number: string; need_by_date?: string }[]; deliveries: { id: string; date: string; docket_number: string; received_by: string; received_by_id: string; lines: { id: string; po_line_id: string; quantity: number; invoice_number: string; is_capitalised: boolean; capitalised_date: string; freight_amount: number }[] }[]; reason_for_request: PORequest['reasonForRequest']; customer_name: string; concur_request_number: string; po_lines: { concur_po_number: string }[]; comments: string; approved_at?: string; reservation_expires_at?: string; concur_linked_at?: string; cancellation_reason?: string; auto_cancelled_at?: string; created_at?: string; updated_at?: string; };
 type DbWorkflowStepRow = { id: string; step_name: string; approver_role: string; approver_type: WorkflowStep['approverType']; approver_id: string; condition_type: WorkflowStep['conditionType']; condition_value: number; order: number; is_active: boolean };
 type DbNotificationRuleRow = { id: string; event_type: NotificationRule['eventType']; label: string; is_active: boolean; recipients: NotificationRule['recipients'] };
 type DbAppNotificationRow = { id: string; user_id: string; title: string; message: string; is_read: boolean; link: string; created_at: string };
@@ -777,7 +777,14 @@ export const db = {
             customerName: p.customer_name,
             concurRequestNumber: p.concur_request_number,
             concurPoNumber: Array.from(new Set((p.lines || []).map((l: { concur_po_number: string }) => l.concur_po_number).filter(Boolean))).join(', ') || undefined,
-            comments: p.comments
+            comments: p.comments,
+            approvedAt: p.approved_at,
+            reservationExpiresAt: p.reservation_expires_at,
+            concurLinkedAt: p.concur_linked_at,
+            cancellationReason: p.cancellation_reason,
+            autoCancelledAt: p.auto_cancelled_at,
+            createdAt: p.created_at,
+            updatedAt: p.updated_at
         }));
     },
 
@@ -1929,15 +1936,36 @@ export const db = {
         }
     },
 
-    updatePOStatus: async (poId: string, status: string): Promise<void> => {
+    updatePOStatus: async (poId: string, status: string, extraUpdates?: Record<string, unknown>): Promise<void> => {
+        const payload: Record<string, unknown> = { status, ...(extraUpdates || {}) };
         const { error, count } = await (supabase
             .from('po_requests')
-            .update({ status })
+            .update(payload)
             .eq('id', poId) as unknown as DbUpdateResult)
             .select('*', { count: 'exact', head: true });
 
         if (error) throw error;
         if (count === 0) throw new Error('Permission denied or PO not found. You may not have the rights to update this order in its current status.');
+    },
+
+    expireStaleReservations: async (): Promise<{ 
+        cancelled_count: number; 
+        cancelled_items: Array<{ 
+            id: string; 
+            display_id: string; 
+            requester_id: string; 
+            requester_name: string; 
+            requester_email: string; 
+            supplier_name: string; 
+            total_amount: number 
+        }> 
+    }> => {
+        const { data, error } = await supabase.rpc('expire_stale_reservations');
+        if (error) {
+            console.error('Failed to run expire_stale_reservations RPC:', error);
+            return { cancelled_count: 0, cancelled_items: [] };
+        }
+        return data || { cancelled_count: 0, cancelled_items: [] };
     },
 
     submitDraftPO: async (poId: string, approverName: string): Promise<void> => {
