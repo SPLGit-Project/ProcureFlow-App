@@ -2,27 +2,22 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
 import {
-  Boxes,
   Search,
-  Filter,
   CheckCircle2,
   AlertTriangle,
   Mail,
-  ExternalLink,
-  PlusCircle,
-  Building,
-  Package,
-  Layers,
-  Sparkles,
-  ArrowRight,
+  ShoppingCart,
   X,
   Send,
-  Info,
-  Clock,
   ChevronRight,
-  ShieldCheck,
+  ChevronLeft,
   LayoutGrid,
-  List
+  List,
+  Scale,
+  Check,
+  TrendingDown,
+  TrendingUp,
+  PackageCheck
 } from 'lucide-react';
 import PageHeader from './PageHeader.tsx';
 import { isDefaultSupplier, dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
@@ -30,7 +25,7 @@ import { calculateItemRunningStock, StockBreakdown } from '../utils/reservationU
 import { formatCurrency } from '../utils/taxCalculations.ts';
 import type { Item, Supplier } from '../types.ts';
 
-interface DirectoryRow {
+export interface DirectoryRow {
   key: string;
   itemId: string;
   itemName: string;
@@ -44,6 +39,33 @@ interface DirectoryRow {
   packMultiple: number;
   breakdown: StockBreakdown;
   stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'RESERVED_PRESSURE' | 'OUT_OF_STOCK';
+}
+
+export interface SupplierOffer {
+  supplierId: string;
+  supplierName: string;
+  isDefault: boolean;
+  supplierSku: string;
+  unitPrice: number;
+  availableStock: number;
+  stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'RESERVED_PRESSURE' | 'OUT_OF_STOCK';
+  packMultiple: number;
+  row: DirectoryRow;
+}
+
+export interface ItemComparisonGroup {
+  key: string;
+  itemId: string;
+  itemName: string;
+  internalSku: string;
+  category: string;
+  defaultOffer?: SupplierOffer;
+  alternateOffers: SupplierOffer[];
+  totalOffers: number;
+  hasMatch: boolean;
+  minPrice: number;
+  maxPrice: number;
+  cheapestSupplierName: string;
 }
 
 const SupplierStockDirectory: React.FC = () => {
@@ -61,7 +83,17 @@ const SupplierStockDirectory: React.FC = () => {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [stockStatusFilter, setStockStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'PRESSURE' | 'OUT_OF_STOCK'>('ALL');
-  const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('TABLE');
+  const [viewMode, setViewMode] = useState<'TABLE' | 'COMPARE' | 'GRID'>('TABLE');
+  const [compareOnlyMatches, setCompareOnlyMatches] = useState<boolean>(true);
+
+  // Pagination state (displays 25 items at a time by default)
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // Reset pagination when any filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedSupplierId, selectedCategory, stockStatusFilter, viewMode, compareOnlyMatches, pageSize]);
 
   // Contact Ash modal state
   const [selectedItemForRequest, setSelectedItemForRequest] = useState<DirectoryRow | null>(null);
@@ -223,7 +255,90 @@ const SupplierStockDirectory: React.FC = () => {
     });
   }, [items, suppliers, mappings, stockSnapshots, pos]);
 
-  // Filtered rows
+  // Build comparison groups (side-by-side comparison of items across suppliers)
+  const comparisonGroups = useMemo<ItemComparisonGroup[]>(() => {
+    const groupMap = new Map<string, ItemComparisonGroup>();
+
+    directoryRows.forEach(row => {
+      const normKey = (row.internalSku && row.internalSku !== '-')
+        ? row.internalSku.trim().toUpperCase()
+        : row.itemName.trim().toUpperCase();
+
+      if (!groupMap.has(normKey)) {
+        groupMap.set(normKey, {
+          key: normKey,
+          itemId: row.itemId,
+          itemName: row.itemName,
+          internalSku: row.internalSku,
+          category: row.category,
+          alternateOffers: [],
+          totalOffers: 0,
+          hasMatch: false,
+          minPrice: Infinity,
+          maxPrice: -Infinity,
+          cheapestSupplierName: ''
+        });
+      }
+
+      const group = groupMap.get(normKey)!;
+      const offer: SupplierOffer = {
+        supplierId: row.supplierId,
+        supplierName: row.supplierName,
+        isDefault: row.isDefault,
+        supplierSku: row.supplierSku,
+        unitPrice: row.unitPrice,
+        availableStock: row.breakdown.availableOrderQty,
+        stockStatus: row.stockStatus,
+        packMultiple: row.packMultiple,
+        row
+      };
+
+      if (row.isDefault) {
+        group.defaultOffer = offer;
+      } else {
+        if (!group.alternateOffers.some(o => o.supplierId === row.supplierId)) {
+          group.alternateOffers.push(offer);
+        }
+      }
+    });
+
+    const list: ItemComparisonGroup[] = [];
+    groupMap.forEach(group => {
+      const allOffers = [
+        ...(group.defaultOffer ? [group.defaultOffer] : []),
+        ...group.alternateOffers
+      ];
+      group.totalOffers = allOffers.length;
+      group.hasMatch = group.totalOffers > 1;
+
+      if (allOffers.length > 0) {
+        let min = Infinity;
+        let max = -Infinity;
+        let cheapest = '';
+        allOffers.forEach(o => {
+          if (o.unitPrice > 0 && o.unitPrice < min) {
+            min = o.unitPrice;
+            cheapest = o.supplierName;
+          }
+          if (o.unitPrice > max) {
+            max = o.unitPrice;
+          }
+        });
+        group.minPrice = min === Infinity ? 0 : min;
+        group.maxPrice = max === -Infinity ? 0 : max;
+        group.cheapestSupplierName = cheapest;
+      }
+      list.push(group);
+    });
+
+    return list.sort((a, b) => {
+      if (a.hasMatch && !b.hasMatch) return -1;
+      if (!a.hasMatch && b.hasMatch) return 1;
+      return a.itemName.localeCompare(b.itemName);
+    });
+  }, [directoryRows]);
+
+  // Filtered rows for Table and Grid view
   const filteredRows = useMemo(() => {
     return directoryRows.filter(row => {
       if (selectedSupplierId !== 'ALL' && row.supplierId !== selectedSupplierId) return false;
@@ -250,27 +365,56 @@ const SupplierStockDirectory: React.FC = () => {
     });
   }, [directoryRows, selectedSupplierId, selectedCategory, stockStatusFilter, searchTerm]);
 
-  // Metrics
-  const metrics = useMemo(() => {
-    const totalProducts = directoryRows.length;
-    const nccRows = directoryRows.filter(r => r.isDefault);
-    const nccAvailableStock = nccRows.reduce((acc, r) => acc + r.breakdown.availableOrderQty, 0);
+  // Filtered comparison groups
+  const filteredComparisonGroups = useMemo(() => {
+    return comparisonGroups.filter(group => {
+      if (compareOnlyMatches && !group.hasMatch) return false;
+      if (selectedCategory !== 'ALL' && group.category !== selectedCategory) return false;
 
-    const alternateRows = directoryRows.filter(r => !r.isDefault);
-    const alternateSuppliersCount = new Set(alternateRows.map(r => r.supplierName)).size;
-    const alternateAvailableStock = alternateRows.reduce((acc, r) => acc + r.breakdown.availableOrderQty, 0);
+      if (searchTerm.trim()) {
+        const query = searchTerm.toLowerCase();
+        const matchName = group.itemName.toLowerCase().includes(query);
+        const matchSku = group.internalSku.toLowerCase().includes(query);
+        const matchCategory = group.category.toLowerCase().includes(query);
+        const matchSupplier = group.alternateOffers.some(o => o.supplierName.toLowerCase().includes(query)) ||
+          (group.defaultOffer && group.defaultOffer.supplierName.toLowerCase().includes(query));
+        if (!matchName && !matchSku && !matchCategory && !matchSupplier) return false;
+      }
 
-    const pendingAlternatePOs = pos.filter(p => p.status === 'PENDING_APPROVAL' && (!isDefaultSupplier(p.supplierName) || p.isNonDefaultSupplier)).length;
+      return true;
+    });
+  }, [comparisonGroups, compareOnlyMatches, selectedCategory, searchTerm]);
 
-    return {
-      totalProducts,
-      nccRowsCount: nccRows.length,
-      nccAvailableStock,
-      alternateSuppliersCount,
-      alternateAvailableStock,
-      pendingAlternatePOs
-    };
-  }, [directoryRows, pos]);
+  // Total active count based on current view
+  const activeTotalCount = viewMode === 'COMPARE' ? filteredComparisonGroups.length : filteredRows.length;
+  const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(activeTotalCount / pageSize));
+
+  // Paginated slices (25 items at a time)
+  const paginatedRows = useMemo(() => {
+    if (pageSize === -1) return filteredRows;
+    const start = (currentPage - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, currentPage, pageSize]);
+
+  const paginatedComparisonGroups = useMemo(() => {
+    if (pageSize === -1) return filteredComparisonGroups;
+    const start = (currentPage - 1) * pageSize;
+    return filteredComparisonGroups.slice(start, start + pageSize);
+  }, [filteredComparisonGroups, currentPage, pageSize]);
+
+  // Handles clicking Order: redirects to /create and translates the item & supplier directly into the order cart
+  const handleOrder = (row: DirectoryRow | SupplierOffer) => {
+    const isDefault = row.isDefault;
+    const supplierId = row.supplierId;
+    const itemId = 'itemId' in row ? row.itemId : '';
+    const internalSku = 'internalSku' in row ? row.internalSku : '';
+    const supplierSku = row.supplierSku;
+    const reasonParam = !isDefault ? '&reason=' + encodeURIComponent('Alternate supplier selected via stock directory') : '';
+
+    navigate(
+      `/create?supplierId=${supplierId}&addItemId=${itemId}&addSku=${encodeURIComponent(internalSku || supplierSku)}&supplierSku=${encodeURIComponent(supplierSku)}&qty=1${reasonParam}`
+    );
+  };
 
   const handleOpenContactModal = (row?: DirectoryRow) => {
     if (row) {
@@ -306,11 +450,6 @@ const SupplierStockDirectory: React.FC = () => {
     window.location.href = `mailto:ashish.chhabra@splservices.com.au?cc=aaron.bell@splservices.com.au&subject=${subject}&body=${body}`;
   };
 
-  const handleProceedToCreatePO = (supplierId: string, reason?: string) => {
-    const encodedReason = encodeURIComponent(reason || 'Alternate supplier requested via directory');
-    navigate(`/create?supplierId=${supplierId}&reason=${encodedReason}`);
-  };
-
   if (isLoadingData && items.length === 0 && stockSnapshots.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[500px] gap-3">
@@ -320,149 +459,29 @@ const SupplierStockDirectory: React.FC = () => {
     );
   }
 
+  const startRecord = activeTotalCount === 0 ? 0 : (currentPage - 1) * (pageSize === -1 ? activeTotalCount : pageSize) + 1;
+  const endRecord = pageSize === -1 ? activeTotalCount : Math.min(currentPage * pageSize, activeTotalCount);
+
   return (
-    <div className="space-y-6 animate-fade-in p-4 md:p-8 max-w-7xl mx-auto">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <PageHeader
-          title="Supplier Stock Directory"
-          subtitle="Comprehensive real-time inventory directory across all national suppliers. NCC Apparel is SPL's primary default supplier."
-        />
-        <div className="flex items-center gap-3 ml-auto">
-          <button
-            type="button"
-            onClick={() => handleOpenContactModal()}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-md shadow-amber-500/20 transition-all cursor-pointer"
-          >
-            <Mail size={16} /> Contact Ash for Alternate Supplier
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/create')}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer"
-          >
-            <PlusCircle size={16} /> Create Requisition
-          </button>
-        </div>
-      </div>
-
-      {/* Contracted Default Supplier Policy Card */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 rounded-3xl p-6 md:p-8 text-white shadow-xl border border-indigo-800/40">
-        <div className="absolute right-0 top-0 translate-x-8 -translate-y-8 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-          <div className="lg:col-span-8 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                <CheckCircle2 size={14} className="text-emerald-400" /> NCC Apparel · SPL Primary Contracted Supplier
-              </span>
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-slate-200 border border-white/10">
-                <ShieldCheck size={14} className="text-blue-300" /> Standard Procurement Policy
-              </span>
-            </div>
-
-            <h2 className="text-xl md:text-2xl font-black text-white tracking-tight">
-              Single-Source Supplier Transparency & Fair Allocation
-            </h2>
-            <p className="text-sm text-slate-300 leading-relaxed max-w-3xl">
-              ProcureFlow automatically defaults to <b>NCC Apparel</b> for all standard requisitions. If an item is urgently required from an alternate supplier (such as Simba Global, HOST Supplies, or Frenkel Textiles), review live running stock below and request approval from <b>Ashish Chhabra</b>.
-            </p>
-
-            <div className="pt-2 flex flex-wrap gap-4 text-xs text-slate-300">
-              <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>Procurement Lead: <b>Ashish Chhabra</b> (ashish.chhabra@splservices.com.au)</span>
-              </div>
-              <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
-                <span className="w-2 h-2 rounded-full bg-blue-400"></span>
-                <span>Automation & Tech: <b>Aaron Bell</b> (aaron.bell@splservices.com.au)</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-4 bg-white/5 backdrop-blur-md rounded-2xl p-5 border border-white/10 flex flex-col justify-between space-y-4">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-1">
-                Alternate Supplier Request Process
-              </span>
-              <p className="text-xs text-slate-200 leading-relaxed">
-                Requisitions with alternate suppliers are flagged for review before approval. Ensure you provide business justification (e.g. stockout, customer specification).
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleOpenContactModal()}
-              className="w-full py-2.5 px-4 bg-white text-slate-900 hover:bg-slate-100 font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-            >
-              Request Alternate Authorization <ArrowRight size={14} />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-5 bg-white dark:bg-nocturne rounded-2xl border border-default shadow-sm">
-          <span className="text-xs font-bold text-secondary uppercase tracking-wider block">Total Catalog Items</span>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-primary dark:text-white font-mono">{metrics.totalProducts}</span>
-            <span className="text-xs text-secondary">mapped products</span>
-          </div>
-          <p className="text-[11px] text-tertiary mt-1">Across all national supplier feeds</p>
-        </div>
-
-        <div className="p-5 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200 dark:border-emerald-800/40 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">NCC Inventory (Default)</span>
-            <span className="text-[10px] font-bold bg-emerald-200 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 px-1.5 py-0.5 rounded">Primary</span>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-700 dark:text-emerald-400 font-mono">
-              {metrics.nccAvailableStock.toLocaleString()}
-            </span>
-            <span className="text-xs text-emerald-600 font-semibold">orderable units</span>
-          </div>
-          <p className="text-[11px] text-emerald-700/80 mt-1">{metrics.nccRowsCount} items ready for immediate order</p>
-        </div>
-
-        <div className="p-5 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-200 dark:border-blue-800/40 shadow-sm">
-          <span className="text-xs font-bold text-blue-800 dark:text-blue-300 uppercase tracking-wider block">Alternate Suppliers</span>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-blue-700 dark:text-blue-400 font-mono">
-              {metrics.alternateAvailableStock.toLocaleString()}
-            </span>
-            <span className="text-xs text-blue-600 font-semibold">units across {metrics.alternateSuppliersCount} suppliers</span>
-          </div>
-          <p className="text-[11px] text-blue-700/80 mt-1">Simba Global, HOST Supplies, Frenkel</p>
-        </div>
-
-        <div className="p-5 bg-amber-50/60 dark:bg-amber-950/20 rounded-2xl border border-amber-200 dark:border-amber-800/40 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">Pending Alternate POs</span>
-            <span className="text-[10px] font-bold bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded">Review</span>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-amber-700 dark:text-amber-400 font-mono">
-              {metrics.pendingAlternatePOs}
-            </span>
-            <span className="text-xs text-amber-600 font-semibold">requiring Ash's review</span>
-          </div>
-          <p className="text-[11px] text-amber-700/80 mt-1">Non-default supplier approvals</p>
-        </div>
-      </div>
+    <div className="space-y-4 animate-fade-in p-4 md:p-6 w-full max-w-full">
+      {/* Page Header with Direct, Crisp Subtitle */}
+      <PageHeader
+        title="Supplier Stock Directory"
+        subtitle="National supplier inventory directory and side-by-side price comparison. NCC Apparel is default preferred."
+      />
 
       {/* Filter and Control Bar */}
-      <div className="bg-white dark:bg-nocturne rounded-2xl p-5 border border-default shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+      <div className="bg-white dark:bg-nocturne rounded-2xl p-4 border border-default shadow-sm space-y-3">
+        <div className="flex flex-col lg:flex-row gap-3 justify-between items-center">
           {/* Universal Search */}
-          <div className="relative w-full md:w-96">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          <div className="relative w-full lg:w-96">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
             <input
               type="text"
               placeholder="Search product, SKU, supplier, category..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-gray-50 dark:bg-surface border border-default rounded-xl pl-10 pr-4 py-2.5 text-sm text-primary dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
+              className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl pl-10 pr-9 py-2 text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium transition-all"
             />
             {searchTerm && (
               <button
@@ -470,17 +489,17 @@ const SupplierStockDirectory: React.FC = () => {
                 onClick={() => setSearchTerm('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                <X size={16} />
+                <X size={15} />
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+          <div className="flex items-center gap-2.5 w-full lg:w-auto justify-end flex-wrap">
             {/* Category Filter */}
             <select
               value={selectedCategory}
               onChange={e => setSelectedCategory(e.target.value)}
-              className="bg-gray-50 dark:bg-surface border border-default rounded-xl px-3 py-2.5 text-xs text-primary dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
               <option value="ALL">All Categories</option>
               {categories.map(c => (
@@ -488,252 +507,291 @@ const SupplierStockDirectory: React.FC = () => {
               ))}
             </select>
 
-            {/* Stock Status Filter */}
-            <select
-              value={stockStatusFilter}
-              onChange={e => setStockStatusFilter(e.target.value as any)}
-              className="bg-gray-50 dark:bg-surface border border-default rounded-xl px-3 py-2.5 text-xs text-primary dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            >
-              <option value="ALL">All Stock Levels</option>
-              <option value="IN_STOCK">In Stock (&gt;0)</option>
-              <option value="LOW_STOCK">Low Stock (&lt;50)</option>
-              <option value="PRESSURE">Reservation Pressure</option>
-              <option value="OUT_OF_STOCK">Out of Stock (0)</option>
-            </select>
+            {/* Stock Status Filter (for Table/Grid) */}
+            {viewMode !== 'COMPARE' && (
+              <select
+                value={stockStatusFilter}
+                onChange={e => setStockStatusFilter(e.target.value as any)}
+                className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              >
+                <option value="ALL">All Stock Levels</option>
+                <option value="IN_STOCK">In Stock (&gt;0)</option>
+                <option value="LOW_STOCK">Low Stock (&lt;50)</option>
+                <option value="PRESSURE">Reservation Pressure</option>
+                <option value="OUT_OF_STOCK">Out of Stock (0)</option>
+              </select>
+            )}
 
-            {/* View Mode Toggle */}
-            <div className="flex border border-default rounded-xl overflow-hidden bg-gray-50 dark:bg-surface p-0.5">
+            {/* Comparison Match Toggle (when in Compare Mode) */}
+            {viewMode === 'COMPARE' && (
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={compareOnlyMatches}
+                  onChange={e => setCompareOnlyMatches(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>Only genuine matches (2+ suppliers)</span>
+              </label>
+            )}
+
+            {/* View Mode Switcher: Table | Compare Prices | Grid */}
+            <div className="flex border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-gray-100 dark:bg-[#15171e] p-0.5">
               <button
                 type="button"
                 onClick={() => setViewMode('TABLE')}
-                className={`p-2 rounded-lg transition-all ${viewMode === 'TABLE' ? 'bg-white dark:bg-nocturne text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                title="Table view"
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'TABLE' ? 'bg-white dark:bg-nocturne text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:hover:text-white'
+                }`}
+                title="Directory table"
               >
-                <List size={16} />
+                <List size={15} />
+                <span>Table</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('COMPARE')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'COMPARE' ? 'bg-white dark:bg-nocturne text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:hover:text-white'
+                }`}
+                title="Compare genuine matched items across suppliers"
+              >
+                <Scale size={15} />
+                <span>Compare Prices</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setViewMode('GRID')}
-                className={`p-2 rounded-lg transition-all ${viewMode === 'GRID' ? 'bg-white dark:bg-nocturne text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'GRID' ? 'bg-white dark:bg-nocturne text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:hover:text-white'
+                }`}
                 title="Grid cards view"
               >
-                <LayoutGrid size={16} />
+                <LayoutGrid size={15} />
+                <span>Grid</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Supplier Selector Chips */}
-        <div className="pt-2 border-t border-default flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-secondary mr-1 shrink-0">Supplier:</span>
-          <button
-            type="button"
-            onClick={() => setSelectedSupplierId('ALL')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-              selectedSupplierId === 'ALL'
-                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
-                : 'bg-gray-100 dark:bg-surface text-secondary hover:text-primary hover:bg-gray-200'
-            }`}
-          >
-            All Suppliers ({directoryRows.length})
-          </button>
+        {/* Supplier Selector Pills (for Table and Grid views) */}
+        {viewMode !== 'COMPARE' && (
+          <div className="pt-2 border-t border-default flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-secondary mr-1 shrink-0">Supplier:</span>
+            <button
+              type="button"
+              onClick={() => setSelectedSupplierId('ALL')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                selectedSupplierId === 'ALL'
+                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                  : 'bg-gray-100 dark:bg-surface text-secondary hover:text-primary hover:bg-gray-200'
+              }`}
+            >
+              All ({directoryRows.length})
+            </button>
 
-          {displaySuppliers.map(s => {
-            const isDefault = isDefaultSupplier(s.name);
-            const count = directoryRows.filter(r => r.supplierId === s.id).length;
-            const isSelected = selectedSupplierId === s.id;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSelectedSupplierId(s.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
-                  isSelected
-                    ? isDefault
-                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-500/20'
-                      : 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
-                    : isDefault
-                    ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100'
-                    : 'bg-gray-100 dark:bg-surface text-secondary hover:text-primary hover:bg-gray-200'
-                }`}
-              >
-                {isDefault && <CheckCircle2 size={13} className={isSelected ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'} />}
-                <span>{s.name}</span>
-                {isDefault && <span className="text-[9px] uppercase tracking-wider font-extrabold px-1 rounded bg-black/10">Default</span>}
-                <span className="opacity-70 text-[10px]">({count})</span>
-              </button>
-            );
-          })}
-        </div>
+            {displaySuppliers.map(s => {
+              const isDefault = isDefaultSupplier(s.name);
+              const count = directoryRows.filter(r => r.supplierId === s.id).length;
+              const isSelected = selectedSupplierId === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSelectedSupplierId(s.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                    isSelected
+                      ? isDefault
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'bg-blue-600 text-white shadow-sm'
+                      : isDefault
+                      ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100'
+                      : 'bg-gray-100 dark:bg-surface text-secondary hover:text-primary hover:bg-gray-200'
+                  }`}
+                >
+                  {isDefault && <CheckCircle2 size={12} className={isSelected ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'} />}
+                  <span>{s.name}</span>
+                  {isDefault && <span className="text-[9px] uppercase tracking-wider font-extrabold px-1 rounded bg-black/10">Default</span>}
+                  <span className="opacity-70 text-[10px]">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Main Results Container */}
       <div className="bg-white dark:bg-nocturne rounded-2xl border border-default shadow-sm overflow-hidden">
-        <div className="p-4 px-6 border-b border-default flex items-center justify-between bg-gray-50/50 dark:bg-surface/50">
+        {/* Header Bar */}
+        <div className="p-3.5 px-5 border-b border-default flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-gray-50/50 dark:bg-surface/50">
           <div className="flex items-center gap-2">
-            <h3 className="font-bold text-primary dark:text-white text-sm">
-              Available Supplier Stock Catalog
+            <h3 className="font-bold text-primary dark:text-white text-xs sm:text-sm">
+              {viewMode === 'COMPARE' ? 'Supplier Price & Stock Comparison' : 'Available Supplier Stock Catalog'}
             </h3>
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/40">
-              {filteredRows.length} matches
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/40">
+              {activeTotalCount} items
             </span>
           </div>
-          <span className="text-xs text-tertiary">
-            Real-time running balances accounting for 48h active reservations
-          </span>
+
+          <div className="flex items-center gap-3 text-xs text-secondary">
+            <span>
+              Showing {startRecord}–{endRecord} of {activeTotalCount}
+            </span>
+            <div className="flex items-center gap-1 text-[11px]">
+              <span className="text-tertiary">Per page:</span>
+              {[25, 50, 100].map(sz => (
+                <button
+                  key={sz}
+                  type="button"
+                  onClick={() => setPageSize(sz)}
+                  className={`px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                    pageSize === sz ? 'bg-blue-600 text-white' : 'text-secondary hover:text-primary'
+                  }`}
+                >
+                  {sz}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* Table View */}
-        {viewMode === 'TABLE' ? (
-          <div className="overflow-x-auto">
+        {/* 1. TABLE VIEW: Fits neatly across all columns with NO side scrolling */}
+        {viewMode === 'TABLE' && (
+          <div className="w-full">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-gray-50 dark:bg-surface text-secondary uppercase font-bold text-[10px] tracking-wider border-b border-default">
                 <tr>
-                  <th className="px-5 py-3.5">Product / Internal SKU</th>
-                  <th className="px-5 py-3.5">Supplier & Code</th>
-                  <th className="px-5 py-3.5">Category</th>
-                  <th className="px-5 py-3.5 text-right">Unit Price</th>
-                  <th className="px-5 py-3.5 text-center">Baseline SOH</th>
-                  <th className="px-5 py-3.5 text-center">Active 48h Holds</th>
-                  <th className="px-5 py-3.5 text-center">In Delivery</th>
-                  <th className="px-5 py-3.5 text-right font-black">Net Orderable</th>
-                  <th className="px-5 py-3.5 text-center">Stock Health</th>
-                  <th className="px-5 py-3.5 text-right">Actions</th>
+                  <th className="px-3.5 py-3 w-[26%]">Product & Internal SKU</th>
+                  <th className="px-3 py-3 w-[18%]">Supplier & Code</th>
+                  <th className="px-3 py-3 text-right w-[9%]">Unit Price</th>
+                  <th className="px-2 py-3 text-center w-[8%]">Baseline</th>
+                  <th className="px-2 py-3 text-center w-[8%]">Holds</th>
+                  <th className="px-2 py-3 text-center w-[7%]">Delivery</th>
+                  <th className="px-3 py-3 text-right font-black w-[10%]">Net Orderable</th>
+                  <th className="px-2 py-3 text-center w-[7%]">Health</th>
+                  <th className="px-3 py-3 text-right w-[7%]">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-default font-medium">
-                {filteredRows.length > 0 ? (
-                  filteredRows.map(row => (
+                {paginatedRows.length > 0 ? (
+                  paginatedRows.map(row => (
                     <tr key={row.key} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
-                      {/* Product */}
-                      <td className="px-5 py-4">
-                        <div className="font-bold text-primary dark:text-white text-sm max-w-xs truncate" title={row.itemName}>
+                      {/* Product & SKU */}
+                      <td className="px-3.5 py-2.5">
+                        <div className="font-bold text-primary dark:text-white text-xs leading-snug line-clamp-2" title={row.itemName}>
                           {row.itemName}
                         </div>
-                        <div className="text-[11px] text-tertiary font-mono mt-0.5">
-                          SKU: {row.internalSku}
+                        <div className="flex items-center gap-1.5 text-[10px] text-tertiary mt-0.5">
+                          <span className="font-mono font-semibold">SKU: {row.internalSku}</span>
+                          <span>·</span>
+                          <span className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-surface text-secondary">{row.category}</span>
                         </div>
                       </td>
 
                       {/* Supplier */}
-                      <td className="px-5 py-4">
+                      <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-bold text-primary dark:text-white text-xs">{row.supplierName}</span>
+                          <span className="font-bold text-primary dark:text-white text-xs truncate max-w-[130px]">{row.supplierName}</span>
                           {row.isDefault ? (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60">
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
                               Default
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60">
-                              Alternate
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300">
+                              Alt
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-tertiary font-mono mt-0.5">
+                        <div className="text-[10px] text-tertiary font-mono mt-0.5 truncate">
                           Code: {row.supplierSku}
                         </div>
                       </td>
 
-                      {/* Category */}
-                      <td className="px-5 py-4 text-secondary">
-                        {row.category}
-                      </td>
-
-                      {/* Price */}
-                      <td className="px-5 py-4 text-right font-mono font-bold text-primary dark:text-white">
+                      {/* Unit Price */}
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-primary dark:text-white text-xs">
                         {formatCurrency(row.unitPrice)}
                       </td>
 
                       {/* Baseline SOH */}
-                      <td className="px-5 py-4 text-center font-mono text-secondary">
-                        <div>{row.breakdown.baseAvailableUnits.toLocaleString()}</div>
-                        {row.breakdown.snapshotDate && (
-                          <div className="text-[9px] text-tertiary">
-                            {new Date(row.breakdown.snapshotDate).toLocaleDateString()}
-                          </div>
+                      <td className="px-2 py-2.5 text-center font-mono text-secondary text-xs">
+                        {row.breakdown.baseAvailableUnits.toLocaleString()}
+                      </td>
+
+                      {/* Active Holds */}
+                      <td className="px-2 py-2.5 text-center font-mono text-xs">
+                        {row.breakdown.reservedUnits > 0 ? (
+                          <span className="font-bold text-blue-600 dark:text-blue-400">-{row.breakdown.reservedUnits.toLocaleString()}</span>
+                        ) : (
+                          <span className="text-gray-400">0</span>
                         )}
                       </td>
 
-                      {/* Reserved */}
-                      <td className="px-5 py-4 text-center font-mono font-bold text-blue-600 dark:text-blue-400">
-                        {row.breakdown.reservedUnits > 0 ? `-${row.breakdown.reservedUnits.toLocaleString()}` : '0'}
-                      </td>
-
-                      {/* Committed */}
-                      <td className="px-5 py-4 text-center font-mono font-bold text-amber-600 dark:text-amber-400">
-                        {row.breakdown.committedUnits > 0 ? `-${row.breakdown.committedUnits.toLocaleString()}` : '0'}
+                      {/* In Delivery */}
+                      <td className="px-2 py-2.5 text-center font-mono text-xs">
+                        {row.breakdown.committedUnits > 0 ? (
+                          <span className="font-bold text-amber-600 dark:text-amber-400">-{row.breakdown.committedUnits.toLocaleString()}</span>
+                        ) : (
+                          <span className="text-gray-400">0</span>
+                        )}
                       </td>
 
                       {/* Net Orderable */}
-                      <td className="px-5 py-4 text-right font-mono font-extrabold text-sm">
+                      <td className="px-3 py-2.5 text-right font-mono font-extrabold text-xs">
                         <span className={row.breakdown.availableOrderQty > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
                           {row.breakdown.availableOrderQty.toLocaleString()}
                         </span>
-                        <div className="text-[10px] text-tertiary font-normal">
+                        <div className="text-[9px] text-tertiary font-normal">
                           Pack: {row.packMultiple}
                         </div>
                       </td>
 
-                      {/* Health Badge */}
-                      <td className="px-5 py-4 text-center">
+                      {/* Stock Health */}
+                      <td className="px-2 py-2.5 text-center">
                         {row.stockStatus === 'IN_STOCK' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
                             In Stock
                           </span>
                         )}
                         {row.stockStatus === 'RESERVED_PRESSURE' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300">
                             High Holds
                           </span>
                         )}
                         {row.stockStatus === 'LOW_STOCK' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 border border-orange-300">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 border border-orange-300">
                             Low Stock
                           </span>
                         )}
                         {row.stockStatus === 'OUT_OF_STOCK' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300">
-                            Out of Stock
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300">
+                            Out
                           </span>
                         )}
                       </td>
 
-                      {/* Actions */}
-                      <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {!row.isDefault ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenContactModal(row)}
-                              className="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800 font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1"
-                              title="Request Ash for alternate approval"
-                            >
-                              <Mail size={12} /> Contact Ash
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleProceedToCreatePO(row.supplierId)}
-                              className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1"
-                            >
-                              <PlusCircle size={12} /> Order
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleProceedToCreatePO(row.supplierId, row.isDefault ? undefined : 'Alternate supplier selected via directory')}
-                            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-white"
-                            title="Open requisition with this supplier"
-                          >
-                            <ExternalLink size={14} />
-                          </button>
-                        </div>
+                      {/* Single Action: Order Button (Translates to request screen with pre-filled item) */}
+                      <td className="px-3 py-2.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleOrder(row)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-bold text-xs shadow-sm transition-all cursor-pointer ml-auto ${
+                            row.isDefault
+                              ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
+                              : 'bg-amber-600 hover:bg-amber-700 shadow-amber-500/20'
+                          }`}
+                          title={row.isDefault ? 'Order this item with NCC' : 'Order this item with alternate supplier'}
+                        >
+                          <ShoppingCart size={13} />
+                          <span>Order</span>
+                        </button>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={10} className="px-5 py-12 text-center text-secondary">
+                    <td colSpan={9} className="px-5 py-12 text-center text-secondary">
                       No products match your search or filter criteria.
                     </td>
                   </tr>
@@ -741,212 +799,400 @@ const SupplierStockDirectory: React.FC = () => {
               </tbody>
             </table>
           </div>
-        ) : (
-          /* Grid View */
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredRows.map(row => (
-              <div
-                key={row.key}
-                className="bg-gray-50/60 dark:bg-surface/60 rounded-2xl p-5 border border-default hover:border-blue-500/40 hover:shadow-md transition-all flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="text-[10px] font-bold text-secondary uppercase tracking-wider">{row.category}</span>
-                    {row.isDefault ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-300">
-                        <CheckCircle2 size={11} /> NCC (Default)
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300 border border-amber-300">
-                        Alternate Supplier
-                      </span>
-                    )}
-                  </div>
+        )}
 
-                  <h4 className="font-bold text-primary dark:text-white text-base leading-snug">{row.itemName}</h4>
-                  <div className="flex items-center justify-between text-xs text-secondary mt-1 font-mono">
-                    <span>SKU: {row.internalSku}</span>
-                    <span>Code: {row.supplierSku}</span>
-                  </div>
-
-                  <div className="mt-4 p-3 bg-white dark:bg-nocturne rounded-xl border border-default grid grid-cols-3 gap-2 text-center">
-                    <div>
-                      <span className="text-[9px] text-secondary uppercase block font-bold">Baseline</span>
-                      <span className="text-xs font-bold font-mono">{row.breakdown.baseAvailableUnits}</span>
+        {/* 2. COMPARE PRICES VIEW: Genuine Side-by-Side Supplier Matching */}
+        {viewMode === 'COMPARE' && (
+          <div className="divide-y divide-default">
+            {paginatedComparisonGroups.length > 0 ? (
+              paginatedComparisonGroups.map(group => {
+                const defaultPrice = group.defaultOffer?.unitPrice ?? 0;
+                return (
+                  <div key={group.key} className="p-4 hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors">
+                    {/* Item Heading */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-primary dark:text-white text-sm">
+                            {group.itemName}
+                          </h4>
+                          {group.hasMatch ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300">
+                              <Scale size={11} /> {group.totalOffers} Suppliers Matched
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700 dark:bg-surface dark:text-gray-300">
+                              Single Supplier (NCC Only)
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-tertiary mt-0.5">
+                          <span className="font-mono">SKU: {group.internalSku}</span>
+                          <span>·</span>
+                          <span className="text-secondary">{group.category}</span>
+                          {group.hasMatch && group.minPrice > 0 && (
+                            <>
+                              <span>·</span>
+                              <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                                Lowest Price: {formatCurrency(group.minPrice)} ({group.cheapestSupplierName})
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-[9px] text-blue-600 uppercase block font-bold">Reserved</span>
-                      <span className="text-xs font-bold font-mono text-blue-600">-{row.breakdown.reservedUnits}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-emerald-600 uppercase block font-bold">Net Available</span>
-                      <span className="text-sm font-black font-mono text-emerald-600">{row.breakdown.availableOrderQty}</span>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="mt-5 pt-4 border-t border-default flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] text-secondary uppercase block">Unit Price</span>
-                    <span className="text-sm font-bold text-primary dark:text-white font-mono">{formatCurrency(row.unitPrice)}</span>
-                  </div>
+                    {/* Side-by-Side Supplier Cards Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {/* Default Preferred: NCC Apparel */}
+                      {group.defaultOffer ? (
+                        <div className="p-3.5 rounded-xl border-2 border-emerald-400/80 dark:border-emerald-600/60 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-sm flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-xs font-black text-emerald-900 dark:text-emerald-200">
+                                {group.defaultOffer.supplierName}
+                              </span>
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500 text-white">
+                                <Check size={10} /> Default
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-emerald-800/80 dark:text-emerald-300 font-mono mb-2">
+                              Code: {group.defaultOffer.supplierSku}
+                            </div>
+                            <div className="flex items-baseline justify-between py-1 border-t border-emerald-200 dark:border-emerald-800/40">
+                              <span className="text-xs text-secondary">Unit Price:</span>
+                              <span className="text-sm font-black font-mono text-emerald-900 dark:text-white">
+                                {formatCurrency(group.defaultOffer.unitPrice)}
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between py-1 border-t border-emerald-200 dark:border-emerald-800/40 text-xs">
+                              <span className="text-secondary">Available Stock:</span>
+                              <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                                {group.defaultOffer.availableStock.toLocaleString()} units
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mt-3 pt-2.5 border-t border-emerald-200 dark:border-emerald-800/40">
+                            <button
+                              type="button"
+                              onClick={() => handleOrder(group.defaultOffer!)}
+                              className="w-full py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <ShoppingCart size={13} /> Order NCC
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3.5 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/50 dark:bg-surface/50 text-xs text-tertiary flex items-center justify-center text-center">
+                          Not available via NCC Apparel
+                        </div>
+                      )}
 
-                  <div className="flex items-center gap-2">
-                    {!row.isDefault ? (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenContactModal(row)}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1 cursor-pointer"
-                      >
-                        <Mail size={13} /> Request Ash
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleProceedToCreatePO(row.supplierId)}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1 cursor-pointer"
-                      >
-                        <PlusCircle size={13} /> Requisition
-                      </button>
-                    )}
+                      {/* Alternate Suppliers */}
+                      {group.alternateOffers.map(alt => {
+                        const priceDelta = defaultPrice > 0 ? alt.unitPrice - defaultPrice : 0;
+                        const percentDelta = defaultPrice > 0 ? ((alt.unitPrice - defaultPrice) / defaultPrice) * 100 : 0;
+                        const isCheaper = priceDelta < -0.001;
+                        const isMoreExpensive = priceDelta > 0.001;
+
+                        return (
+                          <div
+                            key={alt.supplierId}
+                            className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15171e] shadow-sm flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-xs font-bold text-gray-900 dark:text-white truncate max-w-[150px]">
+                                  {alt.supplierName || 'Alternate Supplier'}
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                  Alternate
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-tertiary font-mono mb-2">
+                                Code: {alt.supplierSku}
+                              </div>
+
+                              <div className="flex items-baseline justify-between py-1 border-t border-gray-100 dark:border-gray-800">
+                                <span className="text-xs text-secondary">Unit Price:</span>
+                                <div className="text-right">
+                                  <span className="text-sm font-black font-mono text-gray-900 dark:text-white">
+                                    {alt.unitPrice > 0 ? formatCurrency(alt.unitPrice) : 'Quote on Req.'}
+                                  </span>
+                                  {defaultPrice > 0 && (
+                                    <div className="text-[10px] font-bold">
+                                      {isCheaper && (
+                                        <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 justify-end">
+                                          <TrendingDown size={11} /> {formatCurrency(Math.abs(priceDelta))} ({Math.abs(percentDelta).toFixed(1)}% cheaper)
+                                        </span>
+                                      )}
+                                      {isMoreExpensive && (
+                                        <span className="text-rose-600 dark:text-rose-400 flex items-center gap-0.5 justify-end">
+                                          <TrendingUp size={11} /> +{formatCurrency(priceDelta)} (+{percentDelta.toFixed(1)}%)
+                                        </span>
+                                      )}
+                                      {!isCheaper && !isMoreExpensive && (
+                                        <span className="text-secondary">$0.00 Parity</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-baseline justify-between py-1 border-t border-default text-xs">
+                                <span className="text-secondary">Available Stock:</span>
+                                <span className={`font-mono font-bold ${alt.availableStock > 0 ? 'text-primary dark:text-white' : 'text-rose-500'}`}>
+                                  {alt.availableStock.toLocaleString()} units
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 pt-2.5 border-t border-default">
+                              <button
+                                type="button"
+                                onClick={() => handleOrder(alt)}
+                                className="w-full py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <ShoppingCart size={13} /> Order Alternate
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                );
+              })
+            ) : (
+              <div className="p-12 text-center text-secondary text-xs">
+                No matched items found for the current search or filters.
               </div>
-            ))}
+            )}
           </div>
         )}
+
+        {/* 3. GRID CARDS VIEW */}
+        {viewMode === 'GRID' && (
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {paginatedRows.length > 0 ? (
+              paginatedRows.map(row => (
+                <div
+                  key={row.key}
+                  className="bg-white dark:bg-surface border border-default rounded-2xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className="text-[10px] font-bold text-tertiary px-2 py-0.5 rounded-full bg-gray-100 dark:bg-nocturne">
+                        {row.category}
+                      </span>
+                      {row.isDefault ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
+                          NCC (Default)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300">
+                          Alternate
+                        </span>
+                      )}
+                    </div>
+
+                    <h4 className="font-bold text-primary dark:text-white text-xs leading-snug line-clamp-2" title={row.itemName}>
+                      {row.itemName}
+                    </h4>
+                    <p className="text-[10px] text-tertiary font-mono mt-0.5">
+                      SKU: {row.internalSku} · Code: {row.supplierSku}
+                    </p>
+                    <p className="text-xs text-secondary mt-1 font-semibold">{row.supplierName}</p>
+
+                    <div className="mt-3 pt-3 border-t border-default flex items-baseline justify-between">
+                      <span className="text-xs text-secondary">Unit Price:</span>
+                      <span className="text-sm font-black font-mono text-primary dark:text-white">
+                        {formatCurrency(row.unitPrice)}
+                      </span>
+                    </div>
+
+                    <div className="mt-1 pt-1 border-t border-default flex items-baseline justify-between text-xs">
+                      <span className="text-secondary">Net Orderable:</span>
+                      <span className={`font-mono font-extrabold ${row.breakdown.availableOrderQty > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {row.breakdown.availableOrderQty.toLocaleString()} units
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-default">
+                    <button
+                      type="button"
+                      onClick={() => handleOrder(row)}
+                      className={`w-full py-2 px-3 rounded-xl font-bold text-xs text-white shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        row.isDefault ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'
+                      }`}
+                    >
+                      <ShoppingCart size={13} />
+                      <span>Order</span>
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-full py-12 text-center text-secondary text-xs">
+                No products match your search or filter criteria.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Pagination & "Show Next 25" Footer Controls */}
+        <div className="p-3.5 px-5 border-t border-default bg-gray-50/50 dark:bg-surface/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-xs text-secondary font-medium">
+            Showing <span className="font-bold text-primary dark:text-white">{startRecord}–{endRecord}</span> of <span className="font-bold text-primary dark:text-white">{activeTotalCount}</span> items
+          </div>
+
+          {/* Show Next 25 Quick Button */}
+          {currentPage < totalPages && (
+            <button
+              type="button"
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-xs font-bold border border-blue-200 dark:border-blue-800/40 transition-all cursor-pointer shadow-sm"
+            >
+              <span>Show Next 25</span>
+              <ChevronRight size={14} />
+            </button>
+          )}
+
+          {/* Page Navigation */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              className="p-1.5 rounded-lg border border-default text-secondary hover:text-primary hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
+              title="Previous page"
+            >
+              <ChevronLeft size={16} />
+            </button>
+
+            <span className="text-xs font-bold text-secondary px-2">
+              Page {currentPage} of {totalPages}
+            </span>
+
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              className="p-1.5 rounded-lg border border-default text-secondary hover:text-primary hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
+              title="Next page"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Contact Ashish Modal */}
+      {/* Interactive Contact Ash Modal */}
       {selectedItemForRequest && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-nocturne rounded-3xl max-w-xl w-full p-6 md:p-8 shadow-2xl border border-default animate-scale-up space-y-5">
-            <div className="flex items-start justify-between pb-3 border-b border-default">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800/40">
-                  Alternate Supplier Approval Request
-                </span>
-                <h3 className="text-lg font-bold text-primary dark:text-white mt-1">
-                  Request Authorization: Ashish Chhabra
-                </h3>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-nocturne rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-default space-y-4">
+            <div className="flex items-start justify-between border-b border-default pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <Mail size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-primary dark:text-white">
+                    Request Alternate Supplier Authorization
+                  </h3>
+                  <p className="text-[11px] text-tertiary">Direct request to Ashish Chhabra (Procurement Manager)</p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedItemForRequest(null)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-full"
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
 
-            {/* Item Card Highlight */}
-            <div className="bg-gray-50 dark:bg-surface p-4 rounded-2xl border border-default flex items-center justify-between">
-              <div>
-                <h4 className="font-bold text-primary dark:text-white text-sm">{selectedItemForRequest.itemName}</h4>
-                <div className="text-xs text-secondary mt-0.5">
-                  Requested Supplier: <b className="text-primary dark:text-white">{selectedItemForRequest.supplierName}</b> · SKU: {selectedItemForRequest.supplierSku}
-                </div>
+            <div className="p-3 bg-gray-50 dark:bg-surface rounded-xl border border-default text-xs space-y-1">
+              <div className="font-bold text-primary dark:text-white">{selectedItemForRequest.itemName}</div>
+              <div className="text-tertiary font-mono text-[11px]">
+                SKU: {selectedItemForRequest.internalSku} · Supplier: {selectedItemForRequest.supplierName}
               </div>
-              <div className="text-right">
-                <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                  {selectedItemForRequest.breakdown.availableOrderQty} available
-                </span>
-                <span className="text-[10px] text-tertiary block font-mono">
-                  {formatCurrency(selectedItemForRequest.unitPrice)} / unit
-                </span>
+              <div className="text-secondary flex items-center gap-3 pt-1">
+                <span>Unit Price: <b>{formatCurrency(selectedItemForRequest.unitPrice)}</b></span>
+                <span>Stock: <b>{selectedItemForRequest.breakdown.availableOrderQty} units</b></span>
               </div>
             </div>
 
-            {/* Form Fields */}
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-secondary uppercase tracking-wider mb-1.5">
-                    Delivery Site <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={requestSiteId}
-                    onChange={e => setRequestSiteId(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-surface border border-default rounded-xl p-2.5 text-xs text-primary dark:text-white font-medium"
-                  >
-                    {userSites.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-secondary uppercase mb-1">Destination Site</label>
+                <select
+                  value={requestSiteId}
+                  onChange={e => setRequestSiteId(e.target.value)}
+                  className="w-full bg-gray-50 dark:bg-surface border border-default rounded-xl p-2.5 text-xs text-primary dark:text-white font-medium"
+                >
+                  {userSites.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
 
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-secondary uppercase tracking-wider mb-1.5">
-                    Quantity Needed <span className="text-red-500">*</span>
-                  </label>
+                  <label className="block text-[11px] font-bold text-secondary uppercase mb-1">Quantity Needed</label>
                   <input
                     type="number"
                     value={requestQty}
                     onChange={e => setRequestQty(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-surface border border-default rounded-xl p-2.5 text-xs text-primary dark:text-white font-mono font-bold"
+                    className="w-full bg-gray-50 dark:bg-surface border border-default rounded-xl p-2.5 text-xs text-primary dark:text-white font-medium"
+                    min="1"
                   />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-secondary uppercase mb-1">Reason for Alternate</label>
+                  <select
+                    value={requestReason}
+                    onChange={e => setRequestReason(e.target.value)}
+                    className="w-full bg-gray-50 dark:bg-surface border border-default rounded-xl p-2.5 text-xs text-primary dark:text-white font-medium"
+                  >
+                    <option value="NCC Stockout / Unavailable">NCC Stockout / Unavailable</option>
+                    <option value="Urgent Delivery Lead Time">Urgent Delivery Lead Time</option>
+                    <option value="Customer Mandated Requirement">Customer Mandated Requirement</option>
+                    <option value="Specialised Technical Specification">Specialised Technical Specification</option>
+                    <option value="Other Business Justification">Other Business Justification</option>
+                  </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-secondary uppercase tracking-wider mb-1.5">
-                  Reason for Alternate Supplier <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={requestReason}
-                  onChange={e => setRequestReason(e.target.value)}
-                  className="w-full bg-gray-50 dark:bg-surface border border-default rounded-xl p-2.5 text-xs text-primary dark:text-white font-medium"
-                >
-                  <option value="NCC Stockout / Unavailable">NCC Stockout / Unavailable</option>
-                  <option value="Specialised Technical Specification">Specialised Technical Specification</option>
-                  <option value="Customer Mandated Requirement">Customer Mandated Requirement</option>
-                  <option value="Urgent Delivery Lead Time">Urgent Delivery Lead Time</option>
-                  <option value="Other Business Justification">Other Business Justification</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-secondary uppercase tracking-wider mb-1.5">
-                  Detailed Justification / Notes
-                </label>
+                <label className="block text-[11px] font-bold text-secondary uppercase mb-1">Additional Justification</label>
                 <textarea
-                  rows={3}
                   value={requestNotes}
                   onChange={e => setRequestNotes(e.target.value)}
-                  placeholder="Provide context on why this item cannot be sourced through default supplier NCC Apparel..."
-                  className="w-full bg-gray-50 dark:bg-surface border border-default rounded-xl p-3 text-xs text-primary dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  placeholder="Provide context on why this alternate supplier is needed..."
+                  className="w-full bg-gray-50 dark:bg-surface border border-default rounded-xl p-2.5 text-xs text-primary dark:text-white font-medium resize-none h-18"
                 />
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="pt-3 border-t border-default flex flex-col sm:flex-row items-center justify-between gap-3">
-              <span className="text-[11px] text-tertiary">
-                Recipient: <b>ashish.chhabra@splservices.com.au</b>
-              </span>
-              <div className="flex items-center gap-2.5 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setSelectedItemForRequest(null)}
-                  className="px-4 py-2.5 rounded-xl border border-default text-secondary hover:text-primary text-xs font-bold transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSendEmailToAsh}
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Send size={14} /> Send Email to Ash
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleProceedToCreatePO(selectedItemForRequest.supplierId, requestReason)}
-                  className="px-4 py-2.5 bg-slate-900 hover:bg-black text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  Raise in App <ArrowRight size={14} />
-                </button>
-              </div>
+            <div className="flex items-center justify-between pt-2 border-t border-default gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedItemForRequest(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-secondary hover:text-primary transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSendEmailToAsh}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Send size={13} />
+                <span>Send Email to Ash</span>
+              </button>
             </div>
           </div>
         </div>

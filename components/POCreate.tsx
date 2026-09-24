@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
 import { Item, ItemPriceOption, POLineItem, PORequest, SpendCategory } from '../types.ts';
@@ -125,6 +125,9 @@ const POCreate = () => {
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const urlSupplierId = searchParams.get('supplierId') || '';
   const urlReason = searchParams.get('reason') || '';
+  const urlItemId = searchParams.get('addItemId') || searchParams.get('itemId') || '';
+  const urlSku = searchParams.get('addSku') || searchParams.get('sku') || '';
+  const urlQty = parseInt(searchParams.get('qty') || '1', 10);
 
   const draftKey = currentUser ? `pf_draft:${currentUser.id}:po-create` : '';
   const initialDraft = useMemo(
@@ -434,6 +437,49 @@ const POCreate = () => {
 
     return mappedItems;
   }, [selectedSupplierId, mappings, activeMasterItems, stockSnapshots, searchTerm, getEffectiveStock, onlyAvailableStock]);
+
+  const hasHandledUrlItemRef = useRef(false);
+  useEffect(() => {
+    if (hasHandledUrlItemRef.current) return;
+    if (!urlItemId && !urlSku) return;
+    if (displayItems.length === 0 && items.length === 0) return;
+
+    const matchedCatalogItem = displayItems.find(
+      i => (urlItemId && i.id === urlItemId) || (urlSku && (i.sku === urlSku || i.supplierSku === urlSku))
+    ) || items.find(i => (urlItemId && i.id === urlItemId) || (urlSku && i.sku === urlSku));
+
+    if (!matchedCatalogItem) return;
+
+    hasHandledUrlItemRef.current = true;
+    const upq = matchedCatalogItem.cartonQty || (matchedCatalogItem as any).upq || 1;
+    const unitPrice = (matchedCatalogItem as any).price || matchedCatalogItem.unitPrice || 0;
+    const safeQty = Math.max(1, isNaN(urlQty) ? 1 : urlQty);
+    const pricing = calculateLinePricing(safeQty, unitPrice, 'GST', 10.0);
+
+    setCart(prev => {
+      if (prev.some(l => l.itemId === matchedCatalogItem.id)) return prev;
+      return [
+        ...prev,
+        {
+          id: uuidv4(),
+          itemId: matchedCatalogItem.id,
+          itemName: matchedCatalogItem.name,
+          sku: matchedCatalogItem.sku,
+          quantityOrdered: pricing.quantityOrdered,
+          quantityReceived: 0,
+          unitPrice: pricing.unitPrice,
+          totalPrice: pricing.totalPrice,
+          taxCode: pricing.taxCode,
+          taxRate: pricing.taxRate,
+          taxAmount: pricing.taxAmount,
+          totalPriceIncGst: pricing.totalPriceIncGst,
+          upq,
+          needByDate: defaultNeedByDate || (requestDate ? requestDate.split('T')[0] : undefined)
+        }
+      ];
+    });
+    setIsCartExpanded(true);
+  }, [urlItemId, urlSku, urlQty, activeMasterItems, items, defaultNeedByDate, requestDate]);
 
   const sanitizeQuantity = (value: string, fallback: number): number => {
     const digitsOnly = (value || '').replace(/\D/g, '');

@@ -46,50 +46,33 @@ test.describe('Supplier Stock Directory & Alternate Supplier Requisition Suite',
 
         await page.waitForTimeout(2500);
 
-        // Hero screenshot
+        // Streamlined Directory Table View screenshot
         await page.screenshot({ path: path.join(briefAssetsDir, 'supplier_stock_directory_hero.png') });
         await page.screenshot({ path: path.join(artifactsDir, 'supplier_stock_directory_hero.png') });
-
-        // Table screenshot
-        await page.evaluate(() => {
-            const main = document.querySelector('main');
-            if (main) main.scrollTop = 520;
-        });
-        await page.waitForTimeout(600);
         await page.screenshot({ path: path.join(briefAssetsDir, 'supplier_stock_directory_table.png') });
         await page.screenshot({ path: path.join(artifactsDir, 'supplier_stock_directory_table.png') });
 
-        // Contact Modal screenshot
-        await page.evaluate(() => {
-            const main = document.querySelector('main');
-            if (main) main.scrollTop = 0;
-        });
-        await page.waitForTimeout(300);
-
-        const contactBtn = page.locator('button:has-text("Contact Ash for Alternate Supplier")').first();
-        if (await contactBtn.isVisible()) {
-            await contactBtn.click();
-            await page.waitForTimeout(600);
-            await page.screenshot({ path: path.join(briefAssetsDir, 'supplier_stock_contact_modal.png') });
-            await page.screenshot({ path: path.join(artifactsDir, 'supplier_stock_contact_modal.png') });
-            const cancelBtn = page.locator('button:has-text("Cancel")').first();
-            if (await cancelBtn.isVisible()) await cancelBtn.click();
-            else await page.keyboard.press('Escape');
-            await page.waitForTimeout(300);
+        // Compare Prices screenshot
+        const compareBtn = page.locator('button:has-text("Compare Prices")').first();
+        if (await compareBtn.isVisible()) {
+            await compareBtn.click();
+            await page.waitForTimeout(800);
+            await page.screenshot({ path: path.join(briefAssetsDir, 'supplier_stock_directory_compare.png') });
+            await page.screenshot({ path: path.join(artifactsDir, 'supplier_stock_directory_compare.png') });
+            
+            // Switch back to Table View
+            const tableBtn = page.locator('button:has-text("Table")').first();
+            if (await tableBtn.isVisible()) await tableBtn.click();
+            await page.waitForTimeout(500);
         }
 
-        // Grid View screenshot
-        const gridBtn = page.locator('button[title="Grid View"]').or(page.locator('button:has(svg.lucide-layout-grid)')).first();
-        if (await gridBtn.isVisible()) {
-            await gridBtn.click();
-            await page.waitForTimeout(600);
-            await page.evaluate(() => {
-                const main = document.querySelector('main');
-                if (main) main.scrollTop = 520;
-            });
-            await page.waitForTimeout(600);
-            await page.screenshot({ path: path.join(briefAssetsDir, 'supplier_stock_grid_view.png') });
-            await page.screenshot({ path: path.join(artifactsDir, 'supplier_stock_grid_view.png') });
+        // Click Order button to test redirect and auto-add to cart
+        const orderBtn = page.locator('button:has-text("Order")').first();
+        if (await orderBtn.isVisible()) {
+            await orderBtn.click();
+            await page.waitForTimeout(2000);
+            await page.screenshot({ path: path.join(briefAssetsDir, 'po_create_with_auto_added_item.png') });
+            await page.screenshot({ path: path.join(artifactsDir, 'po_create_with_auto_added_item.png') });
         }
     });
 
