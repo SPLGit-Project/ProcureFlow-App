@@ -24,7 +24,14 @@ import {
   RotateCcw
 } from 'lucide-react';
 import PageHeader from './PageHeader.tsx';
-import { isDefaultSupplier, dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
+import {
+  isDefaultSupplier,
+  findDefaultSupplier,
+  dedupeSuppliersForDisplay,
+  getCanonicalSupplier,
+  getCanonicalSupplierMap,
+  canonicalSupplierName
+} from '../utils/suppliers.ts';
 import { calculateItemRunningStock, StockBreakdown } from '../utils/reservationUtils.ts';
 import { formatCurrency } from '../utils/taxCalculations.ts';
 import { MASTER_HIERARCHY } from '../utils/hierarchyData.ts';
@@ -79,6 +86,110 @@ export interface ItemComparisonGroup {
   minPrice: number;
   maxPrice: number;
   cheapestSupplierName: string;
+}
+
+/**
+ * Known Item Types (Tier 3) to prevent cross-tier pollution in Category dropdowns.
+ */
+const KNOWN_ITEM_TYPES_SET = new Set([
+  'bed linen', 'bath linen', 'table linen', 'kitchen linen', 'hospital wear',
+  'work wear', 'cleaning', 'surgeon items', 'theatre', 'bathroom', 'delivery',
+  'charges & fees', 'apparel', 'ex-items', 'other', 'feeding', 'mats', 'packs',
+  'kitchen wear', 'accessories', 'bedding', 'laundry', 'patient care', 'surgical accessories'
+]);
+
+/**
+ * Known Catalogues (Tier 2) to prevent cross-tier pollution in Category dropdowns.
+ */
+const KNOWN_CATALOGS_SET = new Set([
+  'accommodation', 'food & beverages', 'health care', 'transport', 'theater', 'linen hub', 'mining'
+]);
+
+/**
+ * Non-category junk / system tags to exclude from Category dropdowns.
+ */
+const JUNK_CATEGORIES_SET = new Set([
+  'tba', 'surcharge', 'other', 'unassigned', 'unclassified', 'unknown', 'rfid', 'pop up', 'pop',
+  'consumables', 'textiles', 'hospitality', 's-theatre linen', 'table', 'n/a', 'none', 'null'
+]);
+
+/**
+ * Normalization map for categories: consolidates plural duplicates, spelling differences, and aliases.
+ */
+const CATEGORY_NORMALIZED_MAP: Record<string, string> = {
+  'sheets': 'Sheet',
+  'pillows': 'Pillow Case',
+  'pillowcase': 'Pillow Case',
+  'blankets': 'Blanket',
+  'towelling': 'Towel',
+  'quilt covers': 'Doona Cover',
+  'doonas & quilts': 'Doona Cover',
+  'mats': 'Mat',
+  'packs': 'Pack',
+  'curtains & drapes': 'Curtain',
+  'theater': 'Theatre',
+  'theatre apparel': 'Theatre',
+  'cloths': 'Cloth',
+  'aprons': 'Apron',
+  'gowns': 'Gown',
+  'mops': 'Mop',
+  'robes': 'Robe',
+  'rugs': 'Rug',
+  'runners': 'Runner',
+  'shirts': 'Shirt',
+  'uniforms': 'Uniform',
+  'slings': 'Sling',
+  'toppers': 'Topper'
+};
+
+/**
+ * Sanitizes and normalizes a Category string (Tier 4).
+ * Rejects full product descriptions, SKU patterns, junk keywords, and cross-tier contamination.
+ */
+export function normalizeCategory(raw?: string): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (trimmed.length > 25 || trimmed.length < 2) return null;
+  if (/(\d+x\d+|\d+cm|\d+\/\d+|\bSPL\b|\bRFID\b|\bRHJAC\b|\bHAP\b|\bHSH\b|\bHST\b|\bHBT\b|\bHG\d)/i.test(trimmed)) {
+    return null;
+  }
+  const lower = trimmed.toLowerCase();
+  if (JUNK_CATEGORIES_SET.has(lower) || KNOWN_ITEM_TYPES_SET.has(lower) || KNOWN_CATALOGS_SET.has(lower)) {
+    return null;
+  }
+  if (CATEGORY_NORMALIZED_MAP[lower]) {
+    return CATEGORY_NORMALIZED_MAP[lower];
+  }
+  return trimmed;
+}
+
+/**
+ * Sanitizes and normalizes an Item Type string (Tier 3).
+ */
+export function normalizeItemType(raw?: string): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (trimmed.length > 25 || trimmed.length < 2) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower === 'other' || lower === 'unclassified' || lower === 'charges & fees' || lower === 'unknown' || lower === 'tba') {
+    return null;
+  }
+  return trimmed;
+}
+
+/**
+ * Sanitizes and normalizes a Sub-category string (Tier 5).
+ */
+export function normalizeSubCategory(raw?: string): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (trimmed.length > 25 || trimmed.length < 2) return null;
+  if (/(\d+x\d+|\d+cm|\d+\/\d+|\bSPL\b|\bRFID\b)/i.test(trimmed)) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower === 'other' || lower === 'unassigned' || lower === 'tba' || lower === 'none' || lower === 'unknown') {
+    return null;
+  }
+  return trimmed;
 }
 
 /**
@@ -138,9 +249,9 @@ export function resolveItemClassification(
 } {
   let resolvedPool = (itemOrSnap.itemPool || '').trim();
   let resolvedCatalog = (itemOrSnap.itemCatalog || '').trim();
-  let resolvedType = (itemOrSnap.itemType || '').trim();
-  let resolvedCat = (itemOrSnap.category || '').trim();
-  let resolvedSub = (itemOrSnap.subCategory || '').trim();
+  let resolvedType = normalizeItemType(itemOrSnap.itemType) || '';
+  let resolvedCat = normalizeCategory(itemOrSnap.category) || '';
+  let resolvedSub = normalizeSubCategory(itemOrSnap.subCategory) || '';
 
   const catToTypeMap = new Map<string, string>();
 
@@ -152,8 +263,12 @@ export function resolveItemClassification(
       const parentId = o.parentId || (o.parentIds && o.parentIds[0]);
       if (parentId) {
         const parentType = typeOpts.find(t => t.id === parentId);
-        if (parentType) {
-          catToTypeMap.set(o.value.trim().toLowerCase(), parentType.value.trim());
+        if (parentType && parentType.value) {
+          const normCat = normalizeCategory(o.value);
+          const normType = normalizeItemType(parentType.value);
+          if (normCat && normType) {
+            catToTypeMap.set(normCat.toLowerCase(), normType);
+          }
         }
       }
     });
@@ -164,18 +279,25 @@ export function resolveItemClassification(
     for (const cat of Object.keys(MASTER_HIERARCHY[pool])) {
       for (const typeKey of Object.keys(MASTER_HIERARCHY[pool][cat])) {
         for (const catKey of Object.keys(MASTER_HIERARCHY[pool][cat][typeKey])) {
-          if (!catToTypeMap.has(catKey.trim().toLowerCase())) {
-            catToTypeMap.set(catKey.trim().toLowerCase(), typeKey.trim());
+          const normCat = normalizeCategory(catKey);
+          const normType = normalizeItemType(typeKey);
+          if (normCat && normType && !catToTypeMap.has(normCat.toLowerCase())) {
+            catToTypeMap.set(normCat.toLowerCase(), normType);
           }
         }
       }
     }
   }
 
-  // 1. Resolve Category (Tier 4: Categories)
-  if (!resolvedCat || resolvedCat === 'Unassigned' || resolvedCat === 'Other' || resolvedCat === 'TBA') {
+  // 1. Resolve Category (Tier 4: Categories) if missing or sanitized away
+  if (!resolvedCat) {
     const rawName = (itemOrSnap.name || itemOrSnap.productName || '').toUpperCase();
-    if (rawName.includes('SHEET')) resolvedCat = 'Sheet';
+    if (rawName.includes('SCRUB') && (rawName.includes('TOP') || rawName.includes('SHIRT'))) resolvedCat = 'Scrubs-Top';
+    else if (rawName.includes('SCRUB') && (rawName.includes('PANT') || rawName.includes('TROUSER') || rawName.includes('BOTTOM'))) resolvedCat = 'Scrubs-Bottom';
+    else if (rawName.includes('THEATRE JACKET') || rawName.includes('WARM UP')) resolvedCat = 'Scrubs-Top';
+    else if (rawName.includes('PYJAMA') && rawName.includes('TOP')) resolvedCat = 'Clothing-Top';
+    else if (rawName.includes('PYJAMA') && (rawName.includes('PANT') || rawName.includes('BOTTOM'))) resolvedCat = 'Clothing-Bottom';
+    else if (rawName.includes('SHEET')) resolvedCat = 'Sheet';
     else if (rawName.includes('TOWEL') || rawName.includes('WASHER')) resolvedCat = 'Towel';
     else if (rawName.includes('PILLOW')) resolvedCat = 'Pillow Case';
     else if (rawName.includes('DOONA') || rawName.includes('QUILT')) resolvedCat = 'Doona Cover';
@@ -183,46 +305,58 @@ export function resolveItemClassification(
     else if (rawName.includes('BEDSPREAD')) resolvedCat = 'Bedspread';
     else if (rawName.includes('NAPKIN') || rawName.includes('SERVIETTE')) resolvedCat = 'Napkin';
     else if (rawName.includes('APRON') || rawName.includes('BIB')) resolvedCat = 'Apron';
-    else if (rawName.includes('GOWN')) resolvedCat = 'Gown';
-    else if (rawName.includes('SCRUB')) resolvedCat = 'Scrubs-Top';
+    else if (rawName.includes('GOWN') || rawName.includes('KIMONO')) resolvedCat = 'Gown';
     else if (rawName.includes('MOP')) resolvedCat = 'Mop';
     else if (rawName.includes('MAT')) resolvedCat = 'Mat';
     else if (rawName.includes('RUG')) resolvedCat = 'Rug';
     else if (rawName.includes('ROBE')) resolvedCat = 'Robe';
     else if (rawName.includes('CLOTH')) resolvedCat = 'Cloth';
-    else if (rawName.includes('UNIFORM') || rawName.includes('SHIRT')) resolvedCat = 'Uniform';
+    else if (rawName.includes('UNIFORM') || rawName.includes('SHIRT')) resolvedCat = 'Shirt';
+    else if (rawName.includes('BED PAD') || rawName.includes('PROTECTOR')) resolvedCat = 'Protector';
+    else if (rawName.includes('BAG') || rawName.includes('LINEN BAG')) resolvedCat = 'Linen Bags';
+    else if (rawName.includes('VEST') && rawName.includes('BABY')) resolvedCat = 'Clothing-Baby';
+    else resolvedCat = 'General';
   }
 
   // 2. Resolve Item Type (Tier 3: Item Types)
-  if (!resolvedType || resolvedType === 'Unclassified' || resolvedType === 'Other') {
+  if (!resolvedType) {
     if (resolvedCat && catToTypeMap.has(resolvedCat.toLowerCase())) {
       resolvedType = catToTypeMap.get(resolvedCat.toLowerCase())!;
     } else {
       const rawName = (itemOrSnap.name || itemOrSnap.productName || '').toUpperCase();
-      if (rawName.includes('SHEET') || rawName.includes('PILLOW') || rawName.includes('DOONA') || rawName.includes('QUILT') || rawName.includes('BLANKET') || rawName.includes('BEDSPREAD')) {
+      if (['Sheet', 'Pillow Case', 'Doona Cover', 'Blanket', 'Bedspread', 'Protector', 'Topper', 'Runner'].includes(resolvedCat) ||
+          rawName.includes('SHEET') || rawName.includes('PILLOW') || rawName.includes('DOONA') || rawName.includes('QUILT') || rawName.includes('BLANKET') || rawName.includes('BEDSPREAD')) {
         resolvedType = 'Bed Linen';
-      } else if (rawName.includes('TOWEL') || rawName.includes('WASHER') || rawName.includes('ROBE') || rawName.includes('BATH')) {
+      } else if (['Towel', 'Cloth', 'Mat', 'Robe'].includes(resolvedCat) ||
+                 rawName.includes('TOWEL') || rawName.includes('WASHER') || rawName.includes('ROBE') || rawName.includes('BATH')) {
         resolvedType = 'Bath Linen';
-      } else if (rawName.includes('NAPKIN') || rawName.includes('SERVIETTE') || rawName.includes('TABLE')) {
+      } else if (resolvedCat === 'Napkin' || rawName.includes('NAPKIN') || rawName.includes('SERVIETTE') || rawName.includes('TABLE LINEN')) {
         resolvedType = 'Table Linen';
-      } else if (rawName.includes('GOWN') || rawName.includes('SCRUB') || rawName.includes('THEATRE') || rawName.includes('PATIENT')) {
+      } else if (['Gown', 'Scrubs-Top', 'Scrubs-Bottom', 'Clothing-Top', 'Clothing-Bottom', 'Clothing-Baby', 'Sling', 'Theatre'].includes(resolvedCat) ||
+                 rawName.includes('GOWN') || rawName.includes('SCRUB') || rawName.includes('THEATRE') || rawName.includes('PATIENT')) {
         resolvedType = 'Hospital Wear';
-      } else if (rawName.includes('UNIFORM') || rawName.includes('WORKWEAR') || rawName.includes('JACKET') || rawName.includes('SHIRT') || rawName.includes('APRON')) {
+      } else if (['Apron', 'Shirt', 'Uniform'].includes(resolvedCat) ||
+                 rawName.includes('UNIFORM') || rawName.includes('WORKWEAR') || rawName.includes('JACKET') || rawName.includes('SHIRT') || rawName.includes('APRON')) {
         resolvedType = 'Work Wear';
-      } else if (rawName.includes('MOP') || rawName.includes('DUSTER') || rawName.includes('BAG') || rawName.includes('MAT') || rawName.includes('CLEANING')) {
+      } else if (['Mop', 'Linen Bags', 'Duster'].includes(resolvedCat) ||
+                 rawName.includes('MOP') || rawName.includes('DUSTER') || rawName.includes('BAG') || rawName.includes('CLEANING')) {
         resolvedType = 'Cleaning';
+      } else {
+        resolvedType = 'Bed Linen';
       }
     }
   }
 
   // 3. Resolve Catalogue (Tier 2: Catalogues)
   if (!resolvedCatalog) {
-    if (resolvedType === 'Table Linen' || resolvedType === 'Kitchen Linen') {
+    if (resolvedType === 'Table Linen' || resolvedType === 'Kitchen Linen' || resolvedType === 'Kitchen Wear') {
       resolvedCatalog = 'Food & Beverages';
-    } else if (resolvedType === 'Hospital Wear' || resolvedType === 'Theatre') {
+    } else if (resolvedType === 'Hospital Wear' || resolvedType === 'Theatre' || resolvedType === 'Surgeon Items') {
       resolvedCatalog = 'Health Care';
     } else if (resolvedType === 'Bed Linen' || resolvedType === 'Bath Linen') {
       resolvedCatalog = 'Accommodation';
+    } else if (resolvedType === 'Delivery') {
+      resolvedCatalog = 'Transport';
     } else {
       resolvedCatalog = 'Accommodation';
     }
@@ -304,52 +438,116 @@ const SupplierStockDirectory: React.FC = () => {
   const [requestNotes, setRequestNotes] = useState('');
   const [isCopiedEmail, setIsCopiedEmail] = useState(false);
 
-  // Build directory rows with clean 5-tier classification
+  // Build directory rows with clean 5-tier classification and canonical supplier deduplication
   const directoryRows = useMemo<DirectoryRow[]>(() => {
     const rows: DirectoryRow[] = [];
     const processedKeys = new Set<string>();
 
+    const canonicalSupMap = getCanonicalSupplierMap(suppliers);
+
     items.forEach(item => {
       if (item.activeFlag === false) return;
 
-      const suppliersToProcess: string[] = [];
-      if (item.supplierId) suppliersToProcess.push(item.supplierId);
+      // Group candidate offers for this item by canonical supplier
+      interface CandidateOffer {
+        canonicalSupplier: Supplier;
+        supplierSku: string;
+        unitPrice: number;
+        source: 'default' | 'mapping' | 'snapshot';
+        priority: number;
+      }
+      const candidatesBySupplier = new Map<string, CandidateOffer>();
 
+      // 1. Check default item supplier
+      const defaultSup = item.supplierId
+        ? (canonicalSupMap.get(item.supplierId) || getCanonicalSupplier(item.supplierId, suppliers))
+        : findDefaultSupplier(suppliers);
+
+      if (defaultSup) {
+        candidatesBySupplier.set(defaultSup.id, {
+          canonicalSupplier: defaultSup,
+          supplierSku: item.sku || '-',
+          unitPrice: item.unitPrice || 0,
+          source: 'default',
+          priority: 10
+        });
+      }
+
+      // 2. Check mappings for this item
       (mappings || [])
         .filter(m => m.productId === item.id)
         .forEach(m => {
-          if (!suppliersToProcess.includes(m.supplierId)) {
-            suppliersToProcess.push(m.supplierId);
+          const sup = canonicalSupMap.get(m.supplierId) || getCanonicalSupplier(m.supplierId, suppliers);
+          if (!sup) return;
+
+          // Reject bogus low-confidence AUTO_V2 fallback mappings
+          const isDef = isDefaultSupplier(sup.name);
+          if (!isDef && m.mappingMethod === 'AUTO_V2' && (m.confidenceScore || 0) < 0.7 && m.supplierSku === item.sku) {
+            return;
+          }
+
+          const priority = (m.manualOverride ? 200 : 0) + ((m.confidenceScore || 0) * 100);
+          const existing = candidatesBySupplier.get(sup.id);
+
+          if (!existing || priority > existing.priority) {
+            candidatesBySupplier.set(sup.id, {
+              canonicalSupplier: sup,
+              supplierSku: m.supplierSku || (isDef ? (item.sku || '-') : '—'),
+              unitPrice: item.unitPrice || 0,
+              source: 'mapping',
+              priority
+            });
           }
         });
 
+      // 3. Check stock snapshots for this item
       (stockSnapshots || [])
         .filter(s =>
           (s.customerStockCode && s.customerStockCode.toLowerCase() === (item.sku || '').toLowerCase()) ||
           (s.customerStockCodeNorm && item.sapItemCodeNorm && s.customerStockCodeNorm === item.sapItemCodeNorm) ||
-          (s.supplierSku && s.supplierSku.toLowerCase() === (item.sku || '').toLowerCase())
+          (s.supplierSku && isDefaultSupplier((suppliers.find(x => x.id === s.supplierId)?.name || '')) && s.supplierSku.toLowerCase() === (item.sku || '').toLowerCase())
         )
         .forEach(s => {
-          if (!suppliersToProcess.includes(s.supplierId)) {
-            suppliersToProcess.push(s.supplierId);
+          const sup = canonicalSupMap.get(s.supplierId) || getCanonicalSupplier(s.supplierId, suppliers);
+          if (!sup) return;
+
+          const isDef = isDefaultSupplier(sup.name);
+          const snapSku = s.supplierSku || (isDef ? (item.sku || '-') : '—');
+          const snapPrice = (s.sellPrice && s.sellPrice > 0) ? s.sellPrice : ((s.unitPrice && s.unitPrice > 0) ? s.unitPrice : 0);
+
+          const existing = candidatesBySupplier.get(sup.id);
+          if (!existing) {
+            candidatesBySupplier.set(sup.id, {
+              canonicalSupplier: sup,
+              supplierSku: snapSku,
+              unitPrice: snapPrice || item.unitPrice || 0,
+              source: 'snapshot',
+              priority: 150
+            });
+          } else {
+            // Refine existing offer with genuine snapshot SKU & snapshot sellPrice if available
+            if (s.supplierSku && (!existing.supplierSku || existing.supplierSku === '—' || existing.supplierSku === item.sku)) {
+              existing.supplierSku = s.supplierSku;
+            }
+            if (snapPrice > 0) {
+              existing.unitPrice = snapPrice;
+            }
           }
         });
 
-      suppliersToProcess.forEach(supId => {
-        const supplier = suppliers.find(s => s.id === supId);
-        if (!supplier) return;
-
-        const isDefault = isDefaultSupplier(supplier.name);
-        const mapping = (mappings || []).find(m => m.productId === item.id && m.supplierId === supId);
-        const supplierSku = mapping?.supplierSku || item.sku || '-';
-        const rowKey = `${supId}:${supplierSku}:${item.id}`;
+      // Emit rows for each canonical supplier
+      candidatesBySupplier.forEach(candidate => {
+        const sup = candidate.canonicalSupplier;
+        const isDefault = isDefaultSupplier(sup.name);
+        const supplierSku = candidate.supplierSku || (isDefault ? (item.sku || '-') : '—');
+        const rowKey = `${sup.id}:${supplierSku}:${item.id}`;
 
         if (processedKeys.has(rowKey)) return;
         processedKeys.add(rowKey);
 
         const breakdown = calculateItemRunningStock(
           item.id,
-          supId,
+          sup.id,
           suppliers,
           mappings,
           stockSnapshots,
@@ -373,8 +571,8 @@ const SupplierStockDirectory: React.FC = () => {
           itemId: item.id,
           itemName: item.name,
           internalSku: item.sku || '-',
-          supplierId: supId,
-          supplierName: supplier.name,
+          supplierId: sup.id,
+          supplierName: sup.name,
           isDefault,
           supplierSku,
           itemPool: classification.itemPool,
@@ -382,7 +580,7 @@ const SupplierStockDirectory: React.FC = () => {
           itemType: classification.itemType,
           category: classification.category,
           subCategory: classification.subCategory,
-          unitPrice: item.unitPrice || 0,
+          unitPrice: candidate.unitPrice > 0 ? candidate.unitPrice : (item.unitPrice || 0),
           packMultiple: item.defaultOrderMultiple || breakdown.packConversionFactor || 1,
           breakdown,
           stockStatus
@@ -392,16 +590,19 @@ const SupplierStockDirectory: React.FC = () => {
 
     // Also include supplier snapshots that didn't have an item match
     (stockSnapshots || []).forEach(snap => {
-      const supplier = suppliers.find(s => s.id === snap.supplierId);
-      if (!supplier) return;
-      const rowKey = `${snap.supplierId}:${snap.supplierSku}:snapshot`;
+      const sup = canonicalSupMap.get(snap.supplierId) || getCanonicalSupplier(snap.supplierId, suppliers);
+      if (!sup) return;
+
+      const rowKey = `${sup.id}:${snap.supplierSku}:snapshot`;
       if (processedKeys.has(rowKey)) return;
 
-      const alreadyHasRow = rows.some(r => r.supplierId === snap.supplierId && (r.supplierSku === snap.supplierSku || r.internalSku === snap.customerStockCode));
+      const alreadyHasRow = rows.some(
+        r => r.supplierId === sup.id && (r.supplierSku === snap.supplierSku || (snap.customerStockCode && r.internalSku === snap.customerStockCode))
+      );
       if (alreadyHasRow) return;
 
       processedKeys.add(rowKey);
-      const isDefault = isDefaultSupplier(supplier.name);
+      const isDefault = isDefaultSupplier(sup.name);
       const available = snap.availableQty || snap.stockOnHand || 0;
       const breakdown: StockBreakdown = {
         supplierSku: snap.supplierSku,
@@ -438,8 +639,8 @@ const SupplierStockDirectory: React.FC = () => {
         itemId: snap.id,
         itemName: snap.productName || snap.supplierSku,
         internalSku: snap.customerStockCode || snap.supplierSku,
-        supplierId: snap.supplierId,
-        supplierName: supplier.name,
+        supplierId: sup.id,
+        supplierName: sup.name,
         isDefault,
         supplierSku: snap.supplierSku,
         itemPool: classification.itemPool,
@@ -462,7 +663,7 @@ const SupplierStockDirectory: React.FC = () => {
     });
   }, [items, suppliers, mappings, stockSnapshots, pos, attributeOptions]);
 
-  // ── 5-Tier Classification Hierarchy Dropdown Options ──
+  // ── 5-Tier Classification Hierarchy Dropdown Options (Sanitized & Normalized) ──
 
   // 1. Available Pools (Admin Tier: POOL)
   const availablePools = useMemo(() => {
@@ -501,57 +702,67 @@ const SupplierStockDirectory: React.FC = () => {
   // 3. Available Item Types (Admin Tier: TYPE - optionally scoped by selectedCatalog/Pool)
   const availableItemTypes = useMemo(() => {
     const set = new Set<string>();
+    const addIfValid = (type?: string) => {
+      const norm = normalizeItemType(type);
+      if (norm) set.add(norm);
+    };
+
     if (selectedCatalog === 'ALL') {
       (attributeOptions || [])
         .filter(o => o.type === 'TYPE' && o.activeFlag !== false)
-        .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+        .forEach(o => addIfValid(o.value));
       directoryRows.forEach(r => {
         if (selectedPool === 'ALL' || r.itemPool === selectedPool) {
-          if (r.itemType?.trim()) set.add(r.itemType.trim());
+          addIfValid(r.itemType);
         }
       });
     } else {
       directoryRows.forEach(r => {
-        if (r.itemCatalog === selectedCatalog && (selectedPool === 'ALL' || r.itemPool === selectedPool) && r.itemType?.trim()) {
-          set.add(r.itemType.trim());
+        if (r.itemCatalog === selectedCatalog && (selectedPool === 'ALL' || r.itemPool === selectedPool)) {
+          addIfValid(r.itemType);
         }
       });
       const catOpt = (attributeOptions || []).find(o => o.type === 'CATALOG' && o.value === selectedCatalog);
       if (catOpt) {
         (attributeOptions || [])
           .filter(o => o.type === 'TYPE' && o.activeFlag !== false && (o.parentId === catOpt.id || o.parentIds?.includes(catOpt.id)))
-          .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+          .forEach(o => addIfValid(o.value));
       }
     }
     return Array.from(set).filter(Boolean).sort();
   }, [attributeOptions, directoryRows, selectedPool, selectedCatalog]);
 
-  // 4. Available Categories (Admin Tier: CATEGORY - optionally scoped by selectedItemType)
+  // 4. Available Categories (Admin Tier: CATEGORY - sanitized, normalized, and optionally scoped by selectedItemType)
   const availableCategories = useMemo(() => {
     const set = new Set<string>();
+    const addIfValid = (cat?: string) => {
+      const norm = normalizeCategory(cat);
+      if (norm) set.add(norm);
+    };
+
     if (selectedItemType === 'ALL') {
       (attributeOptions || [])
         .filter(o => o.type === 'CATEGORY' && o.activeFlag !== false)
-        .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+        .forEach(o => addIfValid(o.value));
       directoryRows.forEach(r => {
         if (
           (selectedPool === 'ALL' || r.itemPool === selectedPool) &&
           (selectedCatalog === 'ALL' || r.itemCatalog === selectedCatalog)
         ) {
-          if (r.category?.trim()) set.add(r.category.trim());
+          addIfValid(r.category);
         }
       });
     } else {
       directoryRows.forEach(r => {
-        if (r.itemType === selectedItemType && r.category?.trim()) {
-          set.add(r.category.trim());
+        if (r.itemType === selectedItemType) {
+          addIfValid(r.category);
         }
       });
       const selectedTypeOpt = (attributeOptions || []).find(o => o.type === 'TYPE' && o.value === selectedItemType);
       if (selectedTypeOpt) {
         (attributeOptions || [])
           .filter(o => o.type === 'CATEGORY' && o.activeFlag !== false && (o.parentId === selectedTypeOpt.id || o.parentIds?.includes(selectedTypeOpt.id)))
-          .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+          .forEach(o => addIfValid(o.value));
       }
     }
     return Array.from(set).filter(Boolean).sort();
@@ -560,30 +771,35 @@ const SupplierStockDirectory: React.FC = () => {
   // 5. Available Sub-categories (Admin Tier: SUB_CATEGORY - optionally scoped by selectedCategory)
   const availableSubCategories = useMemo(() => {
     const set = new Set<string>();
+    const addIfValid = (sub?: string) => {
+      const norm = normalizeSubCategory(sub);
+      if (norm) set.add(norm);
+    };
+
     if (selectedCategory === 'ALL') {
       (attributeOptions || [])
         .filter(o => o.type === 'SUB_CATEGORY' && o.activeFlag !== false)
-        .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+        .forEach(o => addIfValid(o.value));
       directoryRows.forEach(r => {
         if (
           (selectedItemType === 'ALL' || r.itemType === selectedItemType) &&
           (selectedCatalog === 'ALL' || r.itemCatalog === selectedCatalog) &&
           (selectedPool === 'ALL' || r.itemPool === selectedPool)
         ) {
-          if (r.subCategory?.trim()) set.add(r.subCategory.trim());
+          addIfValid(r.subCategory);
         }
       });
     } else {
       directoryRows.forEach(r => {
-        if (r.category === selectedCategory && r.subCategory?.trim()) {
-          set.add(r.subCategory.trim());
+        if (r.category === selectedCategory) {
+          addIfValid(r.subCategory);
         }
       });
       const selectedCatOpt = (attributeOptions || []).find(o => o.type === 'CATEGORY' && o.value === selectedCategory);
       if (selectedCatOpt) {
         (attributeOptions || [])
           .filter(o => o.type === 'SUB_CATEGORY' && o.activeFlag !== false && (o.parentId === selectedCatOpt.id || o.parentIds?.includes(selectedCatOpt.id)))
-          .forEach(o => o.value?.trim() && set.add(o.value.trim()));
+          .forEach(o => addIfValid(o.value));
       }
     }
     return Array.from(set).filter(Boolean).sort();
@@ -646,7 +862,7 @@ const SupplierStockDirectory: React.FC = () => {
     const groupMap = new Map<string, ItemComparisonGroup>();
 
     directoryRows.forEach(row => {
-      const normKey = (row.internalSku && row.internalSku !== '-')
+      const normKey = (row.internalSku && row.internalSku !== '-' && row.internalSku !== '—')
         ? row.internalSku.trim().toUpperCase()
         : row.itemName.trim().toUpperCase();
 
@@ -686,14 +902,39 @@ const SupplierStockDirectory: React.FC = () => {
       if (row.isDefault) {
         group.defaultOffer = offer;
       } else {
-        if (!group.alternateOffers.some(o => o.supplierId === row.supplierId)) {
+        // Prevent adding alternate offer if it matches the default supplier's canonical name
+        if (group.defaultOffer && canonicalSupplierName(group.defaultOffer.supplierName) === canonicalSupplierName(offer.supplierName)) {
+          return;
+        }
+
+        // Deduplicate alternate offers by canonical supplier name
+        const existingIdx = group.alternateOffers.findIndex(
+          o => canonicalSupplierName(o.supplierName) === canonicalSupplierName(offer.supplierName)
+        );
+
+        if (existingIdx === -1) {
           group.alternateOffers.push(offer);
+        } else {
+          // Keep the best offer (prefer one with available stock > 0, or verified supplier code)
+          const existing = group.alternateOffers[existingIdx];
+          if (existing.availableStock <= 0 && offer.availableStock > 0) {
+            group.alternateOffers[existingIdx] = offer;
+          } else if ((existing.supplierSku === '—' || existing.supplierSku === '-') && offer.supplierSku !== '—' && offer.supplierSku !== '-') {
+            group.alternateOffers[existingIdx] = offer;
+          }
         }
       }
     });
 
     const list: ItemComparisonGroup[] = [];
     groupMap.forEach(group => {
+      // Ensure no alternate offer accidentally matches the default supplier
+      if (group.defaultOffer) {
+        group.alternateOffers = group.alternateOffers.filter(
+          o => canonicalSupplierName(o.supplierName) !== canonicalSupplierName(group.defaultOffer!.supplierName)
+        );
+      }
+
       const allOffers = [
         ...(group.defaultOffer ? [group.defaultOffer] : []),
         ...group.alternateOffers

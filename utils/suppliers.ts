@@ -155,3 +155,47 @@ export const isDefaultSupplier = (supplierName?: string): boolean => {
 export const findDefaultSupplier = (suppliers: Supplier[]): Supplier | undefined => {
   return suppliers.find(s => isDefaultSupplier(s.name));
 };
+
+/**
+ * Resolves any raw supplier ID (or raw supplier name) to its single canonical Supplier record.
+ * This guarantees consistent identity across fragmented UUIDs (e.g. HOST Supplies, Frenkel Textiles, SPL Accommodation).
+ */
+export const getCanonicalSupplier = (
+  rawSupplierIdOrName: string | undefined,
+  suppliers: Supplier[]
+): Supplier | undefined => {
+  if (!rawSupplierIdOrName) return undefined;
+  const canonicalList = dedupeSuppliersForDisplay(suppliers);
+
+  // 1. Direct match on canonical supplier ID
+  const direct = canonicalList.find(s => s.id === rawSupplierIdOrName);
+  if (direct) return direct;
+
+  // 2. Raw supplier ID mapped through raw suppliers list to name
+  const rawSup = suppliers.find(s => s.id === rawSupplierIdOrName);
+  const targetName = rawSup ? rawSup.name : rawSupplierIdOrName;
+  const targetCanonicalName = canonicalSupplierName(targetName);
+
+  // 3. Match by canonical name
+  return canonicalList.find(s => canonicalSupplierName(s.name) === targetCanonicalName);
+};
+
+/**
+ * Returns a map from every raw supplier ID to its single canonical Supplier record.
+ */
+export const getCanonicalSupplierMap = (suppliers: Supplier[]): Map<string, Supplier> => {
+  const map = new Map<string, Supplier>();
+  const canonicalList = dedupeSuppliersForDisplay(suppliers);
+  const byName = new Map<string, Supplier>();
+  canonicalList.forEach(s => byName.set(canonicalSupplierName(s.name), s));
+
+  suppliers.forEach(rawSup => {
+    const cSup = byName.get(canonicalSupplierName(rawSup.name));
+    if (cSup) {
+      map.set(rawSup.id, cSup);
+    }
+  });
+
+  return map;
+};
+
