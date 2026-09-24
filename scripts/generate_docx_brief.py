@@ -60,13 +60,13 @@ def create_document():
         tcPr.append(tcBorders)
 
     # 1. Header with Logo & Title
-    logo_path = 'docs/Logo Branding/APP-LOGOS/ProcureFlow-Title.png'
+    logo_path = 'public/Procureflow_Logo.png'
     if os.path.exists(logo_path):
         header_p = doc.add_paragraph()
         header_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
         run_logo = header_p.add_run()
-        run_logo.add_picture(logo_path, width=Inches(2.8))
-        header_p.paragraph_format.space_after = Pt(4)
+        run_logo.add_picture(logo_path, width=Inches(2.4))
+        header_p.paragraph_format.space_after = Pt(6)
 
     title_p = doc.add_paragraph()
     title_run = title_p.add_run("Feature Release Brief: Dynamic Supplier Stock & 48-Hour Reservations")
@@ -407,15 +407,101 @@ def create_document():
         r_a.font.color.rgb = RGBColor(51, 65, 85)
 
     # --- Section 5: Support & Contact ---
-    add_section_heading("Questions & Support")
+    add_section_heading("Questions & Key Contacts")
     p_sup = doc.add_paragraph()
     p_sup.paragraph_format.space_before = Pt(4)
-    p_sup.paragraph_format.space_after = Pt(6)
+    p_sup.paragraph_format.space_after = Pt(8)
     p_sup.add_run(
-        "For system support, supplier stock discrepancies, or questions regarding dynamic reservations:\n"
+        "Please direct any questions, discrepancies, or feedback to the appropriate lead below:"
     )
-    add_bullet(None, "ProcureFlow Support Desk: ", "Submit a ticket via the in-app Help Guide & Feedback drawer.")
-    add_bullet(None, "Procurement Systems Team: ", "Contact your central procurement category manager or buyer.")
+
+    # 2-column contact cards table
+    contact_table = doc.add_table(rows=1, cols=2)
+    contact_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    contact_table.autofit = False
+
+    contacts = [
+        {
+            "category": "PROCUREMENT & INVENTORY INQUIRIES",
+            "name": "Ashish Chhabra",
+            "title": "Procurement & Inventory Manager",
+            "email": "ashish.chhabra@splservices.com.au",
+            "scope": "Supplier stock availability, inventory quotas, PO approval escalation, and Concur PO processing queries."
+        },
+        {
+            "category": "PROCUREFLOW DEVELOPMENT & AUTOMATION",
+            "name": "Aaron Bell",
+            "title": "Enterprise Data and Automation Manager",
+            "email": "aaron.bell@splservices.com.au",
+            "scope": "ProcureFlow platform features, reservation engine logic, reporting tools, and system workflow enhancements."
+        }
+    ]
+
+    for idx, c_info in enumerate(contacts):
+        cell = contact_table.cell(0, idx)
+        cell.width = Inches(3.4)
+        set_cell_background(cell, "F8FAFC")
+        set_cell_margins(cell, top=120, bottom=120, left=140, right=140)
+
+        # Left border colored accent
+        tcPr = cell._tc.get_or_add_tcPr()
+        tcBorders = parse_xml(
+            f'<w:tcBorders {nsdecls("w")}>\n'
+            f'  <w:left w:val="single" w:sz="24" w:space="0" w:color="1E40AF"/>\n'
+            f'  <w:top w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>\n'
+            f'  <w:right w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>\n'
+            f'  <w:bottom w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>\n'
+            f'</w:tcBorders>'
+        )
+        tcPr.append(tcBorders)
+
+        p = cell.paragraphs[0]
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(2)
+        r_cat = p.add_run(c_info["category"] + "\n")
+        r_cat.font.size = Pt(8)
+        r_cat.font.bold = True
+        r_cat.font.color.rgb = BLUE
+
+        r_name = p.add_run(c_info["name"] + "\n")
+        r_name.font.size = Pt(11)
+        r_name.font.bold = True
+        r_name.font.color.rgb = NAVY
+
+        r_title = p.add_run(c_info["title"] + "\n")
+        r_title.font.size = Pt(9.5)
+        r_title.font.color.rgb = MUTED
+
+        p_mail = cell.add_paragraph()
+        p_mail.paragraph_format.space_before = Pt(2)
+        p_mail.paragraph_format.space_after = Pt(4)
+        r_mail_lbl = p_mail.add_run("Email: ")
+        r_mail_lbl.font.size = Pt(9)
+        r_mail_lbl.font.bold = True
+        r_mail_lbl.font.color.rgb = NAVY
+        r_mail = p_mail.add_run(c_info["email"])
+        r_mail.font.size = Pt(9)
+        r_mail.font.underline = True
+        r_mail.font.color.rgb = ACCENT_BLUE
+
+        p_scope = cell.add_paragraph()
+        p_scope.paragraph_format.space_before = Pt(2)
+        p_scope.paragraph_format.space_after = Pt(0)
+        r_scope = p_scope.add_run(c_info["scope"])
+        r_scope.font.size = Pt(8.5)
+        r_scope.font.italic = True
+        r_scope.font.color.rgb = RGBColor(71, 85, 105)
+
+    doc.add_paragraph().paragraph_format.space_after = Pt(10)
+
+    # General Support note
+    p_gen = doc.add_paragraph()
+    p_gen.paragraph_format.space_before = Pt(4)
+    p_gen.paragraph_format.space_after = Pt(4)
+    r_gen = p_gen.add_run("In-App Help Desk: ")
+    r_gen.font.bold = True
+    r_gen.font.color.rgb = NAVY
+    p_gen.add_run("You can also submit instant feedback or log support tickets directly within ProcureFlow using the Help & Guide drawer on any screen.")
 
     # Save document
     output_path = 'docs/ProcureFlow_Update_Brief_Dynamic_Supplier_Stock_and_Reservations.docx'
