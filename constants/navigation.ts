@@ -35,7 +35,7 @@ export const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
     // ── Procurement ──
     { id: 'dashboard', path: '/procurement/dashboard', label: 'Dashboard', iconName: 'LayoutDashboard', permission: 'view_dashboard', isSystem: true, category: 'Procurement' },
     { id: 'create', path: '/create', label: 'Create Request', iconName: 'PlusCircle', permission: 'create_request', category: 'Procurement' },
-    { id: 'supplier-stock', path: '/supplier-stock', label: 'Supplier Stock Directory', iconName: 'Boxes', category: 'Procurement' },
+    { id: 'supplier-stock', path: '/supplier-stock', label: 'Supplier Stock', iconName: 'Boxes', category: 'Procurement' },
     { id: 'requests', path: '/requests', label: 'Requests', iconName: 'FileText', permission: 'view_dashboard', category: 'Procurement' },
     { id: 'smart-buying', path: '/smart-buying', label: 'Smart Buying', iconName: 'BarChart3', permission: 'manage_development', category: 'Procurement' },
     { id: 'approvals',       path: '/approvals',       label: 'Approvals',        iconName: 'CheckCircle', permission: 'approve_item_requests',  category: 'Procurement', parentId: 'requests' },

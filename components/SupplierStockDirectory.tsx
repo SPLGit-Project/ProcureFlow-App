@@ -23,7 +23,8 @@ import PageHeader from './PageHeader.tsx';
 import { isDefaultSupplier, dedupeSuppliersForDisplay } from '../utils/suppliers.ts';
 import { calculateItemRunningStock, StockBreakdown } from '../utils/reservationUtils.ts';
 import { formatCurrency } from '../utils/taxCalculations.ts';
-import type { Item, Supplier } from '../types.ts';
+import { MASTER_HIERARCHY } from '../utils/hierarchyData.ts';
+import type { Item, Supplier, AttributeOption } from '../types.ts';
 
 export interface DirectoryRow {
   key: string;
@@ -71,118 +72,113 @@ export interface ItemComparisonGroup {
 }
 
 /**
- * Resolves a clean, standardized high-level business category from product metadata.
+ * Resolves itemType and category directly leveraging Admin Classification Tiers:
+ * Tier 3: Item Types (type === 'TYPE' in attribute_options)
+ * Tier 4: Categories (type === 'CATEGORY' in attribute_options)
+ * Uses MASTER_HIERARCHY and standardized procurement definitions for unclassified items.
  */
-export function resolveItemCategory(itemOrSnap: {
-  category?: string;
-  itemType?: string;
-  itemCatalog?: string;
-  name?: string;
-  productName?: string;
-}): string {
-  const rawType = (itemOrSnap.itemType || '').trim();
-  const rawCat = (itemOrSnap.category || '').trim();
-  const rawName = (itemOrSnap.name || itemOrSnap.productName || '').toUpperCase();
+export function resolveItemClassification(
+  itemOrSnap: {
+    category?: string;
+    itemType?: string;
+    itemCatalog?: string;
+    name?: string;
+    productName?: string;
+  },
+  attributeOptions?: AttributeOption[]
+): { itemType: string; category: string } {
+  const catToTypeMap = new Map<string, string>();
 
-  if (
-    rawType === 'Bed Linen' ||
-    ['Sheet', 'Pillow Case', 'Pillow', 'Doona Cover', 'Doonas & Quilts', 'Bedspread', 'Blanket', 'Protector', 'Topper', 'Runner'].includes(rawCat) ||
-    rawName.includes('BEDSPREAD') || rawName.includes('SHEET') || rawName.includes('PILLOW') || rawName.includes('DOONA') || rawName.includes('QUILT')
-  ) {
-    return 'Bed Linen';
+  if (attributeOptions && attributeOptions.length > 0) {
+    const typeOpts = attributeOptions.filter(o => o.type === 'TYPE' && o.activeFlag !== false);
+    const catOpts = attributeOptions.filter(o => o.type === 'CATEGORY' && o.activeFlag !== false);
+
+    catOpts.forEach(o => {
+      const parentId = o.parentId || (o.parentIds && o.parentIds[0]);
+      if (parentId) {
+        const parentType = typeOpts.find(t => t.id === parentId);
+        if (parentType) {
+          catToTypeMap.set(o.value.trim().toLowerCase(), parentType.value.trim());
+        }
+      }
+    });
   }
 
-  if (
-    rawType === 'Bath Linen' || rawType === 'Bathroom' ||
-    ['Towel', 'Towelling', 'Robe', 'Rug', 'Textiles'].includes(rawCat) ||
-    rawName.includes('BATH') || rawName.includes('TOWEL') || rawName.includes('ROBE') || rawName.includes('FACEWASHER')
-  ) {
-    return 'Bath & Towels';
+  // Fallback mapping from MASTER_HIERARCHY
+  for (const pool of Object.keys(MASTER_HIERARCHY)) {
+    for (const cat of Object.keys(MASTER_HIERARCHY[pool])) {
+      for (const typeKey of Object.keys(MASTER_HIERARCHY[pool][cat])) {
+        for (const catKey of Object.keys(MASTER_HIERARCHY[pool][cat][typeKey])) {
+          if (!catToTypeMap.has(catKey.trim().toLowerCase())) {
+            catToTypeMap.set(catKey.trim().toLowerCase(), typeKey.trim());
+          }
+        }
+      }
+    }
   }
 
-  if (
-    rawType === 'Table Linen' || rawType === 'Kitchen Linen' ||
-    ['Table Linen', 'Table', 'Napkin', 'Apron', 'Bib', 'Cloth'].includes(rawCat) ||
-    rawName.includes('NAPKIN') || rawName.includes('SERVIETTE') || rawName.includes('TABLE') || rawName.includes('APRON')
-  ) {
-    return 'Table & Kitchen Linen';
+  // 1. Resolve Category (Admin Tier: Categories)
+  let resolvedCat = (itemOrSnap.category || '').trim();
+  if (!resolvedCat || resolvedCat === 'Unassigned' || resolvedCat === 'Other' || resolvedCat === 'TBA') {
+    const rawName = (itemOrSnap.name || itemOrSnap.productName || '').toUpperCase();
+    if (rawName.includes('SHEET')) resolvedCat = 'Sheet';
+    else if (rawName.includes('TOWEL') || rawName.includes('WASHER')) resolvedCat = 'Towel';
+    else if (rawName.includes('PILLOW')) resolvedCat = 'Pillow Case';
+    else if (rawName.includes('DOONA') || rawName.includes('QUILT')) resolvedCat = 'Doona Cover';
+    else if (rawName.includes('BLANKET')) resolvedCat = 'Blanket';
+    else if (rawName.includes('BEDSPREAD')) resolvedCat = 'Bedspread';
+    else if (rawName.includes('NAPKIN') || rawName.includes('SERVIETTE')) resolvedCat = 'Napkin';
+    else if (rawName.includes('APRON') || rawName.includes('BIB')) resolvedCat = 'Apron';
+    else if (rawName.includes('GOWN')) resolvedCat = 'Gown';
+    else if (rawName.includes('SCRUB')) resolvedCat = 'Scrubs-Top';
+    else if (rawName.includes('MOP')) resolvedCat = 'Mop';
+    else if (rawName.includes('MAT')) resolvedCat = 'Mat';
+    else if (rawName.includes('RUG')) resolvedCat = 'Rug';
+    else if (rawName.includes('ROBE')) resolvedCat = 'Robe';
+    else if (rawName.includes('CLOTH')) resolvedCat = 'Cloth';
+    else if (rawName.includes('UNIFORM') || rawName.includes('SHIRT')) resolvedCat = 'Uniform';
   }
 
-  if (
-    rawType === 'Hospital Wear' || rawType === 'Theatre' || rawType === 'Surgeon Items' ||
-    ['Theatre', 'Theater Pack', 'Gown', 'Scrubs-Top', 'Scrubs-Bottom', 'Baby', 'Clothing-Baby', 'Sling', 'Pack', 'Packs'].includes(rawCat) ||
-    rawName.includes('GOWN') || rawName.includes('SCRUB') || rawName.includes('THEATRE') || rawName.includes('THEATER') || rawName.includes('PATIENT')
-  ) {
-    return 'Healthcare & Theatre';
+  // 2. Resolve Item Type (Admin Tier: Item Types)
+  let resolvedType = (itemOrSnap.itemType || '').trim();
+  if (!resolvedType || resolvedType === 'Unclassified' || resolvedType === 'Other') {
+    if (resolvedCat && catToTypeMap.has(resolvedCat.toLowerCase())) {
+      resolvedType = catToTypeMap.get(resolvedCat.toLowerCase())!;
+    } else {
+      const rawName = (itemOrSnap.name || itemOrSnap.productName || '').toUpperCase();
+      if (rawName.includes('SHEET') || rawName.includes('PILLOW') || rawName.includes('DOONA') || rawName.includes('QUILT') || rawName.includes('BLANKET') || rawName.includes('BEDSPREAD')) {
+        resolvedType = 'Bed Linen';
+      } else if (rawName.includes('TOWEL') || rawName.includes('WASHER') || rawName.includes('ROBE') || rawName.includes('BATH')) {
+        resolvedType = 'Bath Linen';
+      } else if (rawName.includes('NAPKIN') || rawName.includes('SERVIETTE') || rawName.includes('TABLE')) {
+        resolvedType = 'Table Linen';
+      } else if (rawName.includes('GOWN') || rawName.includes('SCRUB') || rawName.includes('THEATRE') || rawName.includes('PATIENT')) {
+        resolvedType = 'Hospital Wear';
+      } else if (rawName.includes('UNIFORM') || rawName.includes('WORKWEAR') || rawName.includes('JACKET') || rawName.includes('SHIRT') || rawName.includes('APRON')) {
+        resolvedType = 'Work Wear';
+      } else if (rawName.includes('MOP') || rawName.includes('DUSTER') || rawName.includes('BAG') || rawName.includes('MAT') || rawName.includes('CLEANING')) {
+        resolvedType = 'Cleaning';
+      }
+    }
   }
 
-  if (
-    rawType === 'Work Wear' || rawType === 'Apparel' ||
-    ['Apparel', 'Workwear', 'Uniform', 'Uniform-Top', 'Shirt', 'Clothing-Top', 'Clothing-Bottom', 'Jacket', 'Cap', 'Hand Wear', 'Hood'].includes(rawCat) ||
-    rawName.includes('UNIFORM') || rawName.includes('WORKWEAR') || rawName.includes('JACKET') || rawName.includes('CARGO')
-  ) {
-    return 'Workwear & Apparel';
-  }
-
-  if (
-    rawType === 'Cleaning' ||
-    ['Mop', 'Duster', 'Mat', 'Mats', 'Rags', 'Linen Bags', 'Bag', 'Inserts & Liners', 'Trolleys & Tubs'].includes(rawCat) ||
-    rawName.includes('MOP') || rawName.includes('DUSTER') || rawName.includes('LINEN BAG') || rawName.includes('TROLLEY') || rawName.includes('TUB')
-  ) {
-    return 'Cleaning & Facility';
-  }
-
-  return 'Consumables & General';
+  return {
+    itemType: resolvedType,
+    category: resolvedCat
+  };
 }
 
-/**
- * Resolves a normalized specific item/product type from product metadata.
- */
-export function resolveItemType(itemOrSnap: {
-  category?: string;
-  name?: string;
-  productName?: string;
-}): string {
-  const rawCat = (itemOrSnap.category || '').trim();
-  const rawName = (itemOrSnap.name || itemOrSnap.productName || '').toUpperCase();
+export function resolveItemCategory(itemOrSnap: any, opts?: AttributeOption[]): string {
+  return resolveItemClassification(itemOrSnap, opts).itemType;
+}
 
-  if (rawCat && !['Unassigned', 'Other', 'Consumables', 'Textiles', 'Hospitality', 'TBA', 'Surcharge'].includes(rawCat)) {
-    if (rawCat === 'Scrubs-Top' || rawCat === 'Scrubs-Bottom') return 'Scrubs';
-    if (rawCat === 'Clothing-Top' || rawCat === 'Clothing-Bottom' || rawCat === 'Clothing-Baby' || rawCat === 'Baby') return 'Garments & PJs';
-    if (rawCat === 'Doonas & Quilts' || rawCat === 'Doona Cover') return 'Doonas & Quilts';
-    if (rawCat === 'Pillow Case' || rawCat === 'Pillow') return 'Pillows & Cases';
-    if (rawCat === 'Towelling') return 'Towel';
-    if (rawCat === 'Mats') return 'Mat';
-    if (rawCat === 'Packs' || rawCat === 'Theater Pack') return 'Theatre Packs';
-    if (rawCat === 'Curtains & Drapes') return 'Curtains';
-    return rawCat;
-  }
-
-  if (rawName.includes('PILLOW')) return 'Pillows & Cases';
-  if (rawName.includes('DOONA') || rawName.includes('QUILT') || rawName.includes('COMFORTER')) return 'Doonas & Quilts';
-  if (rawName.includes('BEDSPREAD')) return 'Bedspread';
-  if (rawName.includes('SHEET')) return 'Sheet';
-  if (rawName.includes('TOWEL') || rawName.includes('WASHER')) return 'Towel';
-  if (rawName.includes('ROBE')) return 'Robe';
-  if (rawName.includes('NAPKIN') || rawName.includes('SERVIETTE')) return 'Napkin';
-  if (rawName.includes('TABLE') || rawName.includes('TL ')) return 'Table Linen';
-  if (rawName.includes('APRON') || rawName.includes('BIB')) return 'Apron';
-  if (rawName.includes('GOWN')) return 'Gown';
-  if (rawName.includes('SCRUB')) return 'Scrubs';
-  if (rawName.includes('MOP')) return 'Mop';
-  if (rawName.includes('MAT')) return 'Mat';
-  if (rawName.includes('BLANKET')) return 'Blanket';
-  if (rawName.includes('PROTECTOR') || rawName.includes('BEDPAD') || rawName.includes('KYLIE')) return 'Protector';
-  if (rawName.includes('CURTAIN') || rawName.includes('DRAPE')) return 'Curtains';
-  if (rawName.includes('BAG')) return 'Linen Bags';
-  if (rawName.includes('UNIFORM') || rawName.includes('SHIRT') || rawName.includes('PANT')) return 'Uniform';
-
-  return 'General Items';
+export function resolveItemType(itemOrSnap: any, opts?: AttributeOption[]): string {
+  return resolveItemClassification(itemOrSnap, opts).category;
 }
 
 const SupplierStockDirectory: React.FC = () => {
   const navigate = useNavigate();
-  const { items, suppliers, stockSnapshots, mappings, pos, userSites, reloadData, isLoadingData } = useApp();
+  const { items, suppliers, stockSnapshots, mappings, pos, userSites, attributeOptions, reloadData, isLoadingData } = useApp();
 
   useEffect(() => {
     reloadData();
@@ -193,8 +189,8 @@ const SupplierStockDirectory: React.FC = () => {
   // Filters state
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('ALL');
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedItemType, setSelectedItemType] = useState<string>('ALL');
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [stockStatusFilter, setStockStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'PRESSURE' | 'OUT_OF_STOCK'>('ALL');
   const [viewMode, setViewMode] = useState<'TABLE' | 'COMPARE' | 'GRID'>('TABLE');
   const [compareOnlyMatches, setCompareOnlyMatches] = useState<boolean>(true);
@@ -206,7 +202,7 @@ const SupplierStockDirectory: React.FC = () => {
   // Reset pagination when any filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedSupplierId, selectedCategory, selectedItemType, stockStatusFilter, viewMode, compareOnlyMatches, pageSize]);
+  }, [searchTerm, selectedSupplierId, selectedItemType, selectedCategory, stockStatusFilter, viewMode, compareOnlyMatches, pageSize]);
 
   // Contact Ash modal state
   const [selectedItemForRequest, setSelectedItemForRequest] = useState<DirectoryRow | null>(null);
@@ -278,8 +274,7 @@ const SupplierStockDirectory: React.FC = () => {
           stockStatus = 'LOW_STOCK';
         }
 
-        const category = resolveItemCategory(item);
-        const itemType = resolveItemType(item);
+        const { itemType, category } = resolveItemClassification(item, attributeOptions);
 
         rows.push({
           key: rowKey,
@@ -335,16 +330,11 @@ const SupplierStockDirectory: React.FC = () => {
         stockStatus = 'LOW_STOCK';
       }
 
-      const category = resolveItemCategory({
+      const { itemType, category } = resolveItemClassification({
         category: snap.category,
         name: snap.productName,
         productName: snap.productName
-      });
-      const itemType = resolveItemType({
-        category: snap.category,
-        name: snap.productName,
-        productName: snap.productName
-      });
+      }, attributeOptions);
 
       rows.push({
         key: rowKey,
@@ -370,31 +360,68 @@ const SupplierStockDirectory: React.FC = () => {
       if (!a.isDefault && b.isDefault) return 1;
       return a.itemName.localeCompare(b.itemName);
     });
-  }, [items, suppliers, mappings, stockSnapshots, pos]);
+  }, [items, suppliers, mappings, stockSnapshots, pos, attributeOptions]);
 
-  // Master Categories list
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    directoryRows.forEach(r => {
-      if (r.category && r.category.trim()) set.add(r.category.trim());
-    });
-    return Array.from(set).sort();
-  }, [directoryRows]);
-
-  // Distinct Items list (dynamically scoped when a category is selected)
+  // 1. Available Master Categories (Admin Classification Tier: Item Types)
   const availableItemTypes = useMemo(() => {
     const set = new Set<string>();
-    directoryRows.forEach(r => {
-      if (selectedCategory === 'ALL' || r.category === selectedCategory) {
-        if (r.itemType && r.itemType.trim()) set.add(r.itemType.trim());
-      }
-    });
-    return Array.from(set).sort();
-  }, [directoryRows, selectedCategory]);
 
-  const handleCategoryChange = (newCat: string) => {
-    setSelectedCategory(newCat);
-    setSelectedItemType('ALL');
+    // Seed with configured active TYPE options from Admin Classification Tiers
+    (attributeOptions || [])
+      .filter(o => o.type === 'TYPE' && o.activeFlag !== false)
+      .forEach(o => {
+        if (o.value && o.value.trim()) set.add(o.value.trim());
+      });
+
+    // Also include any itemType present in the active directory rows
+    directoryRows.forEach(r => {
+      if (r.itemType && r.itemType.trim()) set.add(r.itemType.trim());
+    });
+
+    return Array.from(set).filter(Boolean).sort();
+  }, [attributeOptions, directoryRows]);
+
+  // 2. Available Items (Admin Classification Tier: Categories) - dynamically scoped when a Category (Item Type) is selected
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>();
+
+    if (selectedItemType === 'ALL') {
+      // Seed with configured active CATEGORY options from Admin Classification Tiers
+      (attributeOptions || [])
+        .filter(o => o.type === 'CATEGORY' && o.activeFlag !== false)
+        .forEach(o => {
+          if (o.value && o.value.trim()) set.add(o.value.trim());
+        });
+
+      // Also include any category present in directory rows
+      directoryRows.forEach(r => {
+        if (r.category && r.category.trim()) set.add(r.category.trim());
+      });
+    } else {
+      // Scoped: rows matching the selected Category (Item Type)
+      directoryRows.forEach(r => {
+        if (r.itemType === selectedItemType && r.category && r.category.trim()) {
+          set.add(r.category.trim());
+        }
+      });
+
+      // Also include CATEGORY options from Admin whose parent matches the selected Item Type
+      const selectedTypeOpt = (attributeOptions || []).find(o => o.type === 'TYPE' && o.value === selectedItemType);
+      if (selectedTypeOpt) {
+        (attributeOptions || [])
+          .filter(o => o.type === 'CATEGORY' && o.activeFlag !== false && (o.parentId === selectedTypeOpt.id || o.parentIds?.includes(selectedTypeOpt.id)))
+          .forEach(o => {
+            if (o.value && o.value.trim()) set.add(o.value.trim());
+          });
+      }
+    }
+
+    return Array.from(set).filter(Boolean).sort();
+  }, [attributeOptions, directoryRows, selectedItemType]);
+
+  const handleItemTypeChange = (newType: string) => {
+    setSelectedItemType(newType);
+    setSelectedCategory('ALL');
   };
 
   // Build comparison groups (side-by-side comparison of items across suppliers)
@@ -642,29 +669,29 @@ const SupplierStockDirectory: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2.5 w-full lg:w-auto justify-end flex-wrap">
-            {/* 1. Category Filter */}
+            {/* 1. Master Category Filter (Admin Classification Tier: Item Types) */}
             <select
-              value={selectedCategory}
-              onChange={e => handleCategoryChange(e.target.value)}
+              value={selectedItemType}
+              onChange={e => handleItemTypeChange(e.target.value)}
               className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              title="Filter by master category"
+              title="Filter by master category (Admin Tier: Item Types)"
             >
               <option value="ALL">All Categories</option>
-              {categories.map(c => (
-                <option key={c} value={c}>{c}</option>
+              {availableItemTypes.map(t => (
+                <option key={t} value={t}>{t}</option>
               ))}
             </select>
 
-            {/* 2. Distinct Item / Product Filter */}
+            {/* 2. Specific Item Filter (Admin Classification Tier: Categories) */}
             <select
-              value={selectedItemType}
-              onChange={e => setSelectedItemType(e.target.value)}
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value)}
               className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              title="Filter by specific item"
+              title="Filter by item classification (Admin Tier: Categories)"
             >
               <option value="ALL">All Items</option>
-              {availableItemTypes.map(it => (
-                <option key={it} value={it}>{it}</option>
+              {availableCategories.map(c => (
+                <option key={c} value={c}>{c}</option>
               ))}
             </select>
 
@@ -852,12 +879,16 @@ const SupplierStockDirectory: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-1.5 text-[10px] text-tertiary mt-0.5 flex-wrap">
                           <span className="font-mono font-semibold">SKU: {row.internalSku}</span>
-                          <span>·</span>
-                          <span className="px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-medium">{row.category}</span>
                           {row.itemType && (
                             <>
                               <span>·</span>
-                              <span className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-surface text-secondary font-medium">{row.itemType}</span>
+                              <span className="px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-medium">{row.itemType}</span>
+                            </>
+                          )}
+                          {row.category && (
+                            <>
+                              <span>·</span>
+                              <span className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-surface text-secondary font-medium">{row.category}</span>
                             </>
                           )}
                         </div>
@@ -1001,12 +1032,16 @@ const SupplierStockDirectory: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-tertiary mt-0.5 flex-wrap">
                           <span className="font-mono">SKU: {group.internalSku}</span>
-                          <span>·</span>
-                          <span className="text-blue-600 dark:text-blue-400 font-semibold">{group.category}</span>
                           {group.itemType && (
                             <>
                               <span>·</span>
-                              <span className="text-secondary">{group.itemType}</span>
+                              <span className="text-blue-600 dark:text-blue-400 font-semibold">{group.itemType}</span>
+                            </>
+                          )}
+                          {group.category && (
+                            <>
+                              <span>·</span>
+                              <span className="text-secondary">{group.category}</span>
                             </>
                           )}
                           {group.hasMatch && group.minPrice > 0 && (
@@ -1188,6 +1223,18 @@ const SupplierStockDirectory: React.FC = () => {
                     <p className="text-[10px] text-tertiary font-mono mt-0.5">
                       SKU: {row.internalSku} · Code: {row.supplierSku}
                     </p>
+                    <div className="flex items-center gap-1 text-[10px] text-tertiary mt-1 flex-wrap">
+                      {row.itemType && (
+                        <span className="px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-medium">
+                          {row.itemType}
+                        </span>
+                      )}
+                      {row.category && (
+                        <span className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-surface text-secondary font-medium">
+                          {row.category}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-secondary mt-1 font-semibold">{row.supplierName}</p>
 
                     <div className="mt-3 pt-3 border-t border-default flex items-baseline justify-between">

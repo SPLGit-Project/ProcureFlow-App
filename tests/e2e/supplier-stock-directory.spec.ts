@@ -31,6 +31,8 @@ test.describe('Supplier Stock Directory & Alternate Supplier Requisition Suite',
         });
 
         await page.addInitScript(() => {
+            localStorage.setItem('pf-sidebar-collapsed', 'false');
+            localStorage.setItem('pf-revamp-sidebar-expanded', 'true');
             for (let i = localStorage.length - 1; i >= 0; i--) {
                 const key = localStorage.key(i);
                 if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
