@@ -618,7 +618,7 @@ export interface ApprovalEvent {
   id: string;
   approverName: string;
   date: string;
-  action: 'APPROVED' | 'REJECTED' | 'SUBMITTED' | 'ADMIN_OVERRIDE' | 'DRAFT_SAVED' | 'SYSTEM_CANCELLED';
+  action: 'APPROVED' | 'REJECTED' | 'SUBMITTED' | 'ADMIN_OVERRIDE' | 'DRAFT_SAVED' | 'SYSTEM_CANCELLED' | 'STOCK_RE_RESERVED';
   comments?: string;
 }
 

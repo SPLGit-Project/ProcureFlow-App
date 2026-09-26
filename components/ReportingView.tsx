@@ -4575,7 +4575,7 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                     color="bg-rose-500" 
                 />
                 <MetricCard 
-                    label="Auto-Cancelled Orders" 
+                    label="Stock Reservations Cancelled" 
                     value={String(autoCancelledOrders.length)} 
                     sub={`${numberValue(totalCancelledUnits)} units released back to pool`} 
                     icon={ShieldAlert} 
@@ -4624,7 +4624,7 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                         }`}
                     >
                         <ShieldAlert size={13} />
-                        Auto-Cancelled Expiry Audit
+                        Cancelled Stock Reservations
                         {autoCancelledOrders.length > 0 && (
                             <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
                                 {autoCancelledOrders.length}
@@ -4813,8 +4813,8 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                 <div className="space-y-4">
                     <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                         <div>
-                            <h4 className="text-sm font-bold text-rose-900 dark:text-rose-300">Automated 48-Hour Cancellation Log</h4>
-                            <p className="text-xs text-rose-700 dark:text-rose-400">Orders that lapsed without a Concur PO # being entered within 48 hours of approval.</p>
+                            <h4 className="text-sm font-bold text-rose-900 dark:text-rose-300">Stock Reservation Cancellation Log</h4>
+                            <p className="text-xs text-rose-700 dark:text-rose-400">Requests whose 48-hour reservation lapsed without a Concur PO # being entered. Original approval remains valid; stock can be re-reserved.</p>
                         </div>
                         <div className="flex items-center gap-4 text-xs font-bold text-rose-800 dark:text-rose-300 shrink-0">
                             <div>Total Orders: <span className="font-mono text-sm">{autoCancelledOrders.length}</span></div>

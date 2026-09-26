@@ -1977,6 +1977,42 @@ export const db = {
         return data || { cancelled_count: 0, cancelled_items: [] };
     },
 
+    reReservePOStock: async (poId: string, approverName: string): Promise<{
+        success: boolean;
+        po_id: string;
+        display_id?: string;
+        status: string;
+        reservation_expires_at: string;
+    }> => {
+        const { data, error } = await supabase.rpc('re_reserve_po_stock', {
+            p_po_id: poId,
+            p_user_name: approverName || 'User'
+        });
+        if (error) {
+            console.error('Failed to run re_reserve_po_stock RPC, falling back to manual update:', error);
+            const newExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+            await db.updatePOStatus(poId, 'APPROVED_PENDING_CONCUR', {
+                reservation_expires_at: newExpiry,
+                auto_cancelled_at: null,
+                cancellation_reason: null
+            });
+            await db.addPOApproval(poId, {
+                id: crypto.randomUUID(),
+                approverName: approverName || 'User',
+                action: 'STOCK_RE_RESERVED',
+                date: new Date().toISOString(),
+                comments: 'Supplier stock re-reserved for 48 hours. Awaiting Concur PO #.'
+            });
+            return {
+                success: true,
+                po_id: poId,
+                status: 'APPROVED_PENDING_CONCUR',
+                reservation_expires_at: newExpiry
+            };
+        }
+        return data;
+    },
+
     submitDraftPO: async (poId: string, approverName: string): Promise<void> => {
         const { error } = await supabase.rpc('submit_draft_po', {
             p_request_id: poId,

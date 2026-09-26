@@ -299,6 +299,7 @@ interface AppContextType {
   submitDraftPO: (poId: string) => Promise<void>;
   updatePendingPO: (poId: string, updates: { customerName?: string; reasonForRequest?: 'Depletion' | 'New Customer' | 'Other'; comments?: string; concurRequestNumber?: string; concurPoNumber?: string; siteId?: string; lines: POLineItem[]; }) => Promise<void>;
   updatePOStatus: (poId: string, status: POStatus, event: ApprovalEvent) => void;
+  reReservePOStock: (poId: string, approverName?: string) => Promise<void>;
   updatePOsNeedByDate: (poIds: string[], needByDate: string) => Promise<void>;
   updatePOLinesNeedByDate: (poId: string, lineUpdates: { lineId: string; needByDate: string }[]) => Promise<void>;
   linkConcurRequest: (poId: string, concurRequestNumber: string) => void;
@@ -2610,6 +2611,48 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   };
 
+  const reReservePOStock = async (poId: string, approverName?: string) => {
+    const userToUse = approverName || currentUser?.name || 'User';
+    const nowIso = new Date().toISOString();
+    const expiryIso = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+    // Optimistic
+    setPos(prev => prev.map(p => {
+        if (p.id !== poId) return p;
+        const reReserveEvent: ApprovalEvent = {
+            id: crypto.randomUUID(),
+            approverName: userToUse,
+            action: 'STOCK_RE_RESERVED',
+            date: nowIso,
+            comments: 'Supplier stock re-reserved for 48 hours. Awaiting Concur PO #.'
+        };
+        return {
+            ...p,
+            status: 'APPROVED_PENDING_CONCUR',
+            reservationExpiresAt: expiryIso,
+            autoCancelledAt: undefined,
+            cancellationReason: undefined,
+            approvalHistory: [...(p.approvalHistory || []), reReserveEvent]
+        };
+    }));
+
+    // Persist
+    try {
+        await db.reReservePOStock(poId, userToUse);
+        const po = pos.find(p => p.id === poId);
+        if (po) {
+            sendNotification('PO_APPROVED', { poId: po.displayId || po.id, approver: userToUse });
+        }
+        logAction('PO_STOCK_RE_RESERVED', { id: poId, approver: userToUse, newExpiry: expiryIso });
+        await reloadData(true, true);
+    } catch (e: unknown) {
+        console.error("Failed to re-reserve stock", e);
+        await reloadData();
+        logAction('PO_STOCK_RE_RESERVE_FAILED', { poId, error: (e as Error).message });
+        throw e;
+    }
+  };
+
   const updatePOsNeedByDate = async (poIds: string[], needByDate: string) => {
       if (!currentUser) throw new Error('You must be signed in to update delivery dates.');
       if (!poIds || poIds.length === 0) return;
@@ -3418,7 +3461,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     notifications, unreadNotificationCount, isNotificationDrawerOpen, setIsNotificationDrawerOpen, isNotificationPrefsOpen, setIsNotificationPrefsOpen, refreshNotifications,
     notificationPopups, dismissNotificationPopup, triggerNotificationPopup,
     theme, setTheme, branding, updateBranding,
-    createPO, saveDraftPO, submitDraftPO, updatePendingPO, updatePOStatus, linkConcurPO, addDelivery, updateFinanceInfo,
+    createPO, saveDraftPO, submitDraftPO, updatePendingPO, updatePOStatus, reReservePOStock, linkConcurPO, addDelivery, updateFinanceInfo,
     updateProfile, switchRole,
     addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: importMasterProducts,
     getAttributeOptions, upsertAttributeOption, deleteAttributeOption,

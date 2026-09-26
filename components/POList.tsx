@@ -52,7 +52,7 @@ const statusLabel = (status: POStatus) => {
   if (status === 'PENDING_APPROVAL') return 'Pending Approval';
   if (status === 'VARIANCE_PENDING') return 'Variance Pending';
   if (status === 'DRAFT') return 'Draft';
-  if (status === 'CANCELLED') return 'Cancelled (Expired)';
+  if (status === 'CANCELLED') return 'Stock Reservation Cancelled';
   return status.replace(/_/g, ' ');
 };
 

@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
-import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, AlertCircle, Shield, ShieldCheck, ShoppingCart, CheckCheck, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X, MapPin, Clock3, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Truck, Link as LinkIcon, Link2, Package, Calendar, User, FileText, Info, DollarSign, AlertTriangle, AlertCircle, Shield, ShieldCheck, ShoppingCart, CheckCheck, Edit2, Save, Building, LucideIcon, Plus, Trash2, Search, X, MapPin, Clock3, Clock, Check, Loader2, RotateCcw } from 'lucide-react';
 import { DeliveryHeader, Item, POStatus, POLineItem } from '../types.ts';
 import DeliveryModal from './DeliveryModal.tsx';
 import ConcurExportModal from './ConcurExportModal.tsx';
@@ -53,12 +53,14 @@ interface PODetailEditDraft {
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, allPos, suppliers, items, sites, updatePOStatus, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
+  const { pos, allPos, suppliers, items, sites, updatePOStatus, reReservePOStock, getEffectiveStock, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
   const [isConcurModalOpen, setIsConcurModalOpen] = useState(false);
   const [isConcurRequestModalOpen, setIsConcurRequestModalOpen] = useState(false);
+  const [isReReserveModalOpen, setIsReReserveModalOpen] = useState(false);
+  const [reReserveFeedback, setReReserveFeedback] = useState<string | null>(null);
 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
@@ -340,6 +342,14 @@ const PODetail = () => {
         icon = XCircle;
         colorClass = 'bg-red-100 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20';
         title = 'Request Rejected';
+      } else if (h.action === 'SYSTEM_CANCELLED') {
+        icon = Clock;
+        colorClass = 'bg-rose-100 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20';
+        title = 'Stock Reservation Cancelled';
+      } else if (h.action === 'STOCK_RE_RESERVED') {
+        icon = RotateCcw;
+        colorClass = 'bg-emerald-100 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20';
+        title = 'Stock Reservation Reinstated (48 Hours)';
       }
 
       events.push({
@@ -395,6 +405,17 @@ const PODetail = () => {
   const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id || isAdmin) && ['APPROVED_PENDING_CONCUR', 'ACTIVE'].includes(po?.status || '');
   const canReceive = Boolean(po && (po.status === 'ACTIVE' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') && canReceiveOrder(po));
   const canClose = canReceive;
+  const canReReserve = Boolean(
+    po &&
+    po.status === 'CANCELLED' &&
+    (po.requesterId === currentUser?.id || canApproveOrder(po) || hasPermission('approve_requests') || isAdmin)
+  );
+
+  const originalApprover = useMemo(() => {
+    if (!po) return null;
+    const approvalEvt = [...po.approvalHistory].reverse().find(e => e.action === 'APPROVED');
+    return approvalEvt?.approverName || null;
+  }, [po]);
   // isAdmin is defined at the top of the component
   const canEditDeliveries = Boolean(
     po &&
@@ -535,6 +556,20 @@ const PODetail = () => {
           setIsConcurModalOpen(false);
       } catch (_e) {
           // AppContext handles alert
+      }
+  };
+
+  const handleReReserveConfirm = async () => {
+      if (!po) return;
+      try {
+          await reReservePOStock(po.id, currentUser?.name);
+          setIsReReserveModalOpen(false);
+          setReReserveFeedback('Supplier stock has been successfully re-reserved for 48 hours! Awaiting Concur PO #.');
+          setTimeout(() => setReReserveFeedback(null), 8000);
+      } catch (e: unknown) {
+          console.error("Re-reserve failed:", e);
+          const msg = e instanceof Error ? e.message : 'Unknown error';
+          globalThis.alert(`Failed to re-reserve stock: ${msg}`);
       }
   };
 
@@ -1081,7 +1116,7 @@ const PODetail = () => {
                       po.status === 'CANCELLED' ? 'bg-rose-100 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-500/20' :
                       po.status === 'REJECTED' ? 'bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-500 border-red-200 dark:border-red-500/20' : 'bg-gray-100 dark:bg-gray-700/30 text-secondary dark:text-gray-400 border-gray-200 dark:border-gray-700'
                     }`}>
-                    {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur PO' : po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'Pending Concur Request' : po.status === 'DRAFT' ? 'Draft' : po.status === 'CANCELLED' ? 'Cancelled (Expired)' : po.status.replace(/_/g, ' ')}
+                    {po.status === 'APPROVED_PENDING_CONCUR' ? 'Pending Concur PO' : po.status === 'APPROVED_PENDING_CONCUR_REQUEST' ? 'Pending Concur Request' : po.status === 'DRAFT' ? 'Draft' : po.status === 'CANCELLED' ? 'Stock Reservation Cancelled' : po.status.replace(/_/g, ' ')}
                   </span>
                   <CustomerCategoryBadge category={po.sector} size="sm" showLabel />
               </div>
@@ -1146,6 +1181,16 @@ const PODetail = () => {
                      <button disabled={isSubmitting} type="button" onClick={() => setIsConcurModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/20 font-medium disabled:opacity-50 ${po.status === 'APPROVED_PENDING_CONCUR' ? 'animate-pulse' : ''}`}>
                         <LinkIcon size={18} /> {po.status === 'ACTIVE' ? 'Amend Concur PO' : 'Link Concur PO'}
                      </button>
+              )}
+              {canReReserve && (
+                    <button 
+                        disabled={isSubmitting} 
+                        type="button" 
+                        onClick={() => setIsReReserveModalOpen(true)} 
+                        className="w-full lg:w-auto justify-center px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-500 flex items-center gap-2 shadow-lg shadow-emerald-600/20 font-bold disabled:opacity-50 transition-all"
+                    >
+                        <RotateCcw size={18} /> Re-Reserve Stock
+                    </button>
               )}
               {canReceive && (
                    <button disabled={isSubmitting} type="button" onClick={() => setIsDeliveryModalOpen(true)} className={`w-full lg:w-auto justify-center px-4 py-2.5 rounded-xl flex items-center gap-2 font-medium shadow-lg transition-all disabled:opacity-50 ${
@@ -1244,24 +1289,53 @@ const PODetail = () => {
             );
         })()}
 
-        {/* Cancelled PO Banner */}
+        {/* Re-reserve Feedback Alert */}
+        {reReserveFeedback && (
+            <div className="mb-6 rounded-2xl p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 text-emerald-900 dark:text-emerald-200 shadow-sm flex items-center gap-3 animate-fade-in">
+                <CheckCircle size={20} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <p className="text-sm font-medium">{reReserveFeedback}</p>
+            </div>
+        )}
+
+        {/* Stock Reservation Cancelled Banner */}
         {po.status === 'CANCELLED' && (
-            <div className="mb-6 rounded-2xl p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 text-rose-900 dark:text-rose-200">
-                <div className="flex items-start gap-3">
-                    <div className="p-2.5 bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 rounded-xl shrink-0">
-                        <XCircle size={22} />
-                    </div>
-                    <div>
-                        <h4 className="font-bold text-sm sm:text-base">Request Cancelled</h4>
-                        <p className="text-xs sm:text-sm mt-1 opacity-90 leading-relaxed">
-                            {po.cancellationReason || 'This request was automatically cancelled because the 48-hour reservation window expired without a Concur PO # being linked. The reserved stock has been released.'}
-                        </p>
-                        {po.autoCancelledAt && (
-                            <p className="text-xs mt-2 text-rose-700 dark:text-rose-400 font-mono">
-                                Cancelled at: {new Date(po.autoCancelledAt).toLocaleString()}
+            <div className="mb-6 rounded-2xl p-5 bg-gradient-to-r from-rose-50 via-rose-50/80 to-amber-50 dark:from-rose-950/40 dark:via-rose-950/30 dark:to-amber-950/20 border border-rose-200 dark:border-rose-800/50 text-rose-900 dark:text-rose-200 shadow-sm">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3.5">
+                        <div className="p-2.5 bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 rounded-xl shrink-0 mt-0.5">
+                            <Clock size={22} />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-bold text-sm sm:text-base text-rose-950 dark:text-rose-100">Stock Reservation Cancelled</h4>
+                                <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-rose-200/80 dark:bg-rose-800/60 text-rose-800 dark:text-rose-200">
+                                    48-Hour Window Lapsed
+                                </span>
+                            </div>
+                            <p className="text-xs sm:text-sm mt-1.5 opacity-90 leading-relaxed text-rose-900 dark:text-rose-200">
+                                {po.cancellationReason || 'This request held a 48-hour supplier stock reservation that expired before a Concur PO # was linked. The original approval remains valid on record, and stock can be re-reserved when you are ready to link the Concur PO #.'}
                             </p>
-                        )}
+                            <p className="text-xs mt-1 text-rose-700 dark:text-rose-300 font-medium">
+                                Original approval remains valid on record. Re-reserving will allocate a fresh 48-hour holding window to link your Concur PO #.
+                            </p>
+                            {po.autoCancelledAt && (
+                                <p className="text-[11px] mt-2 text-rose-600 dark:text-rose-400 font-mono">
+                                    Cancelled at: {new Date(po.autoCancelledAt).toLocaleString()}
+                                </p>
+                            )}
+                        </div>
                     </div>
+                    {canReReserve && (
+                        <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => setIsReReserveModalOpen(true)}
+                            className="w-full md:w-auto shrink-0 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center justify-center gap-2 font-bold text-sm shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
+                        >
+                            <RotateCcw size={16} />
+                            Re-Reserve Stock
+                        </button>
+                    )}
                 </div>
             </div>
         )}
@@ -2237,6 +2311,139 @@ const PODetail = () => {
                 <div className="flex justify-end gap-3">
                     <button disabled={isSubmitting} type="button" onClick={() => setIsConcurModalOpen(false)} className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg font-medium disabled:opacity-50">Cancel</button>
                     <button type="button" onClick={() => guardedSubmit(handleConcurLink)} disabled={!concurInput || isSubmitting} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 font-bold shadow-lg shadow-indigo-500/20">Sync & Activate</button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {isReReserveModalOpen && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white dark:bg-nocturne rounded-2xl shadow-xl max-w-2xl w-full p-6 border border-gray-200 dark:border-gray-800 transform transition-all scale-100 max-h-[90vh] flex flex-col">
+                <div className="flex items-start justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                            <RotateCcw size={22} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-primary dark:text-white">Re-Reserve Supplier Stock</h2>
+                            <p className="text-xs text-secondary dark:text-gray-400 mt-0.5">
+                                Request: <span className="font-mono font-bold text-primary dark:text-white">{po.displayId || po.id}</span> • Supplier: <span className="font-medium text-primary dark:text-white">{po.supplierName}</span>
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setIsReReserveModalOpen(false)}
+                        className="p-2 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                    {/* Re-reserve Context Explanation */}
+                    <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-emerald-950 dark:text-emerald-200 text-xs sm:text-sm leading-relaxed">
+                        <p className="font-semibold mb-1 flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300">
+                            <CheckCircle size={16} /> Original Approval Maintained
+                        </p>
+                        {originalApprover ? (
+                            <p>
+                                This purchase request was approved on record by <strong>{originalApprover}</strong>.
+                                Re-reserving will return the request to <strong className="text-emerald-700 dark:text-emerald-400">Pending Concur PO</strong> status and start a fresh <strong className="text-emerald-700 dark:text-emerald-400">48-hour stock holding window</strong> for linking the Concur PO #.
+                            </p>
+                        ) : (
+                            <p>
+                                This purchase request was previously approved. Re-reserving will return the request to <strong className="text-emerald-700 dark:text-emerald-400">Pending Concur PO</strong> status and start a fresh <strong className="text-emerald-700 dark:text-emerald-400">48-hour stock holding window</strong> for linking the Concur PO #.
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Line Items & Live Availability */}
+                    <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-secondary dark:text-gray-400 mb-2">
+                            Line Items & Supplier Stock Verification ({po.lines.length} items)
+                        </h4>
+                        <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+                            {po.lines.map((line, idx) => {
+                                const availStock = po.supplierId ? getEffectiveStock(line.itemId, po.supplierId) : undefined;
+                                const isStockSufficient = availStock !== undefined ? availStock >= line.quantityOrdered : null;
+
+                                return (
+                                    <div key={line.id || idx} className="p-3 bg-gray-50/50 dark:bg-white/[0.02] flex items-center justify-between gap-3 text-xs">
+                                        <div className="min-w-0 flex-1">
+                                            <div className="font-semibold text-primary dark:text-white truncate">
+                                                {line.itemName}
+                                            </div>
+                                            <div className="text-[11px] text-secondary dark:text-gray-400 flex items-center gap-2 mt-0.5">
+                                                <span className="font-mono">SKU: {line.sku || '-'}</span>
+                                                <span>•</span>
+                                                <span>Qty Requested: <strong>{line.quantityOrdered}</strong></span>
+                                                <span>•</span>
+                                                <span>Price: {formatCurrency(line.unitPrice)}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="text-right shrink-0">
+                                            {availStock !== undefined ? (
+                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold text-[11px] ${
+                                                    isStockSufficient
+                                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-800/40'
+                                                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40'
+                                                }`}>
+                                                    {isStockSufficient ? <Check size={12} /> : <AlertTriangle size={12} />}
+                                                    {availStock} avail
+                                                </span>
+                                            ) : (
+                                                <span className="text-[11px] text-secondary dark:text-gray-400">
+                                                    Stock on record
+                                                </span>
+                                            )}
+                                            <div className="font-bold text-primary dark:text-white mt-0.5">
+                                                {formatCurrency(line.totalPrice)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Total Summary */}
+                    <div className="p-3 bg-gray-50 dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center text-xs">
+                        <span className="text-secondary dark:text-gray-400">Order Subtotal (Ex GST):</span>
+                        <span className="font-bold text-sm text-primary dark:text-white font-mono">
+                            {formatCurrency(po.subtotalAmount ?? po.totalAmount)}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-3 mt-5 pt-3 border-t border-gray-100 dark:border-gray-800">
+                    <button
+                        disabled={isSubmitting}
+                        type="button"
+                        onClick={() => setIsReReserveModalOpen(false)}
+                        className="px-4 py-2.5 text-secondary hover:text-primary dark:text-gray-400 dark:hover:text-white rounded-xl font-medium text-sm disabled:opacity-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        disabled={isSubmitting}
+                        onClick={() => guardedSubmit(handleReReserveConfirm)}
+                        className="px-6 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-500 disabled:opacity-50 font-bold text-sm shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+                    >
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 size={16} className="animate-spin" />
+                                Re-Reserving...
+                            </>
+                        ) : (
+                            <>
+                                <RotateCcw size={16} />
+                                Confirm Re-Reservation (48 Hours)
+                            </>
+                        )}
+                    </button>
                 </div>
             </div>
         </div>
