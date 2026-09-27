@@ -2787,7 +2787,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       setPos(prev => prev.map(p => {
           if (p.id !== poId) return p;
-          return { ...p, concurRequestNumber: trimmedRequestNumber, status: 'APPROVED_PENDING_CONCUR' };
+          return { 
+              ...p, 
+              concurRequestNumber: trimmedRequestNumber, 
+              status: 'APPROVED_PENDING_CONCUR',
+              cancellationReason: undefined,
+              autoCancelledAt: undefined
+          };
       }));
       
       try {
@@ -2822,6 +2828,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               concurPoNumber: trimmedPoNumber,
               concurLinkedAt: nowIso,
               reservationExpiresAt: undefined,
+              cancellationReason: undefined,
+              autoCancelledAt: undefined,
               status: 'ACTIVE' as POStatus 
           };
       }));

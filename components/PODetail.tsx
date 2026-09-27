@@ -401,8 +401,8 @@ const PODetail = () => {
   }, [po]);
 
   const canApprove = Boolean(po && po.status === 'PENDING_APPROVAL' && canApproveOrder(po));
-  const canLinkConcurRequest = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && po?.status === 'APPROVED_PENDING_CONCUR_REQUEST';
-  const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id || isAdmin) && ['APPROVED_PENDING_CONCUR', 'ACTIVE'].includes(po?.status || '');
+  const canLinkConcurRequest = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && (po?.status === 'APPROVED_PENDING_CONCUR_REQUEST' || (po?.status === 'CANCELLED' && !po?.concurRequestNumber));
+  const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id || isAdmin) && ['APPROVED_PENDING_CONCUR', 'ACTIVE', 'CANCELLED'].includes(po?.status || '');
   const canReceive = Boolean(po && (po.status === 'ACTIVE' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') && canReceiveOrder(po));
   const canClose = canReceive;
   const canReReserve = Boolean(
@@ -1190,6 +1190,44 @@ const PODetail = () => {
 
         {/* Dynamic 48-Hour Stock Reservation Status Banner */}
         {isPOReservingStock(po) && (() => {
+            const hasPR = Boolean(po.concurRequestNumber && po.concurRequestNumber.trim().length > 0);
+
+            if (hasPR) {
+                return (
+                    <div className="mb-6 rounded-2xl p-4 border border-blue-200 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 shadow-sm">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div className="flex items-start gap-3">
+                                <div className="p-2.5 rounded-xl shrink-0 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400">
+                                    <Clock3 size={22} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="font-bold text-sm sm:text-base">
+                                            Stock Reserved — Awaiting Concur PO #
+                                        </h4>
+                                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-200 dark:bg-blue-800 text-blue-900 dark:text-blue-100">
+                                            Concur PR #{po.concurRequestNumber}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs sm:text-sm mt-1 opacity-90 leading-relaxed">
+                                        Purchase Request #{po.concurRequestNumber} has been lodged in SAP Concur. Supplier stock remains reserved pending final Concur Purchase Order issuance.
+                                    </p>
+                                </div>
+                            </div>
+                            {canLinkConcur && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsConcurModalOpen(true)}
+                                    className="shrink-0 w-full sm:w-auto px-4 py-2.5 rounded-xl font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20"
+                                >
+                                    <LinkIcon size={16} /> Link Concur PO #
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
             const timeRemaining = getReservationTimeRemaining(po);
             const isCritical = timeRemaining.urgency === 'CRITICAL';
             const isWarning = timeRemaining.urgency === 'WARNING';
@@ -1225,21 +1263,21 @@ const PODetail = () => {
                                     </span>
                                 </div>
                                 <p className="text-xs sm:text-sm mt-1 opacity-90 leading-relaxed">
-                                    This request is holding a priority stock reservation. You have <strong>{timeRemaining.label}</strong> to enter the Concur PO # before this request is automatically cancelled and the reserved stock is returned to the available supplier pool.
+                                    This request is holding a priority stock reservation. You have <strong>{timeRemaining.label}</strong> to enter the Concur Request # before this reservation expires and the reserved stock is returned to the supplier pool.
                                 </p>
                             </div>
                         </div>
-                        {canLinkConcur && (
+                        {canLinkConcurRequest && (
                             <button
                                 type="button"
-                                onClick={() => setIsConcurModalOpen(true)}
+                                onClick={() => setIsConcurRequestModalOpen(true)}
                                 className={`shrink-0 w-full sm:w-auto px-4 py-2.5 rounded-xl font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
                                     isCritical 
                                         ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/20' 
                                         : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
                                 }`}
                             >
-                                <LinkIcon size={16} /> Link Concur PO #
+                                <LinkIcon size={16} /> Enter Request #
                             </button>
                         )}
                     </div>
@@ -1271,10 +1309,10 @@ const PODetail = () => {
                                 </span>
                             </div>
                             <p className="text-xs sm:text-sm mt-1.5 opacity-90 leading-relaxed text-rose-900 dark:text-rose-200">
-                                {po.cancellationReason || 'This request held a 48-hour supplier stock reservation that expired before a Concur PO # was linked. The original approval remains valid on record, and stock can be re-reserved when you are ready to link the Concur PO #.'}
+                                {po.cancellationReason || 'This request held a 48-hour supplier stock reservation that expired before a Concur Request # was linked. The original approval remains valid on record. Stock can be re-reserved, or enter your Concur Request # to reinstate.'}
                             </p>
                             <p className="text-xs mt-1 text-rose-700 dark:text-rose-300 font-medium">
-                                Original approval remains valid on record. Re-reserving will allocate a fresh 48-hour holding window to link your Concur PO #.
+                                Original approval remains valid on record. Re-reserving will allocate a fresh 48-hour holding window, or entering your Concur Request # will immediately reactivate the order.
                             </p>
                             {po.autoCancelledAt && (
                                 <p className="text-[11px] mt-2 text-rose-600 dark:text-rose-400 font-mono">
@@ -1283,17 +1321,30 @@ const PODetail = () => {
                             )}
                         </div>
                     </div>
-                    {canReReserve && (
-                        <button
-                            type="button"
-                            disabled={isSubmitting}
-                            onClick={() => setIsReReserveModalOpen(true)}
-                            className="w-full md:w-auto shrink-0 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center justify-center gap-2 font-bold text-sm shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
-                        >
-                            <RotateCcw size={16} />
-                            Re-Reserve Stock
-                        </button>
-                    )}
+                    <div className="flex items-center gap-2.5 flex-wrap w-full md:w-auto shrink-0">
+                        {canLinkConcurRequest && (
+                            <button
+                                type="button"
+                                disabled={isSubmitting}
+                                onClick={() => setIsConcurRequestModalOpen(true)}
+                                className="w-full md:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center justify-center gap-2 font-bold text-sm shadow-md shadow-indigo-600/20 transition-all disabled:opacity-50"
+                            >
+                                <LinkIcon size={16} />
+                                Enter Request #
+                            </button>
+                        )}
+                        {canReReserve && (
+                            <button
+                                type="button"
+                                disabled={isSubmitting}
+                                onClick={() => setIsReReserveModalOpen(true)}
+                                className="w-full md:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center justify-center gap-2 font-bold text-sm shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
+                            >
+                                <RotateCcw size={16} />
+                                Re-Reserve Stock
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
         )}

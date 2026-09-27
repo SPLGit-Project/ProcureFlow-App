@@ -28,14 +28,23 @@ export interface StockBreakdown {
 }
 
 /**
- * Checks whether an order is actively reserving supplier stock (approved, awaiting Concur PO #, < 48 hours).
+ * Checks whether an order is actively reserving supplier stock (approved, awaiting Concur PO #).
+ * - If a Concur PR # is linked, the order has satisfied the 48-hour entry window and holds
+ *   its reservation while awaiting Concur PO issuance.
+ * - If awaiting Concur PR #, reservation is held until the 48-hour window expires.
  */
 export function isPOReservingStock(po: PORequest): boolean {
     const isPendingConcur = po.status === 'APPROVED_PENDING_CONCUR' || po.status === 'APPROVED_PENDING_CONCUR_REQUEST';
     if (!isPendingConcur) return false;
     if (po.concurPoNumber && po.concurPoNumber.trim().length > 0) return false;
 
-    // Check expiry
+    // If Concur Request # has been linked, it has passed the 48-hour entry window
+    // and actively reserves stock while awaiting Concur PO issuance
+    if (po.concurRequestNumber && po.concurRequestNumber.trim().length > 0) {
+        return true;
+    }
+
+    // Check expiry for orders pending Concur PR #
     const expiresAtMs = getPOReservationExpiryMs(po);
     return expiresAtMs > Date.now();
 }
@@ -58,6 +67,18 @@ export function getPOReservationExpiryMs(po: PORequest): number {
  * Evaluates the remaining reservation time, countdown label, and urgency tier.
  */
 export function getReservationTimeRemaining(po: PORequest): ReservationTimeRemaining {
+    // If Concur PR # is already linked, reservation window requirement is satisfied
+    if (po.concurRequestNumber && po.concurRequestNumber.trim().length > 0) {
+        return {
+            isExpired: false,
+            totalHoursRemaining: Infinity,
+            hours: 0,
+            minutes: 0,
+            label: `Concur PR #${po.concurRequestNumber.trim()}`,
+            urgency: 'NORMAL'
+        };
+    }
+
     const expiresAtMs = getPOReservationExpiryMs(po);
     const nowMs = Date.now();
     const diffMs = expiresAtMs - nowMs;
