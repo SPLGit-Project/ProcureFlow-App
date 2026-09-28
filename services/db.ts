@@ -557,7 +557,7 @@ export const db = {
         const { error } = await supabase.from('supplier_product_map').upsert({
              id: mapping.id,
              supplier_id: mapping.supplierId,
-             product_id: mapping.productId,
+             product_id: mapping.productId || null,
              supplier_sku: mapping.supplierSku,
              supplier_customer_stock_code: mapping.supplierCustomerStockCode,
              match_priority: mapping.matchPriority,

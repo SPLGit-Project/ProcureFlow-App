@@ -761,8 +761,15 @@ const Settings = () => {
   // --- Mapping Workbench State ---
   const [mappingSubTab, setMappingSubTab] = useState<'EMAIL_INGEST' | 'SUPPLIER_ITEMS' | 'PROPOSED' | 'CONFIRMED' | 'REJECTED' | 'MEMORY'>('EMAIL_INGEST');
   const [mappingSupplierId, setMappingSupplierId] = useState('');
-  const [notMappedTarget, setNotMappedTarget] = useState<SupplierProductMap | null>(null);
-  const [notMappedReason, setNotMappedReason] = useState('No longer required');
+  const [notMappedTarget, setNotMappedTarget] = useState<{
+      id?: string;
+      supplierId: string;
+      supplierSku: string;
+      productName?: string;
+      customerStockCode?: string;
+      productId?: string;
+  } | SupplierProductMap | null>(null);
+  const [notMappedReason, setNotMappedReason] = useState('Not used by this business');
   const [isManualMapOpen, setIsManualMapOpen] = useState(false);
   const [isAddItemFromMapOpen, setIsAddItemFromMapOpen] = useState(false);
   const [mappingSource, setMappingSource] = useState<SupplierStockSnapshot | null>(null);
@@ -1938,11 +1945,21 @@ const Settings = () => {
   const markMappingNotMapped = async () => {
       if (!notMappedTarget) return;
 
-      await updateMapping({
-          ...notMappedTarget,
+      const existingMapping = mappings.find(m => m.supplierId === notMappedTarget.supplierId && m.supplierSku === notMappedTarget.supplierSku);
+
+      const mappingPayload: SupplierProductMap = {
+          id: existingMapping?.id || ('id' in notMappedTarget && notMappedTarget.id ? notMappedTarget.id : uuidv4()),
+          supplierId: notMappedTarget.supplierId,
+          supplierSku: notMappedTarget.supplierSku,
+          productId: ('productId' in notMappedTarget && notMappedTarget.productId ? notMappedTarget.productId : (existingMapping?.productId || null as any)),
+          supplierCustomerStockCode: ('customerStockCode' in notMappedTarget ? notMappedTarget.customerStockCode : (notMappedTarget as any).supplierCustomerStockCode) || existingMapping?.supplierCustomerStockCode,
+          matchPriority: existingMapping?.matchPriority || 100,
+          packConversionFactor: existingMapping?.packConversionFactor || 1,
           mappingStatus: 'REJECTED',
           manualOverride: true,
           mappingMethod: 'MANUAL',
+          confidenceScore: 0,
+          updatedAt: new Date().toISOString(),
           mappingJustification: {
               components: [{
                   type: 'NOT_MAPPED',
@@ -1950,11 +1967,13 @@ const Settings = () => {
                   detail: notMappedReason || 'Admin marked this supplier row as not mapped'
               }]
           }
-      } as SupplierProductMap);
+      };
+
+      await updateMapping(mappingPayload);
 
       setNotMappedTarget(null);
-      setNotMappedReason('No longer required');
-      success('Supplier item marked as not mapped.');
+      setNotMappedReason('Not used by this business');
+      success('Supplier item excluded and marked as Addressed.');
   };
 
   const renderGuidedMappingReview = () => {
@@ -2737,15 +2756,46 @@ const Settings = () => {
                                                   Review
                                               </button>
                                           ) : mapping?.mappingStatus === 'REJECTED' ? (
-                                              <span className="badge bg-gray-100 text-gray-700 border-gray-200 w-fit">Addressed</span>
+                                              <div className="flex items-center gap-1.5">
+                                                  <span className="badge bg-gray-100 text-gray-700 border-gray-200 w-fit">Addressed</span>
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => { setMappingSource(snapshot); setItemSearch(''); setIsManualMapOpen(true); }}
+                                                      className="text-xs text-blue-500 hover:underline font-bold px-1"
+                                                      title="Map manually to an internal item"
+                                                  >
+                                                      Map
+                                                  </button>
+                                              </div>
                                           ) : (
-                                              <button
-                                                  type="button"
-                                                  onClick={() => { setMappingSource(snapshot); setItemSearch(''); setIsManualMapOpen(true); }}
-                                                  className="badge bg-red-100 text-red-800 border-red-200 hover:bg-red-200 w-fit whitespace-nowrap"
-                                              >
-                                                  Map Now
-                                              </button>
+                                              <div className="flex items-center gap-1.5">
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => { setMappingSource(snapshot); setItemSearch(''); setIsManualMapOpen(true); }}
+                                                      className="badge bg-red-100 text-red-800 border-red-200 hover:bg-red-200 w-fit whitespace-nowrap font-bold"
+                                                  >
+                                                      Map Now
+                                                  </button>
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                          setNotMappedTarget({
+                                                              id: mapping?.id,
+                                                              supplierId: snapshot.supplierId,
+                                                              supplierSku: snapshot.supplierSku,
+                                                              productName: snapshot.productName,
+                                                              customerStockCode: snapshot.customerStockCode,
+                                                              productId: mapping?.productId
+                                                          });
+                                                          setNotMappedReason('Not used by this business');
+                                                      }}
+                                                      className="px-2 py-0.5 text-xs font-medium text-gray-500 hover:text-red-700 dark:hover:text-red-400 border border-gray-200 dark:border-gray-700 hover:border-red-300 dark:hover:border-red-800 rounded bg-white dark:bg-white/5 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors whitespace-nowrap flex items-center gap-1"
+                                                      title="We don't use this product / Exclude from mapping"
+                                                  >
+                                                      <MinusCircle size={12} />
+                                                      Won't Map
+                                                  </button>
+                                              </div>
                                           )}
                                       </td>
                                       <td className="px-3 py-3 font-bold text-gray-900 dark:text-white text-xs truncate max-w-[100px]">{supplier?.name || '-'}</td>
@@ -4441,13 +4491,19 @@ if __name__ == "__main__":
                                                       </>
                                                   )}
                                                   {map.mappingStatus === 'REJECTED' && (
-                                                      <button type="button" onClick={() => {
-                                                          const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
-                                                          if (!snapshot) return alert('Source stock row is not available for correction.');
-                                                          setMappingSource(snapshot);
-                                                          setItemSearch('');
-                                                          setIsManualMapOpen(true);
-                                                      }} className="text-xs text-blue-500 hover:underline font-bold px-2">Map Manually</button>
+                                                      <div className="flex items-center justify-center gap-2">
+                                                          <button type="button" onClick={() => {
+                                                              const snapshot = stockSnapshots.find(s => s.supplierId === map.supplierId && s.supplierSku === map.supplierSku);
+                                                              if (!snapshot) return alert('Source stock row is not available for correction.');
+                                                              setMappingSource(snapshot);
+                                                              setItemSearch('');
+                                                              setIsManualMapOpen(true);
+                                                          }} className="text-xs text-blue-500 hover:underline font-bold px-1">Map Manually</button>
+                                                          <button type="button" onClick={async () => {
+                                                              if (!globalThis.confirm('Remove this exclusion? The supplier item will return to the unmapped to-do list.')) return;
+                                                              await deleteMapping(map.id);
+                                                          }} className="text-xs text-red-500 hover:underline px-1" title="Remove exclusion rule">Un-exclude</button>
+                                                      </div>
                                                   )}
                                               </div>
                                           </td>
@@ -5975,8 +6031,11 @@ if __name__ == "__main__":
                         </p>
                         <div className="mt-5 space-y-4">
                             <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-100 dark:border-gray-800">
-                                <div className="text-xs text-gray-500 uppercase font-bold">Supplier SKU</div>
-                                <div className="font-mono font-bold text-gray-900 dark:text-white">{notMappedTarget.supplierSku}</div>
+                                <div className="text-xs text-gray-500 uppercase font-bold">Supplier Item</div>
+                                {'productName' in notMappedTarget && notMappedTarget.productName && (
+                                    <div className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 mt-0.5">{notMappedTarget.productName}</div>
+                                )}
+                                <div className="font-mono text-xs text-gray-500 mt-1">{notMappedTarget.supplierSku} {'customerStockCode' in notMappedTarget && notMappedTarget.customerStockCode ? `(Ref: ${notMappedTarget.customerStockCode})` : ''}</div>
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase">Reason</label>
@@ -5985,12 +6044,12 @@ if __name__ == "__main__":
                                     value={notMappedReason}
                                     onChange={(event) => setNotMappedReason(event.target.value)}
                                 >
+                                    <option value="Not used by this business">Not used by this business</option>
                                     <option value="No longer required">No longer required</option>
                                     <option value="Out of stock / unavailable">Out of stock / unavailable</option>
                                     <option value="Discontinued by supplier">Discontinued by supplier</option>
                                     <option value="Supplier-only reference row">Supplier-only reference row</option>
                                     <option value="Duplicate supplier row">Duplicate supplier row</option>
-                                    <option value="Not used by this business">Not used by this business</option>
                                 </select>
                             </div>
                             <div className="flex justify-end gap-3 pt-2">
@@ -6093,9 +6152,25 @@ if __name__ == "__main__":
                             </div>
 
                             <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800">
-                                <div className="text-xs text-secondary dark:text-gray-500 max-w-[55%]">
-                                    Can't find a match? Create the missing item without leaving this screen.
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const src = mappingSource;
+                                        setIsManualMapOpen(false);
+                                        setMappingSource(null);
+                                        setNotMappedTarget({
+                                            id: mappings.find(m => m.supplierId === src.supplierId && m.supplierSku === src.supplierSku)?.id,
+                                            supplierId: src.supplierId,
+                                            supplierSku: src.supplierSku,
+                                            productName: src.productName,
+                                            customerStockCode: src.customerStockCode,
+                                        });
+                                        setNotMappedReason('Not used by this business');
+                                    }}
+                                    className="text-xs text-red-600 dark:text-red-400 hover:underline flex items-center gap-1 font-semibold"
+                                >
+                                    <MinusCircle size={14} /> Won't map / We don't use this item
+                                </button>
                                 <div className="flex items-center gap-3">
                                     <button type="button" onClick={() => { setIsManualMapOpen(false); setMappingSource(null); }} className="text-gray-500 hover:text-gray-700 font-bold text-sm">Cancel</button>
                                     <button
