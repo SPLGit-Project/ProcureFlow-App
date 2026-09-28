@@ -2772,8 +2772,10 @@ const Settings = () => {
                                                   <button
                                                       type="button"
                                                       onClick={() => { setMappingSource(snapshot); setItemSearch(''); setIsManualMapOpen(true); }}
-                                                      className="badge bg-red-100 text-red-800 border-red-200 hover:bg-red-200 w-fit whitespace-nowrap font-bold"
+                                                      className="px-2 py-0.5 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 border border-blue-200 dark:border-blue-800 hover:border-blue-300 dark:hover:border-blue-700 rounded bg-white dark:bg-white/5 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors whitespace-nowrap flex items-center gap-1"
+                                                      title="Map this supplier product to an internal item"
                                                   >
+                                                      <GitMerge size={12} />
                                                       Map Now
                                                   </button>
                                                   <button
