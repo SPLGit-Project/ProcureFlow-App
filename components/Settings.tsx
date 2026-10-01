@@ -2482,7 +2482,7 @@ const Settings = () => {
                                       {/* Search / Action controls based on active tab */}
                                       {emailHubStatusTab === 'QUEUE' ? (
                                           <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                                              <button type="button" onClick={refreshEmailIngestionQueue} className="btn-secondary flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg" title="Refresh queue">
+                                              <button type="button" onClick={() => refreshEmailIngestionQueue(true)} className="btn-secondary flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg" title="Poll mailbox and refresh queue">
                                                   <RefreshCw size={13} /> Refresh
                                               </button>
                                               <button

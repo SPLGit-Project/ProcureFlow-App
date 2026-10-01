@@ -257,7 +257,7 @@ interface AppContextType {
 
   // Automated email ingestion queue
   emailIngestionQueue: EmailIngestionQueueItem[];
-  refreshEmailIngestionQueue: () => Promise<void>;
+  refreshEmailIngestionQueue: (forcePollMailbox?: boolean) => Promise<{ success: boolean; enqueued?: number; messages?: number; error?: string } | void>;
   updateEmailIngestionItem: (id: string, patch: Partial<EmailIngestionQueueItem>) => Promise<void>;
   claimEmailIngestionItem: (id: string) => Promise<boolean>;
   downloadInboxAttachment: (storagePath: string) => Promise<Blob>;
@@ -3011,9 +3011,27 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
   };
 
-  const refreshEmailIngestionQueue = async (): Promise<void> => {
+  const refreshEmailIngestionQueue = async (forcePollMailbox = false): Promise<{ success: boolean; enqueued?: number; messages?: number; error?: string }> => {
+      let pollResult: { success: boolean; enqueued?: number; messages?: number; error?: string } = { success: true, enqueued: 0, messages: 0 };
+      if (forcePollMailbox) {
+          try {
+              console.log('[EmailIngestion] Polling mailbox via ingest-supplier-email...');
+              const { data, error } = await supabase.functions.invoke('ingest-supplier-email');
+              if (error) {
+                  console.warn('[EmailIngestion] Edge function polling failed:', error);
+                  pollResult = { success: false, error: error.message };
+              } else {
+                  console.log('[EmailIngestion] Polling response:', data);
+                  pollResult = { success: true, enqueued: data?.enqueued || 0, messages: data?.messages || 0 };
+              }
+          } catch (err: any) {
+              console.warn('[EmailIngestion] Polling error:', err);
+              pollResult = { success: false, error: err?.message || 'Polling error' };
+          }
+      }
       const queue = await db.getEmailIngestionQueue();
       setEmailIngestionQueue(queue);
+      return pollResult;
   };
 
   const updateEmailIngestionItem = async (id: string, patch: Partial<EmailIngestionQueueItem>): Promise<void> => {

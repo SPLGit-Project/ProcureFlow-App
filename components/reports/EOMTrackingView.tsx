@@ -134,12 +134,19 @@ export default function EOMTrackingView() {
   }, [emailIngestionQueue]);
 
   useEffect(() => {
-    if (concurEmailAttachments.length > 0 && !selectedEmailAttachmentId) {
+    if (concurEmailAttachments.length > 0) {
       // Find latest for active month or fallback to newest overall
       const matchForMonth = concurEmailAttachments.find(a => a.metadata.monthIndex === selectedMonthIndex && a.isLatestForMonth);
-      setSelectedEmailAttachmentId(matchForMonth ? matchForMonth.id : concurEmailAttachments[0].id);
+      if (matchForMonth) {
+        const currentItem = concurEmailAttachments.find(a => a.id === selectedEmailAttachmentId);
+        if (!currentItem || currentItem.metadata.monthIndex !== selectedMonthIndex || !currentItem.isLatestForMonth) {
+          setSelectedEmailAttachmentId(matchForMonth.id);
+        }
+      } else if (!selectedEmailAttachmentId) {
+        setSelectedEmailAttachmentId(concurEmailAttachments[0].id);
+      }
     }
-  }, [concurEmailAttachments, selectedEmailAttachmentId, selectedMonthIndex]);
+  }, [concurEmailAttachments, selectedMonthIndex, selectedEmailAttachmentId]);
 
   // Parse Concur workbook array buffer or blob
   const parseConcurSpreadsheetBlob = async (blob: Blob, sourceLabel: string, attachmentItem?: EnrichedConcurEmailItem) => {
@@ -1930,10 +1937,26 @@ export default function EOMTrackingView() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => refreshEmailIngestionQueue()}
+                    onClick={async () => {
+                      setIsSyncingEmail(true);
+                      try {
+                        const res = await refreshEmailIngestionQueue(true);
+                        if (res && 'error' in res && res.error) {
+                          setStatusMessage({ type: 'error', text: `Mailbox check encountered an issue: ${res.error}` });
+                        } else if (res && 'enqueued' in res && (res.enqueued || 0) > 0) {
+                          setStatusMessage({ type: 'success', text: `Mailbox polled: detected and queued ${res.enqueued} new report(s).` });
+                        } else {
+                          setStatusMessage({ type: 'success', text: 'Mailbox polled: queue is up to date.' });
+                        }
+                      } catch (err: any) {
+                        setStatusMessage({ type: 'error', text: `Failed to refresh inbox: ${err.message}` });
+                      } finally {
+                        setIsSyncingEmail(false);
+                      }
+                    }}
                     disabled={isSyncingEmail}
                     className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
-                    title="Check inbox for new incoming emails"
+                    title="Poll mailbox for new incoming emails"
                   >
                     <RefreshCw size={13} className={isSyncingEmail ? 'animate-spin' : ''} />
                     <span>Refresh Inbox</span>

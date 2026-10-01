@@ -121,19 +121,42 @@ Deno.serve(async (req) => {
     }
     const { access_token } = await tokenResp.json()
 
-    // List unread messages that carry attachments. (No $orderby — Graph 400s
-    // when it's combined with a $filter on other properties.)
-    const listUrl =
+    // 1. List unread messages that carry attachments.
+    const unreadUrl =
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages` +
-      `?$filter=hasAttachments eq true and isRead eq false&$select=id,subject,receivedDateTime,from&$top=25`
-    const listResp = await fetch(listUrl, { headers: { Authorization: `Bearer ${access_token}` } })
-    if (!listResp.ok) {
-      const errText = await listResp.text()
-      console.error("[ingest-supplier-email] Graph list error:", errText)
-      throw new Error(`Graph list messages failed (${listResp.status}): ${errText.slice(0, 400)}`)
+      `?$filter=hasAttachments eq true and isRead eq false&$select=id,subject,receivedDateTime,from,isRead&$top=25`
+    const unreadResp = await fetch(unreadUrl, { headers: { Authorization: `Bearer ${access_token}` } })
+    let messages: any[] = []
+    if (unreadResp.ok) {
+      const data = await unreadResp.json()
+      messages = data.value || []
+    } else {
+      const errText = await unreadResp.text()
+      console.warn("[ingest-supplier-email] Unread list warning:", errText)
     }
-    const { value: messages = [] } = await listResp.json()
-    console.log(`[ingest-supplier-email] ${messages.length} unread message(s) with attachments.`)
+
+    // 2. Also check recent messages with attachments (top 20) in case messages were already
+    // previewed or marked as read by a user in Outlook before ingestion ran.
+    try {
+      const recentUrl =
+        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages` +
+        `?$filter=hasAttachments eq true&$select=id,subject,receivedDateTime,from,isRead&$top=20`
+      const recentResp = await fetch(recentUrl, { headers: { Authorization: `Bearer ${access_token}` } })
+      if (recentResp.ok) {
+        const data = await recentResp.json()
+        const seenIds = new Set(messages.map((m: any) => m.id))
+        for (const m of (data.value || [])) {
+          if (!seenIds.has(m.id)) {
+            messages.push(m)
+            seenIds.add(m.id)
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[ingest-supplier-email] Recent list check ignored:", e)
+    }
+
+    console.log(`[ingest-supplier-email] ${messages.length} candidate message(s) to inspect.`)
 
     let enqueued = 0
     let skipped = 0
@@ -167,6 +190,13 @@ Deno.serve(async (req) => {
     }
 
     for (const msg of messages) {
+      // Check already recorded attachments for this message in queue
+      const { data: existingRows } = await supabase
+        .from("email_ingestion_queue")
+        .select("attachment_name")
+        .eq("message_id", msg.id)
+      const existingNames = new Set((existingRows || []).map((r: any) => r.attachment_name))
+
       const fromAddr = msg.from?.emailAddress?.address ?? null
       const attResp = await fetch(
         `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages/${msg.id}/attachments`,
@@ -177,6 +207,11 @@ Deno.serve(async (req) => {
 
       for (const att of attachments) {
         const name: string = att.name ?? "attachment"
+        if (existingNames.has(name)) {
+          // Already recorded in queue
+          continue
+        }
+
         const ext = extOf(name)
         const isFile = att["@odata.type"] === "#microsoft.graph.fileAttachment"
         if (!isFile) { await recordSkipped(msg, fromAddr, name, "Not a file attachment"); continue }
@@ -204,12 +239,14 @@ Deno.serve(async (req) => {
         await recordSkipped(msg, fromAddr, name, `Unsupported attachment type (.${ext})`)
       }
 
-      // Mark the message read so it is not picked up again next poll.
-      await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages/${msg.id}`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ isRead: true }),
-      })
+      // Mark the message read so it is not picked up again next poll if it was unread
+      if (!msg.isRead) {
+        await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages/${msg.id}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ isRead: true }),
+        })
+      }
     }
 
     const result = { success: true, messages: messages.length, enqueued, skipped }
