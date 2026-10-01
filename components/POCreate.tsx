@@ -249,7 +249,7 @@ const POCreate = () => {
   const [isCartExpanded, setIsCartExpanded] = useState(initialDraft?.isCartExpanded ?? true);
   const [isCatalogExpanded, setIsCatalogExpanded] = useState(initialDraft?.isCatalogExpanded ?? true);
   const [searchTerm, setSearchTerm] = useState(initialDraft?.searchTerm || '');
-  const [onlyAvailableStock, setOnlyAvailableStock] = useState(false);
+  const [onlyAvailableStock, setOnlyAvailableStock] = useState(true);
   
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   
@@ -431,7 +431,7 @@ const POCreate = () => {
         };
     });
 
-    if (onlyAvailableStock) {
+    if (onlyAvailableStock && selectedSupplierId) {
         return mappedItems.filter(item => item.effectiveStock > 0);
     }
 

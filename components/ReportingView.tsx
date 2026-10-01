@@ -769,7 +769,9 @@ const buildSupplierInventoryRows = (
             productName: snap.productName || 'Unknown Product',
             customerStockCode: snap.customerStockCode || '',
             soh,
-            available: Number(snap.availableQty || 0),
+            available: snap.availableQty !== undefined && snap.availableQty !== null && Number(snap.availableQty) > 0
+                ? Number(snap.availableQty)
+                : (soh || Number(snap.availableQty) || 0),
             committed: Number(snap.committedQty || 0),
             backOrdered: Number(snap.backOrderedQty || 0),
             sellPrice,
