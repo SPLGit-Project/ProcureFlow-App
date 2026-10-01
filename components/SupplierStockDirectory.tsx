@@ -402,6 +402,7 @@ const SupplierStockDirectory: React.FC = () => {
   const [selectedItemType, setSelectedItemType] = useState<string>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>('ALL');
+  const [onlyAvailableStock, setOnlyAvailableStock] = useState<boolean>(true);
   const [stockStatusFilter, setStockStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'PRESSURE' | 'OUT_OF_STOCK'>('ALL');
   const [viewMode, setViewMode] = useState<'TABLE' | 'COMPARE' | 'GRID'>('TABLE');
   const [compareOnlyMatches, setCompareOnlyMatches] = useState<boolean>(true);
@@ -424,6 +425,7 @@ const SupplierStockDirectory: React.FC = () => {
     selectedItemType,
     selectedCategory,
     selectedSubCategory,
+    onlyAvailableStock,
     stockStatusFilter,
     viewMode,
     compareOnlyMatches,
@@ -845,6 +847,7 @@ const SupplierStockDirectory: React.FC = () => {
     setSelectedCategory('ALL');
     setSelectedSubCategory('ALL');
     setStockStatusFilter('ALL');
+    setOnlyAvailableStock(true);
   };
 
   const hasActiveFilters =
@@ -855,7 +858,8 @@ const SupplierStockDirectory: React.FC = () => {
     selectedItemType !== 'ALL' ||
     selectedCategory !== 'ALL' ||
     selectedSubCategory !== 'ALL' ||
-    stockStatusFilter !== 'ALL';
+    stockStatusFilter !== 'ALL' ||
+    !onlyAvailableStock;
 
   // Build comparison groups (side-by-side comparison of items across suppliers)
   const comparisonGroups = useMemo<ItemComparisonGroup[]>(() => {
@@ -979,6 +983,9 @@ const SupplierStockDirectory: React.FC = () => {
       if (selectedCategory !== 'ALL' && row.category !== selectedCategory) return false;
       if (selectedSubCategory !== 'ALL' && row.subCategory !== selectedSubCategory) return false;
 
+      // 8. Available Stock Filter (default: only show items with orderable stock > 0)
+      if (onlyAvailableStock && row.breakdown.availableOrderQty <= 0) return false;
+
       if (stockStatusFilter === 'IN_STOCK' && row.breakdown.availableOrderQty <= 0) return false;
       if (stockStatusFilter === 'LOW_STOCK' && (row.stockStatus !== 'LOW_STOCK' || row.breakdown.availableOrderQty <= 0)) return false;
       if (stockStatusFilter === 'PRESSURE' && row.stockStatus !== 'RESERVED_PRESSURE') return false;
@@ -1004,7 +1011,7 @@ const SupplierStockDirectory: React.FC = () => {
 
       return true;
     });
-  }, [directoryRows, selectedSupplierId, selectedPool, selectedCatalog, selectedItemType, selectedCategory, selectedSubCategory, stockStatusFilter, searchTerm]);
+  }, [directoryRows, selectedSupplierId, selectedPool, selectedCatalog, selectedItemType, selectedCategory, selectedSubCategory, onlyAvailableStock, stockStatusFilter, searchTerm]);
 
   // Filtered comparison groups across all 5 classification tiers
   const filteredComparisonGroups = useMemo(() => {
@@ -1015,6 +1022,12 @@ const SupplierStockDirectory: React.FC = () => {
       if (selectedItemType !== 'ALL' && group.itemType !== selectedItemType) return false;
       if (selectedCategory !== 'ALL' && group.category !== selectedCategory) return false;
       if (selectedSubCategory !== 'ALL' && group.subCategory !== selectedSubCategory) return false;
+
+      if (onlyAvailableStock) {
+        const hasAvailableOffer = (group.defaultOffer && group.defaultOffer.availableStock > 0) ||
+          group.alternateOffers.some(o => o.availableStock > 0);
+        if (!hasAvailableOffer) return false;
+      }
 
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
@@ -1033,7 +1046,7 @@ const SupplierStockDirectory: React.FC = () => {
 
       return true;
     });
-  }, [comparisonGroups, compareOnlyMatches, selectedPool, selectedCatalog, selectedItemType, selectedCategory, selectedSubCategory, searchTerm]);
+  }, [comparisonGroups, compareOnlyMatches, selectedPool, selectedCatalog, selectedItemType, selectedCategory, selectedSubCategory, onlyAvailableStock, searchTerm]);
 
   // Total active count based on current view
   const activeTotalCount = viewMode === 'COMPARE' ? filteredComparisonGroups.length : filteredRows.length;
@@ -1166,6 +1179,29 @@ const SupplierStockDirectory: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2.5 w-full lg:w-auto justify-end flex-wrap">
+            {/* Available Stock Only Toggle Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setOnlyAvailableStock(prev => {
+                  const next = !prev;
+                  if (next && stockStatusFilter === 'OUT_OF_STOCK') {
+                    setStockStatusFilter('ALL');
+                  }
+                  return next;
+                });
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer border shadow-xs ${
+                onlyAvailableStock
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800'
+                  : 'bg-white dark:bg-[#15171e] border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
+              }`}
+              title="Toggle to show only items with available inventory (> 0)"
+            >
+              <Filter size={13} className={onlyAvailableStock ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'} />
+              <span>Available stock only</span>
+            </button>
+
             {/* Compare Prices Dedicated Standalone Toggle Button */}
             <button
               type="button"
@@ -1289,7 +1325,15 @@ const SupplierStockDirectory: React.FC = () => {
           {viewMode !== 'COMPARE' && (
             <select
               value={stockStatusFilter}
-              onChange={e => setStockStatusFilter(e.target.value as any)}
+              onChange={e => {
+                const val = e.target.value as any;
+                setStockStatusFilter(val);
+                if (val === 'OUT_OF_STOCK') {
+                  setOnlyAvailableStock(false);
+                } else if (val === 'IN_STOCK' || val === 'LOW_STOCK' || val === 'PRESSURE') {
+                  setOnlyAvailableStock(true);
+                }
+              }}
               className="bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-2.5 py-1.5 text-xs text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
               <option value="ALL">All Stock Levels</option>
@@ -1328,32 +1372,36 @@ const SupplierStockDirectory: React.FC = () => {
         </div>
 
         {/* Supplier Selector Pills (for Table and Grid views) */}
-        {viewMode !== 'COMPARE' && (
-          <div className="pt-2 border-t border-default flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-secondary mr-1 shrink-0">Supplier:</span>
-            <button
-              type="button"
-              onClick={() => setSelectedSupplierId('ALL')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                selectedSupplierId === 'ALL'
-                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
-                  : 'bg-gray-100 dark:bg-surface text-secondary hover:text-primary hover:bg-gray-200'
-              }`}
-            >
-              All ({directoryRows.length})
-            </button>
+        {viewMode !== 'COMPARE' && (() => {
+          const countSource = onlyAvailableStock
+            ? directoryRows.filter(r => r.breakdown.availableOrderQty > 0)
+            : directoryRows;
+          return (
+            <div className="pt-2 border-t border-default flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-secondary mr-1 shrink-0">Supplier:</span>
+              <button
+                type="button"
+                onClick={() => setSelectedSupplierId('ALL')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  selectedSupplierId === 'ALL'
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                    : 'bg-gray-100 dark:bg-surface text-secondary hover:text-primary hover:bg-gray-200'
+                }`}
+              >
+                All ({countSource.length})
+              </button>
 
-            {displaySuppliers.map(s => {
-              const isDefault = isDefaultSupplier(s.name);
-              const count = directoryRows.filter(r => r.supplierId === s.id).length;
-              const isSelected = selectedSupplierId === s.id;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setSelectedSupplierId(s.id)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
-                    isSelected
+              {displaySuppliers.map(s => {
+                const isDefault = isDefaultSupplier(s.name);
+                const count = countSource.filter(r => r.supplierId === s.id).length;
+                const isSelected = selectedSupplierId === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSelectedSupplierId(s.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                      isSelected
                       ? isDefault
                         ? 'bg-emerald-600 text-white shadow-sm'
                         : 'bg-blue-600 text-white shadow-sm'
@@ -1370,7 +1418,8 @@ const SupplierStockDirectory: React.FC = () => {
               );
             })}
           </div>
-        )}
+        );
+      })()}
       </div>
 
       {/* Main Results Container */}
@@ -1549,7 +1598,20 @@ const SupplierStockDirectory: React.FC = () => {
                 ) : (
                   <tr>
                     <td colSpan={9} className="px-5 py-12 text-center text-secondary">
-                      No products match your search or filter criteria.
+                      <p className="text-sm font-medium">
+                        {onlyAvailableStock
+                          ? 'No products found with available inventory (> 0).'
+                          : 'No products match your search or filter criteria.'}
+                      </p>
+                      {onlyAvailableStock && (
+                        <button
+                          type="button"
+                          onClick={() => setOnlyAvailableStock(false)}
+                          className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold inline-block cursor-pointer"
+                        >
+                          Show all items (clear available filter)
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -1870,7 +1932,20 @@ const SupplierStockDirectory: React.FC = () => {
                 ) : (
                   <tr>
                     <td colSpan={5} className="px-5 py-12 text-center text-secondary">
-                      No matched items found for the current search or filters.
+                      <p className="text-sm font-medium">
+                        {onlyAvailableStock
+                          ? 'No matched items found with available inventory (> 0).'
+                          : 'No matched items found for the current search or filters.'}
+                      </p>
+                      {onlyAvailableStock && (
+                        <button
+                          type="button"
+                          onClick={() => setOnlyAvailableStock(false)}
+                          className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold inline-block cursor-pointer"
+                        >
+                          Show all items (clear available filter)
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -1946,8 +2021,21 @@ const SupplierStockDirectory: React.FC = () => {
                 </div>
               ))
             ) : (
-              <div className="col-span-full py-12 text-center text-secondary text-xs">
-                No products match your search or filter criteria.
+              <div className="col-span-full py-12 text-center text-secondary">
+                <p className="text-sm font-medium">
+                  {onlyAvailableStock
+                    ? 'No products found with available inventory (> 0).'
+                    : 'No products match your search or filter criteria.'}
+                </p>
+                {onlyAvailableStock && (
+                  <button
+                    type="button"
+                    onClick={() => setOnlyAvailableStock(false)}
+                    className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold inline-block cursor-pointer"
+                  >
+                    Show all items (clear available filter)
+                  </button>
+                )}
               </div>
             )}
           </div>
