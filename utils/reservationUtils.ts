@@ -1,5 +1,6 @@
 import type { PORequest, Item, SupplierStockSnapshot, SupplierProductMap } from '../types.ts';
 import { canonicalSupplierName } from './suppliers.ts';
+import { resolveStockPool } from './stockOffers.ts';
 
 export const RESERVATION_WINDOW_HOURS = 48;
 
@@ -20,6 +21,11 @@ export interface StockBreakdown {
     baseAvailableUnits: number;
     reservedUnits: number;
     committedUnits: number;
+    onOrderUnits: number;
+    onOrderPOs: number;
+    poolKey: string;
+    sourceConflict?: boolean;
+    priceVaries?: boolean;
     effectiveStockUnits: number;
     availableOrderQty: number;
     orderMultiple: number;
@@ -64,7 +70,7 @@ export function getPOReservationExpiryMs(po: PORequest): number {
     if (approvalTime) {
         return new Date(approvalTime).getTime() + RESERVATION_WINDOW_HOURS * 60 * 60 * 1000;
     }
-    return Date.now() + RESERVATION_WINDOW_HOURS * 60 * 60 * 1000;
+    return 0;
 }
 
 /**
@@ -132,7 +138,8 @@ export function calculateItemRunningStock(
     mappings: SupplierProductMap[],
     stockSnapshots: SupplierStockSnapshot[],
     pos: PORequest[],
-    defaultOrderMultiple = 1
+    defaultOrderMultiple = 1,
+    item?: Pick<Item, 'name' | 'sku'>
 ): StockBreakdown {
     const emptyResult: StockBreakdown = {
         supplierSku: '',
@@ -142,6 +149,9 @@ export function calculateItemRunningStock(
         baseAvailableUnits: 0,
         reservedUnits: 0,
         committedUnits: 0,
+        onOrderUnits: 0,
+        onOrderPOs: 0,
+        poolKey: '',
         effectiveStockUnits: 0,
         availableOrderQty: 0,
         orderMultiple: defaultOrderMultiple || 1,
@@ -149,53 +159,14 @@ export function calculateItemRunningStock(
         committedPOs: 0
     };
 
-    const targetSupplier = suppliers.find(s => s.id === supplierId);
-    const targetCanonical = targetSupplier ? canonicalSupplierName(targetSupplier.name) : '';
-    const equivalentSupplierIds = targetCanonical
-        ? suppliers.filter(s => canonicalSupplierName(s.name) === targetCanonical).map(s => s.id)
-        : [supplierId];
-
-    let mapping = mappings.find(m => m.productId === itemId && equivalentSupplierIds.includes(m.supplierId) && m.mappingStatus === 'CONFIRMED');
-    if (!mapping) {
-        mapping = mappings.find(m => m.productId === itemId && equivalentSupplierIds.includes(m.supplierId));
-    }
-    if (!mapping) return emptyResult;
-
-    const conversionFactor = mapping.packConversionFactor || 1;
-
-    const targetSkus = new Set(
-        [
-            mapping.supplierSku,
-            mapping.supplierCustomerStockCode,
-            mapping.internalSku
-        ]
-        .filter(Boolean)
-        .map(sku => (sku as string).trim().toUpperCase())
-    );
-
-    const relevantSnapshots = (stockSnapshots || [])
-        .filter(s => {
-            if (!equivalentSupplierIds.includes(s.supplierId)) return false;
-            const snapSku = (s.supplierSku || '').trim().toUpperCase();
-            const snapCustomerCode = (s.customerStockCode || '').trim().toUpperCase();
-            const snapCustomerCodeNorm = (s.customerStockCodeNorm || '').trim().toUpperCase();
-            return (
-                (snapSku && targetSkus.has(snapSku)) ||
-                (snapCustomerCode && targetSkus.has(snapCustomerCode)) ||
-                (snapCustomerCodeNorm && targetSkus.has(snapCustomerCodeNorm))
-            );
-        })
-        .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime());
-
-    if (relevantSnapshots.length === 0) return emptyResult;
-    const latestSnapshot = relevantSnapshots[0];
-    const snapshotDateMs = new Date(latestSnapshot.snapshotDate).getTime();
-
-    const rawSnapshotQty = (latestSnapshot.availableQty !== undefined && latestSnapshot.availableQty !== null && latestSnapshot.availableQty > 0)
-        ? latestSnapshot.availableQty
-        : (latestSnapshot.stockOnHand || latestSnapshot.availableQty || 0);
-
+    const pool = resolveStockPool(itemId, supplierId, suppliers, mappings, stockSnapshots, item);
+    const { mapping, snapshot: latestSnapshot, supplierIds, itemIds } = pool;
+    const conversionFactor = Number(mapping?.packConversionFactor) > 0 ? Number(mapping?.packConversionFactor) : 1;
+    const snapshotDateMs = latestSnapshot ? Date.parse(latestSnapshot.snapshotDate) : 0;
+    const rawSnapshotQty = pool.hasConflict ? 0 : Math.max(0, Number(latestSnapshot?.availableQty ?? latestSnapshot?.stockOnHand ?? 0) || 0);
     const baseAvailableUnits = rawSnapshotQty * conversionFactor;
+    let onOrderUnits = 0;
+    let onOrderPOs = 0;
 
     let reservedUnits = 0;
     let committedUnits = 0;
@@ -204,17 +175,16 @@ export function calculateItemRunningStock(
 
     (pos || []).forEach(po => {
         // Ensure PO is for this supplier (or equivalent canonical supplier) to prevent cross-supplier stock deduction
-        const poMatchesSupplier = (po.supplierId && equivalentSupplierIds.includes(po.supplierId)) ||
-            (!po.supplierId && po.supplierName && targetCanonical && canonicalSupplierName(po.supplierName) === targetCanonical);
+        const poMatchesSupplier = (po.supplierId && supplierIds.has(po.supplierId)) ||
+            (!po.supplierId && po.supplierName && pool.canonical && canonicalSupplierName(po.supplierName) === pool.canonical);
         if (!poMatchesSupplier) return;
 
         // Filter lines matching this item
-        const matchingLines = (po.lines || []).filter(l => l.itemId === itemId);
+        const matchingLines = (po.lines || []).filter(l => itemIds.has(l.itemId) && !l.isForceClosed);
         if (matchingLines.length === 0) return;
 
         const lineOrderedTotal = matchingLines.reduce((sum, line) => sum + (Number(line.quantityOrdered) || 0), 0);
-        const lineReceivedTotal = matchingLines.reduce((sum, line) => sum + (Number(line.quantityReceived) || 0), 0);
-        const lineUndelivered = Math.max(0, lineOrderedTotal - lineReceivedTotal);
+        const lineUndelivered = matchingLines.reduce((sum, line) => sum + Math.max(0, (Number(line.quantityOrdered) || 0) - (Number(line.quantityReceived) || 0)), 0);
 
         // 1. Active Reservations: Approved, waiting for Concur PO #, < 48 hours or Concur PR linked
         // Reservations are internal holds awaiting Concur PO issuance and have NOT been received by the supplier.
@@ -226,7 +196,9 @@ export function calculateItemRunningStock(
 
         // 2. Committed / Awaiting Delivery: Concur PO # entered, status ACTIVE or VARIANCE_PENDING
         // Deduct remaining unfulfilled units if linked on or after snapshot date (or if snapshot date is unrecorded)
-        if ((po.status === 'ACTIVE' || po.status === 'VARIANCE_PENDING') && po.concurPoNumber && po.concurPoNumber.trim().length > 0) {
+        if (['ACTIVE', 'VARIANCE_PENDING', 'APPROVED_PENDING_CONCUR', 'APPROVED_PENDING_CONCUR_REQUEST'].includes(po.status) && (po.concurPoNumber?.trim() || matchingLines.some(l => l.concurPoNumber?.trim()))) {
+            onOrderUnits += lineUndelivered;
+            if (lineUndelivered > 0) onOrderPOs++;
             const concurLinkedTime = po.concurLinkedAt || po.updatedAt || po.requestDate;
             const concurLinkedMs = concurLinkedTime ? new Date(concurLinkedTime).getTime() : 0;
             if (!snapshotDateMs || isNaN(snapshotDateMs) || concurLinkedMs >= snapshotDateMs) {
@@ -241,13 +213,18 @@ export function calculateItemRunningStock(
     const availableOrderQty = Math.floor(effectiveStockUnits / orderMult) * orderMult;
 
     return {
-        supplierSku: mapping.supplierSku,
-        snapshotDate: latestSnapshot.snapshotDate,
+        supplierSku: latestSnapshot?.supplierSku || mapping?.supplierSku || '',
+        snapshotDate: latestSnapshot?.snapshotDate || '',
         rawSnapshotQty,
         packConversionFactor: conversionFactor,
         baseAvailableUnits,
         reservedUnits,
         committedUnits,
+        onOrderUnits,
+        onOrderPOs,
+        poolKey: pool.key,
+        sourceConflict: pool.hasConflict,
+        priceVaries: pool.priceVaries,
         effectiveStockUnits,
         availableOrderQty,
         orderMultiple: orderMult,

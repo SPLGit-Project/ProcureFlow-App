@@ -47,7 +47,7 @@ export interface SupplierDetection {
 // Field definitions with aliases and confidence weights
 const FIELD_DEFINITIONS = {
     supplierSku: {
-        aliases: ['sku', 'stock code', 'item code', 'product code', 'supplier sku', 'suppliersku', 'code', 'customer stock code', 'cust code', 'supplier part id', 'part id'],
+        aliases: ['sku', 'stock code', 'item code', 'product code', 'supplier sku', 'suppliersku', 'code', 'customer stock code', 'cust code', 'supplier part id', 'part id', 'ncc sku #', 'cy linen sku #'],
         required: true,
         weight: 1.0
     },
@@ -57,7 +57,7 @@ const FIELD_DEFINITIONS = {
         weight: 1.0 // Increased weight to prioritize 'Product' over 'Range'
     },
     stockOnHand: {
-        aliases: ['soh', 'stock on hand', 'stock', 'on hand', 'stock_on_hand', 'total stock'],
+        aliases: ['soh', 'soh @ ncc', 'stock on hand', 'stock', 'on hand', 'stock_on_hand', 'total stock'],
         required: false,
         weight: 0.95
     },
@@ -133,7 +133,7 @@ const FIELD_DEFINITIONS = {
  */
 function normalizeHeader(header: string): string {
     if (!header || typeof header !== 'string') return '';
-    return header.toLowerCase().trim().replace(/[_\s-]+/g, ' ');
+    return header.toLowerCase().trim().replace(/\s*\[\d+\]$/, '').replace(/[_\s-]+/g, ' ');
 }
 
 /**
@@ -169,6 +169,17 @@ function calculateSimilarity(str1: string, str2: string): number {
  */
 function detectDateColumn(header: string): DateColumn | null {
     const normalized = normalizeHeader(header);
+    const dayDate = normalized.match(/\b(\d{1,2})[/.](\d{1,2})[/.](20\d{2})\b/);
+    const serial = /^\d{5}$/.test(normalized) ? Number(normalized) : 0;
+    if (dayDate || (serial >= 40000 && serial <= 60000)) {
+        const serialDate = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+        const d = dayDate ? { y: Number(dayDate[3]), m: Number(dayDate[2]), d: Number(dayDate[1]) }
+            : { y: serialDate.getUTCFullYear(), m: serialDate.getUTCMonth() + 1, d: serialDate.getUTCDate() };
+        if (d && d.m >= 1 && d.m <= 12 && d.d >= 1 && d.d <= 31) return {
+            columnName: header, parsedDate: `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`,
+            format: dayDate ? 'DD/MM/YYYY' : 'Excel date', isIncomingStock: true
+        };
+    }
     
     // Pattern: "Jan 2026", "Feb 2026", etc.
     const monthYearPattern = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(\d{4})$/i;
@@ -380,6 +391,14 @@ function createMapping(headers: string[], rawDataRows?: any[][]): { mapping: Col
         
         // Find best field match for this header
         Object.entries(FIELD_DEFINITIONS).forEach(([fieldName, fieldDef]) => {
+            const normalized = normalizeHeader(header);
+            if (['stockOnHand', 'availableQty', 'totalStockQty'].includes(fieldName) &&
+                /on order|arriv|incoming|\bgap\b|\bvalue\b|\$|\bprice\b/.test(normalized)) return;
+            // A duplicate, empty SOH column is a spacer, not the stock source.
+            if (rawDataRows && ['stockOnHand', 'availableQty'].includes(fieldName)) {
+                const index = headers.indexOf(header);
+                if (!rawDataRows.some(row => row[index] !== '' && row[index] !== undefined && row[index] !== null)) return;
+            }
             // Prevent SOH total value headers (e.g. "SOH $ @ Sell") from matching unit sellPrice
             if (fieldName === 'sellPrice') {
                 const hLower = header.toLowerCase();
@@ -513,7 +532,7 @@ function findHeaderRow(data: any[][]): { index: number; dataStartIndex: number; 
             if (!label) return;
 
             const existing = mergedHeaders[idx] || '';
-            const isExistingInvalid = !existing || existing.startsWith('Column_') || !isNaN(Number(existing));
+            const isExistingInvalid = !existing || existing.startsWith('Column_') || (!isNaN(Number(existing)) && !detectDateColumn(existing));
             
             if (isExistingInvalid) {
                 const matchesKnownField = Object.values(FIELD_DEFINITIONS).some(fieldDef =>
@@ -526,7 +545,13 @@ function findHeaderRow(data: any[][]): { index: number; dataStartIndex: number; 
         });
     }
 
-    return { index: bestRowIndex, dataStartIndex, headers: mergedHeaders };
+    const occurrences = new Map<string, number>();
+    const uniqueHeaders = mergedHeaders.map(header => {
+        const count = (occurrences.get(header) || 0) + 1;
+        occurrences.set(header, count);
+        return count > 1 ? `${header} [${count}]` : header;
+    });
+    return { index: bestRowIndex, dataStartIndex, headers: uniqueHeaders };
 }
 
 /**
@@ -808,6 +833,15 @@ export function parseStockFileEnhanced(file: File): Promise<EnhancedParseResult>
 
                     if (!sConf.hasErrors) {
                         const parsed = parseDataRows(sheetJsonData, sMapping, sDateCols);
+                        if (sHeaders.some(h => normalizeHeader(h) === 'ncc sku #')) {
+                            parsed.forEach(row => {
+                                row.sourceSupplierSku = row.supplierSku;
+                                row.supplierSku = row.customerStockCode || row.supplierSku;
+                                row.range = sName; row.stockType = /mto/i.test(sName) ? 'CUSTOM' : 'STANDARD';
+                            });
+                        } else if (sHeaders.some(h => normalizeHeader(h) === 'cy linen sku #')) {
+                            parsed.forEach(row => { row.sourceSupplierSku = row.supplierSku; row.supplierSku = row.customerStockCode || row.supplierSku; });
+                        }
                         if (parsed.length > 0) {
                             combinedParsedData.push(...parsed);
                             combinedJsonData.push(...sheetJsonData);

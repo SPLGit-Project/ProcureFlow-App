@@ -33,6 +33,8 @@ import {
   canonicalSupplierName
 } from '../utils/suppliers.ts';
 import { calculateItemRunningStock, StockBreakdown } from '../utils/reservationUtils.ts';
+import { useReservationClock } from '../hooks/useReservationClock.ts';
+import { getSupplierOfferPrice } from '../utils/stockOffers.ts';
 import { formatCurrency } from '../utils/taxCalculations.ts';
 import { MASTER_HIERARCHY } from '../utils/hierarchyData.ts';
 import type { Item, Supplier, AttributeOption } from '../types.ts';
@@ -386,7 +388,7 @@ export function resolveItemType(itemOrSnap: any, opts?: AttributeOption[]): stri
 
 const SupplierStockDirectory: React.FC = () => {
   const navigate = useNavigate();
-  const { items, suppliers, stockSnapshots, mappings, pos, userSites, attributeOptions, reloadData, isLoadingData } = useApp();
+  const { items, suppliers, stockSnapshots, mappings, stockPos: pos, isStockReady, userSites, attributeOptions, reloadData, isLoadingData } = useApp();
 
   useEffect(() => {
     reloadData();
@@ -432,6 +434,8 @@ const SupplierStockDirectory: React.FC = () => {
     pageSize
   ]);
 
+  const stockClock = useReservationClock();
+
   // Contact Ash modal state
   const [selectedItemForRequest, setSelectedItemForRequest] = useState<DirectoryRow | null>(null);
   const [requestSiteId, setRequestSiteId] = useState(userSites[0]?.id || '');
@@ -443,6 +447,7 @@ const SupplierStockDirectory: React.FC = () => {
   // Build directory rows with clean 5-tier classification and canonical supplier deduplication
   const directoryRows = useMemo<DirectoryRow[]>(() => {
     const rows: DirectoryRow[] = [];
+    if (!isStockReady) return rows;
     const processedKeys = new Set<string>();
 
     const canonicalSupMap = getCanonicalSupplierMap(suppliers);
@@ -542,7 +547,7 @@ const SupplierStockDirectory: React.FC = () => {
         const sup = candidate.canonicalSupplier;
         const isDefault = isDefaultSupplier(sup.name);
         const supplierSku = candidate.supplierSku || (isDefault ? (item.sku || '-') : '—');
-        const rowKey = `${sup.id}:${supplierSku}:${item.id}`;
+        const rowKey = `${sup.id}:${supplierSku}:${(item.sku || item.id).toUpperCase()}`;
 
         if (processedKeys.has(rowKey)) return;
         processedKeys.add(rowKey);
@@ -554,7 +559,8 @@ const SupplierStockDirectory: React.FC = () => {
           mappings,
           stockSnapshots,
           pos,
-          item.defaultOrderMultiple || 1
+          item.defaultOrderMultiple || 1,
+          item
         );
 
         let stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'RESERVED_PRESSURE' | 'OUT_OF_STOCK' = 'IN_STOCK';
@@ -576,13 +582,13 @@ const SupplierStockDirectory: React.FC = () => {
           supplierId: sup.id,
           supplierName: sup.name,
           isDefault,
-          supplierSku,
+          supplierSku: breakdown.supplierSku || supplierSku,
           itemPool: classification.itemPool,
           itemCatalog: classification.itemCatalog,
           itemType: classification.itemType,
           category: classification.category,
           subCategory: classification.subCategory,
-          unitPrice: candidate.unitPrice > 0 ? candidate.unitPrice : (item.unitPrice || 0),
+          unitPrice: getSupplierOfferPrice(item, sup.id, suppliers, mappings, stockSnapshots),
           packMultiple: item.defaultOrderMultiple || breakdown.packConversionFactor || 1,
           breakdown,
           stockStatus
@@ -591,7 +597,7 @@ const SupplierStockDirectory: React.FC = () => {
     });
 
     // Also include supplier snapshots that didn't have an item match
-    (stockSnapshots || []).forEach(snap => {
+    [...(stockSnapshots || [])].sort((a, b) => Date.parse(b.snapshotDate) - Date.parse(a.snapshotDate)).forEach(snap => {
       const sup = canonicalSupMap.get(snap.supplierId) || getCanonicalSupplier(snap.supplierId, suppliers);
       if (!sup) return;
 
@@ -605,7 +611,7 @@ const SupplierStockDirectory: React.FC = () => {
 
       processedKeys.add(rowKey);
       const isDefault = isDefaultSupplier(sup.name);
-      const available = snap.availableQty || snap.stockOnHand || 0;
+      const available = snap.availableQty ?? snap.stockOnHand ?? 0;
       const breakdown: StockBreakdown = {
         supplierSku: snap.supplierSku,
         snapshotDate: snap.snapshotDate || new Date().toISOString(),
@@ -614,6 +620,9 @@ const SupplierStockDirectory: React.FC = () => {
         baseAvailableUnits: available,
         reservedUnits: 0,
         committedUnits: 0,
+        onOrderUnits: 0,
+        onOrderPOs: 0,
+        poolKey: rowKey,
         effectiveStockUnits: available,
         availableOrderQty: available,
         orderMultiple: 1,
@@ -663,7 +672,7 @@ const SupplierStockDirectory: React.FC = () => {
       if (!a.isDefault && b.isDefault) return 1;
       return a.itemName.localeCompare(b.itemName);
     });
-  }, [items, suppliers, mappings, stockSnapshots, pos, attributeOptions]);
+  }, [items, suppliers, mappings, stockSnapshots, pos, attributeOptions, stockClock, isStockReady]);
 
   // ── 5-Tier Classification Hierarchy Dropdown Options (Sanitized & Normalized) ──
 
@@ -950,7 +959,7 @@ const SupplierStockDirectory: React.FC = () => {
         let min = Infinity;
         let max = -Infinity;
         let cheapest = '';
-        allOffers.forEach(o => {
+        allOffers.filter(o => o.availableStock > 0).forEach(o => {
           if (o.unitPrice > 0 && o.unitPrice < min) {
             min = o.unitPrice;
             cheapest = o.supplierName;
@@ -1089,8 +1098,10 @@ const SupplierStockDirectory: React.FC = () => {
   const handleOrder = (row: DirectoryRow | SupplierOffer) => {
     const isDefault = row.isDefault;
     const supplierId = row.supplierId;
-    const itemId = 'itemId' in row ? row.itemId : '';
-    const internalSku = 'internalSku' in row ? row.internalSku : '';
+    const source = 'row' in row ? row.row : row;
+    if (!isStockReady || !items.some(item => item.id === source.itemId)) return;
+    const itemId = source.itemId;
+    const internalSku = source.internalSku;
     const supplierSku = row.supplierSku;
     const reasonParam = !isDefault ? '&reason=' + encodeURIComponent('Alternate supplier selected via stock directory') : '';
 
@@ -1148,6 +1159,7 @@ const SupplierStockDirectory: React.FC = () => {
   return (
     <div className="space-y-4 animate-fade-in p-4 md:p-6 w-full max-w-full">
       {/* Page Header with Direct, Crisp Subtitle */}
+      {!isStockReady && <div className="p-4 text-amber-700">Supplier-wide stock is unavailable. Refresh before ordering.</div>}
       <PageHeader
         title="Supplier Stock Directory"
         subtitle="Supplier inventory directory"
@@ -1477,7 +1489,7 @@ const SupplierStockDirectory: React.FC = () => {
               <tbody className="divide-y divide-default font-medium">
                 {paginatedRows.length > 0 ? (
                   paginatedRows.map(row => (
-                    <tr key={row.key} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
+                    <tr key={row.key} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors" title={row.breakdown.sourceConflict ? "Stock source needs review; availability is unverified" : undefined}>
                       {/* Product & SKU */}
                       <td className="px-3.5 py-2.5">
                         <div className="font-bold text-primary dark:text-white text-xs leading-snug line-clamp-2" title={row.itemName}>
@@ -1536,8 +1548,8 @@ const SupplierStockDirectory: React.FC = () => {
 
                       {/* On Order */}
                       <td className="px-2 py-2.5 text-center font-mono text-xs">
-                        {row.breakdown.committedUnits > 0 ? (
-                          <span className="font-bold text-amber-600 dark:text-amber-400">-{row.breakdown.committedUnits.toLocaleString()}</span>
+                        {row.breakdown.onOrderUnits > 0 ? (
+                          <span className="font-bold text-amber-600 dark:text-amber-400">{row.breakdown.onOrderUnits.toLocaleString()}</span>
                         ) : (
                           <span className="text-gray-400">0</span>
                         )}
@@ -1546,7 +1558,7 @@ const SupplierStockDirectory: React.FC = () => {
                       {/* Net Orderable */}
                       <td className="px-3 py-2.5 text-right font-mono font-extrabold text-xs">
                         <span className={row.breakdown.availableOrderQty > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
-                          {row.breakdown.availableOrderQty.toLocaleString()}
+                          {row.breakdown.sourceConflict ? 'Unverified' : row.breakdown.availableOrderQty.toLocaleString()}
                         </span>
                         <div className="text-[9px] text-tertiary font-normal">
                           Pack: {row.packMultiple}
@@ -1581,6 +1593,7 @@ const SupplierStockDirectory: React.FC = () => {
                       <td className="px-3 py-2.5 text-right">
                         <button
                           type="button"
+                          disabled={!isStockReady || !items.some(item => item.id === row.itemId)}
                           onClick={() => handleOrder(row)}
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-bold text-xs shadow-sm transition-all cursor-pointer ml-auto ${
                             row.isDefault
@@ -1826,9 +1839,9 @@ const SupplierStockDirectory: React.FC = () => {
                                   <tbody className="divide-y divide-default font-medium">
                                     {allOffers.map(offer => {
                                       const isDefault = offer.isDefault;
-                                      const delta = defaultPrice > 0 ? offer.unitPrice - defaultPrice : 0;
+                                      const delta = defaultPrice > 0 && offer.unitPrice > 0 ? offer.unitPrice - defaultPrice : 0;
                                       const pct = defaultPrice > 0 ? (delta / defaultPrice) * 100 : 0;
-                                      const isBestPrice = offer.unitPrice === minPrice && group.hasMatch && minPrice > 0;
+                                      const isBestPrice = offer.availableStock > 0 && offer.unitPrice === minPrice && group.hasMatch && minPrice > 0;
 
                                       return (
                                         <tr
@@ -2001,7 +2014,7 @@ const SupplierStockDirectory: React.FC = () => {
                     <div className="mt-1 pt-1 border-t border-default flex items-baseline justify-between text-xs">
                       <span className="text-secondary">Net Orderable:</span>
                       <span className={`font-mono font-extrabold ${row.breakdown.availableOrderQty > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {row.breakdown.availableOrderQty.toLocaleString()} units
+                        {row.breakdown.sourceConflict ? 'Unverified' : row.breakdown.availableOrderQty.toLocaleString()} units
                       </span>
                     </div>
                   </div>
@@ -2009,7 +2022,8 @@ const SupplierStockDirectory: React.FC = () => {
                   <div className="mt-4 pt-3 border-t border-default">
                     <button
                       type="button"
-                      onClick={() => handleOrder(row)}
+                      disabled={!isStockReady || !items.some(item => item.id === row.itemId)}
+                          onClick={() => handleOrder(row)}
                       className={`w-full py-2 px-3 rounded-xl font-bold text-xs text-white shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                         row.isDefault ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'
                       }`}

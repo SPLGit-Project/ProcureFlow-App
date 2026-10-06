@@ -1367,6 +1367,7 @@ const Settings = () => {
           id: uuidv4(),
           supplierId: supplier.id,
           supplierSku: partial.supplierSku || '',
+          sourceSupplierSku: partial.sourceSupplierSku,
           productName: partial.productName || 'Unknown Product',
           customerStockCode: partial.customerStockCode,
           range: partial.range,

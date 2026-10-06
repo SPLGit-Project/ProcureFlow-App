@@ -303,6 +303,7 @@ export interface SupplierStockSnapshot {
   id: string;
   supplierId: string;
   supplierSku: string;
+  sourceSupplierSku?: string; // Original workbook identifier, before legacy SPL-code mapping.
   productName: string;
   
   // Categorization

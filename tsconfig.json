@@ -26,5 +26,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["node_modules", "supabase", "_archive", "_untracked_backup"]
+  "include": ["*.ts", "*.tsx", "components/**/*", "constants/**/*", "context/**/*", "hooks/**/*", "lib/**/*", "services/**/*", "utils/**/*", "tests/**/*", "scripts/**/*"],
+  "exclude": ["node_modules", "supabase", "_archive", "_untracked_backup", "output", "docs"]
 }

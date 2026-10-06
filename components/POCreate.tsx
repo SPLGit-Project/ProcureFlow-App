@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
 import { Item, ItemPriceOption, POLineItem, PORequest, SpendCategory } from '../types.ts';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
+import { getSupplierOfferPrice } from '../utils/stockOffers.ts';
 import { canonicalSupplierName, dedupeSuppliersForDisplay, isDefaultSupplier, findDefaultSupplier } from '../utils/suppliers.ts';
 import {
   ShoppingCart,
@@ -378,7 +379,7 @@ const POCreate = () => {
         const priceOptions = normalizeItemPriceOptions(internalItem);
         const defaultPriceOption = getDefaultItemPriceOption({ ...internalItem, priceOptions });
         const cleanMasterUnitPrice = (internalItem.unitPrice && internalItem.unitPrice > 0 && internalItem.unitPrice < 500) ? internalItem.unitPrice : 0;
-        let estimatedPrice = (defaultPriceOption.price && defaultPriceOption.price < 500) ? defaultPriceOption.price : cleanMasterUnitPrice;
+        let estimatedPrice = selectedSupplierId ? getSupplierOfferPrice(internalItem, selectedSupplierId, suppliers, mappings || [], stockSnapshots || []) : 0;
         let effectiveStock = 0;
         let isMapped = false;
 
@@ -396,33 +397,15 @@ const POCreate = () => {
                  supplierSku = mapping.supplierSku;
                  supplierCode = mapping.supplierCustomerStockCode || 'N/A';
 
-                 const safeSnapshots = Array.isArray(stockSnapshots) ? stockSnapshots : [];
-                 const targetSkus = new Set([mapping.supplierSku, mapping.supplierCustomerStockCode, internalItem.sku].filter(Boolean));
-
-                 // 1. Try selected supplier's snapshot
-                 let latestSnapshot = safeSnapshots
-                    .filter(s => equivalentSupplierIds.includes(s.supplierId) && (targetSkus.has(s.supplierSku) || (s.customerStockCode && targetSkus.has(s.customerStockCode))))
-                    .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime())[0];
-
-                 // 2. Fallback to any supplier's snapshot with a valid unit price (< $500)
-                 if (!latestSnapshot || !latestSnapshot.sellPrice || latestSnapshot.sellPrice > 500) {
-                     latestSnapshot = safeSnapshots
-                        .filter(s => (targetSkus.has(s.supplierSku) || (s.customerStockCode && targetSkus.has(s.customerStockCode))) && s.sellPrice > 0 && s.sellPrice < 500)
-                        .sort((a, b) => new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime())[0];
-                 }
-                
-                 if (latestSnapshot && latestSnapshot.sellPrice > 0 && latestSnapshot.sellPrice < 500) {
-                     estimatedPrice = latestSnapshot.sellPrice;
-                 }
-                 
+                 estimatedPrice = getSupplierOfferPrice(internalItem, selectedSupplierId, suppliers, mappings, stockSnapshots);
                  effectiveStock = getEffectiveStock(internalItem.id, selectedSupplierId);
              }
         }
 
         return {
             ...internalItem,
-            priceOptions,
-            priceOptionCount: priceOptions.length,
+            priceOptions: [{ id: 'supplier-current', label: 'Current Supplier', price: estimatedPrice, isDefault: true, activeFlag: true }],
+            priceOptionCount: 1,
             supplierSku,
             supplierCode, 
             price: estimatedPrice,
@@ -442,17 +425,17 @@ const POCreate = () => {
   useEffect(() => {
     if (hasHandledUrlItemRef.current) return;
     if (!urlItemId && !urlSku) return;
-    if (displayItems.length === 0 && items.length === 0) return;
+    if (!selectedSupplierId || displayItems.length === 0) return;
 
     const matchedCatalogItem = displayItems.find(
       i => (urlItemId && i.id === urlItemId) || (urlSku && (i.sku === urlSku || i.supplierSku === urlSku))
-    ) || items.find(i => (urlItemId && i.id === urlItemId) || (urlSku && i.sku === urlSku));
+    );
 
     if (!matchedCatalogItem) return;
 
     hasHandledUrlItemRef.current = true;
     const upq = matchedCatalogItem.cartonQty || (matchedCatalogItem as any).upq || 1;
-    const unitPrice = (matchedCatalogItem as any).price || matchedCatalogItem.unitPrice || 0;
+    const unitPrice = (matchedCatalogItem as any).price ?? matchedCatalogItem.unitPrice ?? 0;
     const safeQty = Math.max(1, isNaN(urlQty) ? 1 : urlQty);
     const pricing = calculateLinePricing(safeQty, unitPrice, 'GST', 10.0);
 
@@ -479,7 +462,7 @@ const POCreate = () => {
       ];
     });
     setIsCartExpanded(true);
-  }, [urlItemId, urlSku, urlQty, activeMasterItems, items, defaultNeedByDate, requestDate]);
+  }, [urlItemId, urlSku, urlQty, selectedSupplierId, displayItems, defaultNeedByDate, requestDate]);
 
   const sanitizeQuantity = (value: string, fallback: number): number => {
     const digitsOnly = (value || '').replace(/\D/g, '');
@@ -1187,7 +1170,7 @@ const POCreate = () => {
                                     >
                                         <div 
                                             className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/70 flex items-center justify-center text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors shadow-sm"
-                                            title="Non-default supplier selected. Ash will catch this during the approval process."
+                                            title="Non-default supplier selected. Include the justification for approval review."
                                         >
                                             <AlertTriangle size={20} />
                                         </div>
@@ -1197,7 +1180,7 @@ const POCreate = () => {
                                                 <span>Non-Default Supplier</span>
                                             </div>
                                             <p className="text-gray-300 text-[11px] leading-relaxed">
-                                                NCC Apparel is SPL's default preferred supplier. Selecting an alternate supplier will be flagged for Ash to review during the approval process.
+                                                NCC Apparel is SPL's default preferred supplier. An alternate supplier is flagged for review through the configured approval workflow. Include the business justification in the request comments.
                                             </p>
                                         </div>
                                     </div>

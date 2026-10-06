@@ -247,6 +247,8 @@ interface AppContextType {
   updateBranding: (branding: AppBranding) => Promise<void>;
 
   pos: PORequest[];
+  stockPos: PORequest[];
+  isStockReady: boolean;
   allPos: PORequest[];
   suppliers: Supplier[];
   items: Item[];
@@ -497,6 +499,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   // Data State
   const [pos, setPos] = useState<PORequest[]>([]);
+  const [stockPos, setStockPos] = useState<PORequest[]>([]);
+  const [isStockReady, setIsStockReady] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
@@ -764,6 +768,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       setCatalog([...fixtures.catalog]);
       setStockSnapshots([...fixtures.stockSnapshots]);
       setPos([...fixtures.pos]);
+      setStockPos([...fixtures.pos]);
+      setIsStockReady(true);
       setWorkflowSteps([...fixtures.workflowSteps]);
       setNotificationRules([...fixtures.notificationRules]);
       setMappings([]);
@@ -850,7 +856,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 fetchedOptions,
                 fetchedFeatureFlags,
                 fetchedMarginThresholds,
-                fetchedEmailQueue
+                fetchedEmailQueue,
+                fetchedStockPos
             ] = await Promise.all([
                 safeFetch(db.getRoles(), [], 'roles'),
                 safeFetch(db.getUsers(), [], 'users'),
@@ -870,7 +877,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 safeFetch(db.getAttributeOptions(), [], 'attributeOptions'),
                 safeFetch(db.getFeatureFlags(), DEFAULT_FEATURE_FLAGS, 'featureFlags'),
                 safeFetch(db.getMarginThresholds(), DEFAULT_MARGIN_THRESHOLDS, 'marginThresholds'),
-                safeFetch(db.getEmailIngestionQueue(), [], 'emailQueue')
+                safeFetch(db.getEmailIngestionQueue(), [], 'emailQueue'),
+                safeFetch(db.getStockAllocations(), null, 'supplier-wide allocations')
             ]);
 
             let finalRoles = fetchedRoles;
@@ -900,9 +908,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             setCatalog(fetchedCatalog);
             setStockSnapshots(fetchedSnapshots);
             setPos(fetchedPos);
+            setStockPos(fetchedStockPos || []);
+            setIsStockReady(fetchedStockPos !== null);
             setWorkflowSteps(fetchedSteps);
             setNotificationRules(fetchedNotifs);
-            setMappings(fetchedMappings);
+            setMappings(fetchedMappings.map(m => { const item = fetchedItems.find(i => i.id === m.productId); return { ...m, internalSku: item?.sku, productName: item?.name }; }));
             setAvailability(fetchedAvailability);
             setTeamsWebhookUrl(fetchedTeamsUrl);
             setInboundEmailAddress(fetchedInboundEmail);
@@ -2561,7 +2571,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const updatePOStatus = async (poId: string, status: POStatus, event: ApprovalEvent) => {
-    const isApprovedStatus = status === 'APPROVED_PENDING_CONCUR' || status === 'APPROVED_PENDING_CONCUR_REQUEST';
+    const existing = pos.find(p => p.id === poId);
+    const isApprovedStatus = (status === 'APPROVED_PENDING_CONCUR' || status === 'APPROVED_PENDING_CONCUR_REQUEST') && existing?.status === 'PENDING_APPROVAL' && event.action === 'APPROVED';
     const nowIso = new Date().toISOString();
     const expiryIso = isApprovedStatus ? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() : undefined;
 
@@ -2613,37 +2624,15 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const reReservePOStock = async (poId: string, approverName?: string) => {
     const userToUse = approverName || currentUser?.name || 'User';
-    const nowIso = new Date().toISOString();
-    const expiryIso = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-
-    // Optimistic
-    setPos(prev => prev.map(p => {
-        if (p.id !== poId) return p;
-        const reReserveEvent: ApprovalEvent = {
-            id: crypto.randomUUID(),
-            approverName: userToUse,
-            action: 'STOCK_RE_RESERVED',
-            date: nowIso,
-            comments: 'Supplier stock re-reserved for 48 hours. Awaiting Concur PO #.'
-        };
-        return {
-            ...p,
-            status: 'APPROVED_PENDING_CONCUR',
-            reservationExpiresAt: expiryIso,
-            autoCancelledAt: undefined,
-            cancellationReason: undefined,
-            approvalHistory: [...(p.approvalHistory || []), reReserveEvent]
-        };
-    }));
 
     // Persist
     try {
-        await db.reReservePOStock(poId, userToUse);
+        const result = await db.reReservePOStock(poId, userToUse);
         const po = pos.find(p => p.id === poId);
         if (po) {
             sendNotification('PO_APPROVED', { poId: po.displayId || po.id, approver: userToUse });
         }
-        logAction('PO_STOCK_RE_RESERVED', { id: poId, approver: userToUse, newExpiry: expiryIso });
+        logAction('PO_STOCK_RE_RESERVED', { id: poId, approver: userToUse, newExpiry: result.reservation_expires_at });
         await reloadData(true, true);
     } catch (e: unknown) {
         console.error("Failed to re-reserve stock", e);
@@ -3094,12 +3083,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           suppliers,
           mappings,
           stockSnapshots,
-          pos,
-          item?.defaultOrderMultiple || 1
+          stockPos,
+          item?.defaultOrderMultiple || 1,
+          item
       );
   };
 
   const getEffectiveStock = (itemId: string, supplierId: string): number => {
+      if (!isStockReady) return 0;
       const breakdown = getStockBreakdown(itemId, supplierId);
       return breakdown.availableOrderQty;
   };
@@ -3463,9 +3454,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       checkReservationExpiries();
       const interval = setInterval(() => {
           checkReservationExpiries();
+          void reloadData(true, true);
       }, 60 * 1000);
       return () => clearInterval(interval);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, reloadData]);
 
   // --- Context Value Memoization ---
   const contextValue = React.useMemo(() => ({
@@ -3475,6 +3467,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     canApproveAmount, canCreateOrderAmount, canReceiveOrder, canApproveOrder, getUserAuthorityLimits,
     teamsWebhookUrl, updateTeamsWebhook,
     inboundEmailAddress, updateInboundEmailAddress,
+    stockPos, isStockReady,
     pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
     suppliers, items, sites, userSites, catalog, stockSnapshots,
     emailIngestionQueue, refreshEmailIngestionQueue, updateEmailIngestionItem, claimEmailIngestionItem, downloadInboxAttachment,
@@ -3546,7 +3539,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   }), [
     currentUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, inboundEmailAddress, theme, branding,
-    filteredPos, pos, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
+    filteredPos, pos, stockPos, isStockReady, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
     notifications, unreadNotificationCount, isNotificationDrawerOpen, isNotificationPrefsOpen, refreshNotifications,
     notificationPopups, dismissNotificationPopup, triggerNotificationPopup,

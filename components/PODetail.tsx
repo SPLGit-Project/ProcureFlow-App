@@ -1,3 +1,4 @@
+import { useReservationClock } from '../hooks/useReservationClock.ts';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { EntityAuditPanel } from './EntityAuditPanel.tsx';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -53,7 +54,7 @@ interface PODetailEditDraft {
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, allPos, suppliers, items, sites, updatePOStatus, reReservePOStock, getEffectiveStock, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
+  const { pos, allPos, suppliers, items, sites, updatePOStatus, reReservePOStock, getEffectiveStock, getStockBreakdown, isStockReady, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -407,9 +408,23 @@ const PODetail = () => {
   const canClose = canReceive;
   const canReReserve = Boolean(
     po &&
-    po.status === 'CANCELLED' &&
+    po.status === 'CANCELLED' && Boolean(po.autoCancelledAt) && po.approvalHistory.some(e => e.action === 'APPROVED') &&
     (po.requesterId === currentUser?.id || canApproveOrder(po) || hasPermission('approve_requests') || isAdmin)
   );
+
+  useReservationClock();
+  const reReserveStockSufficient = useMemo(() => {
+    if (!po?.supplierId || !isStockReady) return false;
+    const pools = new Map<string, { available: number; requested: number }>();
+    for (const line of po.lines) {
+      const stock = getStockBreakdown(line.itemId, po.supplierId);
+      if (!stock.snapshotDate) return false;
+      const pool = pools.get(stock.poolKey) || { available: stock.effectiveStockUnits, requested: 0 };
+      pool.requested += Math.max(0, Number(line.quantityOrdered) || 0);
+      pools.set(stock.poolKey, pool);
+    }
+    return pools.size > 0 && [...pools.values()].every(p => p.available >= p.requested);
+  }, [po, getStockBreakdown, isStockReady]);
 
   const originalApprover = useMemo(() => {
     if (!po) return null;
@@ -562,9 +577,10 @@ const PODetail = () => {
   const handleReReserveConfirm = async () => {
       if (!po) return;
       try {
+          if (!reReserveStockSufficient) throw new Error('Insufficient verified supplier stock.');
           await reReservePOStock(po.id, currentUser?.name);
           setIsReReserveModalOpen(false);
-          setReReserveFeedback('Supplier stock has been successfully re-reserved for 48 hours! Awaiting Concur PO #.');
+          setReReserveFeedback('Supplier stock has been successfully re-reserved for 48 hours! Link the Concur Request / PR # within 48 hours.');
           setTimeout(() => setReReserveFeedback(null), 8000);
       } catch (e: unknown) {
           console.error("Re-reserve failed:", e);
@@ -2362,11 +2378,11 @@ const PODetail = () => {
                         {originalApprover ? (
                             <p>
                                 This purchase request was approved on record by <strong>{originalApprover}</strong>.
-                                Re-reserving will return the request to <strong className="text-emerald-700 dark:text-emerald-400">Pending Concur PO</strong> status and start a fresh <strong className="text-emerald-700 dark:text-emerald-400">48-hour stock holding window</strong> for linking the Concur PO #.
+                                Re-reserving will return the request to <strong className="text-emerald-700 dark:text-emerald-400">Pending Concur Request</strong> status and start a fresh <strong className="text-emerald-700 dark:text-emerald-400">48-hour stock holding window</strong> for linking the Concur Request / PR #.
                             </p>
                         ) : (
                             <p>
-                                This purchase request was previously approved. Re-reserving will return the request to <strong className="text-emerald-700 dark:text-emerald-400">Pending Concur PO</strong> status and start a fresh <strong className="text-emerald-700 dark:text-emerald-400">48-hour stock holding window</strong> for linking the Concur PO #.
+                                This purchase request was previously approved. Re-reserving will return the request to <strong className="text-emerald-700 dark:text-emerald-400">Pending Concur Request</strong> status and start a fresh <strong className="text-emerald-700 dark:text-emerald-400">48-hour stock holding window</strong> for linking the Concur Request / PR #.
                             </p>
                         )}
                     </div>
@@ -2421,6 +2437,8 @@ const PODetail = () => {
                         </div>
                     </div>
 
+                    {!reReserveStockSufficient && <p className="text-sm font-semibold text-amber-700">Re-reservation is blocked: insufficient verified stock for the complete request. Shared supplier stock is checked across all lines and sites.</p>}
+
                     {/* Total Summary */}
                     <div className="p-3 bg-gray-50 dark:bg-[#15171e] rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center text-xs">
                         <span className="text-secondary dark:text-gray-400">Order Subtotal (Ex GST):</span>
@@ -2441,7 +2459,7 @@ const PODetail = () => {
                     </button>
                     <button
                         type="button"
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || !reReserveStockSufficient}
                         onClick={() => guardedSubmit(handleReReserveConfirm)}
                         className="px-6 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-500 disabled:opacity-50 font-bold text-sm shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
                     >

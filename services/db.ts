@@ -13,8 +13,8 @@ type DbSupplierRow = { id: string; name: string; contact_email: string; key_cont
 type DbSupplierProductMapRow = { id: string; supplier_id: string; product_id: string; supplier_sku: string; supplier_customer_stock_code: string; match_priority: number; pack_conversion_factor: number; mapping_status: SupplierProductMap['mappingStatus']; mapping_method: SupplierProductMap['mappingMethod']; confidence_score: number; mapping_justification: SupplierProductMap['mappingJustification']; manual_override: boolean; updated_at: string };
 type DbProductAvailabilityRow = { id: string; product_id: string; supplier_id: string; available_units: number; available_order_qty: number; updated_at: string };
 type DbCatalogItemRow = { id: string; item_id: string; supplier_id: string; supplier_sku: string; price: number };
-type DbStockSnapshotRow = { id: string; supplier_id: string; supplier_sku: string; product_name: string; available_qty: number; stock_on_hand: number; committed_qty: number; back_ordered_qty: number; total_stock_qty: number; snapshot_date: string; source_report_name: string; customer_stock_code: string; range_name: string; category: string; sub_category: string; stock_type: string; carton_qty: number; soh_value_at_sell: number; sell_price: number; incoming_stock: SupplierStockSnapshot['incomingStock']; customer_stock_code_raw: string; customer_stock_code_norm: string; customer_stock_code_alt_norm: string };
-type DbPORequestRow = { id: string; display_id: string; request_date: string; requester_id: string; requester: { name: string }; site_id: string; site: { name: string }; supplier_id: string; supplier: { name: string }; status: PORequest['status']; total_amount: number; subtotal_amount?: number; tax_total_amount?: number; total_amount_inc_gst?: number; approvals: { id: string; action: ApprovalEvent['action']; date: string; approver_name: string; comments: string }[]; lines: { id: string; item_id: string; item_name: string; sku: string; quantity_ordered: number; quantity_received: number; unit_price: number; total_price: number; tax_code?: string; tax_rate?: number; tax_amount?: number; total_price_inc_gst?: number; concur_po_number: string; need_by_date?: string }[]; deliveries: { id: string; date: string; docket_number: string; received_by: string; received_by_id: string; lines: { id: string; po_line_id: string; quantity: number; invoice_number: string; is_capitalised: boolean; capitalised_date: string; freight_amount: number }[] }[]; reason_for_request: PORequest['reasonForRequest']; customer_name: string; concur_request_number: string; po_lines: { concur_po_number: string }[]; comments: string; approved_at?: string; reservation_expires_at?: string; concur_linked_at?: string; cancellation_reason?: string; auto_cancelled_at?: string; is_non_default_supplier?: boolean; non_default_supplier_reason?: string; created_at?: string; updated_at?: string; };
+type DbStockSnapshotRow = { id: string; supplier_id: string; supplier_sku: string; source_supplier_sku?: string; product_name: string; available_qty: number; stock_on_hand: number; committed_qty: number; back_ordered_qty: number; total_stock_qty: number; snapshot_date: string; source_report_name: string; customer_stock_code: string; range_name: string; category: string; sub_category: string; stock_type: string; carton_qty: number; soh_value_at_sell: number; sell_price: number; unit_price?: number; incoming_stock: SupplierStockSnapshot['incomingStock']; customer_stock_code_raw: string; customer_stock_code_norm: string; customer_stock_code_alt_norm: string };
+type DbPORequestRow = { id: string; display_id: string; request_date: string; requester_id: string; requester: { name: string }; site_id: string; site: { name: string }; supplier_id: string; supplier: { name: string }; status: PORequest['status']; total_amount: number; subtotal_amount?: number; tax_total_amount?: number; total_amount_inc_gst?: number; approvals: { id: string; action: ApprovalEvent['action']; date: string; approver_name: string; comments: string }[]; lines: { id: string; item_id: string; item_name: string; sku: string; quantity_ordered: number; quantity_received: number; unit_price: number; total_price: number; tax_code?: string; tax_rate?: number; tax_amount?: number; total_price_inc_gst?: number; concur_po_number: string; is_force_closed?: boolean; need_by_date?: string }[]; deliveries: { id: string; date: string; docket_number: string; received_by: string; received_by_id: string; lines: { id: string; po_line_id: string; quantity: number; invoice_number: string; is_capitalised: boolean; capitalised_date: string; freight_amount: number }[] }[]; concur_po_number?: string; reason_for_request: PORequest['reasonForRequest']; customer_name: string; concur_request_number: string; po_lines: { concur_po_number: string }[]; comments: string; approved_at?: string; reservation_expires_at?: string; concur_linked_at?: string; cancellation_reason?: string; auto_cancelled_at?: string; is_non_default_supplier?: boolean; non_default_supplier_reason?: string; created_at?: string; updated_at?: string; };
 type DbWorkflowStepRow = { id: string; step_name: string; approver_role: string; approver_type: WorkflowStep['approverType']; approver_id: string; condition_type: WorkflowStep['conditionType']; condition_value: number; order: number; is_active: boolean };
 type DbNotificationRuleRow = { id: string; event_type: NotificationRule['eventType']; label: string; is_active: boolean; recipients: NotificationRule['recipients'] };
 type DbAppNotificationRow = { id: string; user_id: string; title: string; message: string; is_read: boolean; link: string; created_at: string };
@@ -674,6 +674,7 @@ export const db = {
              id: s.id,
              supplierId: s.supplier_id,
              supplierSku: s.supplier_sku,
+             sourceSupplierSku: s.source_supplier_sku,
              productName: s.product_name,
              availableQty: s.available_qty,
              stockOnHand: s.stock_on_hand,
@@ -682,7 +683,7 @@ export const db = {
              totalStockQty: s.total_stock_qty,
              snapshotDate: s.snapshot_date,
              sourceReportName: s.source_report_name,
-             customerStockCode: s.customer_stock_code,
+             customerStockCode: s.customer_stock_code || s.customer_stock_code_raw,
              range: s.range_name,
              category: s.category,
              subCategory: s.sub_category,
@@ -690,11 +691,20 @@ export const db = {
              cartonQty: s.carton_qty,
              sohValAtSell: s.soh_value_at_sell,
              sellPrice: s.sell_price,
+             unitPrice: s.unit_price,
              incomingStock: s.incoming_stock || [],
              customerStockCodeRaw: s.customer_stock_code_raw,
              customerStockCodeNorm: s.customer_stock_code_norm,
              customerStockCodeAltNorm: s.customer_stock_code_alt_norm
         }));
+    },
+
+    getStockAllocations: async (): Promise<PORequest[]> => {
+        const { data, error } = await supabase.rpc('get_supplier_stock_allocations');
+        if (error) throw error;
+        return (data || []).map((p: Partial<PORequest>, index: number) => ({
+            ...p, id: `stock-allocation-${index}`, lines: p.lines || [], approvalHistory: [], deliveries: []
+        })) as PORequest[];
     },
 
     getPOs: async (siteIds?: string[]): Promise<PORequest[]> => {
@@ -760,6 +770,7 @@ export const db = {
                 taxAmount: l.tax_amount !== undefined && l.tax_amount !== null ? Number(l.tax_amount) : Number((Number(l.total_price || 0) * 0.10).toFixed(2)),
                 totalPriceIncGst: l.total_price_inc_gst !== undefined && l.total_price_inc_gst !== null ? Number(l.total_price_inc_gst) : Number(((l.total_price || 0) * 1.10).toFixed(2)),
                 concurPoNumber: l.concur_po_number,
+                isForceClosed: Boolean(l.is_force_closed),
                 needByDate: l.need_by_date || (p.request_date ? p.request_date.split('T')[0] : undefined)
             })),
             deliveries: (p.deliveries || []).map((d: DbPORequestRow['deliveries'][0]) => ({
@@ -781,7 +792,7 @@ export const db = {
             reasonForRequest: p.reason_for_request,
             customerName: p.customer_name,
             concurRequestNumber: p.concur_request_number,
-            concurPoNumber: Array.from(new Set((p.lines || []).map((l: { concur_po_number: string }) => l.concur_po_number).filter(Boolean))).join(', ') || undefined,
+            concurPoNumber: Array.from(new Set((p.lines || []).map((l: { concur_po_number: string }) => l.concur_po_number).filter(Boolean))).join(', ') || p.concur_po_number || undefined,
             comments: p.comments,
             approvedAt: p.approved_at,
             reservationExpiresAt: p.reservation_expires_at,
@@ -1245,6 +1256,7 @@ export const db = {
                 id: s.id, 
                 supplier_id: s.supplierId,
                 supplier_sku: s.supplierSku,
+                source_supplier_sku: s.sourceSupplierSku,
                 product_name: s.productName,
                 available_qty: s.availableQty,
                 stock_on_hand: s.stockOnHand,
@@ -1260,6 +1272,7 @@ export const db = {
                 soh_value_at_sell: s.sohValueAtSell,
                 sell_price: s.sellPrice,
                 total_stock_qty: s.totalStockQty,
+                incoming_stock: s.incomingStock || [],
                 
                 customer_stock_code_raw: s.customerStockCode || s.supplierSku,
                 customer_stock_code_norm: norm.normalized,
@@ -1988,28 +2001,7 @@ export const db = {
             p_po_id: poId,
             p_user_name: approverName || 'User'
         });
-        if (error) {
-            console.error('Failed to run re_reserve_po_stock RPC, falling back to manual update:', error);
-            const newExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-            await db.updatePOStatus(poId, 'APPROVED_PENDING_CONCUR', {
-                reservation_expires_at: newExpiry,
-                auto_cancelled_at: null,
-                cancellation_reason: null
-            });
-            await db.addPOApproval(poId, {
-                id: crypto.randomUUID(),
-                approverName: approverName || 'User',
-                action: 'STOCK_RE_RESERVED',
-                date: new Date().toISOString(),
-                comments: 'Supplier stock re-reserved for 48 hours. Awaiting Concur PO #.'
-            });
-            return {
-                success: true,
-                po_id: poId,
-                status: 'APPROVED_PENDING_CONCUR',
-                reservation_expires_at: newExpiry
-            };
-        }
+        if (error) throw new Error(error.message || 'Unable to re-reserve supplier stock.');
         return data;
     },
 

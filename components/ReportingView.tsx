@@ -1,3 +1,6 @@
+import { useReservationClock } from '../hooks/useReservationClock.ts';
+import { getSupplierOfferPrice } from '../utils/stockOffers.ts';
+import { getCanonicalSupplier } from '../utils/suppliers.ts';
 import React, { useEffect, useMemo, useState, useRef, Fragment, type ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
@@ -69,6 +72,8 @@ interface StockReservationReportRow extends ReportRow {
     productName: string;
     category: string;
     unitPrice: number;
+    priceStatus?: string;
+    sourceIssue?: string;
     baselineSoh: number;
     baselineAvailable: number;
     activeReservedUnits: number;
@@ -78,7 +83,7 @@ interface StockReservationReportRow extends ReportRow {
     effectiveStock: number;
     availableOrderableQty: number;
     packMultiple: number;
-    reservationPressure: 'CRITICAL' | 'HIGH' | 'RESERVED' | 'HEALTHY';
+    reservationPressure: 'CRITICAL' | 'HIGH' | 'RESERVED' | 'HEALTHY' | 'UNAVAILABLE';
     totalReservedValue: number;
     effectiveValue: number;
     snapshotDate: string;
@@ -498,10 +503,10 @@ const buildReconciliationRows = (pos: PORequest[]): DeliveryReconciliationRow[] 
         const received = Number(line.quantityReceived || 0);
         const unitPrice = Number(line.unitPrice || 0);
         const taxRate = line.taxRate ?? 10.0;
-        
+
         const pendingQty = Math.max(0, ordered - received);
         const overQty = Math.max(0, received - ordered);
-        
+
         const orderedValue = ordered * unitPrice;
         const receivedValue = received * unitPrice;
         const pendingValue = pendingQty * unitPrice;
@@ -764,14 +769,12 @@ const buildSupplierInventoryRows = (
         data.push({
             id: snap.id,
             supplierId: snap.supplierId,
-            supplier: supplier ? supplier.name : 'Unknown Supplier',
+            supplier: supplier ? (getCanonicalSupplier(supplier.id, suppliersList)?.name || supplier.name) : 'Unknown Supplier',
             supplierSku: snap.supplierSku,
             productName: snap.productName || 'Unknown Product',
             customerStockCode: snap.customerStockCode || '',
             soh,
-            available: snap.availableQty !== undefined && snap.availableQty !== null && Number(snap.availableQty) > 0
-                ? Number(snap.availableQty)
-                : (soh || Number(snap.availableQty) || 0),
+            available: Number(snap.availableQty ?? snap.stockOnHand ?? 0),
             committed: Number(snap.committedQty || 0),
             backOrdered: Number(snap.backOrderedQty || 0),
             sellPrice,
@@ -808,15 +811,13 @@ const buildStockReservationRows = (
             }
         });
 
+        posList.filter(po => po.lines.some(line => line.itemId === item.id)).forEach(po => {
+            if (po.supplierId && !suppliersToProcess.includes(po.supplierId)) suppliersToProcess.push(po.supplierId);
+        });
         suppliersToProcess.forEach((supId) => {
             const supplier = suppliersList.find(s => s.id === supId);
             const mapping = (mappingsList || []).find(m => m.productId === item.id && m.supplierId === supId);
             const supplierSku = mapping?.supplierSku || item.sapItemCodeNorm || item.sku;
-            const rowKey = `${supId}:${supplierSku}:${item.id}`;
-
-            if (processedKeys.has(rowKey)) return;
-            processedKeys.add(rowKey);
-
             const running = calculateItemRunningStock(
                 item.id,
                 supId,
@@ -824,11 +825,21 @@ const buildStockReservationRows = (
                 mappingsList,
                 snapshots,
                 posList,
-                item.defaultOrderMultiple || 1
+                item.defaultOrderMultiple || 1,
+                item
             );
 
-            const unitPrice = item.unitPrice || 0;
-            let pressure: 'CRITICAL' | 'HIGH' | 'RESERVED' | 'HEALTHY' = 'HEALTHY';
+            const rowKey = running.poolKey;
+            if (processedKeys.has(rowKey)) {
+                const existing = rows.find(r => r.id === rowKey)!;
+                if (!existing.internalSku.split(' / ').includes(item.sku)) existing.internalSku += ` / ${item.sku}`;
+                const aliasPrice = getSupplierOfferPrice(item, supId, suppliersList, mappingsList, snapshots);
+                if (Math.abs(aliasPrice - existing.unitPrice) > 0.000001) { existing.unitPrice = 0; existing.effectiveValue = 0; existing.totalReservedValue = 0; existing.priceStatus = 'Multiple offer prices'; }
+                return;
+            }
+            processedKeys.add(rowKey);
+            const unitPrice = running.priceVaries ? 0 : getSupplierOfferPrice(item, supId, suppliersList, mappingsList, snapshots);
+            let pressure: StockReservationReportRow['reservationPressure'] = running.availableOrderQty > 0 ? 'HEALTHY' : 'UNAVAILABLE';
             if (running.availableOrderQty <= 0 && running.baseAvailableUnits > 0) {
                 pressure = 'CRITICAL';
             } else if (running.reservedUnits > 0 && running.availableOrderQty < running.baseAvailableUnits * 0.3) {
@@ -839,32 +850,34 @@ const buildStockReservationRows = (
 
             rows.push({
                 id: rowKey,
-                supplier: supplier ? supplier.name : 'Unknown Supplier',
+                supplier: supplier ? (getCanonicalSupplier(supplier.id, suppliersList)?.name || supplier.name) : 'Unknown Supplier',
                 supplierId: supId,
-                supplierSku,
+                supplierSku: running.supplierSku || supplierSku,
                 internalSku: item.sku || item.sapItemCodeNorm || '-',
                 productName: item.name,
                 category: item.category || 'General',
                 unitPrice,
+                priceStatus: running.priceVaries ? 'Multiple offer prices' : unitPrice > 0 ? 'Supplier price' : 'Unpriced',
+                sourceIssue: running.sourceConflict ? 'Stock source needs review; excluded from availability' : '',
                 baselineSoh: running.rawSnapshotQty,
                 baselineAvailable: running.baseAvailableUnits,
                 activeReservedUnits: running.reservedUnits,
                 activeReservedPOs: running.reservedPOs,
-                committedActiveUnits: running.committedUnits,
-                committedActivePOs: running.committedPOs,
+                committedActiveUnits: running.onOrderUnits,
+                committedActivePOs: running.onOrderPOs,
                 effectiveStock: running.effectiveStockUnits,
                 availableOrderableQty: running.availableOrderQty,
                 packMultiple: running.packConversionFactor,
                 reservationPressure: pressure,
                 totalReservedValue: running.reservedUnits * unitPrice,
                 effectiveValue: running.availableOrderQty * unitPrice,
-                snapshotDate: running.snapshotDate ? new Date(running.snapshotDate).toLocaleDateString() : 'Active'
+                snapshotDate: running.snapshotDate ? new Date(running.snapshotDate).toLocaleDateString() : 'No baseline'
             });
         });
     });
 
     return rows.sort((a, b) => {
-        const order = { CRITICAL: 0, HIGH: 1, RESERVED: 2, HEALTHY: 3 };
+        const order = { CRITICAL: 0, HIGH: 1, RESERVED: 2, HEALTHY: 3, UNAVAILABLE: 4 };
         const diff = order[a.reservationPressure] - order[b.reservationPressure];
         if (diff !== 0) return diff;
         return b.activeReservedUnits - a.activeReservedUnits || a.productName.localeCompare(b.productName);
@@ -915,13 +928,13 @@ const buildSupplierPriceVarianceRows = (
         const supplier = suppliersList.find((s) => s.id === m.supplierId);
         const item = itemsList.find((i) => i.id === m.productId);
         const snap = latestMap.get(`${m.supplierId}:${m.supplierSku}`);
-        
+
         if (item && snap && snap.sellPrice !== undefined) {
             const supplierPrice = Number(snap.sellPrice || 0);
             const internalPrice = Number(item.unitPrice || 0);
             const varianceAmount = supplierPrice - internalPrice;
             const variancePercent = internalPrice > 0 ? (varianceAmount / internalPrice) * 100 : 0;
-            
+
             let status = 'Matching';
             if (varianceAmount > 0.01) {
                 status = 'Supplier Higher';
@@ -1150,11 +1163,13 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'productName', label: 'Product Name' },
             { key: 'category', label: 'Category' },
             { key: 'baselineSoh', label: 'Baseline SOH' },
-            { key: 'activeReservedUnits', label: 'Active Reserved Units (<48h)' },
+            { key: 'activeReservedUnits', label: 'Active Reserved Units (incl. PR holds)' },
             { key: 'activeReservedPOs', label: 'Active Reserved PO Count' },
             { key: 'committedActiveUnits', label: 'On Order' },
             { key: 'availableOrderableQty', label: 'Net Available Orderable' },
             { key: 'unitPrice', label: 'Unit Price' },
+            { key: 'priceStatus', label: 'Price Basis' },
+            { key: 'sourceIssue', label: 'Stock Source Issue' },
             { key: 'totalReservedValue', label: 'Total Reserved Value ($)' },
             { key: 'effectiveValue', label: 'Available Orderable Value ($)' },
             { key: 'reservationPressure', label: 'Stock Pressure Status' },
@@ -1444,7 +1459,7 @@ const MultiSiteSlicer: React.FC<MultiSiteSlicerProps> = ({
 };
 
 const ReportingView = () => {
-    const { pos, allPos, sites, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers, availability, hasPermission } = useApp();
+    const { pos, allPos, stockPos, isStockReady, sites, cachedReports, cachedRunTimes, setReportCache, stockSnapshots, mappings, items, suppliers, availability, hasPermission } = useApp();
     const navigate = useNavigate();
     const reportPos = (allPos && allPos.length > 0) ? allPos : pos;
     useSetPageMeta({ disableBodyScroll: true });
@@ -1484,8 +1499,10 @@ const ReportingView = () => {
         sessionStorage.setItem('pf_active_report', activeReport);
     }, [activeReport]);
 
-    const reportData = (cachedReports[activeReport] || []) as ReportRow[];
-    const lastRun = cachedRunTimes[activeReport];
+    const stockClock = useReservationClock();
+    const liveStockRows = useMemo(() => isStockReady ? buildStockReservationRows(items, suppliers, stockSnapshots, stockPos, availability, mappings) : [], [items, suppliers, stockSnapshots, stockPos, availability, mappings, stockClock, isStockReady]);
+    const reportData = (activeReport === 'STOCK_RESERVATIONS' ? liveStockRows : (cachedReports[activeReport] || [])) as ReportRow[];
+    const lastRun = activeReport === 'STOCK_RESERVATIONS' ? new Date(stockClock).toLocaleTimeString() : cachedRunTimes[activeReport];
     const isDeliveryReport = DELIVERY_REPORTS.includes(activeReport);
     const isItemHistoryReport = activeReport === 'ITEM_REQUEST_HISTORY';
     const isLinenInjectionReport = activeReport === 'LINEN_INJECTION';
@@ -1781,7 +1798,7 @@ const ReportingView = () => {
             } else if (activeReport === 'LINEN_INJECTION') {
                 data = buildLinenInjectionRows(reportPos, items);
             } else if (activeReport === 'STOCK_RESERVATIONS') {
-                data = buildStockReservationRows(items, suppliers, stockSnapshots, reportPos, availability, mappings);
+                data = buildStockReservationRows(items, suppliers, stockSnapshots, stockPos, availability, mappings);
             } else if (activeReport === 'SUPPLIER_INVENTORY') {
                 data = buildSupplierInventoryRows(stockSnapshots, suppliers);
             } else if (activeReport === 'SUPPLIER_ITEM_MAPPING') {
@@ -2025,7 +2042,7 @@ const ReportingView = () => {
                         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-col lg:flex-row justify-between lg:items-center gap-4 shrink-0">
                             <div className="min-w-0">
                                 <h2 className="font-bold text-gray-900 dark:text-white">{REPORT_TITLES[activeReport]}</h2>
-                                {lastRun && <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 flex items-center gap-1"><CheckCircle2 size={10} /> Data updated at: {lastRun}</p>}
+                                {lastRun && <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 flex items-center gap-1"><CheckCircle2 size={10} /> {activeReport === 'STOCK_RESERVATIONS' ? 'Balances calculated at:' : 'Data updated at:'} {lastRun}</p>}
                             </div>
                             <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full lg:w-auto">
                                 <button type="button" onClick={runReport} disabled={isLoading} className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto">
@@ -2351,7 +2368,7 @@ const ReportingView = () => {
                                     rows={linenInjectionRows}
                                     summary={linenInjectionSummary}
                                     chartData={linenInjectionChartData}
-                                    chartMetric={chartMetric}
+                                    chartMetric={chartMetric} 
                                     selectedSites={selectedSites}
                                     onToggleSite={handleToggleSite}
                                     onSelectOnlySite={handleSelectOnlySite}
@@ -2382,7 +2399,7 @@ const ReportingView = () => {
                                 <SupplierPriceVarianceVisual rows={visibleReportData} chartMetric={chartMetric} />
                             ) : activeReport === 'EOM_BUDGET_RECONCILIATION' && viewMode === 'CHART' ? (
                                 <EomBudgetReconciliationVisual
-                                    pos={reportPos}
+                                    pos={reportPos} 
                                     selectedMonth={selectedMonth}
                                     onSelectMonth={setSelectedMonth}
                                     onExportConcurCsv={exportCSV}
@@ -3131,28 +3148,28 @@ const LinenInjectionVisual = ({
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                <MetricCard
+                <MetricCard 
                     label={isSingleSite ? `${singleSiteName} Injected Spend` : isMultiSiteSubset ? 'Selected Sites Injected Spend' : 'Total Linen Injected Spend'}
                     value={currency(summary.totalInjectedValue)}
                     sub={`${numberValue(summary.totalInjectedUnits)} units receipted & closed`}
                     icon={TrendingUp}
                     color="bg-emerald-600"
                 />
-                <MetricCard
+                <MetricCard 
                     label={isSingleSite ? 'Site Receipted Units' : 'Total Receipted Units'}
                     value={numberValue(summary.totalInjectedUnits)}
                     sub={`Across ${summary.lineCount} closed line items`}
-                    icon={Package}
-                    color="bg-sky-500"
+                    icon={Package} 
+                    color="bg-sky-500" 
                 />
-                <MetricCard
+                <MetricCard 
                     label={isSingleSite ? 'Site Closed POs' : 'Closed PO Orders'}
                     value={String(summary.closedPoCount)}
                     sub={`Avg ${currency(summary.closedPoCount ? summary.totalInjectedValue / summary.closedPoCount : 0)} per order`}
                     icon={CheckCircle2}
                     color="bg-blue-600"
                 />
-                <MetricCard
+                <MetricCard 
                     label={isSingleSite ? 'Site Item Varieties' : 'Operating Facilities'}
                     value={isSingleSite ? `${summary.itemCount} Items` : `${summary.siteCount} Sites`}
                     sub={isSingleSite ? `Supplied by ${summary.supplierCount} partner${summary.supplierCount === 1 ? '' : 's'}` : `Across ${summary.itemCount} items from ${summary.supplierCount} suppliers`}
@@ -3644,7 +3661,7 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-5 py-4">Supplier / SKU</th>
                         <th className="px-5 py-4">Internal Item</th>
                         <th className="px-5 py-4 text-center">Snapshot SOH</th>
-                        <th className="px-5 py-4 text-center">Active Reserved (&lt;48h)</th>
+                        <th className="px-5 py-4 text-center">Active Reserved (incl. PR holds)</th>
                         <th className="px-5 py-4 text-center">On Order</th>
                         <th className="px-5 py-4 text-center">Net Available</th>
                         <th className="px-5 py-4 text-right">Unit Price</th>
@@ -4139,6 +4156,7 @@ const StockReservationRowView = ({ row }: { row: StockReservationReportRow }) =>
         <td className="px-5 py-3">
             <div className="font-medium text-gray-900 dark:text-white max-w-[220px] truncate" title={row.productName}>{row.productName}</div>
             <div className="text-xs text-tertiary dark:text-gray-500 font-mono">SKU: {row.internalSku}</div>
+            {row.sourceIssue && <div className="text-xs text-amber-700">{row.sourceIssue}</div>}
         </td>
         <td className="px-5 py-3 text-center font-medium">{numberValue(row.baselineSoh)}</td>
         <td className="px-5 py-3 text-center">
@@ -4162,10 +4180,10 @@ const StockReservationRowView = ({ row }: { row: StockReservationReportRow }) =>
             )}
         </td>
         <td className="px-5 py-3 text-center font-bold text-emerald-600">
-            {numberValue(row.availableOrderableQty)}
+            {row.sourceIssue ? 'Unverified' : numberValue(row.availableOrderableQty)}
         </td>
-        <td className="px-5 py-3 text-right font-medium">{currency(row.unitPrice)}</td>
-        <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(row.effectiveValue)}</td>
+        <td className="px-5 py-3 text-right font-medium">{row.unitPrice > 0 ? currency(row.unitPrice) : (row.priceStatus === 'Multiple offer prices' ? 'Varies' : 'Unpriced')}</td>
+        <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white">{row.unitPrice > 0 ? currency(row.effectiveValue) : '—'}</td>
         <td className="px-5 py-3 text-center">
             <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${
                 row.reservationPressure === 'CRITICAL' 
@@ -4174,6 +4192,7 @@ const StockReservationRowView = ({ row }: { row: StockReservationReportRow }) =>
                     ? 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800'
                     : row.reservationPressure === 'RESERVED'
                     ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800'
+                    : row.reservationPressure === 'UNAVAILABLE' ? 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-800'
                     : 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
             }`}>
                 {row.reservationPressure}
@@ -4476,11 +4495,15 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
     const [subTab, setSubTab] = useState<'OVERVIEW' | 'ACTIVE_QUEUE' | 'AUTO_CANCELLED'>('OVERVIEW');
     const [urgencyFilter, setUrgencyFilter] = useState<'ALL' | 'CRITICAL' | 'WARNING' | 'NORMAL'>('ALL');
 
+    const unpricedPools = rows.filter(r => r.availableOrderableQty > 0 && !(r.unitPrice > 0)).length;
+    const baselineDates = [...new Set(rows.map(r => r.snapshotDate).filter(d => d && d !== 'No baseline'))];
     const totalAvailableUnits = useMemo(() => rows.reduce((s, r) => s + (r.availableOrderableQty || 0), 0), [rows]);
     const totalAvailableValue = useMemo(() => rows.reduce((s, r) => s + (r.effectiveValue || 0), 0), [rows]);
     const totalReservedUnits = useMemo(() => rows.reduce((s, r) => s + (r.activeReservedUnits || 0), 0), [rows]);
     const totalReservedValue = useMemo(() => rows.reduce((s, r) => s + (r.totalReservedValue || 0), 0), [rows]);
     const totalCommittedUnits = useMemo(() => rows.reduce((s, r) => s + (r.committedActiveUnits || 0), 0), [rows]);
+
+    const stockClock = useReservationClock();
 
     // Active Reservations holding stock
     const activeReservations = useMemo(() => {
@@ -4496,14 +4519,14 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
             const order = { CRITICAL: 0, WARNING: 1, NORMAL: 2 };
             return order[a.timeInfo.urgency] - order[b.timeInfo.urgency] || a.timeInfo.totalHoursRemaining - b.timeInfo.totalHoursRemaining;
         });
-    }, [pos]);
+    }, [pos, stockClock]);
 
     const criticalUrgencyCount = useMemo(() => activeReservations.filter(r => r.timeInfo.urgency === 'CRITICAL').length, [activeReservations]);
     const warningUrgencyCount = useMemo(() => activeReservations.filter(r => r.timeInfo.urgency === 'WARNING').length, [activeReservations]);
 
     // Auto-cancelled orders
     const autoCancelledOrders = useMemo(() => {
-        return pos.filter(p => p.status === 'CANCELLED' || Boolean(p.autoCancelledAt)).map(p => {
+        return pos.filter(p => p.status === 'CANCELLED' && Boolean(p.autoCancelledAt)).map(p => {
             const totalUnits = p.lines.reduce((s, l) => s + (l.quantityOrdered || 0), 0);
             return {
                 po: p,
@@ -4546,26 +4569,27 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
 
     return (
         <div className="p-4 md:p-6 space-y-6">
+            <p className="text-xs text-secondary dark:text-gray-400">Supplier-wide mapped stock pools across all sites. Baselines: {baselineDates.join(', ') || 'No baseline'}. Values use available supplier prices; {unpricedPools} available pools are unpriced. The reservations queue and expiry cards show requests in your selected sites.</p>
             {/* Top Metric Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
                 <MetricCard 
-                    label="Net Available Orderable" 
+                    label="Priced Net Available"
                     value={currency(totalAvailableValue)} 
-                    sub={`${numberValue(totalAvailableUnits)} units across ${rows.length} items`} 
+                    sub={`${numberValue(totalAvailableUnits)} units across ${rows.length} stock pools`}
                     icon={Package} 
                     color="bg-emerald-500" 
                 />
                 <MetricCard 
-                    label="Active 48h Reserved" 
+                    label="Active Reserved"
                     value={currency(totalReservedValue)} 
-                    sub={`${numberValue(totalReservedUnits)} units on ${activeReservations.length} POs`} 
+                    sub={`${numberValue(totalReservedUnits)} units in filtered stock pools`}
                     icon={Clock} 
                     color="bg-amber-500" 
                 />
                 <MetricCard 
                     label="On Order"
                     value={numberValue(totalCommittedUnits)} 
-                    sub="Units on active POs with Concur #" 
+                    sub="Outstanding units on issued Concur POs"
                     icon={Truck} 
                     color="bg-sky-500" 
                 />
@@ -4609,7 +4633,7 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                         }`}
                     >
                         <Clock size={13} />
-                        Live 48h Reservations Queue
+                        Selected-site Reservations Queue
                         {activeReservations.length > 0 && (
                             <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
                                 {activeReservations.length}
@@ -4661,7 +4685,7 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                                         <YAxis tickFormatter={(val) => Number(val).toLocaleString()} tick={{ fontSize: 11, fill: '#888' }} />
                                         <RechartsTooltip formatter={(val: number) => numberValue(val) + ' units'} contentStyle={{ borderRadius: '8px', border: 'none' }} />
                                         <Bar dataKey="available" name="Net Available" fill="#10b981" stackId="stock" radius={[0, 0, 0, 0]} />
-                                        <Bar dataKey="reserved" name="Active Reserved (<48h)" fill="#f59e0b" stackId="stock" radius={[0, 0, 0, 0]} />
+                                        <Bar dataKey="reserved" name="Active Reserved (incl. PR holds)" fill="#f59e0b" stackId="stock" radius={[0, 0, 0, 0]} />
                                         <Bar dataKey="committed" name="On Order" fill="#0ea5e9" stackId="stock" radius={[4, 4, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
