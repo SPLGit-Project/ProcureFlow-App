@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "node scripts/serve-production.mjs",
+    "test:startup": "node --test tests/startup/*.test.mjs",
     "dev": "vite --mode staging",
     "dev:prod": "vite --mode production",
     "build": "npm run build:prod",

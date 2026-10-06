@@ -110,6 +110,29 @@ The app is automatically deployed to **Azure App Service (Free Tier, Linux)** wh
 - **Node Version**: 20.x is specified in the [workflow file](.github/workflows/main_procureflow-app-spl.yml).
 - **Service Plan**: F1 (Free) Linux plan on Azure.
 
+### Production static server
+
+The production startup command is `node /home/site/wwwroot/scripts/serve-production.mjs`
+(`npm start` runs the same server locally after building). It serves the `dist` directory.
+SPA fallback applies only to extensionless browser navigation routes; missing assets
+return HTTP 404 text rather than the HTML app shell. HTML, the service worker and
+version metadata use `Cache-Control: no-store`; hashed assets use immutable caching.
+
+App Service retains its startup command between deployments. The publish-profile
+deployment action cannot set this command. When provisioning or restoring the app,
+configure it after the server file has been deployed:
+
+```powershell
+az webapp config set --subscription 6d741abe-d077-48fd-8d1b-357434ee1704 `
+  --resource-group spl-app-dev-rg --name ProcureFlow-App-SPL `
+  --startup-file "node /home/site/wwwroot/scripts/serve-production.mjs"
+```
+
+Run `npm run test:startup` for the server, cached-response and startup-recovery
+regressions. These checks also run before production deployment. Initial bundle
+failures get one fresh-page retry, then a visible reload action; this recovery
+preserves authentication storage, preferences and local drafts.
+
 ### Manual Deployment
 You can manually trigger a deployment from the **Actions** tab in GitHub by selecting the "Build and deploy Node.js app" workflow and clicking "Run workflow".
 

@@ -14,6 +14,16 @@ const STATIC_ASSETS = [
   '/mercer-m-logo.png'
 ];
 
+// Older deployments served the SPA document for missing bundles. Never reuse
+// or cache that HTML as executable JavaScript (including existing bad caches).
+function isValidStaticResponse(response, pathname) {
+  if (!response || !response.ok) return false;
+  const contentType = response.headers.get('content-type') || '';
+  if (/\.(js|mjs)$/.test(pathname)) return /(?:javascript|ecmascript)/i.test(contentType);
+  if (pathname.endsWith('.css')) return /^text\/css\b/i.test(contentType);
+  return true;
+}
+
 /**
  * Fetch and set the current cache version from version.json
  */
@@ -140,18 +150,23 @@ self.addEventListener('fetch', (event) => {
         // Strategy 2: Cache-first for static assets (JS, CSS, images, fonts)
         // These are versioned by Vite's hash, so cache is safe
         if (
-          url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|ico)$/)
+          url.pathname.match(/\.(js|mjs|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|ico)$/)
         ) {
           const cachedResponse = await caches.match(request);
-          if (cachedResponse) {
+          if (isValidStaticResponse(cachedResponse, url.pathname)) {
             return cachedResponse;
           }
           
           // Not in cache, fetch from network and cache
           const networkResponse = await fetch(request);
-          if (networkResponse.ok) {
+          if (isValidStaticResponse(networkResponse, url.pathname)) {
             const cache = await caches.open(CACHE_VERSION);
             cache.put(request, networkResponse.clone());
+          } else if (networkResponse.ok) {
+            return new Response('App asset unavailable - reload ProcureFlow', {
+              status: 503,
+              headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }
+            });
           }
           return networkResponse;
         }
@@ -164,7 +179,7 @@ self.addEventListener('fetch', (event) => {
         
         // Try to return cached version as last resort
         const cachedResponse = await caches.match(request);
-        if (cachedResponse) {
+        if (isValidStaticResponse(cachedResponse, url.pathname)) {
           return cachedResponse;
         }
         
