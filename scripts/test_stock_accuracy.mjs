@@ -83,8 +83,10 @@ await pg.exec(`
 `);
 await pg.exec(fs.readFileSync('supabase/migrations/20261006033300_supplier_stock_accuracy.sql', 'utf8'));
 await pg.exec(fs.readFileSync('supabase/migrations/20261006033848_stock_handover_expiry_guard.sql', 'utf8'));
+await pg.exec(fs.readFileSync('supabase/migrations/20261006034116_stock_schema_compatibility.sql', 'utf8'));
+await pg.exec('ALTER TABLE po_requests DROP updated_at; ALTER TABLE roles DROP site_scope_mode');
 await pg.query('INSERT INTO users VALUES ($1,$2,\'Fixture Requester\',\'APPROVED\',\'REQUESTER\',\'{}\')', [user, auth]);
-await pg.query('INSERT INTO roles VALUES (\'REQUESTER\',\'{}\',\'ASSIGNED\')');
+await pg.query('INSERT INTO roles VALUES (\'REQUESTER\',\'{}\')');
 await pg.query('INSERT INTO suppliers VALUES ($1,\'HOST Supplies\'),($2,\'HOST Supplies Pty Ltd\')', [supplier, alias]);
 await pg.query(`INSERT INTO supplier_product_map VALUES ($1,$2,$3,'POOL',NULL,'CONFIRMED',false,1,1),($4,$5,$6,'POOL',NULL,'CONFIRMED',false,1,1)`, [uuid(9), item, supplier, uuid(10), otherItem, alias]);
 await pg.query(`INSERT INTO stock_snapshots VALUES ($1,$2,'POOL',NULL,NULL,now()-interval '1 day',100,500,NULL,NULL,NULL)`, [uuid(11), supplier]);
@@ -111,7 +113,7 @@ await pg.query('UPDATE po_lines SET quantity_ordered=20');
 await check('Linking PR with sufficient stock preserves the hold while awaiting PO', async () => { await pg.query('SELECT public.link_concur_request_number($1,\'PR-TEST\')', [request]); assert.equal((await pg.query('SELECT status,concur_request_number FROM po_requests')).rows[0].status, 'APPROVED_PENDING_CONCUR'); });
 await check('Manual cancellation cannot be reinstated via Concur linking', async () => { await pg.query("UPDATE po_requests SET status='CANCELLED',auto_cancelled_at=NULL"); await rejects('SELECT public.link_concur_request_number($1,\'PR-TEST\')', [request], /manually cancelled/); });
 await pg.exec(`ALTER TABLE stock_snapshots ADD source_report_name text, ADD range_name text, ADD carton_qty int, ADD category text, ADD sub_category text, ADD committed_qty int, ADD back_ordered_qty int, ADD soh_value_at_sell numeric, ADD sell_price numeric, ADD total_stock_qty int, ADD customer_stock_code_alt_norm text, ADD incoming_stock jsonb;`);
-await pg.exec("INSERT INTO roles VALUES ('ADMIN','{manage_items}','ALL'); UPDATE users SET role_id='ADMIN'");
+await pg.exec("INSERT INTO roles VALUES ('ADMIN','{manage_items}'); UPDATE users SET role_id='ADMIN'");
 const imported = [{ id: uuid(30), supplier_sku: 'CUSTOM-A', source_supplier_sku: 'NATIVE-A', available_qty: 2640, stock_on_hand: 2640, snapshot_date: '2099-01-01', sell_price: 5.56, stock_type: 'CUSTOM', incoming_stock: [{ date: '2099-02-01', qty: 13360 }] }];
 await check('Atomic stock import preserves native SKU, range, price and future supply separately', async () => {
  await pg.query('SELECT public.replace_stock_snapshot($1,$2,$3)',[supplier,'2099-01-01',JSON.stringify(imported)]);
