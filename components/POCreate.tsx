@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { Item, ItemPriceOption, POLineItem, PORequest, SpendCategory } from '../types.ts';
 import { clearDraft, readDraft, useDraftPersistence } from '../utils/draftStorage.ts';
 import { getSupplierOfferPrice } from '../utils/stockOffers.ts';
+import { getSupplierScopedDraft } from '../utils/supplierDraft.ts';
 import { canonicalSupplierName, dedupeSuppliersForDisplay, isDefaultSupplier, findDefaultSupplier } from '../utils/suppliers.ts';
 import {
   ShoppingCart,
@@ -133,12 +134,12 @@ const POCreate = () => {
   const draftKey = currentUser ? `pf_draft:${currentUser.id}:po-create` : '';
   const initialDraft = useMemo(
     () => draftKey
-      ? readDraft<POCreateDraft>(draftKey, {
+      ? getSupplierScopedDraft(readDraft<POCreateDraft>(draftKey, {
           ttlMs: PO_CREATE_DRAFT_TTL_MS,
           version: PO_CREATE_DRAFT_VERSION
-        })
+        }), urlSupplierId)
       : null,
-    [draftKey]
+    [draftKey, urlSupplierId]
   );
   
   useEffect(() => {
@@ -440,7 +441,13 @@ const POCreate = () => {
     const pricing = calculateLinePricing(safeQty, unitPrice, 'GST', 10.0);
 
     setCart(prev => {
-      if (prev.some(l => l.itemId === matchedCatalogItem.id)) return prev;
+      if (prev.some(l => l.itemId === matchedCatalogItem.id)) {
+        return prev.map(line => {
+          if (line.itemId !== matchedCatalogItem.id) return line;
+          const currentPricing = calculateLinePricing(line.quantityOrdered, unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
+          return { ...line, ...currentPricing, upq, priceOptionId: undefined, priceOptionLabel: undefined };
+        });
+      }
       return [
         ...prev,
         {
