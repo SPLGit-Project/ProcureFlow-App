@@ -1468,7 +1468,7 @@ const SupplierStockDirectory: React.FC = () => {
                   <th className="px-3 py-3 text-right w-[9%]">Unit Price</th>
                   <th className="px-2 py-3 text-center w-[8%]">Baseline</th>
                   <th className="px-2 py-3 text-center w-[8%]">Holds</th>
-                  <th className="px-2 py-3 text-center w-[7%]">Delivery</th>
+                  <th className="px-2 py-3 text-center w-[7%]">On Order</th>
                   <th className="px-3 py-3 text-right font-black w-[10%]">Net Orderable</th>
                   <th className="px-2 py-3 text-center w-[7%]">Health</th>
                   <th className="px-3 py-3 text-right w-[7%]">Action</th>
@@ -1534,7 +1534,7 @@ const SupplierStockDirectory: React.FC = () => {
                         )}
                       </td>
 
-                      {/* In Delivery */}
+                      {/* On Order */}
                       <td className="px-2 py-2.5 text-center font-mono text-xs">
                         {row.breakdown.committedUnits > 0 ? (
                           <span className="font-bold text-amber-600 dark:text-amber-400">-{row.breakdown.committedUnits.toLocaleString()}</span>

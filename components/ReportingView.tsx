@@ -275,7 +275,7 @@ const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
     ITEM_REQUEST_HISTORY: 'Search and select an item to see its most recent request activity at each site, with a detailed line-level export for deeper review.',
     MONTHLY_SUMMARY: 'Reconcile PO requests since July 2025. Groups POs monthly, showing total issued PO values, goods received (GR) values, and remaining open values.',
     LINEN_INJECTION: 'Comprehensive breakdown of all linen injected into circulation from closed purchase orders, detailing item quantities, unit pricing, and total injected value across sites and suppliers.',
-    STOCK_RESERVATIONS: 'Live running stock totals reconciling weekly snapshots, active 48-hour reservations awaiting Concur PO numbers, committed orders in delivery, and net orderable supplier stock.',
+    STOCK_RESERVATIONS: 'Live running stock totals reconciling weekly snapshots, active 48-hour reservations awaiting Concur PO numbers, quantities on order, and net orderable supplier stock.',
     SUPPLIER_INVENTORY: 'Provides by supplier the most recent inventory stock data available within the app, including SOH, available quantities, and stock on backorder.',
     SUPPLIER_ITEM_MAPPING: 'Provides a complete overview of the mapping of supplier items to corresponding items in the internal catalogue.',
     SUPPLIER_PRICE_VARIANCE: 'Compares supplier price reports against the internal catalogue prices for confirmed mappings, highlighting variations and sync status.',
@@ -1152,7 +1152,7 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'baselineSoh', label: 'Baseline SOH' },
             { key: 'activeReservedUnits', label: 'Active Reserved Units (<48h)' },
             { key: 'activeReservedPOs', label: 'Active Reserved PO Count' },
-            { key: 'committedActiveUnits', label: 'Committed In Delivery' },
+            { key: 'committedActiveUnits', label: 'On Order' },
             { key: 'availableOrderableQty', label: 'Net Available Orderable' },
             { key: 'unitPrice', label: 'Unit Price' },
             { key: 'totalReservedValue', label: 'Total Reserved Value ($)' },
@@ -3645,7 +3645,7 @@ const ReportTable = ({ activeReport, rows }: { activeReport: ReportType; rows: R
                         <th className="px-5 py-4">Internal Item</th>
                         <th className="px-5 py-4 text-center">Snapshot SOH</th>
                         <th className="px-5 py-4 text-center">Active Reserved (&lt;48h)</th>
-                        <th className="px-5 py-4 text-center">In Delivery</th>
+                        <th className="px-5 py-4 text-center">On Order</th>
                         <th className="px-5 py-4 text-center">Net Available</th>
                         <th className="px-5 py-4 text-right">Unit Price</th>
                         <th className="px-5 py-4 text-right">Available Value</th>
@@ -4563,7 +4563,7 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                     color="bg-amber-500" 
                 />
                 <MetricCard 
-                    label="Committed In Delivery" 
+                    label="On Order"
                     value={numberValue(totalCommittedUnits)} 
                     sub="Units on active POs with Concur #" 
                     icon={Truck} 
@@ -4645,12 +4645,12 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                             <div className="flex items-center justify-between mb-4">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white">Supplier Stock Allocation (Running Totals)</h3>
-                                    <p className="text-xs text-secondary dark:text-gray-400">Available vs Active Reserved vs Committed in Delivery</p>
+                                    <p className="text-xs text-secondary dark:text-gray-400">Available vs Active Reserved vs On Order</p>
                                 </div>
                                 <div className="flex items-center gap-3 text-xs">
                                     <span className="flex items-center gap-1 text-emerald-600 font-medium"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Available</span>
                                     <span className="flex items-center gap-1 text-amber-600 font-medium"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> Reserved (&lt;48h)</span>
-                                    <span className="flex items-center gap-1 text-sky-600 font-medium"><span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block" /> In Delivery</span>
+                                    <span className="flex items-center gap-1 text-sky-600 font-medium"><span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block" /> On Order</span>
                                 </div>
                             </div>
                             <div className="h-[320px]">
@@ -4662,7 +4662,7 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                                         <RechartsTooltip formatter={(val: number) => numberValue(val) + ' units'} contentStyle={{ borderRadius: '8px', border: 'none' }} />
                                         <Bar dataKey="available" name="Net Available" fill="#10b981" stackId="stock" radius={[0, 0, 0, 0]} />
                                         <Bar dataKey="reserved" name="Active Reserved (<48h)" fill="#f59e0b" stackId="stock" radius={[0, 0, 0, 0]} />
-                                        <Bar dataKey="committed" name="In Delivery" fill="#0ea5e9" stackId="stock" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="committed" name="On Order" fill="#0ea5e9" stackId="stock" radius={[4, 4, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
