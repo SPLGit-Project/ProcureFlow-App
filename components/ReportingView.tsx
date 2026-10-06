@@ -4840,7 +4840,7 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                     <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                         <div>
                             <h4 className="text-sm font-bold text-rose-900 dark:text-rose-300">Stock Reservation Cancellation Log</h4>
-                            <p className="text-xs text-rose-700 dark:text-rose-400">Requests whose 48-hour reservation lapsed without a Concur PO # being entered. Original approval remains valid; stock can be re-reserved.</p>
+                            <p className="text-xs text-rose-700 dark:text-rose-400">Expired reservations with released stock allocations. Original approval remains valid. Recovery requires verified current stock for the complete request; a linked Concur PR protects an active hold while awaiting the PO.</p>
                         </div>
                         <div className="flex items-center gap-4 text-xs font-bold text-rose-800 dark:text-rose-300 shrink-0">
                             <div>Total Orders: <span className="font-mono text-sm">{autoCancelledOrders.length}</span></div>
