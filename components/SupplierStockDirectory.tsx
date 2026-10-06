@@ -1771,7 +1771,7 @@ const SupplierStockDirectory: React.FC = () => {
 
                           {/* Pricing Variance */}
                           <td className="px-3 py-3 text-center">
-                            {hasDefault && group.hasMatch ? (
+                            {hasDefault && defaultPrice > 0 && minPrice > 0 && group.hasMatch ? (
                               isCheaper ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
                                   <TrendingDown size={11} /> Save {formatCurrency(priceDiff)} ({pctDiff.toFixed(1)}%)
@@ -1889,7 +1889,7 @@ const SupplierStockDirectory: React.FC = () => {
                                           <td className="px-3 py-2.5 text-center">
                                             {isDefault ? (
                                               <span className="text-secondary font-mono text-[11px]">— (Baseline)</span>
-                                            ) : defaultPrice > 0 ? (
+                                            ) : defaultPrice > 0 && offer.unitPrice > 0 ? (
                                               delta < -0.001 ? (
                                                 <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center justify-center gap-1 text-[11px]">
                                                   <TrendingDown size={12} /> -{formatCurrency(Math.abs(delta))} ({Math.abs(pct).toFixed(1)}% cheaper)
