@@ -1328,7 +1328,7 @@ const PODetail = () => {
                                 {po.cancellationReason || 'This request held a 48-hour supplier stock reservation that expired before a Concur Request # was linked. The original approval remains valid on record. Stock can be re-reserved, or enter your Concur Request # to reinstate.'}
                             </p>
                             <p className="text-xs mt-1 text-rose-700 dark:text-rose-300 font-medium">
-                                Original approval remains valid on record. Re-reserving will allocate a fresh 48-hour holding window, or entering your Concur Request # will immediately reactivate the order.
+                                Original approval remains valid on record. Recovery requires verified stock for the complete request. Re-reserving starts a fresh 48-hour window; linking the actual Concur PR protects the restored hold while its PO is awaited.
                             </p>
                             {po.autoCancelledAt && (
                                 <p className="text-[11px] mt-2 text-rose-600 dark:text-rose-400 font-mono">
