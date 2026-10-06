@@ -1408,6 +1408,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             if (mounted) {
                 console.log("Auth: Successfully authenticated user:", userData.email, "Status:", userData.status);
                 
+                // This is a display preference, never an authorization claim. Auth
+                // metadata also supports legacy profiles whose IDs differ from auth.uid().
+                userData.preferences = { theme, activeSiteIds, ...userData.preferences,
+                    featureUpdatesHidden: session.user.user_metadata?.featureUpdatesHidden === true };
                 setCurrentUser(applySessionRoleOverride(userData));
                 setAuthSessionId(getFeatureUpdateSessionId(session.access_token, session.user.last_sign_in_at || session.user.id));
                 setIsAuthenticated(true);
@@ -2080,20 +2084,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               savedPreferences = { theme, activeSiteIds, ...currentUser.preferences, featureUpdatesHidden: hidden };
               if (mock) localStorage.setItem('pf_test_user', JSON.stringify({ ...JSON.parse(mock), preferences: savedPreferences }));
           } else {
-              // Read and compare the complete preferences object so a concurrent theme/site
-              // update is not overwritten. No new table, policy or schema migration is needed.
-              let saved = false;
-              for (let attempt = 0; attempt < 3 && !saved; attempt++) {
-                  const { data: row, error: readError } = await supabase.from('users').select('preferences').eq('id', userId).single();
-                  if (readError) throw readError;
-                  const next = { theme, activeSiteIds, ...row.preferences, featureUpdatesHidden: hidden };
-                  let query = supabase.from('users').update({ preferences: next }).eq('id', userId);
-                  query = row.preferences === null ? query.is('preferences', null) : query.eq('preferences', JSON.stringify(row.preferences));
-                  const { data, error } = await query.select('preferences').maybeSingle();
-                  if (error) throw error;
-                  if (data) { savedPreferences = data.preferences; saved = true; }
-              }
-              if (!saved) return false;
+              // updateUser merges this one display preference into the authenticated
+              // user's metadata, without replacing their profile, theme or site settings.
+              const { data, error } = await supabase.auth.updateUser({ data: { featureUpdatesHidden: hidden } });
+              if (error) throw error;
+              if (data.user?.user_metadata?.featureUpdatesHidden !== hidden) return false;
+              savedPreferences = { theme, activeSiteIds, ...currentUser.preferences, featureUpdatesHidden: hidden };
           }
           setCurrentUser(previous => previous?.id === userId ? { ...previous, preferences: savedPreferences } : previous);
           return true;
