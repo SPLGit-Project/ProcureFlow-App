@@ -111,6 +111,7 @@ export interface RoleDefinition {
 export interface UserPreferences {
   theme: 'light' | 'dark';
   activeSiteIds: string[];
+  featureUpdatesHidden?: boolean;
 }
 
 export interface User {

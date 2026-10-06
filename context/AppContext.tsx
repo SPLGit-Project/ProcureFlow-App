@@ -16,6 +16,7 @@ import {
     writeSessionLogoutNotice
 } from '../utils/sessionState.ts';
 import { resetSessionLinenFact } from '../constants/linenFacts.ts';
+import { clearFeatureUpdatePresentation, getFeatureUpdateSessionId } from '../utils/featureUpdateSession.ts';
 
 interface DevelopmentFixtures {
   users: User[];
@@ -195,6 +196,8 @@ const isLocalQaMode = (): boolean => {
 interface AppContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
+  authSessionId: string | null;
+  saveFeatureUpdatesPreference: (hidden: boolean) => Promise<boolean>;
   activeSiteIds: string[]; // Multi-site context
   setActiveSiteIds: (ids: string[]) => void;
   siteName: (siteId?: string) => string;
@@ -387,6 +390,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [, setSessionRoleOverride] = useState<UserRole | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authSessionId, setAuthSessionId] = useState<string | null>(null);
   
   // Updated Multi-Site State
   const [activeSiteIds, _setActiveSiteIds] = useState<string[]>(getInitialSiteIds());
@@ -794,6 +798,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       clearRoleOverride();
       resetSessionLinenFact();
       setCurrentUser(fixtures.adminUser);
+      setAuthSessionId('development-session');
       setIsAuthenticated(true);
       setIsPendingApproval(false);
       setIsLoadingAuth(false);
@@ -970,6 +975,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                         setRoles([{ id: mockUser.role, name: 'Test Role', description: '', permissions: perms, isSystem: false }]);
                     }
                     setCurrentUser(mockUser as User);
+                    setAuthSessionId(localStorage.getItem('pf_test_session_id') || 'development-session');
                     setIsAuthenticated(true);
                     setIsPendingApproval(false);
                     setIsLoadingAuth(false);
@@ -1064,6 +1070,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 }
             } else if (eventType === 'SIGNED_OUT') {
                 console.log("Auth: Signed out");
+                clearFeatureUpdatePresentation(sessionStorage);
+                setAuthSessionId(null);
                 clearRoleOverride();
                 resetSessionLinenFact();
                 setCurrentUser(null);
@@ -1401,6 +1409,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                 console.log("Auth: Successfully authenticated user:", userData.email, "Status:", userData.status);
                 
                 setCurrentUser(applySessionRoleOverride(userData));
+                setAuthSessionId(getFeatureUpdateSessionId(session.access_token, session.user.last_sign_in_at || session.user.id));
                 setIsAuthenticated(true);
                 setIsPendingApproval(userData.status !== 'APPROVED');
                 persistSessionActivity(userData.id, true);
@@ -1744,6 +1753,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
       clearRoleOverride();
       resetSessionLinenFact();
+      clearFeatureUpdatePresentation(sessionStorage);
+      setAuthSessionId(null);
 
       // Immediately clear local state so the UI instantly resets to the login screen
       setCurrentUser(null);
@@ -2055,6 +2066,40 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           console.error("Failed to update inbound email config", e);
           reloadData();
           logAction('INBOUND_EMAIL_CONFIG_UPDATE_FAILED', { error: (e as Error).message });
+      }
+  };
+
+  const saveFeatureUpdatesPreference = async (hidden: boolean): Promise<boolean> => {
+      const userId = currentUser?.id;
+      if (!userId) return false;
+      try {
+          let savedPreferences: UserPreferences;
+          // Existing development-only auth fixture: never write a mock user's profile to production.
+          const mock = import.meta.env.DEV && localStorage.getItem('pf_test_user');
+          if (mock || qaMode) {
+              savedPreferences = { theme, activeSiteIds, ...currentUser.preferences, featureUpdatesHidden: hidden };
+              if (mock) localStorage.setItem('pf_test_user', JSON.stringify({ ...JSON.parse(mock), preferences: savedPreferences }));
+          } else {
+              // Read and compare the complete preferences object so a concurrent theme/site
+              // update is not overwritten. No new table, policy or schema migration is needed.
+              let saved = false;
+              for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+                  const { data: row, error: readError } = await supabase.from('users').select('preferences').eq('id', userId).single();
+                  if (readError) throw readError;
+                  const next = { theme, activeSiteIds, ...row.preferences, featureUpdatesHidden: hidden };
+                  let query = supabase.from('users').update({ preferences: next }).eq('id', userId);
+                  query = row.preferences === null ? query.is('preferences', null) : query.eq('preferences', JSON.stringify(row.preferences));
+                  const { data, error } = await query.select('preferences').maybeSingle();
+                  if (error) throw error;
+                  if (data) { savedPreferences = data.preferences; saved = true; }
+              }
+              if (!saved) return false;
+          }
+          setCurrentUser(previous => previous?.id === userId ? { ...previous, preferences: savedPreferences } : previous);
+          return true;
+      } catch (error) {
+          console.error('Unable to save feature update preference', error);
+          return false;
       }
   };
 
@@ -3481,7 +3526,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     notificationPopups, dismissNotificationPopup, triggerNotificationPopup,
     theme, setTheme, branding, updateBranding,
     createPO, saveDraftPO, submitDraftPO, updatePendingPO, updatePOStatus, reReservePOStock, linkConcurPO, addDelivery, updateFinanceInfo,
-    updateProfile, switchRole,
+    updateProfile, switchRole, authSessionId, saveFeatureUpdatesPreference,
     addSnapshot, importStockSnapshot, updateCatalogItem, upsertProductMaster: importMasterProducts,
     getAttributeOptions, upsertAttributeOption, deleteAttributeOption,
     getEffectiveStock,
@@ -3537,7 +3582,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     cachedRunTimes,
     setReportCache
   }), [
-    currentUser, isAuthenticated, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
+    currentUser, isAuthenticated, authSessionId, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, inboundEmailAddress, theme, branding,
     filteredPos, pos, stockPos, isStockReady, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,

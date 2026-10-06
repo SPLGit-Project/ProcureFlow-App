@@ -1,0 +1,96 @@
+{
+  "source_app_commit": "d777f4bf88433250a4828b357865c02b0fb76cb7",
+  "description": "Verified feature update guides and Qwen narrated videos",
+  "files": [
+    {
+      "file": "01_ProcureFlow_Supplier_Stock_and_Availability.pdf",
+      "bytes": 370193,
+      "sha256": "1f1ff13e38262740235719dc7c26c3ba3b6e748426f2d1fa13ccf96d471c9417"
+    },
+    {
+      "file": "02_ProcureFlow_Supplier_Price_Comparison.pdf",
+      "bytes": 221035,
+      "sha256": "dc2f457819a89abebbcc35d2a4a496a72d68898eed8cca175d3c2927fe58c6c4"
+    },
+    {
+      "file": "03_ProcureFlow_NCC_and_Alternate_Supplier_Requests.pdf",
+      "bytes": 353479,
+      "sha256": "7e8c515dcaeb83e2da168462b02438f9c390b674e103ea9e28e290f687ded665"
+    },
+    {
+      "file": "04_ProcureFlow_Stock_Reservations_and_Concur_Handover.pdf",
+      "bytes": 258119,
+      "sha256": "5ae1751a9a1bb6c00107185bac3d7ccb3fca83a46dd408a80526ccbcc85b1416"
+    },
+    {
+      "file": "05_ProcureFlow_Reservation_Expiry_and_Re_Reserve.pdf",
+      "bytes": 267456,
+      "sha256": "59a900d11c4619e09bbc491b72afb8c7198c1e21a3b3d3e549050bf208a865f0"
+    },
+    {
+      "file": "06_ProcureFlow_Stock_Reporting_and_Reservation_Follow_Up.pdf",
+      "bytes": 278887,
+      "sha256": "5ee3e8efdef0e2a9aaca94c54e35be3a89a7e04f82aa48d552f99cd230534076"
+    },
+    {
+      "file": "ncc-and-alternate-supplier-requests.jpg",
+      "bytes": 176122,
+      "sha256": "d677ebd46a5c88e64294c12a2e410e91a2ca9da9ccc322a483c1eda82fc56309"
+    },
+    {
+      "file": "ProcureFlow_NCC_and_Alternate_Supplier_Requests_Explainer.mp4",
+      "bytes": 6769386,
+      "sha256": "91c081eabfe16957c91ae23bcb424125b85d8866aecd63ef0038108750f16f3c"
+    },
+    {
+      "file": "ProcureFlow_Reservation_Expiry_and_Re_Reserve_Explainer.mp4",
+      "bytes": 6604262,
+      "sha256": "f3507f1ff2cf142cc7ea41e7c649e5e3da09258e261e5e437844d50707523b52"
+    },
+    {
+      "file": "ProcureFlow_Stock_Reporting_and_Reservation_Follow_Up_Explainer.mp4",
+      "bytes": 7936667,
+      "sha256": "f2256251e2b54d7cd73b47465bede4755e3f70009574d7edf4f4e6230d62e6ea"
+    },
+    {
+      "file": "ProcureFlow_Stock_Reservations_and_Concur_Handover_Explainer.mp4",
+      "bytes": 5894593,
+      "sha256": "b538da1e3bfbeaf90c05ac8b827811e594aeb69a38effb70135d39e5b037de3f"
+    },
+    {
+      "file": "ProcureFlow_Supplier_Price_Comparison_Explainer.mp4",
+      "bytes": 6550350,
+      "sha256": "b1705e996263915a5f17ebd65832b8fac942bce142c56bb5212d646b1465965b"
+    },
+    {
+      "file": "ProcureFlow_Supplier_Stock_Explainer.mp4",
+      "bytes": 6809273,
+      "sha256": "330754da2c0d52904e7bd74f751323518c8bb55fd7549823f974bbbae417fdf1"
+    },
+    {
+      "file": "reservation-expiry-and-re-reserve.jpg",
+      "bytes": 165766,
+      "sha256": "5b16a8cf40316356a1f642181e515a9be672fd6a60a238ea8cd46cbce5db6b49"
+    },
+    {
+      "file": "stock-reporting-and-reservation-follow-up.jpg",
+      "bytes": 203938,
+      "sha256": "f5578e86d174bc964578ed5ef403bfb52ee9b7472a66fcd5f969631c5f56bd52"
+    },
+    {
+      "file": "stock-reservations-and-concur-handover.jpg",
+      "bytes": 139268,
+      "sha256": "b46bbd1cef3bf034b630cb158fb6fc5c60a93fe3076458e05128991539f248cb"
+    },
+    {
+      "file": "supplier-price-comparison.jpg",
+      "bytes": 169831,
+      "sha256": "33d1f11a42a7d492d92d43d56e4dc29266bc220e9029ed430dfa8b453ad304d6"
+    },
+    {
+      "file": "supplier-stock.jpg",
+      "bytes": 210838,
+      "sha256": "80e2f10806325c59d43ac972a2af27c1c1a009edd1b7f990654af324c415ebf5"
+    }
+  ]
+}

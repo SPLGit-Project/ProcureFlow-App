@@ -55,6 +55,9 @@ import NotificationPreferencesModal from './NotificationPreferencesModal.tsx';
 import InAppNotificationPopupContainer from './InAppNotificationPopup.tsx';
 import { BrandLogo } from './BrandLogo.tsx';
 import procureFlowLogo from '../docs/Logo Branding/LOGO-NEW/Procureflow_Logo.png';
+import { claimFeatureUpdatePresentation } from '../utils/featureUpdateSession';
+
+const FeatureUpdatesModal = React.lazy(() => import('./FeatureUpdatesModal'));
 
 const SIDEBAR_COLLAPSED_KEY = 'pf-sidebar-collapsed';
 const REVAMP_EXPANDED_KEY = 'pf-revamp-sidebar-expanded';
@@ -69,6 +72,8 @@ const toTitleCase = (value: string) =>
 const Layout = () => {
   const {
     currentUser,
+    authSessionId,
+    saveFeatureUpdatesPreference,
     theme,
     setTheme,
     branding,
@@ -92,6 +97,20 @@ const Layout = () => {
   const [isTaskDrawerOpen, setIsTaskDrawerOpen] = React.useState(false);
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = React.useState(false);
   const [isInsightsDrawerOpen, setIsInsightsDrawerOpen] = React.useState(false);
+  const [isFeatureUpdatesOpen, setIsFeatureUpdatesOpen] = React.useState(false);
+  const closeFeatureUpdates = React.useCallback(() => setIsFeatureUpdatesOpen(false), []);
+  const userId = currentUser?.id;
+  const featureUpdatesHidden = currentUser?.preferences?.featureUpdatesHidden === true;
+  React.useEffect(() => {
+    if (userId && authSessionId && claimFeatureUpdatePresentation(userId, authSessionId, featureUpdatesHidden, sessionStorage)) {
+      setIsFeatureUpdatesOpen(true);
+    }
+  }, [userId, authSessionId, featureUpdatesHidden]);
+  const featureUpdatesPopup = isFeatureUpdatesOpen ? (
+    <React.Suspense fallback={null}>
+      <FeatureUpdatesModal onClose={closeFeatureUpdates} hiddenOnSignIn={featureUpdatesHidden} onSavePreference={saveFeatureUpdatesPreference} />
+    </React.Suspense>
+  ) : null;
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
@@ -298,6 +317,7 @@ const Layout = () => {
         >
           <PwaInstaller />
           <UpdateToast />
+          {featureUpdatesPopup}
 
           {/* Mobile overlay */}
           {isMobileMenuOpen && (
@@ -719,6 +739,13 @@ const Layout = () => {
                       </Link>
                     )}
                     <button type="button"
+                      onClick={() => setIsFeatureUpdatesOpen(true)}
+                      className="relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95"
+                      title="Feature updates & training" aria-label="Feature updates & training" aria-haspopup="dialog"
+                    >
+                      <BookOpen size={18} />
+                    </button>
+                    <button type="button"
                       onClick={() => setIsInsightsDrawerOpen(true)}
                       className="relative bg-tranquil text-white p-2 md:p-2.5 rounded-xl shadow-sm shadow-tranquil/30 hover:bg-[#0f87a8] transition-all active:scale-95"
                       title="ProcureFlow Insights & Tips"
@@ -1080,6 +1107,13 @@ const Layout = () => {
               </Link>
             )}
             <button type="button"
+              onClick={() => setIsFeatureUpdatesOpen(true)}
+              className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"
+              title="Feature updates & training" aria-label="Feature updates & training" aria-haspopup="dialog"
+            >
+              <BookOpen size={20} className="group-hover:text-[var(--color-brand)] transition-colors" />
+            </button>
+            <button type="button"
               onClick={() => setIsInsightsDrawerOpen(true)}
               className="relative p-2.5 text-secondary dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group active:scale-95"
               title="ProcureFlow Insights & Tips"
@@ -1160,6 +1194,7 @@ const Layout = () => {
       </div>
 
       <UpdateToast />
+      {featureUpdatesPopup}
 
       <TaskDrawer isOpen={isTaskDrawerOpen} onClose={() => setIsTaskDrawerOpen(false)} />
       <InsightsDrawer isOpen={isInsightsDrawerOpen} onClose={() => setIsInsightsDrawerOpen(false)} />

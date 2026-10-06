@@ -1,0 +1,17 @@
+-- Training media is private. Approved app users can obtain short-lived viewing
+-- and download links; anonymous visitors cannot read or sign these objects.
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('feature-updates', 'feature-updates', false, 20971520,
+        ARRAY['application/pdf', 'video/mp4', 'image/jpeg'])
+ON CONFLICT (id) DO UPDATE SET public = false,
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+DROP POLICY IF EXISTS feature_updates_approved_read ON storage.objects;
+CREATE POLICY feature_updates_approved_read ON storage.objects
+FOR SELECT TO authenticated
+USING (bucket_id = 'feature-updates' AND EXISTS (
+    SELECT 1 FROM public.users u
+    WHERE (u.id = (SELECT auth.uid()) OR u.auth_user_id = (SELECT auth.uid()))
+      AND u.status = 'APPROVED'
+));
