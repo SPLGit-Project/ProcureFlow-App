@@ -30,6 +30,59 @@
          window.location.href = window.location.href.replace('http:', 'https:');
       }
     </script>
+    <script id="startup-recovery">
+      // Runs before the module graph so a missing bundle can recover even when
+      // React never starts. Keep authentication, preferences and drafts intact.
+      (() => {
+        const retryKey = 'procureflow-startup-retry';
+        const hasStarted = () => Boolean(document.getElementById('root')?.hasChildNodes());
+        const showRecovery = () => {
+          if (hasStarted()) return;
+          const root = document.getElementById('root');
+          if (!root) return;
+          const panel = document.createElement('div');
+          panel.style.cssText = 'max-width:420px;margin:18vh auto;padding:28px;font:16px system-ui;color:#e2e8f0;background:#171315;border-radius:16px;text-align:center';
+          const title = document.createElement('h1');
+          title.textContent = 'ProcureFlow could not finish loading';
+          title.style.fontSize = '22px';
+          const message = document.createElement('p');
+          message.textContent = 'Check your connection, then reload to get the latest version.';
+          const button = document.createElement('button');
+          button.textContent = 'Reload ProcureFlow';
+          button.style.cssText = 'padding:12px 18px;background:#129DC0;border:0;border-radius:8px;font:inherit;color:#fff;cursor:pointer';
+          button.onclick = () => {
+            try { sessionStorage.removeItem(retryKey); } catch (_) { /* Storage may be disabled. */ }
+            window.location.reload();
+          };
+          panel.append(title, message, button);
+          root.append(panel);
+        };
+        window.addEventListener('error', event => {
+          const script = event.target;
+          if (hasStarted() || !(script instanceof HTMLScriptElement) || script.type !== 'module') return;
+          const source = new URL(script.src, window.location.href);
+          if (source.origin !== window.location.origin || !source.pathname.startsWith('/assets/')) return;
+          try {
+            if (Date.now() - Number(sessionStorage.getItem(retryKey) || 0) < 60000) { showRecovery(); return; }
+            sessionStorage.setItem(retryKey, String(Date.now()));
+          } catch (_) { showRecovery(); return; }
+          const freshUrl = new URL(window.location.href);
+          freshUrl.searchParams.set('_pf_reload', String(Date.now()));
+          window.location.replace(freshUrl.toString());
+        }, true);
+        window.addEventListener('DOMContentLoaded', () => {
+          const root = document.getElementById('root');
+          if (!root) return;
+          const observer = new MutationObserver(() => {
+            if (!hasStarted()) return;
+            observer.disconnect();
+            try { sessionStorage.removeItem(retryKey); } catch (_) { /* Storage may be disabled. */ }
+          });
+          observer.observe(root, { childList: true });
+          setTimeout(() => { observer.disconnect(); showRecovery(); }, 20000);
+        });
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
