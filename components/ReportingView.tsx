@@ -4757,7 +4757,7 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                             ))}
                         </div>
                         <span className="text-xs text-tertiary dark:text-gray-400">
-                            Approved orders hold supplier stock for 48 hours until Concur PO is linked.
+                            Unlinked approved requests hold stock for 48 hours. A linked Concur PR protects the hold while the PO is awaited.
                         </span>
                     </div>
 
