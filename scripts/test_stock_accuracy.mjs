@@ -11,7 +11,7 @@ process.on('uncaughtException', error => { console.error(error.message, error.wh
 const checks = [];
 const check = async (name, fn) => { await fn(); checks.push({ name, status: 'PASS' }); console.log(`PASS ${name}`); };
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'procureflow-stock-tests-'));
-for (const file of ['suppliers', 'stockOffers', 'reservationUtils']) {
+for (const file of ['suppliers', 'stockOffers', 'reservationUtils', 'supplierDraft']) {
   const source = fs.readFileSync(`utils/${file}.ts`, 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText
     .replaceAll('./suppliers.ts', './suppliers.mjs').replaceAll('./stockOffers.ts', './stockOffers.mjs');
@@ -19,6 +19,15 @@ for (const file of ['suppliers', 'stockOffers', 'reservationUtils']) {
 }
 const { calculateItemRunningStock, isPOReservingStock } = await import(pathToFileURL(path.join(temp, 'reservationUtils.mjs')));
 const { getSupplierOfferPrice } = await import(pathToFileURL(path.join(temp, 'stockOffers.mjs')));
+const { getSupplierScopedDraft } = await import(pathToFileURL(path.join(temp, 'supplierDraft.mjs')));
+const draft = { selectedSupplierId: 'simba', cart: [{itemId:'scrub',unitPrice:8.99}], quantityDrafts:{line:'120'}, selectedSiteId:'site', comments:'Requirement' };
+await check('Opening NCC from another supplier never restores the old priced cart', () => {
+  const restored=getSupplierScopedDraft(draft,'ncc');
+  assert.equal(restored.selectedSupplierId,'ncc');assert.deepEqual(restored.cart,[]);assert.deepEqual(restored.quantityDrafts,{});
+  assert.equal(restored.selectedSiteId,'site');assert.equal(restored.comments,'Requirement');assert.equal(draft.cart[0].unitPrice,8.99);
+});
+await check('A matching supplier preserves the existing draft and price', () => assert.equal(getSupplierScopedDraft(draft,'simba'),draft));
+await check('Normal draft recovery without a supplier handover preserves the cart', () => assert.equal(getSupplierScopedDraft(draft,''),draft));
 fs.writeFileSync(path.join(temp, 'fileParser.mjs'), ts.transpileModule(fs.readFileSync('utils/fileParser.ts', 'utf8'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
 }).outputText.replace("'xlsx'", JSON.stringify(pathToFileURL(path.resolve('node_modules/xlsx/xlsx.mjs')).href)));
