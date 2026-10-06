@@ -4,7 +4,7 @@
 
 No general hosting outage was identified. ProcureFlow cannot yet be excluded as a contributor: browser session handling and stale cached startup assets have concrete app-side risks. The cause of the reported blank screen remains unconfirmed without evidence from an affected browser.
 
-The report concerns Ngoc Giang and Ashish Chhabra using https://procureflow-app-spl.azurewebsites.net/. The owner believes the failure occurred before the login screen. Read-only checks were performed; no production code, access grants, account settings, or business records were deliberately changed by this investigation.
+The report concerns Ngoc Giang and Ashish Chhabra using https://procureflow-app-spl.azurewebsites.net/. The owner believes the failure occurred before the login screen. The initial investigation was read-only. The owner subsequently authorised resolving the confirmed stale JavaScript delivery defect; the deployed resolution is recorded below.
 
 ## Verified evidence
 
@@ -30,4 +30,20 @@ The report concerns Ngoc Giang and Ashish Chhabra using https://procureflow-app-
 
 Clearing only ProcureFlow site data is a subsequent recovery option; it signs the user out and may remove locally stored preferences or drafts. Preserve needed local work first.
 
-No fix or release was made. User acceptance and the exact incident cause remain outstanding.
+## Deployed resolution
+
+On 6 October 2026, [PR #3](https://github.com/SPLGit-Project/ProcureFlow-App/pull/3) was merged as `1b1e9040de8ea5ef822818ca4dbb2f9e5b468f40`. [Production CI run 37402604036](https://github.com/SPLGit-Project/ProcureFlow-App/actions/runs/37402604036) passed and deployed the release. Azure App Service now starts `node /home/site/wwwroot/scripts/serve-production.mjs`.
+
+- Missing static assets return 404 instead of falling back to application HTML. Browser navigation routes still receive the SPA shell.
+- The shell, service worker, and version endpoint use `Cache-Control: no-store`; hashed assets retain immutable caching.
+- The service worker rejects HTML masquerading as JavaScript or CSS, including invalid cached responses.
+- Startup recovery retries a failed bundle once and offers a visible reload action if startup still fails. Authentication state, preferences, and local drafts are preserved.
+- All 17 startup/server/cache tests passed. A browser test with the entry script deliberately blocked verified retry and visible recovery; restoring the script and clicking reload rendered the login screen.
+
+Post-deployment production checks confirmed `/assets/index.CJlnkEEg.js` returns **404 text/plain** with `no-store`, the current entry `/assets/index.BLd6FUD6.js` returns **200 application/javascript** with immutable caching, and `/login`, `/sw.js`, and `/version.json` return 200 with the expected content types and `no-store`. The production login screen rendered in the separate browser with no captured error-level console messages.
+
+This resolves the confirmed asset-delivery defect. Confirmation from the two affected users and attribution of their original incident remain outstanding; the separate session-lock risk was not changed by this release.
+
+## Portfolio logging limitation
+
+The diagnosis and release notes were submitted through the authenticated live SPL Portfolio Tracker Admin direct-write workflow, retaining ProcureFlow's existing Active status. The central register committed the release note as `89798011131e78d6bddfc21cd71da9917152f7ae`. Tracker deployment run 37403086764 failed its generated-page size test, as earlier tracker runs also had. The update therefore could not be verified on the published project page. No local tracker fallback or tracker remediation was performed.
