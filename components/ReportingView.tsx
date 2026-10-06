@@ -4752,7 +4752,7 @@ const StockReservationsVisual: React.FC<StockReservationsVisualProps> = ({
                                     {tier === 'ALL' ? `All (${activeReservations.length})` : 
                                      tier === 'CRITICAL' ? `Critical <12h (${criticalUrgencyCount})` : 
                                      tier === 'WARNING' ? `Warning 12-24h (${warningUrgencyCount})` : 
-                                     `Normal >24h (${activeReservations.length - criticalUrgencyCount - warningUrgencyCount})`}
+                                     `Normal / PR protected (${activeReservations.length - criticalUrgencyCount - warningUrgencyCount})`}
                                 </button>
                             ))}
                         </div>
