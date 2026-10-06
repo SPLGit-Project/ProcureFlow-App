@@ -82,6 +82,7 @@ await pg.exec(`
  CREATE TABLE po_approvals(id uuid PRIMARY KEY,po_request_id uuid,approver_name text,action text,date timestamptz,comments text);
 `);
 await pg.exec(fs.readFileSync('supabase/migrations/20261006033300_supplier_stock_accuracy.sql', 'utf8'));
+await pg.exec(fs.readFileSync('supabase/migrations/20261006033848_stock_handover_expiry_guard.sql', 'utf8'));
 await pg.query('INSERT INTO users VALUES ($1,$2,\'Fixture Requester\',\'APPROVED\',\'REQUESTER\',\'{}\')', [user, auth]);
 await pg.query('INSERT INTO roles VALUES (\'REQUESTER\',\'{}\',\'ASSIGNED\')');
 await pg.query('INSERT INTO suppliers VALUES ($1,\'HOST Supplies\'),($2,\'HOST Supplies Pty Ltd\')', [supplier, alias]);
@@ -105,6 +106,7 @@ await check('Supplier-wide RPC omits request IDs, sites, identities, prices and 
 await pg.exec(`UPDATE po_requests SET status='CANCELLED',auto_cancelled_at=now(); UPDATE po_lines SET quantity_ordered=60`);
 await check('Linking a PR cannot bypass an expired-stock shortage', () => rejects('SELECT public.link_concur_request_number($1,\'PR-TEST\')', [request], /Insufficient supplier stock/));
 await check('Linking a PO cannot bypass an expired-stock shortage', () => rejects('SELECT public.link_concur_po_number($1,\'PO-TEST\')', [request], /Insufficient supplier stock/));
+await check('Legacy expiry without an explicit deadline cannot bypass a shortage',async()=>{await pg.exec("UPDATE po_requests SET status='APPROVED_PENDING_CONCUR_REQUEST',reservation_expires_at=NULL,auto_cancelled_at=NULL");await rejects('SELECT public.link_concur_request_number($1,\'PR-TEST\')',[request],/Insufficient supplier stock/);});
 await pg.query('UPDATE po_lines SET quantity_ordered=20');
 await check('Linking PR with sufficient stock preserves the hold while awaiting PO', async () => { await pg.query('SELECT public.link_concur_request_number($1,\'PR-TEST\')', [request]); assert.equal((await pg.query('SELECT status,concur_request_number FROM po_requests')).rows[0].status, 'APPROVED_PENDING_CONCUR'); });
 await check('Manual cancellation cannot be reinstated via Concur linking', async () => { await pg.query("UPDATE po_requests SET status='CANCELLED',auto_cancelled_at=NULL"); await rejects('SELECT public.link_concur_request_number($1,\'PR-TEST\')', [request], /manually cancelled/); });
