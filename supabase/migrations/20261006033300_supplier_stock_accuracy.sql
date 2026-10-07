@@ -465,3 +465,5 @@ CREATE OR REPLACE FUNCTION public.link_concur_po_number(p_po_id uuid,p_concur_po
 RETURNS void LANGUAGE sql SECURITY INVOKER SET search_path = '' AS $$ SELECT private.link_concur_po_number(p_po_id,p_concur_po_number); $$;
 REVOKE ALL ON FUNCTION private.link_concur_po_number(uuid,text),public.link_concur_po_number(uuid,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION private.link_concur_po_number(uuid,text),public.link_concur_po_number(uuid,text) TO authenticated;
+
+;

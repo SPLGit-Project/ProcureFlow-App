@@ -7,47 +7,78 @@ on:
     paths:
       - "supabase/functions/**"
       - "supabase/migrations/**"
+      - "supabase/migration-history.json"
+      - "scripts/verify_supabase_migrations.mjs"
+      - "tests/deployment/**"
+      - ".github/workflows/deploy-supabase.yml"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: yasosgkznoxamysutxfc
 
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify migration history contract
+        run: |
+          node --test tests/deployment/supabase-migrations.test.mjs
+          node scripts/verify_supabase_migrations.mjs
+
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.120.0
 
       - name: Link Supabase project
         run: |
-          supabase link --project-ref yasosgkznoxamysutxfc
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "SUPABASE_ACCESS_TOKEN is missing"; exit 1; }
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      # Never repair remote history or replay archived SQL during deployment.
+      - name: Preview pending migrations
+        run: supabase db push --linked --dry-run --skip-vault
 
       - name: Apply pending migrations
-        run: |
-          supabase db push --linked
+        run: supabase db push --linked --skip-vault --yes
+
+      - name: Set Azure AD service principal secrets on edge function
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          test -n "$AZURE_CLIENT_ID" && test -n "$AZURE_CLIENT_SECRET" && test -n "$AZURE_TENANT_ID" || { echo "Azure service principal secrets are missing"; exit 1; }
+          supabase secrets set \
+            AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
+            AZURE_CLIENT_SECRET="$AZURE_CLIENT_SECRET" \
+            AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+            --project-ref "$SUPABASE_PROJECT_REF"
+
       - name: Deploy azure-db-proxy edge function
         run: |
           supabase functions deploy azure-db-proxy \
-            --project-ref yasosgkznoxamysutxfc \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --use-api \
             --import-map supabase/functions/import_map.json
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
-      - name: Set Azure AD service principal secrets on edge function
+      - name: Verify edge function authentication
         run: |
-          supabase secrets set \
-            AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
-            AZURE_CLIENT_SECRET="${{ secrets.AZURE_CLIENT_SECRET }}" \
-            AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
-            --project-ref yasosgkznoxamysutxfc
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/azure-db-proxy")
+          test "$status" = "401" || { echo "Expected anonymous request to return 401; got $status"; exit 1; }

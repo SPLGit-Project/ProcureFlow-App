@@ -46,9 +46,13 @@ Thumbs.db
 *.sw?
 
 # --- PROJECT SPECIFIC JUNK ---
+supabase/.temp/
+supabase/.branches/
 *.bak
 *.old
 *_v[0-9]*
+!supabase/migrations/*.sql
+!supabase/migrations-archive/**/*.sql
 raw_hierarchy_data.txt
 
 # --- TESTING ARTIFACTS ---
