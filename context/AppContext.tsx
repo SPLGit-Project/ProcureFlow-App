@@ -8,6 +8,7 @@ import { notificationEngineService } from '../services/notificationEngineService
 import { realtimeNotificationService } from '../services/realtimeNotificationService.ts';
 import { canonicalSupplierName, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import { calculateItemRunningStock, StockBreakdown } from '../utils/reservationUtils.ts';
+import { assertOrderPackQuantities, getOrderPackRule } from '../utils/orderPacks.ts';
 import {
     getSessionActivityStorageKey,
     SESSION_ACTIVITY_WRITE_THROTTLE_MS,
@@ -2459,6 +2460,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         return false;
     }
     try {
+        assertOrderPackQuantities(po.lines, po.supplierId || '', items, suppliers, mappings, stockSnapshots);
         const displayId = await db.createPO({ ...po, requesterId: currentUser.id });
         // NOTIFICATION TRIGGER
         sendNotification('PO_CREATED', { poId: displayId, requesterId: po.requesterId, amount: po.totalAmount });
@@ -2476,6 +2478,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const saveDraftPO = async (po: PORequest): Promise<boolean> => {
     if (!currentUser) { alert('You must be logged in to save a draft.'); return false; }
     try {
+        assertOrderPackQuantities(po.lines, po.supplierId || '', items, suppliers, mappings, stockSnapshots);
         const displayId = await db.createPO({ ...po, requesterId: currentUser.id });
         logAction('PO_DRAFT_SAVED', { id: displayId, amount: po.totalAmount }, { requester: po.requesterName });
         setPos(prev => [{ ...po, displayId }, ...prev]);
@@ -2492,6 +2495,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     const po = pos.find(p => p.id === poId);
     if (!po) throw new Error('Draft not found.');
     if ((po.lines || []).length === 0) throw new Error('Add at least one item before submitting for approval.');
+    assertOrderPackQuantities(po.lines, po.supplierId || '', items, suppliers, mappings, stockSnapshots);
     const event: ApprovalEvent = {
         id: crypto.randomUUID(),
         action: 'SUBMITTED',
@@ -2557,6 +2561,12 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       if (normalizedLines.length === 0 && existing.status !== 'DRAFT') {
           throw new Error('At least one line item is required.');
       }
+      // Receipt/audit edits preserve historical quantities. New or changed order lines require full packs.
+      const changedLines = normalizedLines.filter(line => {
+          const old = existing.lines.find(l => l.id === line.id);
+          return !old || old.itemId !== line.itemId || old.quantityOrdered !== line.quantityOrdered;
+      });
+      assertOrderPackQuantities(changedLines, existing.supplierId || '', items, suppliers, mappings, stockSnapshots);
 
       const totalAmount = Number(
           normalizedLines.reduce((sum, line) => sum + line.totalPrice, 0).toFixed(2)
@@ -3125,7 +3135,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           mappings,
           stockSnapshots,
           stockPos,
-          item?.defaultOrderMultiple || 1,
+          getOrderPackRule(item, supplierId, suppliers, mappings, stockSnapshots).size || item?.defaultOrderMultiple || 1,
           item
       );
   };
