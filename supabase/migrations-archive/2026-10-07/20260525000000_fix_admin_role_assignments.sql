@@ -106,4 +106,3 @@ CREATE POLICY "Admins can manage user_roles" ON public.user_roles
   FOR ALL TO authenticated
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
-;

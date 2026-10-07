@@ -46,6 +46,8 @@ Thumbs.db
 *.sw?
 
 # --- PROJECT SPECIFIC JUNK ---
+supabase/.temp/
+supabase/.branches/
 *.bak
 *.old
 *_v[0-9]*
