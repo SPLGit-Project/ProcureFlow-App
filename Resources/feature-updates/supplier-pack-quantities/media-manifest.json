@@ -1,0 +1,21 @@
+{
+  "release_state": "HELD",
+  "source_app_commit": "d36775c64ca6002be1d5009322e840b8058f45ec",
+  "files": [
+    {
+      "file": "07_ProcureFlow_Supplier_Bale_and_Carton_Quantities.pdf",
+      "bytes": 323016,
+      "sha256": "6795231189d946c1d118efa223ed0334f9cdea20b75db2ad7c54f406f32f658b"
+    },
+    {
+      "file": "ProcureFlow_Supplier_Pack_Quantities_Explainer.mp4",
+      "bytes": 6721921,
+      "sha256": "72494b17905b848bdaecb863fcd5e8b37897902a7e42f3f681b92b30d7cbbc37"
+    },
+    {
+      "file": "supplier-pack-quantities.jpg",
+      "bytes": 154968,
+      "sha256": "222e5bc9ca1e32f96e0704253652587a64abd613382213490a3ad4389138cf4b"
+    }
+  ]
+}

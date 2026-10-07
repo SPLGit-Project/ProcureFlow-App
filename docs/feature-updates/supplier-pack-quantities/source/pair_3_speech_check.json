@@ -1,0 +1,19 @@
+{
+  "audio_sha256": "dafaed97af57db937c1bcf502b62d533e4f801167242a02048c8d9a200a412f5",
+  "recogniser": "faster-whisper base.en CPU int8",
+  "expected": "In Record Delivery, enter the units actually delivered, even when a carton is incomplete. A delivery of seven units stays seven. Use Add Unplanned Item for goods outside the original order, and follow the existing variance process. Before submitting, confirm the supplier, pack size, adjusted quantity and total. During receiving, record actual units. Pack counts explain the order; they do not replace unit quantities or prices in Concur. Use the feature guide whenever you need a reminder.",
+  "recognised": "In record delivery, enter the units actually delivered, even when a carton is incomplete. A delivery of 7 units stays 7. Use add unplanned item for goods outside the original order and follow the existing variance process. Before submitting, confirm the supplier pack size adjusted quantity in total. During receiving record actual units, pack counts explain the order. They do not replace unit quantities or prices in concur. Use the feature guide whenever you need a reminder.",
+  "matching_ratio": 0.987012987012987,
+  "differences": [
+    {
+      "type": "replace",
+      "expected": [
+        "and"
+      ],
+      "recognised": [
+        "in"
+      ]
+    }
+  ],
+  "duration": 27.52
+}

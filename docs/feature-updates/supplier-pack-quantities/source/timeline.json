@@ -1,0 +1,234 @@
+[
+  {
+    "scene": 1,
+    "title": "Supplier bale and carton quantities",
+    "start": 0,
+    "duration": 12.625,
+    "captions": [
+      [
+        0.3,
+        4.22,
+        "Procure Flow now helps you request quantities that suppliers can fulfil as"
+      ],
+      [
+        4.24,
+        8.340000000000002,
+        "full bales or cartons. The selected supplier's pack size follows the request"
+      ],
+      [
+        8.360000000000001,
+        11.959999999999999,
+        "through approval, purchasing and receiving. Here's how to use it."
+      ]
+    ],
+    "speech_duration": 11.84
+  },
+  {
+    "scene": 2,
+    "title": "Check the selected supplier",
+    "start": 12.625,
+    "duration": 12.75,
+    "captions": [
+      [
+        0.6000000000000008,
+        4.460000000000001,
+        "Start in Create Request, or select a supplier offer from Supplier Stock."
+      ],
+      [
+        5.260000000000001,
+        8.52,
+        "Confirm the supplier and product, then check the bale or carton size"
+      ],
+      [
+        8.54,
+        12.139999999999999,
+        "shown for that item. Another supplier may use a different pack size."
+      ]
+    ],
+    "speech_duration": 12.0
+  },
+  {
+    "scene": 3,
+    "title": "Quantities round up to a full pack",
+    "start": 25.375,
+    "duration": 15.5,
+    "captions": [
+      [
+        0.3,
+        4.26,
+        "With thirty units per pack, entering thirty one adjusts the request to"
+      ],
+      [
+        4.28,
+        6.26,
+        "sixty when you leave the quantity field."
+      ],
+      [
+        6.8999999999999995,
+        8.86,
+        "The adjustment message explains the change."
+      ],
+      [
+        9.280000000000001,
+        11.8,
+        "Plus and minus controls move by one full pack."
+      ],
+      [
+        12.34,
+        14.66,
+        "Review the new quantity and recalculated totals."
+      ]
+    ],
+    "speech_duration": 14.72
+  },
+  {
+    "scene": 4,
+    "title": "Review drafts before submitting",
+    "start": 40.875,
+    "duration": 15.875,
+    "captions": [
+      [
+        0.7800000000000005,
+        4.620000000000003,
+        "Check the receiving site, each line's need by date, price and total."
+      ],
+      [
+        5.380000000000002,
+        6.880000000000001,
+        "Save Draft keeps your work for later."
+      ],
+      [
+        7.700000000000002,
+        10.680000000000003,
+        "If an older draft contains an odd quantity, correct it to a"
+      ],
+      [
+        10.700000000000003,
+        12.3,
+        "full pack before saving or submitting."
+      ],
+      [
+        12.32,
+        15.300000000000002,
+        "Follow the existing approval and Concur handover."
+      ]
+    ],
+    "speech_duration": 15.12
+  },
+  {
+    "scene": 5,
+    "title": "Resolve an unconfirmed pack",
+    "start": 56.75,
+    "duration": 14.541666666666666,
+    "captions": [
+      [
+        0.3,
+        4.319999999999999,
+        "If the bale or carton size is unconfirmed, new ordering is blocked."
+      ],
+      [
+        5.04,
+        8.780000000000001,
+        "Ask Procurement to confirm the supplier pack data, then refresh and try"
+      ],
+      [
+        8.8,
+        10.64,
+        "again. Do not guess a size."
+      ],
+      [
+        11.0,
+        13.8,
+        "A supplier confirmed pack of one allows loose units."
+      ]
+    ],
+    "speech_duration": 13.79
+  },
+  {
+    "scene": 6,
+    "title": "Pack details stay with the order",
+    "start": 71.29166666666667,
+    "duration": 15.0,
+    "captions": [
+      [
+        0.7100000000000002,
+        3.569999999999999,
+        "Open Request Details to see the saved pack size and number of"
+      ],
+      [
+        3.589999999999999,
+        7.430000000000002,
+        "full packs. These details remain with the order when supplier data changes"
+      ],
+      [
+        7.450000000000002,
+        10.610000000000003,
+        "later. Finance and line reports retain the same context."
+      ],
+      [
+        10.630000000000003,
+        14.17,
+        "Older orders with no recorded pack are labelled as legacy."
+      ]
+    ],
+    "speech_duration": 14.21
+  },
+  {
+    "scene": 7,
+    "title": "Receive the actual quantity delivered",
+    "start": 86.29166666666667,
+    "duration": 14.208333333333334,
+    "captions": [
+      [
+        0.3,
+        4.18,
+        "In Record Delivery, enter the units actually delivered, even when a carton"
+      ],
+      [
+        4.2,
+        7.4,
+        "is incomplete. A delivery of seven units stays seven."
+      ],
+      [
+        8.02,
+        11.740000000000002,
+        "Use Add Unplanned Item for goods outside the original order, and follow"
+      ],
+      [
+        11.760000000000002,
+        13.36,
+        "the existing variance process."
+      ]
+    ],
+    "speech_duration": 13.42
+  },
+  {
+    "scene": 8,
+    "title": "Check the quantity before ordering",
+    "start": 100.5,
+    "duration": 14.875,
+    "captions": [
+      [
+        0.7800000000000005,
+        4.02,
+        "Before submitting, confirm the supplier, pack size, adjusted quantity and total."
+      ],
+      [
+        4.72,
+        8.120000000000001,
+        "During receiving, record actual units. Pack counts explain the order;"
+      ],
+      [
+        8.680000000000001,
+        11.440000000000001,
+        "they do not replace unit quantities or prices in Concur."
+      ],
+      [
+        11.76,
+        14.02,
+        "Use the feature guide whenever you need a reminder."
+      ]
+    ],
+    "speech_duration": 14.1
+  }
+]

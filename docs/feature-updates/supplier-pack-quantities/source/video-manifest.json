@@ -1,0 +1,15 @@
+{
+  "source_pdf": "07_ProcureFlow_Supplier_Bale_and_Carton_Quantities.pdf",
+  "width": 1920,
+  "height": 1080,
+  "fps": 24,
+  "duration_seconds": 115.375,
+  "voice": "Qwen3-TTS / approved synthetic Australian presenter reference",
+  "reference_sha256": "69d3f688d718fab4b08751ba2996f592dc7d8535388b229a6f1de6c57c087b41",
+  "audio_processing": "Two-pass -16 LUFS / true peak -1.5 dB / 70 Hz high-pass / no time compression",
+  "captions": "Burned in plus SRT, aligned to new narration using recognised word timestamps",
+  "scenes": 8,
+  "video_sha256": "72494b17905b848bdaecb863fcd5e8b37897902a7e42f3f681b92b30d7cbbc37",
+  "video_bytes": 6721921,
+  "visual_qa": "All eight final rendered scene frames reviewed"
+}

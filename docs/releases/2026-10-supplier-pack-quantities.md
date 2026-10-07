@@ -53,6 +53,21 @@ Release still requires Aaron's go-ahead; the date does not trigger a deployment.
 
 No production migration, merge or deployment was performed for this feature.
 
+## Launch training package
+
+Feature update 07 is prepared in `docs/feature-updates/supplier-pack-quantities/`:
+seven-page PDF and editable Word guide, 1:55 captioned 1080p explainer with the
+same approved synthetic presenter as the six prior updates, poster, SRT and
+transcript. Actual branch screens use illustrative records. Package hashes and
+QA are recorded in the delivery manifest. App media is staged separately under
+`Resources/feature-updates/supplier-pack-quantities/`; the live popup registry and
+private Storage are unchanged. Follow that package's RELEASE-NOTES.md at launch.
+
+The reusable `procureflow-feature-update` skill, template, presenter reference
+and checked guide/package helpers are versioned in `.agents/skills/` and
+installed locally in Aaron's Codex skills. Both helpers were run against this
+package; all guide pages and all video scenes were visually reviewed.
+
 ## Verification
 
 `npm run test:packs` runs 37 checks against the real TypeScript rules and an isolated
