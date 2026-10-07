@@ -19,6 +19,7 @@ import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../util
 import { getReservationTimeRemaining, isPOReservingStock } from '../utils/reservationUtils.ts';
 import { isDefaultSupplier } from '../utils/suppliers.ts';
 import { getOrderPackRule, packRuleLabel, roundOrderQuantity, withPackQuantity } from '../utils/orderPacks.ts';
+import { linePackLabel } from '../utils/orderPackSnapshot.ts';
 
 const PO_DETAIL_EDIT_DRAFT_VERSION = 1;
 const PO_DETAIL_EDIT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -846,6 +847,8 @@ const PODetail = () => {
           id: uuidv4(),
           itemId: selectedItem.id,
           itemName: selectedItem.name,
+          uom: selectedItem.uom,
+          upq: rule.size,
           sku: selectedItem.sku,
           quantityOrdered: pricing.quantityOrdered,
           quantityReceived: 0,
@@ -1850,6 +1853,7 @@ const PODetail = () => {
                                           </div>
                                           <div className="flex items-center gap-2 mt-0.5">
                                               <span className="text-xs text-gray-400 font-mono">{line.sku}</span>
+                                              {!isEditing && <span className="text-xs text-gray-500">{linePackLabel(line)}</span>}
                                               {line.priceOptionLabel && (
                                                   <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
                                                       {line.priceOptionLabel}
@@ -1989,6 +1993,7 @@ const PODetail = () => {
                                       <td className="px-6 py-4">
                                           <div className="font-bold text-primary dark:text-white">{line.itemName}</div>
                                           <div className="text-xs text-tertiary dark:text-gray-500 font-mono mt-0.5">{line.sku}</div>
+                                          {!isEditing && <p className="text-xs text-gray-500">{linePackLabel(line)}</p>}
                                           {line.priceOptionLabel && (
                                               <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-1">{line.priceOptionLabel}</div>
                                           )}
@@ -2439,6 +2444,7 @@ const PODetail = () => {
                                                 <span className="font-mono">SKU: {line.sku || '-'}</span>
                                                 <span>•</span>
                                                 <span>Qty Requested: <strong>{line.quantityOrdered}</strong></span>
+                                                <span>{linePackLabel(line)}</span>
                                                 <span>•</span>
                                                 <span>Price: {formatCurrency(line.unitPrice)}</span>
                                             </div>
@@ -2716,6 +2722,7 @@ const PODetail = () => {
                         <div className="text-gray-400 font-mono text-[11px] flex items-center gap-2">
                           <span>{line.sku}</span>
                           <span>· Qty: {line.quantityOrdered}</span>
+                          <span>{linePackLabel(line)}</span>
                         </div>
                       </div>
 

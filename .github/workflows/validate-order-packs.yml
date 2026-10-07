@@ -5,8 +5,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/validate-order-packs.yml'
-      - 'components/POCreate.tsx'
-      - 'components/PODetail.tsx'
+      - 'components/**'
+      - 'services/db.ts'
+      - 'types.ts'
       - 'context/AppContext.tsx'
       - 'utils/**'
       - 'scripts/test_order_packs.mjs'

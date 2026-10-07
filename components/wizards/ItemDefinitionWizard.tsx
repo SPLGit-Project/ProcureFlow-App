@@ -445,7 +445,7 @@ export default function ItemDefinitionWizard() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Field label="UOM"><input className={inputClass} value={form.uom} onChange={event => update({ uom: event.target.value })} /></Field>
-                <Field label="UPQ"><NumberInput value={form.upq} onChange={value => update({ upq: value })} /></Field>
+                <Field label="UPQ (catalogue pack)" hint="Ordering units per pack; supplier pack sizes take precedence."><NumberInput value={form.upq} onChange={value => update({ upq: value })} /></Field>
                 <Field label="Weight (kg)"><NumberInput value={form.item_weight} onChange={value => update({ item_weight: value })} placeholder="e.g. 0.5" /></Field>
                 <Field label="Size / Dimensions" hint="e.g. 70x140cm"><input className={inputClass} value={form.item_size} onChange={event => update({ item_size: event.target.value })} placeholder="e.g. 70x140cm" /></Field>
                 <Field label="Colour"><input className={inputClass} value={form.item_colour} onChange={event => update({ item_colour: event.target.value })} placeholder="e.g. White" /></Field>

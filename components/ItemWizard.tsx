@@ -506,13 +506,15 @@ export const ItemWizard: React.FC<ItemWizardProps> = ({
                                         {errors.uom && <p className="text-xs text-red-500">{errors.uom}</p>}
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">UPQ (Units Per Qty)</label>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">UPQ (Catalogue pack size)</label>
                                         <input 
                                             type="number"
                                             value={formData.upq || 1}
+                                            min={1} step={1}
                                             onChange={(e) => handleInputChange('upq', Number(e.target.value))}
                                             className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-[#1a1c23] dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                                         />
+                                        <p className="text-xs text-gray-500">Ordering units per full pack. Supplier report bale/carton sizes take precedence; the default 1 does not confirm loose ordering.</p>
                                     </div>
                                 </div>
 

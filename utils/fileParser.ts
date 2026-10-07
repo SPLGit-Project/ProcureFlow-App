@@ -102,7 +102,8 @@ const FIELD_DEFINITIONS = {
         weight: 0.5
     },
     cartonQty: {
-        aliases: ['carton qty', 'carton', 'carton quantity', 'carton_qty'],
+        aliases: ['carton qty', 'carton', 'carton quantity', 'carton_qty', 'bale qty', 'bale quantity',
+            'bale size', 'carton size', 'units per bale', 'units per carton', 'pack size', 'units per pack'],
         required: false,
         weight: 0.5
     },
@@ -669,11 +670,16 @@ export function parseDataRows(
                 case 'availableQty':
                 case 'committedQty':
                 case 'backOrderedQty':
-                case 'cartonQty':
                 case 'totalStockQty':
                     const numValue = cleanNumericValue(value, false);
                     if (numValue !== null) {
                         snapshot[fieldName] = numValue;
+                    }
+                    break;
+                case 'cartonQty':
+                    const packSize = cleanNumericValue(value, true);
+                    if (packSize !== null && Number.isSafeInteger(packSize) && packSize > 0) {
+                        snapshot.cartonQty = packSize;
                     }
                     break;
                 case 'incomingStockText':

@@ -155,7 +155,7 @@ const ProcurementReviewWizard: React.FC = () => {
         </div>
         {/* UPQ */}
         <div className="space-y-2">
-          <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">Units Per Qty (UPQ)</label>
+          <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">Catalogue pack size (UPQ)</label>
           <input type="text" inputMode="numeric" value={upq} onChange={e => setUpq(e.target.value.replace(/[^0-9]/g, '') || '1')} placeholder="1"
             className="w-28 bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)]" />
         </div>

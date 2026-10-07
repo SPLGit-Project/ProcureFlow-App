@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { calculatePackOrderStock } from '../utils/orderPackStock.ts';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.tsx';
 import {
@@ -32,7 +33,7 @@ import {
   getCanonicalSupplierMap,
   canonicalSupplierName
 } from '../utils/suppliers.ts';
-import { calculateItemRunningStock, StockBreakdown } from '../utils/reservationUtils.ts';
+import { StockBreakdown } from '../utils/reservationUtils.ts';
 import { useReservationClock } from '../hooks/useReservationClock.ts';
 import { getSupplierOfferPrice } from '../utils/stockOffers.ts';
 import { formatCurrency } from '../utils/taxCalculations.ts';
@@ -552,14 +553,13 @@ const SupplierStockDirectory: React.FC = () => {
         if (processedKeys.has(rowKey)) return;
         processedKeys.add(rowKey);
 
-        const breakdown = calculateItemRunningStock(
+        const breakdown = calculatePackOrderStock(
           item.id,
           sup.id,
           suppliers,
           mappings,
           stockSnapshots,
           pos,
-          item.defaultOrderMultiple || 1,
           item
         );
 
@@ -589,7 +589,7 @@ const SupplierStockDirectory: React.FC = () => {
           category: classification.category,
           subCategory: classification.subCategory,
           unitPrice: getSupplierOfferPrice(item, sup.id, suppliers, mappings, stockSnapshots),
-          packMultiple: item.defaultOrderMultiple || breakdown.packConversionFactor || 1,
+          packMultiple: breakdown.orderMultiple,
           breakdown,
           stockStatus
         });
@@ -616,7 +616,7 @@ const SupplierStockDirectory: React.FC = () => {
         supplierSku: snap.supplierSku,
         snapshotDate: snap.snapshotDate || new Date().toISOString(),
         rawSnapshotQty: available,
-        packConversionFactor: snap.cartonQty || 1,
+        packConversionFactor: 1,
         baseAvailableUnits: available,
         reservedUnits: 0,
         committedUnits: 0,
@@ -624,8 +624,8 @@ const SupplierStockDirectory: React.FC = () => {
         onOrderPOs: 0,
         poolKey: rowKey,
         effectiveStockUnits: available,
-        availableOrderQty: available,
-        orderMultiple: 1,
+        availableOrderQty: Number.isSafeInteger(snap.cartonQty) && snap.cartonQty! > 0 ? Math.floor(available / snap.cartonQty!) * snap.cartonQty! : 0,
+        orderMultiple: Number.isSafeInteger(snap.cartonQty) && snap.cartonQty! > 0 ? snap.cartonQty! : 0,
         reservedPOs: 0,
         committedPOs: 0
       };
@@ -660,7 +660,7 @@ const SupplierStockDirectory: React.FC = () => {
         category: classification.category,
         subCategory: classification.subCategory,
         unitPrice: snap.sellPrice || snap.unitPrice || 0,
-        packMultiple: snap.cartonQty || 1,
+        packMultiple: breakdown.orderMultiple,
         breakdown,
         stockStatus
       });
@@ -1561,7 +1561,7 @@ const SupplierStockDirectory: React.FC = () => {
                           {row.breakdown.sourceConflict ? 'Unverified' : row.breakdown.availableOrderQty.toLocaleString()}
                         </span>
                         <div className="text-[9px] text-tertiary font-normal">
-                          Pack: {row.packMultiple}
+                          Bale/carton: {row.packMultiple || 'Unconfirmed'}
                         </div>
                       </td>
 
@@ -1746,6 +1746,7 @@ const SupplierStockDirectory: React.FC = () => {
                                 </div>
                                 <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5">
                                   {group.defaultOffer.availableStock.toLocaleString()} units avail.
+                                  <p>Bale/carton: {group.defaultOffer.packMultiple || 'Unconfirmed'}</p>
                                 </div>
                               </div>
                             ) : (
@@ -1910,6 +1911,7 @@ const SupplierStockDirectory: React.FC = () => {
                                           <td className="px-3 py-2.5 text-right font-mono font-bold text-xs">
                                             <span className={offer.availableStock > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
                                               {offer.availableStock.toLocaleString()}
+                                              <span className="block text-[10px] text-secondary">Bale/carton: {offer.packMultiple || 'Unconfirmed'}</span>
                                             </span>
                                             <span className="text-[10px] text-tertiary font-normal ml-1">units</span>
                                           </td>
@@ -2017,6 +2019,7 @@ const SupplierStockDirectory: React.FC = () => {
                         {row.breakdown.sourceConflict ? 'Unverified' : row.breakdown.availableOrderQty.toLocaleString()} units
                       </span>
                     </div>
+                    <p className="mt-1 text-xs text-secondary">Bale/carton: {row.packMultiple || 'Unconfirmed'} units</p>
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-default">

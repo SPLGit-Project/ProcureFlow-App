@@ -7,8 +7,9 @@ import { DirectoryService } from '../services/graphService.ts';
 import { notificationEngineService } from '../services/notificationEngineService.ts';
 import { realtimeNotificationService } from '../services/realtimeNotificationService.ts';
 import { canonicalSupplierName, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
-import { calculateItemRunningStock, StockBreakdown } from '../utils/reservationUtils.ts';
-import { assertOrderPackQuantities, getOrderPackRule } from '../utils/orderPacks.ts';
+import { StockBreakdown } from '../utils/reservationUtils.ts';
+import { assertOrderPackQuantities } from '../utils/orderPacks.ts';
+import { calculatePackOrderStock } from '../utils/orderPackStock.ts';
 import {
     getSessionActivityStorageKey,
     SESSION_ACTIVITY_WRITE_THROTTLE_MS,
@@ -3128,14 +3129,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const getStockBreakdown = (itemId: string, supplierId: string): StockBreakdown => {
       const item = items.find(i => i.id === itemId);
-      return calculateItemRunningStock(
+      return calculatePackOrderStock(
           itemId,
           supplierId,
           suppliers,
           mappings,
           stockSnapshots,
           stockPos,
-          getOrderPackRule(item, supplierId, suppliers, mappings, stockSnapshots).size || item?.defaultOrderMultiple || 1,
           item
       );
   };
@@ -3178,14 +3178,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         confirmed.forEach(map => {
             const item = items.find(i => i.id === map.productId);
             if (item) {
-                const breakdown = calculateItemRunningStock(
+                const breakdown = calculatePackOrderStock(
                     item.id,
                     map.supplierId,
                     suppliers,
                     maps,
                     snaps,
                     pos,
-                    item.defaultOrderMultiple || 1
+                    item
                 );
                 
                 const key = `${map.productId}:${map.supplierId}`;

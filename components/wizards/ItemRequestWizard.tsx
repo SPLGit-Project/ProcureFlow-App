@@ -978,7 +978,7 @@ function Step2CodeBuilder({ data, onChange, requestType, colours, onDupeStatusCh
 
               {/* UPQ */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">UPQ</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">UPQ (Catalogue pack size)</label>
                 <input type="text" inputMode="numeric" value={data.upq}
                   onChange={e => onChange({ upq: e.target.value.replace(/[^0-9]/g, '') || '1' })}
                   placeholder="1"

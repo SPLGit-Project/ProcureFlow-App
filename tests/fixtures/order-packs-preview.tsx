@@ -3,8 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Routes, Route, Link } from 'react-router-dom';
 import POCreate from '../../components/POCreate.tsx';
 import PODetail from '../../components/PODetail.tsx';
-import { calculateItemRunningStock } from '../../utils/reservationUtils.ts';
-import { assertOrderPackQuantities, getOrderPackRule } from '../../utils/orderPacks.ts';
+import DeliveryModal from '../../components/DeliveryModal.tsx';
+import { calculatePackOrderStock } from '../../utils/orderPackStock.ts';
+import { assertOrderPackQuantities } from '../../utils/orderPacks.ts';
 
 const supplier = { id: 'ncc', name: 'NCC Apparel Pty Ltd' };
 const alternate = { id: 'simba', name: 'Simba Healthcare' };
@@ -31,13 +32,16 @@ const initialRequest: any = { id: 'preview-draft', displayId: 'PREVIEW-DRAFT', s
     quantityOrdered: 31, quantityReceived: 0, unitPrice: 5.56, totalPrice: 172.36 }], approvalHistory: [], deliveries: [] };
 const PreviewContext = createContext<any>(null);
 export const usePreviewApp = () => useContext(PreviewContext);
+const packedRequest: any = { ...initialRequest, id: 'preview-packed', displayId: 'PREVIEW-PACKED', status: 'ACTIVE',
+  totalAmount: 333.6, lines: [{ ...initialRequest.lines[0], id: 'packed-line', quantityOrdered: 60,
+    quantityReceived: 17, totalPrice: 333.6, upq: 30, uom: 'Each', packSupplierId: supplier.id }] };
 
 function Preview() {
-  const [pos, setPos] = useState<any[]>([initialRequest]);
+  const [pos, setPos] = useState<any[]>([initialRequest, packedRequest]);
   const [message, setMessage] = useState('');
   const validate = (po: any) => assertOrderPackQuantities(po.lines, po.supplierId, items, suppliers, mappings, stockSnapshots);
-  const breakdown = (itemId: string, supplierId: string) => calculateItemRunningStock(itemId, supplierId,
-    suppliers, mappings, stockSnapshots, [], getOrderPackRule(items.find(i => i.id === itemId), supplierId, suppliers, mappings, stockSnapshots).size || 1);
+  const breakdown = (itemId: string, supplierId: string) => calculatePackOrderStock(itemId, supplierId,
+    suppliers, mappings, stockSnapshots, pos, items.find(i => i.id === itemId));
   const state: any = { items, suppliers, mappings, stockSnapshots, currentUser, pos, allPos: pos, sites: [site],
     userSites: [site], featureFlags: { uiRevampEnabled: false }, isStockReady: true,
     getStockBreakdown: breakdown, getEffectiveStock: (i: string, s: string) => breakdown(i, s).availableOrderQty,
@@ -52,10 +56,13 @@ function Preview() {
     <header style={{ background: '#fff3cd', padding: 12, marginBottom: 20 }}>
       <strong>Unreleased branch preview — fixture data only; no Supabase connection</strong>
       <nav style={{ display: 'flex', gap: 20, marginTop: 8 }}><Link to="/create">New request</Link>
-        <Link to="/requests/preview-draft">Existing odd-quantity draft</Link></nav>
+        <Link to="/requests/preview-draft">Existing odd-quantity draft</Link>
+        <Link to="/requests/preview-packed">Saved pack order</Link><Link to="/receiving">Partial receiving</Link></nav>
     </header>
     {message && <p role="status">{message}</p>}
     <Routes><Route path="/create" element={<POCreate />} /><Route path="/requests/:id" element={<PODetail />} />
+      <Route path="/receiving" element={<DeliveryModal po={pos.find(p => p.id === 'preview-packed')} currentUser={currentUser as any}
+        onClose={() => setMessage('Receiving preview closed.')} onSubmit={async () => { setMessage('Receipt recorded in local preview only.'); }} />} />
       <Route path="/requests" element={<p>Local preview request recorded. No production data changed.</p>} /></Routes>
   </MemoryRouter></PreviewContext.Provider>;
 }

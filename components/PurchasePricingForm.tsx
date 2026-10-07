@@ -431,6 +431,7 @@ export const PurchasePricingForm: React.FC<PurchasePricingFormProps> = ({
                 step="0.0001"
                 min="0.0001"
               />
+              <p className="text-xs text-gray-500">Purchase-to-stock UOM conversion. This does not set a supplier order multiple; use supplier pack data or catalogue UPQ.</p>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-black uppercase tracking-widest text-gray-400">MOQ (Units)</label>
