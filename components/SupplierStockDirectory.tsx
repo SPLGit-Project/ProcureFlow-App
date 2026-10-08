@@ -674,6 +674,30 @@ const SupplierStockDirectory: React.FC = () => {
     });
   }, [items, suppliers, mappings, stockSnapshots, pos, attributeOptions, stockClock, isStockReady]);
 
+  // Supplier options follow orderable stock, independently of the selected supplier.
+  const supplierOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    let totalCount = 0;
+    directoryRows.forEach(row => {
+      if (onlyAvailableStock && row.breakdown.availableOrderQty <= 0) return;
+      counts.set(row.supplierId, (counts.get(row.supplierId) || 0) + 1);
+      totalCount += 1;
+    });
+    return {
+      totalCount,
+      suppliers: displaySuppliers
+        .filter(supplier => !onlyAvailableStock || (counts.get(supplier.id) || 0) > 0)
+        .map(supplier => ({ ...supplier, count: counts.get(supplier.id) || 0 }))
+    };
+  }, [directoryRows, displaySuppliers, onlyAvailableStock]);
+
+  useEffect(() => {
+    if (isStockReady && selectedSupplierId !== 'ALL' &&
+        !supplierOptions.suppliers.some(supplier => supplier.id === selectedSupplierId)) {
+      setSelectedSupplierId('ALL');
+    }
+  }, [isStockReady, selectedSupplierId, supplierOptions]);
+
   // ── 5-Tier Classification Hierarchy Dropdown Options (Sanitized & Normalized) ──
 
   // 1. Available Pools (Admin Tier: POOL)
@@ -1383,55 +1407,27 @@ const SupplierStockDirectory: React.FC = () => {
           )}
         </div>
 
-        {/* Supplier Selector Pills (for Table and Grid views) */}
-        {viewMode !== 'COMPARE' && (() => {
-          const countSource = onlyAvailableStock
-            ? directoryRows.filter(r => r.breakdown.availableOrderQty > 0)
-            : directoryRows;
-          return (
-            <div className="pt-2 border-t border-default flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-secondary mr-1 shrink-0">Supplier:</span>
-              <button
-                type="button"
-                onClick={() => setSelectedSupplierId('ALL')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                  selectedSupplierId === 'ALL'
-                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
-                    : 'bg-gray-100 dark:bg-surface text-secondary hover:text-primary hover:bg-gray-200'
-                }`}
-              >
-                All ({countSource.length})
-              </button>
-
-              {displaySuppliers.map(s => {
-                const isDefault = isDefaultSupplier(s.name);
-                const count = countSource.filter(r => r.supplierId === s.id).length;
-                const isSelected = selectedSupplierId === s.id;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setSelectedSupplierId(s.id)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
-                      isSelected
-                      ? isDefault
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'bg-blue-600 text-white shadow-sm'
-                      : isDefault
-                      ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100'
-                      : 'bg-gray-100 dark:bg-surface text-secondary hover:text-primary hover:bg-gray-200'
-                  }`}
-                >
-                  {isDefault && <CheckCircle2 size={12} className={isSelected ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'} />}
-                  <span>{s.name}</span>
-                  {isDefault && <span className="text-[9px] uppercase tracking-wider font-extrabold px-1 rounded bg-black/10">Default</span>}
-                  <span className="opacity-70 text-[10px]">({count})</span>
-                </button>
-              );
-            })}
+        {/* Supplier dropdown (for Table and Grid views) */}
+        {viewMode !== 'COMPARE' && (
+          <div className="pt-2 border-t border-default flex flex-col sm:flex-row sm:items-center gap-2">
+            <label htmlFor="supplier-stock-supplier" className="text-[10px] font-bold uppercase tracking-wider text-secondary shrink-0">
+              Supplier:
+            </label>
+            <select
+              id="supplier-stock-supplier"
+              value={selectedSupplierId}
+              onChange={e => setSelectedSupplierId(e.target.value)}
+              className="w-full sm:w-80 max-w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-1.5 text-xs font-semibold text-primary dark:text-white cursor-pointer focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="ALL">All Suppliers ({supplierOptions.totalCount})</option>
+              {supplierOptions.suppliers.map(supplier => (
+                <option key={supplier.id} value={supplier.id}>
+                  {supplier.name}{isDefaultSupplier(supplier.name) ? ' — Default' : ''} ({supplier.count})
+                </option>
+              ))}
+            </select>
           </div>
-        );
-      })()}
+        )}
       </div>
 
       {/* Main Results Container */}
