@@ -1,0 +1,28 @@
+{
+  "audio_sha256": "28c345b40fcf8d1434ce7fec1cd3ffe86181e221fbe16527ad6f3a163cbe200d",
+  "recogniser": "faster-whisper base.en CPU int8",
+  "expected": "If the bale or carton size is unconfirmed, new ordering is blocked. Ask Procurement to confirm the supplier pack data, then refresh and try again. Do not guess a size. A supplier confirmed pack of one allows loose units. Open Request Details to see the saved pack size and number of full packs. These details remain with the order when supplier data changes later. Finance and line reports retain the same context. Older orders with no recorded pack are labelled as legacy.",
+  "recognised": "If the bail or carton size is unconfirmed, new ordering is blocked. Ask procurement to confirm the supplier pack data, then refresh and try again. Do not guess a size. A supplier confirmed pack of one allows loose units. Open request details to see the saved pack size and number of full packs. These details remain with the order when supplier data changes later. Finance and line reports retain the same context. Older orders with no recorded pack are labeled as legacy.",
+  "matching_ratio": 0.975609756097561,
+  "differences": [
+    {
+      "type": "replace",
+      "expected": [
+        "bale"
+      ],
+      "recognised": [
+        "bail"
+      ]
+    },
+    {
+      "type": "replace",
+      "expected": [
+        "labelled"
+      ],
+      "recognised": [
+        "labeled"
+      ]
+    }
+  ],
+  "duration": 28.0
+}

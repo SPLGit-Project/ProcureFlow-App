@@ -65,7 +65,7 @@ const EXPORT_COLUMNS: { key: keyof ItemRow; label: string }[] = [
   { key: 'active_flag', label: 'Status' },
   { key: 'sap_item_code_raw', label: 'SAP Code' },
   { key: 'uom', label: 'UOM' },
-  { key: 'upq', label: 'UPQ' },
+  { key: 'upq', label: 'UPQ (catalogue pack)' },
   { key: 'unit_price', label: 'Unit Price' },
   { key: 'min_level', label: 'Min Level' },
   { key: 'max_level', label: 'Max Level' },

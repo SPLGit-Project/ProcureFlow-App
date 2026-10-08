@@ -99,7 +99,7 @@ export default function StockMappingConfirmation({
         { key: 'category', label: 'Category', description: 'Product category' },
         { key: 'subCategory', label: 'Sub Category', description: 'Product sub-category' },
         { key: 'stockType', label: 'Stock Type', description: 'Type of stock (e.g., Finished Goods)' },
-        { key: 'cartonQty', label: 'Carton Quantity', description: 'Units per carton' },
+        { key: 'cartonQty', label: 'Bale/carton size', description: 'Ordering units per full supplier pack' },
         { key: 'sellPrice', label: 'Sell Price', description: 'Unit sell price' },
         { key: 'sohValueAtSell', label: 'SOH Value', description: 'Stock on hand value at sell price' }
     ];

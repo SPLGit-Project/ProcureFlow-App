@@ -1,0 +1,9 @@
+{
+  "model": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+  "service": "Qwen/Qwen3-TTS official Hugging Face Space",
+  "text": "Supplier Stock brings product search, supplier offers and orderable quantities together in Procure Flow. Here's how to find an item and check availability before raising a request. Open Supplier Stock from the application navigation. Search by product description, internal code or supplier code. Read each supplier row. Confirm the product code, supplier, size and pack details. A similar product name alone does not confirm suitability.",
+  "voice_description": "An adult female Australian English presenter, with a clear, natural Australian accent. Warm, confident and approachable, like an experienced colleague explaining a useful new feature. Conversational professional delivery with natural sentence melody, gentle emphasis on important words, brief pauses between ideas and an unhurried but engaging pace. A medium-low pitch with a relaxed, clear tone.",
+  "language": "English",
+  "reference_voice": null,
+  "generation_status": "Voice design generation completed successfully!"
+}

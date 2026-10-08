@@ -1,0 +1,4 @@
+interface:
+  display_name: "Procureflow-feature update"
+  short_description: "Create consistent ProcureFlow guides and videos"
+  default_prompt: "Use $procureflow-feature-update to prepare a ProcureFlow feature guide and narrated video in the established release style."

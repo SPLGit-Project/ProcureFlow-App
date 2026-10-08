@@ -1,4 +1,6 @@
 import { useReservationClock } from '../hooks/useReservationClock.ts';
+import { calculatePackOrderStock } from '../utils/orderPackStock.ts';
+import { appendOrderPackColumns, orderPackReportFields } from '../utils/orderPackSnapshot.ts';
 import { getSupplierOfferPrice } from '../utils/stockOffers.ts';
 import { getCanonicalSupplier } from '../utils/suppliers.ts';
 import React, { useEffect, useMemo, useState, useRef, Fragment, type ComponentType } from 'react';
@@ -47,7 +49,7 @@ import {
     YAxis
 } from 'recharts';
 import type { Item, PORequest, POStatus, Site, Supplier, SupplierProductMap, ProductAvailability, SupplierStockSnapshot } from '../types.ts';
-import { calculateItemRunningStock, isPOReservingStock, getReservationTimeRemaining } from '../utils/reservationUtils.ts';
+import { isPOReservingStock, getReservationTimeRemaining } from '../utils/reservationUtils.ts';
 import {
     DEFAULT_FY27_BUDGETS,
     buildEomReconciliation,
@@ -356,6 +358,7 @@ const buildOutstandingDeliveryRows = (pos: PORequest[]): OutstandingDeliveryRepo
 
             return [{
                 id: line.id,
+                ...orderPackReportFields(line),
                 poNumber: getPoNumber(po, line.concurPoNumber),
                 supplier: po.supplierName,
                 site: po.site,
@@ -395,6 +398,7 @@ const buildDeliveryVarianceRows = (pos: PORequest[]): DeliveryVarianceReportRow[
 
         return [{
             id: line.id,
+            ...orderPackReportFields(line),
             exceptionType,
             poNumber: getPoNumber(po, line.concurPoNumber),
             supplier: po.supplierName,
@@ -427,6 +431,7 @@ const buildAllDeliveriesRows = (pos: PORequest[]): ReportRow[] => {
                 const unitPrice = poLine ? Number(poLine.unitPrice || 0) : 0;
                 data.push({
                     id: line.id,
+                    ...orderPackReportFields(poLine),
                     site: po.site,
                     poNumber: getPoNumber(po, poLine?.concurPoNumber),
                     supplier: po.supplierName,
@@ -460,6 +465,7 @@ const buildFinanceRows = (pos: PORequest[]): ReportRow[] => {
                 const amountIncGst = Number((amountEx + taxAmount).toFixed(2));
                 data.push({
                     id: line.id,
+                    ...orderPackReportFields(poLine),
                     poNumber: getPoNumber(po, poLine?.concurPoNumber),
                     supplier: po.supplierName,
                     invoice: line.invoiceNumber || '-',
@@ -519,6 +525,7 @@ const buildReconciliationRows = (pos: PORequest[]): DeliveryReconciliationRow[] 
 
         return {
             id: line.id,
+            ...orderPackReportFields(line),
             poNumber: getPoNumber(po, line.concurPoNumber),
             supplier: po.supplierName,
             site: po.site,
@@ -549,6 +556,7 @@ const buildItemRequestHistoryRows = (pos: PORequest[]): ItemRequestHistoryRow[] 
 
         return {
             id: line.id,
+            ...orderPackReportFields(line),
             itemId: line.itemId,
             item: line.itemName,
             sku: line.sku,
@@ -619,6 +627,7 @@ const buildMonthlySummaryRows = (pos: PORequest[], startDateStr: string, endDate
             rows.push({
                 id: line.id,
                 monthKey,
+                ...orderPackReportFields(line),
                 month: monthDisplay,
                 poNumber,
                 concurPoNumber,
@@ -709,6 +718,7 @@ const buildLinenInjectionRows = (pos: PORequest[], itemsList: Item[]): LinenInje
 
             rows.push({
                 id: line.id,
+                ...orderPackReportFields(line),
                 poNumber,
                 concurPoNumber,
                 requestNumber,
@@ -818,14 +828,13 @@ const buildStockReservationRows = (
             const supplier = suppliersList.find(s => s.id === supId);
             const mapping = (mappingsList || []).find(m => m.productId === item.id && m.supplierId === supId);
             const supplierSku = mapping?.supplierSku || item.sapItemCodeNorm || item.sku;
-            const running = calculateItemRunningStock(
+            const running = calculatePackOrderStock(
                 item.id,
                 supId,
                 suppliersList,
                 mappingsList,
                 snapshots,
                 posList,
-                item.defaultOrderMultiple || 1,
                 item
             );
 
@@ -858,7 +867,7 @@ const buildStockReservationRows = (
                 category: item.category || 'General',
                 unitPrice,
                 priceStatus: running.priceVaries ? 'Multiple offer prices' : unitPrice > 0 ? 'Supplier price' : 'Unpriced',
-                sourceIssue: running.sourceConflict ? 'Stock source needs review; excluded from availability' : '',
+                sourceIssue: running.sourceConflict ? 'Stock source needs review; excluded from availability' : running.orderMultiple ? '' : 'Bale/carton size unconfirmed; ordering blocked',
                 baselineSoh: running.rawSnapshotQty,
                 baselineAvailable: running.baseAvailableUnits,
                 activeReservedUnits: running.reservedUnits,
@@ -867,7 +876,7 @@ const buildStockReservationRows = (
                 committedActivePOs: running.onOrderPOs,
                 effectiveStock: running.effectiveStockUnits,
                 availableOrderableQty: running.availableOrderQty,
-                packMultiple: running.packConversionFactor,
+                packMultiple: running.orderMultiple,
                 reservationPressure: pressure,
                 totalReservedValue: running.reservedUnits * unitPrice,
                 effectiveValue: running.availableOrderQty * unitPrice,
@@ -1167,6 +1176,7 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
             { key: 'activeReservedPOs', label: 'Active Reserved PO Count' },
             { key: 'committedActiveUnits', label: 'On Order' },
             { key: 'availableOrderableQty', label: 'Net Available Orderable' },
+            { key: 'packMultiple', label: 'Bale/carton units (0 = unconfirmed)' },
             { key: 'unitPrice', label: 'Unit Price' },
             { key: 'priceStatus', label: 'Price Basis' },
             { key: 'sourceIssue', label: 'Stock Source Issue' },
@@ -1226,7 +1236,7 @@ const getCsvColumns = (report: ReportType, data: ReportRow[]): CsvColumn[] => {
 const escapeCsvValue = (value: string | number | undefined) => `"${String(value ?? '').replaceAll('"', '""')}"`;
 
 const buildCsv = (report: ReportType, data: ReportRow[]) => {
-    const columns = getCsvColumns(report, data);
+    const columns = appendOrderPackColumns(report, getCsvColumns(report, data));
     const headers = columns.map((column) => escapeCsvValue(column.label)).join(',');
     const rows = data.map((row) => columns.map((column) => escapeCsvValue(row[column.key])).join(','));
     return [headers, ...rows].join('\n');
@@ -3886,6 +3896,7 @@ const ItemRequestHistoryRowView = ({ row }: { row: ItemRequestHistoryRow }) => (
     <>
         <td className="px-5 py-3">
             <div className="font-bold text-gray-900 dark:text-white max-w-[260px] truncate" title={row.item}>{row.item}</div>
+            <p className="text-[10px] text-gray-500">{row.orderPackLabel}</p>
             <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.sku || '-'}</div>
         </td>
         <td className="px-5 py-3 text-secondary dark:text-gray-300">{row.site}</td>
@@ -3943,6 +3954,7 @@ const LinenInjectionRowView = ({ row }: { row: LinenInjectionReportRow }) => (
         </td>
         <td className="px-5 py-3">
             <div className="font-medium text-gray-900 dark:text-white max-w-[200px] truncate" title={row.item}>{row.item}</div>
+            <p className="text-[10px] text-gray-500">{row.orderPackLabel}</p>
             <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.sku || '-'}</div>
             <div className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">{row.category}</div>
             {row.invoices && row.invoices !== '-' && (
@@ -3996,6 +4008,7 @@ const MonthlySummaryRow = ({ row }: { row: MonthlySummaryReportRow }) => (
         </td>
         <td className="px-5 py-3">
             <div className="font-medium text-gray-900 dark:text-white max-w-[200px] truncate" title={row.item}>{row.item}</div>
+            <p className="text-[10px] text-gray-500">{row.orderPackLabel}</p>
             <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.sku || '-'}</div>
             {row.invoices && row.invoices !== '-' && (
                 <div className="text-[9px] text-tertiary dark:text-gray-500 font-mono truncate max-w-[180px] mt-0.5" title={`Invoices: ${row.invoices}`}>Invoices: {row.invoices}</div>
@@ -4033,7 +4046,7 @@ const OutstandingDeliveryRow = ({ row }: { row: OutstandingDeliveryReportRow }) 
             <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.poNumber}</div>
         </td>
         <td className="px-5 py-3 text-secondary dark:text-gray-300">{row.site}</td>
-        <td className="px-5 py-3 text-secondary dark:text-gray-300 max-w-[240px] truncate" title={row.item}>{row.item}</td>
+        <td className="px-5 py-3 text-secondary dark:text-gray-300 max-w-[240px] truncate" title={row.item}><div>{row.item}</div><p className="text-[10px] text-gray-500">{row.orderPackLabel}</p></td>
         <td className="px-5 py-3 text-center">{numberValue(row.ordered)}</td>
         <td className="px-5 py-3 text-center text-green-600">{numberValue(row.received)}</td>
         <td className="px-5 py-3 text-center font-bold text-orange-500 bg-orange-50 dark:bg-orange-900/10">{numberValue(row.remaining)}</td>
@@ -4060,6 +4073,7 @@ const DeliveryVarianceRow = ({ row }: { row: DeliveryVarianceReportRow }) => (
         <td className="px-5 py-3 text-xs font-medium text-gray-600 dark:text-gray-400">{row.site}</td>
         <td className="px-5 py-3">
             <div className="text-xs font-medium text-gray-900 dark:text-white max-w-[220px] truncate" title={row.item}>{row.item}</div>
+            <p className="text-[10px] text-gray-500">{row.orderPackLabel}</p>
         </td>
         <td className="px-5 py-3 text-xs text-secondary dark:text-gray-400 whitespace-nowrap">{row.requestDate}</td>
         <td className="px-5 py-3 text-xs text-secondary dark:text-gray-400 whitespace-nowrap">{row.deliveryDate}</td>
@@ -4083,7 +4097,7 @@ const AllDeliveryRow = ({ row }: { row: ReportRow }) => (
             <div className="text-xs text-tertiary dark:text-gray-500 font-mono">{row.poNumber}</div>
         </td>
         <td className="px-6 py-3 text-secondary dark:text-gray-300">{row.site}</td>
-        <td className="px-6 py-3 text-secondary dark:text-gray-300 max-w-[200px] truncate" title={String(row.item)}>{row.item}</td>
+        <td className="px-6 py-3 text-secondary dark:text-gray-300 max-w-[200px] truncate" title={String(row.item)}><div>{row.item}</div><p className="text-[10px] text-gray-500">{row.orderPackLabel}</p></td>
         <td className="px-6 py-3 text-center font-medium">{row.qty}</td>
         <td className="px-6 py-3 text-right text-secondary dark:text-gray-400">{currency(Number(row.price || 0))}</td>
         <td className="px-6 py-3 text-right font-bold text-gray-900 dark:text-white">{currency(Number(row.totalPrice || 0))}</td>
@@ -4181,6 +4195,7 @@ const StockReservationRowView = ({ row }: { row: StockReservationReportRow }) =>
         </td>
         <td className="px-5 py-3 text-center font-bold text-emerald-600">
             {row.sourceIssue ? 'Unverified' : numberValue(row.availableOrderableQty)}
+            <p className="text-[10px] text-gray-500">Bale/carton: {row.packMultiple || 'Unconfirmed'}</p>
         </td>
         <td className="px-5 py-3 text-right font-medium">{row.unitPrice > 0 ? currency(row.unitPrice) : (row.priceStatus === 'Multiple offer prices' ? 'Varies' : 'Unpriced')}</td>
         <td className="px-5 py-3 text-right font-bold text-gray-900 dark:text-white">{row.unitPrice > 0 ? currency(row.effectiveValue) : '—'}</td>

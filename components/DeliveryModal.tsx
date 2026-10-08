@@ -5,6 +5,7 @@ import { X, AlertTriangle, CheckSquare, Square, Plus, Search } from 'lucide-reac
 import { v4 as uuidv4 } from 'uuid';
 import { useApp } from '../context/AppContext.tsx';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
+import { linePackLabel } from '../utils/orderPackSnapshot.ts';
 
 interface Props {
     po: PORequest;
@@ -59,6 +60,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
             itemName: item.name,
             sku: item.sku || 'N/A',
             quantityOrdered: 0,
+            uom: item.uom,
             quantityReceived: 0,
             unitPrice: item.unitPrice || 0,
             totalPrice: 0,
@@ -243,6 +245,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                                                 <div>
                                                     <span className="font-bold text-sm text-gray-900 dark:text-white block">{line.itemName}</span>
                                                     <span className="text-[10px] text-gray-500 font-mono">{line.sku}</span>
+                                                    <p className="text-xs text-gray-500">{linePackLabel(line)}</p>
                                                 </div>
                                                 <div className="flex flex-col items-end gap-1">
                                                     <span className="text-[10px] text-gray-400">
@@ -263,7 +266,7 @@ const DeliveryModal = ({ po, currentUser, onClose, onSubmit }: Props) => {
                                             
                                             <div className="flex gap-4 items-end">
                                                 <div className="w-32">
-                                                     <label className="text-[10px] uppercase font-bold text-gray-400 block mb-1">Qty</label>
+                                                     <label className="text-[10px] uppercase font-bold text-gray-400 block mb-1">Qty received ({line.uom || 'units'})</label>
                                                      <input 
                                                         type="number" 
                                                         min="0"

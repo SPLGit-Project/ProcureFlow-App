@@ -1,0 +1,14 @@
+{
+  "release_state": "HELD",
+  "activate_only_at_authorised_launch": true,
+  "feature": {
+    "id": "supplier-pack-quantities",
+    "title": "Supplier Bale and Carton Quantities",
+    "description": "Request full supplier packs, review adjusted quantities and record the actual units delivered.",
+    "location": "Create Request, Request Details and Record Delivery",
+    "pdf": "/feature-updates/supplier-pack-quantities/07_ProcureFlow_Supplier_Bale_and_Carton_Quantities.pdf",
+    "video": "/feature-updates/supplier-pack-quantities/ProcureFlow_Supplier_Pack_Quantities_Explainer.mp4",
+    "poster": "/feature-updates/supplier-pack-quantities/supplier-pack-quantities.jpg",
+    "duration": "1:55"
+  }
+}

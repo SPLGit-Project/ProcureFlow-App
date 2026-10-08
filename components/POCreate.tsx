@@ -41,28 +41,12 @@ import CustomerCategoryBadge from './CustomerCategoryBadge.tsx';
 import { getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations.ts';
+import { getOrderPackRule, isPackQuantity, packRuleLabel, roundOrderQuantity, withPackQuantity } from '../utils/orderPacks.ts';
 
 const PRICE_MATCH_TOLERANCE = 0.0001;
 const PO_CREATE_DRAFT_VERSION = 1;
 const PO_CREATE_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 const REQUEST_REASON_OPTIONS = ['Depletion', 'New Customer', 'Other'] as const;
-
-// ── Pack Size / Carton Multiple Validation ──────────────────────────────────
-const getLineCartonSize = (line: POLineItem, itemsList: Item[]): number => {
-  const matchedItem = itemsList.find(i => i.id === line.itemId);
-  const upq = matchedItem?.cartonQty || matchedItem?.upq || line.upq || 1;
-  return upq > 0 ? upq : 1;
-};
-
-const getCartonMultiples = (qty: number, cartonSize: number) => {
-  if (cartonSize <= 1) return { isValid: true, lower: qty, upper: qty, cartonCount: qty };
-  const isValid = qty % cartonSize === 0;
-  const lower = Math.max(cartonSize, Math.floor(qty / cartonSize) * cartonSize);
-  const upper = Math.ceil(qty / cartonSize) * cartonSize;
-  const cartonCount = Math.ceil(qty / cartonSize);
-  return { isValid, lower, upper, cartonCount };
-};
-
 
 interface POCreateDraft {
   selectedSiteId: string;
@@ -248,6 +232,12 @@ const POCreate = () => {
 
   const [cart, setCart] = useState<POLineItem[]>(initialDraft?.cart || []);
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>(initialDraft?.quantityDrafts || {});
+  const [packFeedback, setPackFeedback] = useState<Record<string, string>>({});
+  const packRules = useMemo(() => new Map(items.map(item => [item.id,
+    getOrderPackRule(item, selectedSupplierId, suppliers, mappings, stockSnapshots)])),
+    [items, selectedSupplierId, suppliers, mappings, stockSnapshots]);
+  const packRuleFor = (itemId: string) => packRules.get(itemId) || { size: null, source: 'unknown' as const };
+  const invalidPackLines = cart.filter(line => !isPackQuantity(Number(quantityDrafts[line.id] ?? line.quantityOrdered), packRuleFor(line.itemId).size));
   const [isCartExpanded, setIsCartExpanded] = useState(initialDraft?.isCartExpanded ?? true);
   const [isCatalogExpanded, setIsCatalogExpanded] = useState(initialDraft?.isCatalogExpanded ?? true);
   const [searchTerm, setSearchTerm] = useState(initialDraft?.searchTerm || '');
@@ -258,10 +248,23 @@ const POCreate = () => {
   const [selectedDetailItem, setSelectedDetailItem] = useState<POCreateCatalogItem | null>(null);
   const [modalQuantity, setModalQuantity] = useState(1);
   const [modalPrice, setModalPrice] = useState('');
-  const [modalUpq, setModalUpq] = useState(1);
   const [modalPriceOptionId, setModalPriceOptionId] = useState('');
   const [modalPriceOptions, setModalPriceOptions] = useState<ItemPriceOption[]>([]);
   const [modalNeedByDate, setModalNeedByDate] = useState('');
+  const [modalPackFeedback, setModalPackFeedback] = useState('');
+  const detailPackRule = selectedDetailItem ? packRuleFor(selectedDetailItem.id) : { size: null, source: 'unknown' as const };
+
+  const announcePackAdjustment = (lineId: string, requested: number, adjusted: number) => {
+    setPackFeedback(prev => ({ ...prev, [lineId]: requested === adjusted ? '' :
+      `Adjusted ${requested.toLocaleString()} to ${adjusted.toLocaleString()} units for full bales/cartons. Cost updated.` }));
+  };
+  const commitModalQuantity = (raw = modalQuantity) => {
+    if (!detailPackRule.size) return raw;
+    const adjusted = roundOrderQuantity(raw, detailPackRule.size);
+    setModalQuantity(adjusted);
+    setModalPackFeedback(raw === adjusted ? '' : `Adjusted ${raw} to ${adjusted} units for full bales/cartons.`);
+    return adjusted;
+  };
 
   useEffect(() => {
     if (sites.length === 1) {
@@ -435,10 +438,14 @@ const POCreate = () => {
     if (!matchedCatalogItem) return;
 
     hasHandledUrlItemRef.current = true;
-    const upq = matchedCatalogItem.cartonQty || (matchedCatalogItem as any).upq || 1;
+    const rule = packRuleFor(matchedCatalogItem.id);
+    const upq = rule.size || 1;
     const unitPrice = (matchedCatalogItem as any).price ?? matchedCatalogItem.unitPrice ?? 0;
-    const safeQty = Math.max(1, isNaN(urlQty) ? 1 : urlQty);
+    const requestedQty = Math.max(1, isNaN(urlQty) ? 1 : urlQty);
+    const safeQty = rule.size ? roundOrderQuantity(requestedQty, rule.size) : requestedQty;
     const pricing = calculateLinePricing(safeQty, unitPrice, 'GST', 10.0);
+    const newLineId = uuidv4();
+    announcePackAdjustment(newLineId, requestedQty, safeQty);
 
     setCart(prev => {
       if (prev.some(l => l.itemId === matchedCatalogItem.id)) {
@@ -451,9 +458,10 @@ const POCreate = () => {
       return [
         ...prev,
         {
-          id: uuidv4(),
+          id: newLineId,
           itemId: matchedCatalogItem.id,
           itemName: matchedCatalogItem.name,
+          uom: matchedCatalogItem.uom,
           sku: matchedCatalogItem.sku,
           quantityOrdered: pricing.quantityOrdered,
           quantityReceived: 0,
@@ -490,28 +498,14 @@ const POCreate = () => {
   }, [cart]);
 
   const updateQuantity = (lineId: string, delta: number) => {
-    let nextQty = 1;
-    setCart(prev => prev.map(line => {
-      if (line.id === lineId) {
-        const baseQty = sanitizeQuantity(
-          quantityDrafts[line.id] ?? String(line.quantityOrdered),
-          line.quantityOrdered
-        );
-        nextQty = Math.max(1, baseQty + delta);
-        const pricing = calculateLinePricing(nextQty, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
-        return {
-          ...line,
-          quantityOrdered: pricing.quantityOrdered,
-          unitPrice: pricing.unitPrice,
-          totalPrice: pricing.totalPrice,
-          taxCode: pricing.taxCode,
-          taxRate: pricing.taxRate,
-          taxAmount: pricing.taxAmount,
-          totalPriceIncGst: pricing.totalPriceIncGst
-        };
-      }
-      return line;
-    }));
+    const line = cart.find(l => l.id === lineId);
+    if (!line) return;
+    const size = packRuleFor(line.itemId).size;
+    if (!size) return;
+    const baseQty = sanitizeQuantity(quantityDrafts[lineId] ?? String(line.quantityOrdered), line.quantityOrdered);
+    const nextQty = Math.max(size, roundOrderQuantity(baseQty, size) + delta * size);
+    setCart(prev => prev.map(l => l.id === lineId ? withPackQuantity(l, nextQty, size) : l));
+    announcePackAdjustment(lineId, nextQty, nextQty);
     setQuantityDrafts(prev => ({ ...prev, [lineId]: String(nextQty) }));
   };
 
@@ -521,27 +515,15 @@ const POCreate = () => {
   };
 
   const commitQuantityDraft = (lineId: string, quantityValue?: string) => {
-    let parsedQty = 1;
-    setCart(prev => prev.map(line => {
-      if (line.id === lineId) {
-        parsedQty = sanitizeQuantity(
-          quantityValue ?? quantityDrafts[lineId] ?? String(line.quantityOrdered),
-          line.quantityOrdered
-        );
-        const pricing = calculateLinePricing(parsedQty, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
-        return {
-          ...line,
-          quantityOrdered: pricing.quantityOrdered,
-          unitPrice: pricing.unitPrice,
-          totalPrice: pricing.totalPrice,
-          taxCode: pricing.taxCode,
-          taxRate: pricing.taxRate,
-          taxAmount: pricing.taxAmount,
-          totalPriceIncGst: pricing.totalPriceIncGst
-        };
-      }
-      return line;
-    }));
+    const line = cart.find(l => l.id === lineId);
+    if (!line) return;
+    const requestedQty = sanitizeQuantity(quantityValue ?? quantityDrafts[lineId] ?? String(line.quantityOrdered), line.quantityOrdered);
+    const size = packRuleFor(line.itemId).size;
+    const parsedQty = size ? roundOrderQuantity(requestedQty, size) : requestedQty;
+    setCart(prev => prev.map(l => l.id === lineId ? {
+      ...l, ...calculateLinePricing(parsedQty, l.unitPrice, l.taxCode || 'GST', l.taxRate ?? 10)
+    } : l));
+    announcePackAdjustment(lineId, requestedQty, parsedQty);
     setQuantityDrafts(prev => ({ ...prev, [lineId]: String(parsedQty) }));
   };
 
@@ -609,7 +591,9 @@ const POCreate = () => {
   // Modal Handlers
   const openItemDetail = (item: POCreateCatalogItem) => {
       setSelectedDetailItem(item);
-      setModalQuantity(1);
+      const rule = packRuleFor(item.id);
+      setModalQuantity(rule.size || 1);
+      setModalPackFeedback('');
       setModalNeedByDate(defaultNeedByDate || (requestDate ? requestDate.split('T')[0] : getLocalDateInputValue()));
       
       const baseOptions = normalizeItemPriceOptions(item);
@@ -622,15 +606,16 @@ const POCreate = () => {
       setModalPriceOptions(effectiveOptions);
       setModalPriceOptionId(defaultOption?.id || '');
       setModalPrice((defaultOption?.price ?? item.price ?? 0).toString());
-      setModalUpq(item.upq || 1);
   };
 
   const handleModalAdd = () => {
       if (!selectedDetailItem) return;
       
-      const qty = modalQuantity;
+      const rule = packRuleFor(selectedDetailItem.id);
+      if (!rule.size) return;
+      const qty = roundOrderQuantity(modalQuantity, rule.size);
       const price = Math.max(0, parseFloat(modalPrice) || 0);
-      const upq = modalUpq;
+      const upq = rule.size;
       const selectedPriceOption = modalPriceOptions.find(opt => opt.id === modalPriceOptionId);
       const selectedPriceOptionId = selectedPriceOption?.id || modalPriceOptionId || undefined;
       const selectedPriceOptionLabel = selectedPriceOption?.label || undefined;
@@ -638,6 +623,10 @@ const POCreate = () => {
       if (qty <= 0) return;
 
       const pricing = calculateLinePricing(qty, price, 'GST', 10.0);
+      const newLineId = uuidv4();
+      const existingLine = cart.find(line => isSameCartPriceLine(line, selectedDetailItem.id, price, selectedPriceOptionId, selectedPriceOptionLabel));
+      announcePackAdjustment(existingLine?.id || newLineId, modalQuantity, qty);
+      if (modalPackFeedback) setPackFeedback(prev => ({ ...prev, [existingLine?.id || newLineId]: modalPackFeedback }));
 
       setCart(prev => {
           const existing = prev.find(line =>
@@ -650,7 +639,7 @@ const POCreate = () => {
               )
           );
           if (existing) {
-              const newQty = existing.quantityOrdered + qty;
+              const newQty = roundOrderQuantity(existing.quantityOrdered + qty, rule.size);
               const mergedPricing = calculateLinePricing(newQty, price, existing.taxCode || 'GST', existing.taxRate ?? 10.0);
               return prev.map(line => 
                   line.id === existing.id
@@ -671,9 +660,10 @@ const POCreate = () => {
               );
           }
           return [...prev, {
-              id: uuidv4(),
+              id: newLineId,
               itemId: selectedDetailItem.id,
               itemName: selectedDetailItem.name,
+              uom: selectedDetailItem.uom,
               sku: selectedDetailItem.sku,
               quantityOrdered: pricing.quantityOrdered,
               quantityReceived: 0,
@@ -697,6 +687,10 @@ const POCreate = () => {
 
   const handleSubmit = async () => {
     if (!currentUser) return;
+    if (invalidPackLines.length) {
+        alert('Review bale/carton sizes and correct the highlighted quantities before submitting.');
+        return;
+    }
 
     if (!selectedSiteId || !selectedSite) {
         setIsHeaderExpanded(true);
@@ -789,6 +783,10 @@ const POCreate = () => {
   };
 
   const handleSaveDraft = async () => {
+    if (invalidPackLines.length) {
+        alert('Review bale/carton sizes and correct the highlighted quantities before saving.');
+        return;
+    }
     if (!currentUser || !selectedSupplier) {
         alert('Select a supplier before saving a draft.');
         return;
@@ -883,11 +881,12 @@ const POCreate = () => {
                          <div className="flex items-end justify-between gap-4">
                              <div className="flex items-center gap-3">
                                 <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-[#15171e]">
-                                    <button type="button" onClick={() => updateQuantity(line.id, -1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Minus size={14}/></button>
+                                    <button type="button" aria-label="Remove one bale/carton" disabled={!packRuleFor(line.itemId).size} onClick={() => updateQuantity(line.id, -1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Minus size={14}/></button>
                                     <input
                                         type="text"
                                         inputMode="numeric"
                                         pattern="[0-9]*"
+                                        aria-label={`Quantity for ${line.sku}`}
                                         value={quantityDrafts[line.id] ?? String(line.quantityOrdered)}
                                         onChange={(e) => updateQuantityDraft(line.id, e.target.value)}
                                         onBlur={(e) => commitQuantityDraft(line.id, e.target.value)}
@@ -899,7 +898,7 @@ const POCreate = () => {
                                         }}
                                         className="w-16 text-center text-sm font-semibold text-gray-900 dark:text-white bg-transparent outline-none"
                                     />
-                                    <button type="button" onClick={() => updateQuantity(line.id, 1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Plus size={14}/></button>
+                                    <button type="button" aria-label="Add one bale/carton" disabled={!packRuleFor(line.itemId).size} onClick={() => updateQuantity(line.id, 1)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500"><Plus size={14}/></button>
                                 </div>
                              </div>
                              
@@ -925,23 +924,26 @@ const POCreate = () => {
                              </div>
                          </div>
                          {(() => {
-                             const cartonSize = getLineCartonSize(line, items);
-                             const { isValid, upper } = getCartonMultiples(line.quantityOrdered, cartonSize);
-                             if (cartonSize > 1 && !isValid) {
+                             const rule = packRuleFor(line.itemId);
+                             const cartonSize = rule.size;
+                             const quantity = Number(quantityDrafts[line.id] ?? line.quantityOrdered);
+                             if (!cartonSize) return <p role="alert" className="text-xs text-rose-600">{packRuleLabel(rule)} Saving and submission are blocked.</p>;
+                             const upper = roundOrderQuantity(quantity, cartonSize);
+                             if (!isPackQuantity(quantity, cartonSize)) {
                                  return (
                                      <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50 rounded-lg p-2 text-xs flex flex-col gap-1.5 animate-fade-in">
                                          <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-300 font-bold text-[11px]">
                                              <AlertTriangle size={13} className="shrink-0" />
-                                             <span>Carton multiple required (Carton = {cartonSize.toLocaleString()} units)</span>
+                                             <span>{packRuleLabel(rule)}</span>
                                          </div>
                                          <div className="flex items-center justify-between text-[11px]">
-                                             <span className="text-rose-600 dark:text-rose-400">Fix to nearest multiple:</span>
+                                             <span className="text-rose-600 dark:text-rose-400">Round up to a full bale/carton:</span>
                                              <button
                                                  type="button"
                                                  onClick={() => {
-                                                     const pricing = calculateLinePricing(upper, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
-                                                     setCart(prev => prev.map(l => l.id === line.id ? { ...l, quantityOrdered: upper, totalPrice: pricing.totalPrice, totalPriceIncGst: pricing.totalPriceIncGst } : l));
+                                                     setCart(prev => prev.map(l => l.id === line.id ? withPackQuantity(l, upper, cartonSize) : l));
                                                      setQuantityDrafts(prev => ({ ...prev, [line.id]: String(upper) }));
+                                                     announcePackAdjustment(line.id, quantity, upper);
                                                  }}
                                                  className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded shadow-xs transition-colors"
                                              >
@@ -951,15 +953,16 @@ const POCreate = () => {
                                      </div>
                                  );
                              }
-                             if (cartonSize > 1) {
+                             if (cartonSize) {
                                  return (
                                      <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                                         <span>✓ Multiples of {cartonSize} ({Math.round(line.quantityOrdered / cartonSize)} cartons)</span>
+                                         <span>{packRuleLabel(rule)} · {quantity / cartonSize} full packs</span>
                                      </div>
                                  );
                              }
                              return null;
                          })()}
+                         {packFeedback[line.id] && <p role="status" className="text-xs text-blue-600">{packFeedback[line.id]}</p>}
                          <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800/60 text-xs text-gray-500 dark:text-gray-400">
                              <span className="text-[11px] font-semibold">Need by:</span>
                              <input 
@@ -997,7 +1000,7 @@ const POCreate = () => {
              <button
                type="button"
                onClick={() => guardedSubmit(handleSubmit)}
-               disabled={cart.length === 0 || isSubmitting}
+               disabled={cart.length === 0 || isSubmitting || invalidPackLines.length > 0}
                className="w-full bg-[var(--color-brand)] text-white py-3 rounded-xl font-bold shadow-lg shadow-[var(--color-brand)]/20 hover:opacity-90 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
              >
                 {isSubmitting ? 'Submitting...' : <>Submit Request <ArrowRight size={18} /></>}
@@ -1584,14 +1587,15 @@ const POCreate = () => {
                              </div>
 
                              <div className="w-1/4">
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">UPQ</label>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Bale/carton</label>
                                 <div className="relative">
                                     <input 
                                         type="number"
                                         min="1"
                                         className="w-full bg-white dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-bold shadow-sm focus:ring-2 focus:ring-[var(--color-brand)]/20 focus:border-[var(--color-brand)] outline-none"
-                                        value={modalUpq}
-                                        onChange={e => setModalUpq(Math.max(1, parseInt(e.target.value) || 1))}
+                                        value={detailPackRule.size || ''}
+                                        readOnly
+                                        aria-label="Supplier bale/carton size"
                                     />
                                     <span className="absolute right-8 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">x</span>
                                 </div>
@@ -1602,7 +1606,9 @@ const POCreate = () => {
                                 <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#15171e] shadow-sm">
                                     <button
                                         type="button"
-                                        onClick={() => setModalQuantity(Math.max(1, modalQuantity - 1))}
+                                        aria-label="Remove one bale/carton"
+                                        disabled={!detailPackRule.size}
+                                        onClick={() => setModalQuantity(Math.max(detailPackRule.size || 1, roundOrderQuantity(modalQuantity, detailPackRule.size || 1) - (detailPackRule.size || 1)))}
                                         className="p-2.5 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500 transition-colors"
                                     >
                                         <Minus size={16}/>
@@ -1611,11 +1617,17 @@ const POCreate = () => {
                                         type="number" 
                                         className="w-full text-center bg-transparent border-none p-0 text-sm font-bold focus:ring-0"
                                         value={modalQuantity}
-                                        onChange={e => setModalQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+                                        aria-label="Item quantity"
+                                        min={detailPackRule.size || 1}
+                                        step={detailPackRule.size || 1}
+                                        onChange={e => setModalQuantity(Math.max(1, Number(e.target.value) || 0))}
+                                        onBlur={() => commitModalQuantity()}
                                     />
                                     <button
                                         type="button"
-                                        onClick={() => setModalQuantity(modalQuantity + 1)}
+                                        aria-label="Add one bale/carton"
+                                        disabled={!detailPackRule.size}
+                                        onClick={() => setModalQuantity(roundOrderQuantity(modalQuantity, detailPackRule.size || 1) + (detailPackRule.size || 1))}
                                         className="p-2.5 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500 transition-colors"
                                     >
                                         <Plus size={16}/>
@@ -1623,6 +1635,8 @@ const POCreate = () => {
                                 </div>
                              </div>
                         </div>
+                        <p className={detailPackRule.size ? 'text-xs text-gray-500' : 'text-xs text-rose-600'}>{packRuleLabel(detailPackRule)}</p>
+                        {modalPackFeedback && <p role="status" className="text-xs text-blue-600">{modalPackFeedback}</p>}
 
                         <div className="mt-4">
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Need by Date</label>
@@ -1646,6 +1660,7 @@ const POCreate = () => {
                         <button
                             type="button"
                             onClick={handleModalAdd}
+                            disabled={!detailPackRule.size}
                             className="btn-primary w-full justify-center flex items-center gap-2"
                         >
                             <Plus size={18} /> Add to Order
@@ -1777,7 +1792,7 @@ const POCreate = () => {
                       <button
                           type="button"
                           onClick={() => guardedSubmit(handleSubmit)}
-                          disabled={cart.length === 0 || isSubmitting}
+                          disabled={cart.length === 0 || isSubmitting || invalidPackLines.length > 0}
                           className="flex-1 min-h-[44px] bg-[var(--color-brand)] hover:opacity-90 active:scale-95 text-white px-5 py-3 rounded-xl font-black text-sm shadow-lg disabled:opacity-50 disabled:shadow-none transition-all"
                       >
                           {isSubmitting ? 'Submitting...' : 'Review & Submit'}

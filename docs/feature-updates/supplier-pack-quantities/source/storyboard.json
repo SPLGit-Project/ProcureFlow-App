@@ -1,0 +1,50 @@
+[
+  {
+    "title": "Supplier bale and carton quantities",
+    "note": "Order full packs • receive actual units",
+    "image": "request.png",
+    "narration": "Procure Flow now helps you request quantities that suppliers can fulfil as full bales or cartons. The selected supplier's pack size follows the request through approval, purchasing and receiving. Here's how to use it."
+  },
+  {
+    "title": "Check the selected supplier",
+    "note": "Create Request → select supplier → open the item",
+    "image": "request.png",
+    "narration": "Start in Create Request, or select a supplier offer from Supplier Stock. Confirm the supplier and product, then check the bale or carton size shown for that item. Another supplier may use a different pack size."
+  },
+  {
+    "title": "Quantities round up to a full pack",
+    "note": "30 units per pack • entering 31 adjusts to 60",
+    "image": "rounding.png",
+    "narration": "With thirty units per pack, entering thirty one adjusts the request to sixty when you leave the quantity field. The adjustment message explains the change. Plus and minus controls move by one full pack. Review the new quantity and recalculated totals."
+  },
+  {
+    "title": "Review drafts before submitting",
+    "note": "Save Draft or Submit Request • check quantities and totals",
+    "image": "cart.png",
+    "narration": "Check the receiving site, each line's need by date, price and total. Save Draft keeps your work for later. If an older draft contains an odd quantity, correct it to a full pack before saving or submitting. Follow the existing approval and Concur handover."
+  },
+  {
+    "title": "Resolve an unconfirmed pack",
+    "note": "Unknown or conflicting size blocks new ordering",
+    "image": "unknown.png",
+    "narration": "If the bale or carton size is unconfirmed, new ordering is blocked. Ask Procurement to confirm the supplier pack data, then refresh and try again. Do not guess a size. A supplier confirmed pack of one allows loose units."
+  },
+  {
+    "title": "Pack details stay with the order",
+    "note": "Saved pack size and UOM • order detail, finance and reports",
+    "image": "order.png",
+    "narration": "Open Request Details to see the saved pack size and number of full packs. These details remain with the order when supplier data changes later. Finance and line reports retain the same context. Older orders with no recorded pack are labelled as legacy."
+  },
+  {
+    "title": "Receive the actual quantity delivered",
+    "note": "Record Delivery → Qty received (Each) • partial packs allowed",
+    "image": "receipt.png",
+    "narration": "In Record Delivery, enter the units actually delivered, even when a carton is incomplete. A delivery of seven units stays seven. Use Add Unplanned Item for goods outside the original order, and follow the existing variance process."
+  },
+  {
+    "title": "Check the quantity before ordering",
+    "note": "Supplier • pack size • rounded quantity • total",
+    "image": "order.png",
+    "narration": "Before submitting, confirm the supplier, pack size, adjusted quantity and total. During receiving, record actual units. Pack counts explain the order; they do not replace unit quantities or prices in Concur. Use the feature guide whenever you need a reminder."
+  }
+]

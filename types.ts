@@ -227,7 +227,7 @@ export interface Item {
   description: string;
   unitPrice: number; // Default/Internal Price
   uom: string; // Unit of Measure
-  upq?: number; // Unit per Quantity
+  upq?: number; // Catalogue order-pack fallback, expressed in the item's ordering UOM.
   cartonQty?: number; // Carton / Pack Size Multiple
   category: string;
   subCategory?: string; // New field for hierarchy
@@ -596,7 +596,9 @@ export interface POLineItem {
   quantityReceived: number;
   unitPrice: number;
   totalPrice: number;
-  upq?: number; // Units Per Quantity (Pack Size)
+  upq?: number; // Pack size captured when ordered; never infer it from today's catalogue.
+  uom?: string; // Ordering UOM captured with the pack; quantities/prices stay in this UOM.
+  packSupplierId?: string; // Supplier identity captured by the database.
   priceOptionId?: string;
   priceOptionLabel?: string;
   // GST and Tax Calculation

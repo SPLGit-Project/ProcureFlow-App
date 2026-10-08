@@ -1,0 +1,127 @@
+1
+00:00:00,300 --> 00:00:04,220
+Procure Flow now helps you request quantities that suppliers can fulfil as
+
+2
+00:00:04,240 --> 00:00:08,340
+full bales or cartons. The selected supplier's pack size follows the request
+
+3
+00:00:08,360 --> 00:00:11,960
+through approval, purchasing and receiving. Here's how to use it.
+
+4
+00:00:13,225 --> 00:00:17,085
+Start in Create Request, or select a supplier offer from Supplier Stock.
+
+5
+00:00:17,885 --> 00:00:21,145
+Confirm the supplier and product, then check the bale or carton size
+
+6
+00:00:21,165 --> 00:00:24,765
+shown for that item. Another supplier may use a different pack size.
+
+7
+00:00:25,675 --> 00:00:29,635
+With thirty units per pack, entering thirty one adjusts the request to
+
+8
+00:00:29,655 --> 00:00:31,635
+sixty when you leave the quantity field.
+
+9
+00:00:32,275 --> 00:00:34,235
+The adjustment message explains the change.
+
+10
+00:00:34,655 --> 00:00:37,175
+Plus and minus controls move by one full pack.
+
+11
+00:00:37,715 --> 00:00:40,035
+Review the new quantity and recalculated totals.
+
+12
+00:00:41,655 --> 00:00:45,495
+Check the receiving site, each line's need by date, price and total.
+
+13
+00:00:46,255 --> 00:00:47,755
+Save Draft keeps your work for later.
+
+14
+00:00:48,575 --> 00:00:51,555
+If an older draft contains an odd quantity, correct it to a
+
+15
+00:00:51,575 --> 00:00:53,175
+full pack before saving or submitting.
+
+16
+00:00:53,195 --> 00:00:56,175
+Follow the existing approval and Concur handover.
+
+17
+00:00:57,050 --> 00:01:01,070
+If the bale or carton size is unconfirmed, new ordering is blocked.
+
+18
+00:01:01,790 --> 00:01:05,530
+Ask Procurement to confirm the supplier pack data, then refresh and try
+
+19
+00:01:05,550 --> 00:01:07,390
+again. Do not guess a size.
+
+20
+00:01:07,750 --> 00:01:10,550
+A supplier confirmed pack of one allows loose units.
+
+21
+00:01:12,002 --> 00:01:14,862
+Open Request Details to see the saved pack size and number of
+
+22
+00:01:14,882 --> 00:01:18,722
+full packs. These details remain with the order when supplier data changes
+
+23
+00:01:18,742 --> 00:01:21,902
+later. Finance and line reports retain the same context.
+
+24
+00:01:21,922 --> 00:01:25,462
+Older orders with no recorded pack are labelled as legacy.
+
+25
+00:01:26,592 --> 00:01:30,472
+In Record Delivery, enter the units actually delivered, even when a carton
+
+26
+00:01:30,492 --> 00:01:33,692
+is incomplete. A delivery of seven units stays seven.
+
+27
+00:01:34,312 --> 00:01:38,032
+Use Add Unplanned Item for goods outside the original order, and follow
+
+28
+00:01:38,052 --> 00:01:39,652
+the existing variance process.
+
+29
+00:01:41,280 --> 00:01:44,520
+Before submitting, confirm the supplier, pack size, adjusted quantity and total.
+
+30
+00:01:45,220 --> 00:01:48,620
+During receiving, record actual units. Pack counts explain the order;
+
+31
+00:01:49,180 --> 00:01:51,940
+they do not replace unit quantities or prices in Concur.
+
+32
+00:01:52,260 --> 00:01:54,520
+Use the feature guide whenever you need a reminder.

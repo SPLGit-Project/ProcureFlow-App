@@ -18,6 +18,8 @@ import { useSubmitGuard } from '../utils/useSubmitGuard.ts';
 import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations.ts';
 import { getReservationTimeRemaining, isPOReservingStock } from '../utils/reservationUtils.ts';
 import { isDefaultSupplier } from '../utils/suppliers.ts';
+import { getOrderPackRule, packRuleLabel, roundOrderQuantity, withPackQuantity } from '../utils/orderPacks.ts';
+import { linePackLabel } from '../utils/orderPackSnapshot.ts';
 
 const PO_DETAIL_EDIT_DRAFT_VERSION = 1;
 const PO_DETAIL_EDIT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -54,7 +56,7 @@ interface PODetailEditDraft {
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, allPos, suppliers, items, sites, updatePOStatus, reReservePOStock, getEffectiveStock, getStockBreakdown, isStockReady, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
+  const { pos, allPos, suppliers, items, mappings, stockSnapshots, sites, updatePOStatus, reReservePOStock, getEffectiveStock, getStockBreakdown, isStockReady, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -113,6 +115,18 @@ const PODetail = () => {
   }, [editDraftKey]);
 
   const po = (allPos?.length ? allPos : pos).find(p => p.id === id);
+  const packRuleFor = (itemId: string) => getOrderPackRule(items.find(i => i.id === itemId), po?.supplierId || '', suppliers, mappings, stockSnapshots);
+  const [packFeedback, setPackFeedback] = useState('');
+  const commitLinePackQuantity = (lineId: string) => {
+      const line = editableLines.find(l => l.id === lineId);
+      if (!line) return;
+      const rule = packRuleFor(line.itemId);
+      if (!rule.size) { setPackFeedback(packRuleLabel(rule)); return; }
+      const adjusted = roundOrderQuantity(line.quantityOrdered, rule.size);
+      setEditableLines(prev => prev.map(l => l.id === lineId ? withPackQuantity(l, adjusted, rule.size!) : l));
+      setPackFeedback(adjusted === line.quantityOrdered ? '' :
+          `${line.sku}: adjusted ${line.quantityOrdered} to ${adjusted} units for full bales/cartons. Cost updated.`);
+  };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _supplier = po ? suppliers.find(s => s.id === po.supplierId) : undefined;
 
@@ -229,6 +243,7 @@ const PODetail = () => {
   const applyAddItemSelection = (selectedItem: Item) => {
     if (!selectedItem?.id) return;
     setAddItemId(selectedItem.id);
+    setAddItemQty(String(packRuleFor(selectedItem.id).size || 1));
     const defaultPriceOption = getDefaultItemPriceOption(selectedItem);
     setAddItemPriceOptionId(defaultPriceOption.id);
     setAddItemPrice(String(defaultPriceOption.price));
@@ -815,15 +830,16 @@ const PODetail = () => {
           return;
       }
 
-      const quantityOrdered = Math.max(1, Math.floor(Number(addItemQty) || 0));
+      const requestedQty = Math.max(1, Number(addItemQty) || 0);
       const unitPrice = Math.max(0, Number(addItemPrice) || 0);
-      const cartonSize = selectedItem.cartonQty || selectedItem.upq || 1;
-      if (cartonSize > 1 && quantityOrdered % cartonSize !== 0) {
-          const lower = Math.max(cartonSize, Math.floor(quantityOrdered / cartonSize) * cartonSize);
-          const upper = Math.ceil(quantityOrdered / cartonSize) * cartonSize;
-          alert(`❌ CARTON SIZE MULTIPLE REQUIRED\n\nItem: ${selectedItem.name}\nCarton size is ${cartonSize.toLocaleString()} units.\n\nQuantity ordered (${quantityOrdered.toLocaleString()}) must be a multiple of ${cartonSize.toLocaleString()} (e.g. ${lower.toLocaleString()} or ${upper.toLocaleString()}).`);
+      const rule = packRuleFor(selectedItem.id);
+      if (!rule.size) {
+          setPackFeedback(packRuleLabel(rule));
           return;
       }
+      const quantityOrdered = roundOrderQuantity(requestedQty, rule.size);
+      setPackFeedback(quantityOrdered === requestedQty ? '' :
+          `${selectedItem.sku}: adjusted ${requestedQty} to ${quantityOrdered} units for full bales/cartons. Cost updated.`);
       const selectedPriceOption = normalizeItemPriceOptions(selectedItem).find(opt => opt.id === addItemPriceOptionId);
       const pricing = calculateLinePricing(quantityOrdered, unitPrice, 'GST', 10.0);
 
@@ -831,6 +847,8 @@ const PODetail = () => {
           id: uuidv4(),
           itemId: selectedItem.id,
           itemName: selectedItem.name,
+          uom: selectedItem.uom,
+          upq: rule.size,
           sku: selectedItem.sku,
           quantityOrdered: pricing.quantityOrdered,
           quantityReceived: 0,
@@ -1058,6 +1076,7 @@ const PODetail = () => {
 
   return (
     <div className="max-w-6xl mx-auto pb-20">
+      {packFeedback && <p role="status" className="mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">{packFeedback}</p>}
       <button type="button" onClick={() => navigate(-1)} className="flex items-center text-secondary hover:text-primary dark:hover:text-white mb-6 transition-colors font-medium text-sm">
         <ArrowLeft size={16} className="mr-1" /> Back to List
       </button>
@@ -1715,10 +1734,20 @@ const PODetail = () => {
                                               <div className="shrink-0 w-full sm:w-20">
                                                   <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">QTY</label>
                                                   <input
-                                                      type="number" min="1" step="1" value={addItemQty}
+                                                      type="number" min={packRuleFor(addItemId).size || 1} step={packRuleFor(addItemId).size || 1} value={addItemQty}
+                                                      aria-label="Quantity for added item"
                                                       onChange={(e) => setAddItemQty(e.target.value)}
+                                                      onBlur={() => {
+                                                          const size = packRuleFor(addItemId).size;
+                                                          if (!size) return;
+                                                          const raw = Number(addItemQty);
+                                                          const adjusted = roundOrderQuantity(raw, size);
+                                                          setAddItemQty(String(adjusted));
+                                                          setPackFeedback(raw === adjusted ? '' : `Adjusted ${raw} to ${adjusted} units for full bales/cartons. Cost updated.`);
+                                                      }}
                                                       className="w-full bg-gray-50 dark:bg-[#15171e] border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white text-center focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/25 focus:border-[var(--color-brand)]"
                                                   />
+                                                  <p className="mt-1 text-[10px] text-gray-500">{packRuleLabel(packRuleFor(addItemId))}</p>
                                               </div>
 
                                               {/* Unit Price */}
@@ -1824,6 +1853,7 @@ const PODetail = () => {
                                           </div>
                                           <div className="flex items-center gap-2 mt-0.5">
                                               <span className="text-xs text-gray-400 font-mono">{line.sku}</span>
+                                              {!isEditing && <span className="text-xs text-gray-500">{linePackLabel(line)}</span>}
                                               {line.priceOptionLabel && (
                                                   <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
                                                       {line.priceOptionLabel}
@@ -1887,15 +1917,18 @@ const PODetail = () => {
                                           {isEditing ? (
                                               <input
                                                   type="number"
-                                                  min={1}
-                                                  step={1}
+                                                  min={packRuleFor(line.itemId).size || 1}
+                                                  step={packRuleFor(line.itemId).size || 1}
                                                   className="w-full mt-1 px-2 py-1 text-center font-bold border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
                                                   value={line.quantityOrdered}
                                                   onChange={(e) => handleLineQtyChange(line.id, e.target.value)}
+                                                  onBlur={() => commitLinePackQuantity(line.id)}
+                                                  aria-label={`Quantity for ${line.sku}`}
                                               />
                                           ) : (
                                               <span className="font-bold text-gray-900 dark:text-white text-sm">{line.quantityOrdered}</span>
                                           )}
+                                          {isEditing && <p className="mt-1 text-[10px] text-gray-500">{packRuleLabel(packRuleFor(line.itemId))}</p>}
                                       </div>
 
                                       <div>
@@ -1960,6 +1993,7 @@ const PODetail = () => {
                                       <td className="px-6 py-4">
                                           <div className="font-bold text-primary dark:text-white">{line.itemName}</div>
                                           <div className="text-xs text-tertiary dark:text-gray-500 font-mono mt-0.5">{line.sku}</div>
+                                          {!isEditing && <p className="text-xs text-gray-500">{linePackLabel(line)}</p>}
                                           {line.priceOptionLabel && (
                                               <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold mt-1">{line.priceOptionLabel}</div>
                                           )}
@@ -1984,13 +2018,16 @@ const PODetail = () => {
                                                   type="number" 
                                                   className="w-20 px-2 py-1 text-center border rounded dark:bg-gray-800 dark:border-gray-700 dark:text-white"
                                                   value={line.quantityOrdered}
-                                                  min={1}
-                                                  step={1}
+                                                  min={packRuleFor(line.itemId).size || 1}
+                                                  step={packRuleFor(line.itemId).size || 1}
                                                   onChange={(e) => handleLineQtyChange(line.id, e.target.value)}
+                                                  onBlur={() => commitLinePackQuantity(line.id)}
+                                                  aria-label={`Quantity for ${line.sku}`}
                                               />
                                           ) : (
                                               line.quantityOrdered
                                           )}
+                                          {isEditing && <p className="mt-1 text-[10px] text-gray-500">{packRuleLabel(packRuleFor(line.itemId))}</p>}
                                       </td>
                                       <td className="px-4 py-4 text-center">
                                           <div className="flex flex-col items-center justify-center">
@@ -2407,6 +2444,7 @@ const PODetail = () => {
                                                 <span className="font-mono">SKU: {line.sku || '-'}</span>
                                                 <span>•</span>
                                                 <span>Qty Requested: <strong>{line.quantityOrdered}</strong></span>
+                                                <span>{linePackLabel(line)}</span>
                                                 <span>•</span>
                                                 <span>Price: {formatCurrency(line.unitPrice)}</span>
                                             </div>
@@ -2684,6 +2722,7 @@ const PODetail = () => {
                         <div className="text-gray-400 font-mono text-[11px] flex items-center gap-2">
                           <span>{line.sku}</span>
                           <span>· Qty: {line.quantityOrdered}</span>
+                          <span>{linePackLabel(line)}</span>
                         </div>
                       </div>
 

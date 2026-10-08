@@ -1,4 +1,5 @@
 import React from 'react';
+import { linePackLabel } from '../utils/orderPackSnapshot.ts';
 import { X, Copy, Printer, FileText, CheckCircle2, DollarSign, Info } from 'lucide-react';
 import { PORequest } from '../types';
 import { calculateLinePricing, calculatePOTotals, formatCurrency } from '../utils/taxCalculations';
@@ -226,7 +227,7 @@ const ConcurExportModal: React.FC<ConcurExportModalProps> = ({ po, onClose }) =>
                                     const pricing = calculateLinePricing(line.quantityOrdered, line.unitPrice, line.taxCode || 'GST', line.taxRate ?? 10.0);
                                     return (
                                         <tr key={line.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
-                                            <td className="py-3 px-3 font-medium text-gray-900 dark:text-gray-100 max-w-[200px] truncate">{line.itemName}</td>
+                                            <td className="py-3 px-3 font-medium text-gray-900 dark:text-gray-100 max-w-[200px] truncate"><div>{line.itemName}</div><p className="text-[10px] text-gray-500">{linePackLabel(line)}</p></td>
                                             <td className="py-3 px-3 text-gray-500 dark:text-gray-400 font-mono">{line.sku}</td>
                                             <td className="py-3 px-3 text-center text-xs text-gray-600 dark:text-gray-300 font-mono">{line.needByDate || (po.requestDate ? po.requestDate.split('T')[0] : '-')}</td>
                                             <td className="py-3 px-3 text-center font-semibold text-gray-900 dark:text-gray-100">{pricing.quantityOrdered}</td>

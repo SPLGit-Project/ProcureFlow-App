@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node scripts/serve-production.mjs",
     "test:stock": "node scripts/test_stock_accuracy.mjs",
+    "test:packs": "node scripts/test_order_packs.mjs",
+    "preview:packs": "node scripts/preview_order_packs.mjs",
     "test:startup": "node --test tests/startup/*.test.mjs",
     "dev": "vite --mode staging",
     "dev:prod": "vite --mode production",

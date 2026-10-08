@@ -1,0 +1,98 @@
+{
+  "feature_id": "supplier-pack-quantities",
+  "release_state": "HELD",
+  "prepared_date": "2026-10-07",
+  "source_app_commit": "d36775c64ca6002be1d5009322e840b8058f45ec",
+  "guide_pages": 7,
+  "template_sha256": "f9468dfbef1c76aac90e31fffa75144cdc41182c7d872beb8c4c7493deb77d7f",
+  "video": {
+    "status": "decode, loudness, caption completeness and timing checks passed",
+    "duration_seconds": 115.49000000000001,
+    "size": [
+      1920,
+      1080
+    ],
+    "fps": 24.0,
+    "integrated_lufs": -15.99,
+    "true_peak_db": -1.45,
+    "captions": 32,
+    "scenes": 8,
+    "time_compression": false
+  },
+  "voice_reference_sha256": "69d3f688d718fab4b08751ba2996f592dc7d8535388b229a6f1de6c57c087b41",
+  "qa": {
+    "all_guide_pages_reviewed": true,
+    "all_video_scenes_reviewed": true,
+    "full_decode_passed": true,
+    "speech_alignment_reviewed": true,
+    "human_listening_review": false
+  },
+  "screen_provenance": {
+    "route": "localhost:3107",
+    "fixture": "tests/fixtures/order-packs-preview.tsx",
+    "components": [
+      "POCreate",
+      "PODetail",
+      "DeliveryModal"
+    ],
+    "data": "illustrative; no Supabase connection",
+    "capture": "CUA actual browser screenshots; crops only, no content edits",
+    "request_crop": [
+      20,
+      60,
+      1240,
+      704
+    ],
+    "cart_crop": [
+      862,
+      268,
+      1240,
+      704
+    ],
+    "receipt_crop": [
+      256,
+      41,
+      1024,
+      680
+    ],
+    "receipt_detail_crop": [
+      276,
+      274,
+      994,
+      437
+    ]
+  },
+  "remaining_launch_steps": "See RELEASE-NOTES.md",
+  "files": [
+    {
+      "file": "07_ProcureFlow_Supplier_Bale_and_Carton_Quantities.docx",
+      "bytes": 400876,
+      "sha256": "56e17e139156a6c15cdf77098108e2957c834b6918c8377808564d2b690f283b"
+    },
+    {
+      "file": "07_ProcureFlow_Supplier_Bale_and_Carton_Quantities.pdf",
+      "bytes": 323016,
+      "sha256": "6795231189d946c1d118efa223ed0334f9cdea20b75db2ad7c54f406f32f658b"
+    },
+    {
+      "file": "ProcureFlow_Supplier_Pack_Quantities_Explainer.mp4",
+      "bytes": 6721921,
+      "sha256": "72494b17905b848bdaecb863fcd5e8b37897902a7e42f3f681b92b30d7cbbc37"
+    },
+    {
+      "file": "ProcureFlow_Supplier_Pack_Quantities_Explainer.srt",
+      "bytes": 3108,
+      "sha256": "77235807500b5da252cc5162bc58dfd5d02b7c439124e0384896939c25efad56"
+    },
+    {
+      "file": "ProcureFlow_Supplier_Pack_Quantities_Transcript.txt",
+      "bytes": 2237,
+      "sha256": "15c687141ca0ddd35adc497867ddf17595d3cb4252c0d004f7365826cecc7077"
+    },
+    {
+      "file": "supplier-pack-quantities.jpg",
+      "bytes": 154968,
+      "sha256": "222e5bc9ca1e32f96e0704253652587a64abd613382213490a3ad4389138cf4b"
+    }
+  ]
+}

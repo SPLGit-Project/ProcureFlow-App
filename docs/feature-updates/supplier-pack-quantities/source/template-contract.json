@@ -1,0 +1,451 @@
+{
+  "reference": "../../../../.agents/skills/procureflow-feature-update/assets/guide-template.docx",
+  "sha256": "f9468dfbef1c76aac90e31fffa75144cdc41182c7d872beb8c4c7493deb77d7f",
+  "slots": {
+    "0": {
+      "expected": "FEATURE UPDATE 03  /  ASSOCIATED TRAINING",
+      "text": "FEATURE UPDATE 07  /  ASSOCIATED TRAINING"
+    },
+    "1": {
+      "expected": "Select",
+      "text": "Check"
+    },
+    "2": {
+      "expected": "Explain",
+      "text": "Order"
+    },
+    "3": {
+      "expected": "Approve",
+      "text": "Receive"
+    },
+    "5": {
+      "expected": "NCC and alternate-supplier requests",
+      "text": "Supplier bale and carton quantities"
+    },
+    "6": {
+      "expected": "Make the supplier choice clear from selection through approval.",
+      "text": "Request full supplier packs and record actual units delivered."
+    },
+    "10": {
+      "expected": "Start with NCC",
+      "text": "Check the pack"
+    },
+    "11": {
+      "expected": "Confirm the preferred offer",
+      "text": "Use the selected supplier size"
+    },
+    "13": {
+      "expected": "Explain an exception",
+      "text": "Order full packs"
+    },
+    "14": {
+      "expected": "Record a meaningful justification",
+      "text": "Review the adjusted quantity"
+    },
+    "16": {
+      "expected": "Review and approve",
+      "text": "Receive actual units"
+    },
+    "17": {
+      "expected": "Check need supplier and authority",
+      "text": "Keep partial deliveries accurate"
+    },
+    "22": {
+      "expected": "Discover the new feature, find it in the app and follow the associated workflow.",
+      "text": "Discover the new feature, find it in the app and follow the associated workflow."
+    },
+    "23": {
+      "expected": "NCC and alternate-supplier requests",
+      "text": "Supplier bale and carton quantities"
+    },
+    "24": {
+      "expected": "Make the supplier choice clear from selection through approval.",
+      "text": "Request quantities now follow the selected supplier's confirmed pack size."
+    },
+    "26": {
+      "expected": "NCC is presented as the preferred supplier. Alternate offers and requests carry visible flags, with the business justification recorded in Additional Comments for approval review.",
+      "text": "Quantities round up to whole bales or cartons. The pack size is saved with each order line and remains visible through purchasing, receiving, finance and reports."
+    },
+    "28": {
+      "expected": "Supplier Stock \u2192 Order NCC or Order Alt \u2192 Create Request. The supplier field shows the preference or caution; the request detail screen carries the alternate flag and comments into approval.",
+      "text": "Create Request and Request Details show bale/carton information. Supplier Stock and stock reports show orderable full-pack quantities. Record Delivery uses actual units."
+    },
+    "30": {
+      "expected": "Choose the offer \u2192 confirm request and cart details \u2192 explain any supplier exception \u2192 Submit Request \u2192 approver reviews the need, supplier choice and authority.",
+      "text": "Select the supplier and item, check the pack, review the adjusted quantity and total, then submit. After approval, follow the existing Concur handover and record actual receipts."
+    },
+    "33": {
+      "expected": "NCC preference in Create Request",
+      "text": "Check and adjust a request"
+    },
+    "35": {
+      "expected": "Check the cart and submit",
+      "text": "Review the cart and drafts"
+    },
+    "37": {
+      "expected": "Explain an alternate supplier",
+      "text": "Resolve unconfirmed pack sizes"
+    },
+    "39": {
+      "expected": "Review the request as an approver",
+      "text": "Receive actual delivered quantities"
+    },
+    "41": {
+      "expected": "Supplier-choice checklist",
+      "text": "Saved pack details and quick checks"
+    },
+    "45": {
+      "expected": "An alternate flag or a generic stored reason is not a complete justification. Record the actual supply constraint and business case in comments.",
+      "text": "A 30-unit pack changes an entry of 31 to 60. Check the adjustment before submitting; during receiving, enter only the units actually delivered."
+    },
+    "46": {
+      "expected": "NCC preference in Create Request",
+      "text": "Check and adjust a request"
+    },
+    "47": {
+      "expected": "The preferred-supplier controls continue from the directory into request creation. Order NCC passes the selected product and supplier into Create Request.",
+      "text": "The selected supplier determines the pack. Confirm the product and bale/carton size before adding it to the order."
+    },
+    "49": {
+      "expected": "Supplier Stock \u2192 Order NCC \u2192 Create Request; the supplier field shows Default Preferred.",
+      "text": "Create Request > select supplier > open item > Quantity."
+    },
+    "51": {
+      "expected": "The request header shows supplier preference, delivery site, dates, category and comments.",
+      "text": "Actual branch preview: 31 adjusts to 60 for a 30-unit pack. Illustrative product and supplier records."
+    },
+    "55": {
+      "expected": "Confirm the supplier",
+      "text": "Check the supplier"
+    },
+    "56": {
+      "expected": "Check NCC Apparel and the Default Preferred badge. A fresh request normally defaults to NCC unless a supplier was passed in or restored from a draft.",
+      "text": "Confirm the supplier and matching product. Another supplier can have a different pack size for the same catalogue item."
+    },
+    "62": {
+      "expected": "Select the delivery site",
+      "text": "Read the bale or carton size"
+    },
+    "63": {
+      "expected": "Choose the receiving site. Users assigned to multiple sites must make an explicit selection.",
+      "text": "The displayed size counts ordering units per full pack. For this illustration, one pack contains 30 Each."
+    },
+    "68": {
+      "expected": "Describe the requirement",
+      "text": "Enter the required units"
+    },
+    "69": {
+      "expected": "Enter the customer or requirement name, select its category and choose Depletion, New Customer or Other.",
+      "text": "Type 31 and leave the quantity field. The app adjusts it up to 60 and displays an explanation; valid 30 and 60 stay unchanged."
+    },
+    "75": {
+      "expected": "Set the need by date",
+      "text": "Use the pack controls"
+    },
+    "76": {
+      "expected": "Enter the actual required date. Apply it to existing cart lines where needed; a header default does not replace every existing line date.",
+      "text": "Plus and minus move by one full pack. Quantities and prices remain in the item's ordering UOM, such as Each."
+    },
+    "81": {
+      "expected": "Add useful comments",
+      "text": "Review the adjustment"
+    },
+    "82": {
+      "expected": "State delivery instructions and any information the approver needs.",
+      "text": "Confirm the rounded quantity meets your need. Check availability, price and the recalculated amount before adding the line."
+    },
+    "87": {
+      "expected": "Required information",
+      "text": "Confirmed loose ordering"
+    },
+    "88": {
+      "expected": "Use the actual receiving site, customer or requirement, reason, quantity and required date. Confirm each line before submitting.",
+      "text": "A supplier-confirmed pack of 1 permits loose units. A catalogue default of 1 alone does not confirm that the supplier accepts them."
+    },
+    "89": {
+      "expected": "From stock selection to a submitted request",
+      "text": "Review the cart and drafts"
+    },
+    "90": {
+      "expected": "The directory handover pre-fills the offer. Confirm the quantity and value before submission; the reservation begins only after approval.",
+      "text": "Full-pack ordering also applies when you save a draft or change a request. An older odd-quantity draft needs correction before submission."
+    },
+    "92": {
+      "expected": "Create Request \u2192 expanded Order Summary \u2192 Submit Request.",
+      "text": "Create Request > Order Summary > Save Draft or Submit Request."
+    },
+    "95": {
+      "expected": "The expanded Order Summary confirms quantity 120 and the recalculated totals.",
+      "text": "The cart shows 60 units, a 30-unit pack and 2 full packs. Totals remain based on units."
+    },
+    "98": {
+      "expected": "01  Confirm the cart line",
+      "text": "01  Confirm the item and pack"
+    },
+    "99": {
+      "expected": "Check HSPG02, the description and the supplier-specific price.",
+      "text": "Check the supplier, product and displayed bale/carton size."
+    },
+    "100": {
+      "expected": "02  Set the quantity to 120",
+      "text": "02  Review the quantity"
+    },
+    "101": {
+      "expected": "Type 120 in the quantity field, then press Enter or click outside the field so the totals recalculate. Check any carton or pack requirements.",
+      "text": "Check the rounded quantity and full-pack count. Correct any older draft line flagged for adjustment before saving or submitting."
+    },
+    "102": {
+      "expected": "03  Check the line date",
+      "text": "03  Check the receiving details"
+    },
+    "103": {
+      "expected": "Confirm the need-by date on the cart line, including after a bulk date change.",
+      "text": "Confirm the receiving site and the actual need-by date on every line."
+    },
+    "104": {
+      "expected": "04  Verify the amounts",
+      "text": "04  Verify the amounts"
+    },
+    "105": {
+      "expected": "For NCC HSPG02 at AUD 5.56, 120 units total AUD 667.20 excluding GST. At 10% GST, tax is AUD 66.72 and the total is AUD 733.92.",
+      "text": "In this illustration, 60 units at AUD 5.56 total AUD 333.60 excluding GST, AUD 33.36 GST and AUD 366.96 including GST."
+    },
+    "106": {
+      "expected": "05  Submit or retain a draft",
+      "text": "05  Save or submit"
+    },
+    "107": {
+      "expected": "Choose Submit Request when the details are ready. Save Draft preserves work for later; a draft does not hold stock.",
+      "text": "Choose Save Draft to retain the request, or Submit Request when the details are ready. A saved draft does not reserve stock."
+    },
+    "108": {
+      "expected": "06  Check the submitted record",
+      "text": "06  Follow the existing handover"
+    },
+    "109": {
+      "expected": "Open the resulting request and confirm its reference and pending approval status. Do not submit the same requirement again.",
+      "text": "Check the saved request and approval status. After approval, create and link the actual Concur PR and then the issued PO."
+    },
+    "110": {
+      "expected": "Expected result",
+      "text": "When an order changes"
+    },
+    "111": {
+      "expected": "The request is awaiting approval. The 48-hour reservation window starts when approval is recorded, rather than while you are building the cart.",
+      "text": "Changing ordered quantities or the supplier checks the applicable pack again. Later supplier reports and receipt-only edits do not rewrite the saved order's pack."
+    },
+    "112": {
+      "expected": "Alternate suppliers and justification",
+      "text": "Resolve unconfirmed pack sizes"
+    },
+    "113": {
+      "expected": "Alternate offers are now clearly distinguished from NCC. The choice is flagged in Create Request and on the request presented for approval.",
+      "text": "New ordering is blocked when the supplier pack is missing or conflicting. Physical stock can still be visible, but a full-pack orderable quantity cannot be confirmed."
+    },
+    "115": {
+      "expected": "Supplier Stock \u2192 Order Alt \u2192 Create Request \u2192 supplier field and Additional Comments.",
+      "text": "Create Request > open item; Supplier Stock > orderable balance and pack details."
+    },
+    "117": {
+      "expected": "The caution icon flags the alternate supplier; the comments provide the business explanation.",
+      "text": "An unconfirmed pack disables Add to Order and asks Procurement to confirm the size."
+    },
+    "121": {
+      "expected": "Choose Order Alt",
+      "text": "Read the message"
+    },
+    "122": {
+      "expected": "Select the alternate offer, then verify the supplier in Create Request. Switching suppliers clears the existing cart; review or re-add the required items.",
+      "text": "Check the item and supplier. Do not treat a zero orderable balance as proof that there is no physical stock."
+    },
+    "128": {
+      "expected": "Record the exception in comments",
+      "text": "Ask Procurement to confirm"
+    },
+    "129": {
+      "expected": "Explain why NCC cannot meet the requirement and why the selected alternate is suitable.",
+      "text": "Provide the product and supplier code. Procurement confirms the pack using the existing supplier report carton data or catalogue pack configuration."
+    },
+    "134": {
+      "expected": "Confirm price and supply",
+      "text": "Refresh the information"
+    },
+    "135": {
+      "expected": "Check the supplier code, specification, pack, quantity, lead time and total.",
+      "text": "Once the source is corrected, refresh the app and reopen the item. Check that the displayed pack matches the selected supplier."
+    },
+    "141": {
+      "expected": "Submit for review",
+      "text": "Review before retrying"
+    },
+    "142": {
+      "expected": "The request is marked Alternate Non-NCC for the approver. Follow the configured approval workflow for the designated approver.",
+      "text": "Re-enter the required units, review any adjustment and the total, then continue with the existing request workflow."
+    },
+    "145": {
+      "expected": "What the justification must cover",
+      "text": "How pack information is configured"
+    },
+    "146": {
+      "expected": "Record the actual supply constraint, why the alternate product is suitable, its confirmed lead time, quantity, price and value. Provide enough information for the designated approver to assess the exception.",
+      "text": "The feature reuses catalogue UPQ and supplier carton data in the existing ordering UOM. Supplier pack data takes priority; a known catalogue UPQ above 1 can provide a fallback."
+    },
+    "147": {
+      "expected": "The current screen can store a generic alternate reason automatically. Put the meaningful justification in Additional Comments and follow the configured approval workflow. Use the visible Order Alt action to begin the exception request.",
+      "text": "Stock conversion factors, pricing conversion factors and minimum order quantities have separate meanings. Users do not need to create a new Bale/Carton UOM or guess a pack size."
+    },
+    "148": {
+      "expected": "What approvers will now see",
+      "text": "Receive actual delivered quantities"
+    },
+    "149": {
+      "expected": "The supplier exception remains visible at approval. Review Alternate Non-NCC and the comments alongside the requirement, stock position and value.",
+      "text": "The order's saved pack remains visible during receiving. Enter the actual units delivered, including a partial carton or shortage."
+    },
+    "151": {
+      "expected": "Approval queue or request list \u2192 open the pending request \u2192 supplier flag and comments.",
+      "text": "Request Details > Record Delivery > Qty received (Each or the saved UOM)."
+    },
+    "153": {
+      "expected": "The saved request retains the supplier exception and comments. Decision controls appear when you are the assigned approver for a pending request.",
+      "text": "The order is for 60 Each in two packs. Receiving 7 Each stays 7; this is an illustrative receipt."
+    },
+    "157": {
+      "expected": "Open the pending request",
+      "text": "Open Record Delivery"
+    },
+    "158": {
+      "expected": "Use the approval queue or request list to open the pending request assigned to you.",
+      "text": "Open the active order and select the receiving action available to your role. Confirm its reference, supplier and product."
+    },
+    "164": {
+      "expected": "Check the requirement",
+      "text": "Enter docket and date"
+    },
+    "165": {
+      "expected": "Review site, customer, requested quantities, need-by dates, prices and total value.",
+      "text": "Record the actual docket or packing-slip reference and receiving date. Use the supplier's delivered quantities."
+    },
+    "170": {
+      "expected": "Review supplier exceptions",
+      "text": "Enter actual units"
+    },
+    "171": {
+      "expected": "Look for Alternate Non-NCC and read the comments. Confirm that the reason and the proposed supply meet the requirement; follow the configured approval workflow.",
+      "text": "In Qty received, enter 7 when 7 units arrive. Receiving does not round partial cartons up to a full pack."
+    },
+    "177": {
+      "expected": "Check stock and authority",
+      "text": "Check completion"
+    },
+    "178": {
+      "expected": "Review the current directory balance and any supply uncertainty. Confirm the request sits within your approval authority and any separation-of-duties requirements.",
+      "text": "Use Mark Complete only when the line should be closed. If further units are still due, leave it open and follow the existing shortage process."
+    },
+    "183": {
+      "expected": "Record a decision",
+      "text": "Add any unplanned item"
+    },
+    "184": {
+      "expected": "Select Approve or Reject as appropriate. If information needs correction, resolve it with the requester before approval.",
+      "text": "Use Add Unplanned Item for goods outside the original order. These have no quantity ordered; they are not a new carton order."
+    },
+    "190": {
+      "expected": "Verify the handover",
+      "text": "Confirm and verify"
+    },
+    "191": {
+      "expected": "After approval, check that the request moves to its Concur entry stage and the reservation banner appears. The requester should now create and link the PR.",
+      "text": "Choose Confirm Receipt, then check the delivery record and remaining balance. Follow the existing variance review for unplanned goods or discrepancies."
+    },
+    "194": {
+      "expected": "Expected result",
+      "text": "Finance and reconciliation"
+    },
+    "195": {
+      "expected": "The approval is recorded in the request history and the 48-hour clock begins. Approving within ProcureFlow does not itself lodge the PR in Concur or place an order with the supplier.",
+      "text": "Finance and line-level reports retain saved pack context while receipts and amounts remain in ordering units. Concur quantities, unit prices and export formats keep their existing meaning."
+    },
+    "196": {
+      "expected": "Supplier-choice checklist",
+      "text": "Saved pack details and quick checks"
+    },
+    "197": {
+      "expected": "Check the supplier decision before it becomes an approved allocation.",
+      "text": "The pack recorded with an order explains what was requested without changing how units and prices are counted."
+    },
+    "198": {
+      "expected": "Requester checklist",
+      "text": "After saving and reloading"
+    },
+    "199": {
+      "expected": "Correct supplier and product; correct receiving site; appropriate requirement and reason; quantities and packs checked; current price and total checked; correct line dates; meaningful comments for the approver.",
+      "text": "Request Details shows the saved bale/carton size, ordering UOM and full-pack count. For 60 Each at 30 per pack, the order shows 2 full packs. Later supplier changes do not rewrite that history."
+    },
+    "200": {
+      "expected": "Supplier exception review",
+      "text": "Legacy orders and unplanned receipts"
+    },
+    "201": {
+      "expected": "Record the actual supply constraint, why the alternate product is suitable, its confirmed lead time, quantity, price and value. Provide enough information for the designated approver to assess the exception.",
+      "text": "Older orders without a captured pack show Pack size not recorded (legacy order). Unplanned receipts show no quantity ordered. Do not infer historical packs from today's supplier report."
+    },
+    "202": {
+      "expected": "Approver checklist",
+      "text": "Finance and reports"
+    },
+    "203": {
+      "expected": "Confirm the requirement, stock and supply timing, supplier exception, price, total and approval authority. Resolve unclear comments before approving. Verify that the saved decision appears on the request.",
+      "text": "Finance displays the saved pack context. Line-level CSV exports include Ordering UOM, Bale/carton size at order and Ordered pack equivalents. Existing totals remain based on units."
+    },
+    "204": {
+      "expected": "Handover after approval",
+      "text": "Before submitting"
+    },
+    "205": {
+      "expected": "Approval begins the 48-hour reservation window. The requester or authorised Concur user creates the real PR and links its number using Enter Request #. A linked PR preserves the hold while the issued PO is awaited; later use Link Concur PO \u2192 Sync & Activate.",
+      "text": "Check the supplier, product, confirmed pack, rounded quantity, price, GST, total and need-by dates. During receiving, enter actual units. A 7-unit receipt is not a full carton even when the order pack is 30."
+    },
+    "206": {
+      "expected": "Quick check",
+      "text": "When this update applies"
+    },
+    "207": {
+      "expected": "Does a saved draft hold stock? No. The holding window starts when approval is recorded.",
+      "text": "This guide is prepared for the held feature release. Screens show the actual unreleased branch with illustrative records. Confirm release availability before using these steps in production."
+    }
+  },
+  "images": [
+    {
+      "index": 3,
+      "file": "request.png",
+      "max_width_pt": 511.28,
+      "max_height_pt": 170
+    },
+    {
+      "index": 4,
+      "file": "rounding.png",
+      "max_width_pt": 511.28,
+      "max_height_pt": 205
+    },
+    {
+      "index": 10,
+      "file": "cart.png",
+      "max_width_pt": 208,
+      "max_height_pt": 385
+    },
+    {
+      "index": 11,
+      "file": "unknown.png",
+      "max_width_pt": 511.28,
+      "max_height_pt": 195
+    },
+    {
+      "index": 16,
+      "file": "receipt-detail.png",
+      "max_width_pt": 511.28,
+      "max_height_pt": 195
+    }
+  ],
+  "title": "ProcureFlow Supplier Bale and Carton Quantities Feature Update"
+}

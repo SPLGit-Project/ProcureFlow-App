@@ -1,5 +1,6 @@
 
 import { useState, useMemo } from 'react';
+import { linePackLabel } from '../utils/orderPackSnapshot.ts';
 import { useApp } from '../context/AppContext';
 import { Search, Calendar, Filter, FileText, ChevronDown, ChevronRight, CheckCircle2, DollarSign, Copy, MapPin, X } from 'lucide-react';
 import ContextHelp from './ContextHelp';
@@ -74,6 +75,7 @@ const FinanceView = () => {
                     item: poLine?.itemName || 'Unknown',
                     sku: poLine?.sku || '',
                     qty: dLine.quantity,
+                    packLabel: poLine ? linePackLabel(poLine) : 'Pack size not recorded',
                     unitPrice: poLine?.unitPrice || 0,
                     totalValue: (poLine?.unitPrice || 0) * dLine.quantity,
                     freightAmount: dLine.freightAmount || 0,
@@ -373,6 +375,7 @@ const FinanceView = () => {
                                                             <td className="px-4 py-3">
                                                                 <div className="font-medium text-gray-900 dark:text-white">{line.item}</div>
                                                                 <div className="text-xs text-gray-400 font-mono">{line.sku}</div>
+                                                                <p className="text-xs text-gray-500">{line.packLabel}</p>
                                                             </td>
                                                             <td className="px-4 py-3 text-center text-gray-600 dark:text-gray-300">
                                                                 {line.qty}
@@ -447,6 +450,7 @@ const FinanceView = () => {
                                                             <div className="min-w-0 flex-1">
                                                                 <div className="font-bold text-gray-900 dark:text-white text-sm truncate">{line.item}</div>
                                                                 <div className="text-xs text-gray-400 font-mono">{line.sku}</div>
+                                                                <p className="text-xs text-gray-500">{line.packLabel}</p>
                                                             </div>
                                                             <div className="text-right shrink-0">
                                                                 <div className="font-bold text-gray-900 dark:text-white text-sm">${line.totalValue.toLocaleString()}</div>

@@ -1,0 +1,9 @@
+{
+  "audio_sha256": "4344c785bb9bafddee245b8280f156a5ef36dd933e6d466c4fecd71add4c351e",
+  "recogniser": "faster-whisper base.en CPU int8",
+  "expected": "With thirty units per pack, entering thirty one adjusts the request to sixty when you leave the quantity field. The adjustment message explains the change. Plus and minus controls move by one full pack. Review the new quantity and recalculated totals. Check the receiving site, each line's need by date, price and total. Save Draft keeps your work for later. If an older draft contains an odd quantity, correct it to a full pack before saving or submitting. Follow the existing approval and Concur handover.",
+  "recognised": "With 30 units per pack, entering 31 adjusts the request to 60 when you leave the quantity field. The adjustment message explains the change, plus and minus controls move by one full pack. Review the new quantity and recalculated totals. Check the receiving site. Each line's need by date, price and total. Save draft keeps your work for later. If an older draft contains an odd quantity, correct it to a full pack before saving or submitting. Follow the existing approval and concur handover.",
+  "matching_ratio": 1.0,
+  "differences": [],
+  "duration": 29.84
+}

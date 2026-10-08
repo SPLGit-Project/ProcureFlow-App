@@ -1,0 +1,14 @@
+{
+  "status": "decode, loudness, caption completeness and timing checks passed",
+  "duration_seconds": 115.49000000000001,
+  "size": [
+    1920,
+    1080
+  ],
+  "fps": 24.0,
+  "integrated_lufs": -15.99,
+  "true_peak_db": -1.45,
+  "captions": 32,
+  "scenes": 8,
+  "time_compression": false
+}

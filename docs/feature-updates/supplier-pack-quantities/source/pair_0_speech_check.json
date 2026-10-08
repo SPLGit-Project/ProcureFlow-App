@@ -1,0 +1,28 @@
+{
+  "audio_sha256": "2554cca2f5d52cd2602cee10b008ce13705a59d0478e71c92cab8f7fcfa6dc11",
+  "recogniser": "faster-whisper base.en CPU int8",
+  "expected": "Procure Flow now helps you request quantities that suppliers can fulfil as full bales or cartons. The selected supplier's pack size follows the request through approval, purchasing and receiving. Here's how to use it. Start in Create Request, or select a supplier offer from Supplier Stock. Confirm the supplier and product, then check the bale or carton size shown for that item. Another supplier may use a different pack size.",
+  "recognised": "Procure Flow now helps you request quantities that suppliers can fulfill as full bales or cartons. The selected supplier's pack size follows the request through approval, purchasing, and receiving. Here's how to use it. Start and create request, or select a supplier offer from Supplier Stock. Confirm the supplier and product, then check the bale or carton size shown for that item. Another supplier may use a different pack size.",
+  "matching_ratio": 0.9714285714285714,
+  "differences": [
+    {
+      "type": "replace",
+      "expected": [
+        "fulfil"
+      ],
+      "recognised": [
+        "fulfill"
+      ]
+    },
+    {
+      "type": "replace",
+      "expected": [
+        "in"
+      ],
+      "recognised": [
+        "and"
+      ]
+    }
+  ],
+  "duration": 23.84
+}

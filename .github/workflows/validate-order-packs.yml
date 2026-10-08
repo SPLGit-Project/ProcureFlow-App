@@ -1,0 +1,38 @@
+name: Validate supplier pack quantities
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/validate-order-packs.yml'
+      - 'components/**'
+      - 'services/db.ts'
+      - 'types.ts'
+      - 'context/AppContext.tsx'
+      - 'utils/**'
+      - 'scripts/test_order_packs.mjs'
+      - 'scripts/preview_order_packs.mjs'
+      - 'tests/**'
+      - 'supabase/migrations/**'
+      - 'supabase/migration-history.json'
+      - 'package*.json'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run test:packs
+      - run: npm run test:stock
+      - run: npm run test:startup
+      - run: node --test tests/deployment/*.test.mjs
+      - run: node scripts/verify_supabase_migrations.mjs
