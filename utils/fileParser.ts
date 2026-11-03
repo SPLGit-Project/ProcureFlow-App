@@ -315,10 +315,17 @@ function detectSupplierFromContent(
     // Simba sends two separate files: one for Healthcare customers and one for
     // Accommodation customers. The segment is identified from body text, headers,
     // and the filename — in that priority order.
+    const hasSimbaCustomerCode =
+        headerText.includes('customer stock code') ||
+        headerText.includes('spl item code') ||
+        headerText.includes('customer code') ||
+        headerText.includes('cust code') ||
+        headerText.includes('spl part id');
+
     const isSimbaByContent =
         (includesAll(text, ['stock report in quantity', 'stock group customer']) &&
-         includesAll(headerText, ['sku', 'product', 'customer stock code', 'stocktype'])) ||
-        includesAll(text, ['stock group customer']) && includesAll(headerText, ['customer stock code', 'stocktype']);
+         includesAll(headerText, ['sku', 'product', 'stocktype']) && hasSimbaCustomerCode) ||
+        (includesAll(text, ['stock group customer']) && includesAll(headerText, ['stocktype']) && hasSimbaCustomerCode);
 
     const isSimbaByFilename =
         fileNameLower.includes('simba') &&

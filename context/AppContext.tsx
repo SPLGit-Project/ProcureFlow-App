@@ -6,6 +6,7 @@ import { Session } from '@supabase/supabase-js';
 import { DirectoryService } from '../services/graphService.ts';
 import { notificationEngineService } from '../services/notificationEngineService.ts';
 import { realtimeNotificationService } from '../services/realtimeNotificationService.ts';
+import { siteApprovalIntegrationService } from '../services/siteApprovalIntegrationService.ts';
 import { canonicalSupplierName, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import { calculateItemRunningStock, StockBreakdown } from '../utils/reservationUtils.ts';
 import {
@@ -1977,6 +1978,11 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
           }
       }
 
+      // Check per-site assigned approval workflow authority
+      if (!siteApprovalIntegrationService.canApproveOrderWithSiteWorkflowSync(po, currentUser, roles)) {
+          return false;
+      }
+
       return true;
   }, [currentUser, roles]);
 
@@ -2463,6 +2469,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         // NOTIFICATION TRIGGER
         sendNotification('PO_CREATED', { poId: displayId, requesterId: po.requesterId, amount: po.totalAmount });
         logAction('PO_CREATED', { id: displayId, amount: po.totalAmount }, { requester: po.requesterName });
+        siteApprovalIntegrationService.onRequisitionCreated({ ...po, displayId }, currentUser).catch(console.warn);
         setPos(prev => [{ ...po, displayId }, ...prev]);
         return true;
     } catch (error) {
@@ -2646,10 +2653,16 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             const po = pos.find(p => p.id === poId);
             if (po) sendNotification('PO_APPROVED', { poId: po.displayId || po.id, approver: event.approverName });
             logAction('PO_APPROVED', { id: poId, status, reservationExpiresAt: expiryIso });
+            if (po) siteApprovalIntegrationService.onPOApproved({ ...po, status }, { id: currentUser?.id, name: event.approverName, role: currentUser?.role }).catch(console.warn);
         } else if (status === 'REJECTED') {
             const po = pos.find(p => p.id === poId);
             if (po) sendNotification('PO_REJECTED', { poId: po.displayId || po.id, rejector: event.approverName });
             logAction('PO_REJECTED', { id: poId, status });
+            if (po) siteApprovalIntegrationService.onPORejected({ ...po, status }, { id: currentUser?.id, name: event.approverName, role: currentUser?.role }, event.comments).catch(console.warn);
+        } else if ((event.action as string) === 'ESCALATED' || (status as string) === 'ESCALATED') {
+            const po = pos.find(p => p.id === poId);
+            if (po) siteApprovalIntegrationService.onPOEscalated({ ...po, status }, { id: currentUser?.id, name: event.approverName, role: currentUser?.role }, event.comments).catch(console.warn);
+            logAction('PO_ESCALATED', { id: poId, status });
         } else {
              logAction('PO_STATUS_CHANGE', { id: poId, status });
         }
@@ -2828,6 +2841,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       
       try {
           await db.linkConcurRequest(poId, trimmedRequestNumber);
+          const concurPoObj = pos.find(p => p.id === poId);
+          if (concurPoObj) siteApprovalIntegrationService.onConcurRequestLinked(concurPoObj, trimmedRequestNumber, currentUser ? { id: currentUser.id, name: currentUser.name, role: currentUser.role } : undefined);
           await reloadData(true, true);
           logAction('PO_CONCUR_REQUEST_LINKED', { poId, concurRequestNumber: trimmedRequestNumber });
       } catch (e: unknown) {
@@ -2866,6 +2881,8 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       
       try {
           await db.linkConcurPO(poId, trimmedPoNumber);
+          const concurLinkedObj = pos.find(p => p.id === poId);
+          if (concurLinkedObj) siteApprovalIntegrationService.onConcurPOLinked(concurLinkedObj, trimmedPoNumber, currentUser ? { id: currentUser.id, name: currentUser.name, role: currentUser.role } : undefined);
           await reloadData(true, true);
           console.log(`Successfully linked Concur PO ${trimmedPoNumber} to PO ${poId}`);
           logAction('PO_CONCUR_LINKED', { poId, concurPoNumber: trimmedPoNumber });
@@ -3174,8 +3191,9 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
                     suppliers,
                     maps,
                     snaps,
-                    pos,
-                    item.defaultOrderMultiple || 1
+                    stockPos.length > 0 ? stockPos : pos,
+                    item.defaultOrderMultiple || 1,
+                    item
                 );
                 
                 const key = `${map.productId}:${map.supplierId}`;

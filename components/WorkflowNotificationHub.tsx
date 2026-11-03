@@ -4,8 +4,9 @@ import {
     Plus, Edit2, Trash2, CheckCircle2, AlertTriangle, AlertCircle, 
     Clock, Shield, User as UserIcon, Save, X, Eye, Send, 
     RefreshCw, Zap, ArrowRight, ExternalLink, Check, Copy, Activity,
-    Loader2, Layout
+    Loader2, Layout, Building2
 } from 'lucide-react';
+import SiteApprovalWorkflowManager from './SiteApprovalWorkflowManager';
 import { 
     UnifiedWorkflowDefinition, 
     WorkflowStageDefinition, 
@@ -33,7 +34,7 @@ export const WorkflowNotificationHub: React.FC = () => {
     const { success, error, warning } = useToast();
 
     // Active Top-Level Tab
-    const [activeTab, setActiveTab] = useState<'WORKFLOWS' | 'TEMPLATES' | 'CHANNELS' | 'LOGS' | 'ANALYTICS'>('WORKFLOWS');
+    const [activeTab, setActiveTab] = useState<'SITE_WORKFLOWS' | 'WORKFLOWS' | 'TEMPLATES' | 'CHANNELS' | 'LOGS' | 'ANALYTICS'>('SITE_WORKFLOWS');
 
     // Filter active users with verified ProcureFlow system access
     const activeSystemUsers = useMemo(() => {
@@ -538,6 +539,7 @@ export const WorkflowNotificationHub: React.FC = () => {
 
             <div className="flex items-center gap-2 border-b border-gray-200 dark:border-white/10 pb-3 overflow-x-auto custom-scrollbar">
                 {[
+                    { id: 'SITE_WORKFLOWS', label: 'Site Approvals (Per Facility)', icon: Building2 },
                     { id: 'WORKFLOWS', label: 'Visual Workflow Studio', icon: GitMerge },
                     { id: 'TEMPLATES', label: 'Notification Templates & Sandbox', icon: Mail },
                     { id: 'CHANNELS', label: 'Channel Integrations', icon: MessageSquare },
@@ -563,6 +565,13 @@ export const WorkflowNotificationHub: React.FC = () => {
                     );
                 })}
             </div>
+
+            {/* TAB 0: SITE APPROVAL WORKFLOWS */}
+            {activeTab === 'SITE_WORKFLOWS' && (
+                <div className="animate-fade-in">
+                    <SiteApprovalWorkflowManager />
+                </div>
+            )}
 
             {/* TAB 1: WORKFLOWS */}
             {activeTab === 'WORKFLOWS' && (

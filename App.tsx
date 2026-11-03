@@ -88,6 +88,7 @@ const ProcurementReviewWizard = lazy(() => import('./components/wizards/Procurem
 const ProcurementQueue = lazy(() => import('./components/ProcurementQueue.tsx'));
 const NotificationCenter = lazy(() => import('./components/NotificationCenter.tsx'));
 const WorkflowNotificationHub = lazy(() => import('./components/WorkflowNotificationHub.tsx'));
+const SiteApprovalWorkflowManager = lazy(() => import('./components/SiteApprovalWorkflowManager.tsx'));
 const EOMTrackingView = lazy(() => import('./components/reports/EOMTrackingView.tsx'));
 const LinenBudgetView = lazy(() => import('./components/reports/LinenBudgetView.tsx'));
 
@@ -152,6 +153,7 @@ function App() {
               <Route path="notifications" element={<Suspense fallback={<LoadingSpinner />}><NotificationCenter /></Suspense>} />
               <Route path="supplier-stock" element={<Suspense fallback={<LoadingSpinner />}><SupplierStockDirectory /></Suspense>} />
               <Route path="admin/workflows" element={<Suspense fallback={<LoadingSpinner />}><WorkflowNotificationHub /></Suspense>} />
+              <Route path="admin/site-workflows" element={<Suspense fallback={<LoadingSpinner />}><SiteApprovalWorkflowManager /></Suspense>} />
               <Route path="smart-buying" element={<Suspense fallback={<LoadingSpinner />}><SmartBuyingDashboard /></Suspense>} />
               <Route path="data-ingest" element={<Suspense fallback={<LoadingSpinner />}><DataIngestion /></Suspense>} />
               <Route path="item-creation-preview" element={<Navigate to="/items/new-request" replace />} />

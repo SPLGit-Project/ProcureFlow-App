@@ -60,3 +60,5 @@ test-results/
 playwright-report/
 ts_errors.txt
 test_results.txt
+.playwright-cli/
+.playwright-mcp/

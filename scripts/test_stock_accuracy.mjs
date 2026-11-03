@@ -4,7 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
-import { PGlite } from '@electric-sql/pglite';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { PGlite } = require('@electric-sql/pglite');
 import XLSX from 'xlsx';
 process.on('uncaughtException', error => { console.error(error.message, error.where || '', error.position || ''); process.exit(1); });
 
