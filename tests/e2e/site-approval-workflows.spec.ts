@@ -72,7 +72,13 @@ test.describe('Per-Site Approval Workflows & Melbourne Demo', () => {
         await expect(melbourneCard.getByText('matthew.mancuso@splservices.com.au')).toBeVisible();
         await expect(melbourneCard.getByText(/Ebrahim Mokhtari/)).toBeVisible();
         await expect(melbourneCard.getByText('ebrahim.mokhtari@splservices.com.au')).toBeVisible();
-        await expect(melbourneCard.getByText('72h Auto SLA Active')).toBeVisible();
+        // Verify SPL Albury card has Matthew Mancuso and Aaron Bell (reporting/escalation)
+        const alburyCard = page.locator('text=SPL Albury').locator('xpath=ancestor::div[contains(@class, "rounded-2xl")]').first();
+        await expect(alburyCard).toBeVisible();
+        await expect(alburyCard.getByText('Matthew Mancuso')).toBeVisible();
+        await expect(alburyCard.getByText('matthew.mancuso@splservices.com.au')).toBeVisible();
+        await expect(alburyCard.getByText(/Aaron Bell/)).toBeVisible();
+        await expect(alburyCard.getByText('72h Auto SLA')).toBeVisible();
     });
 
     test('executes end-to-end Melbourne approval workflow demo & Concur handover', async ({ page }) => {
@@ -180,6 +186,6 @@ test.describe('Per-Site Approval Workflows & Melbourne Demo', () => {
         await expect(page.getByText('Configure Facility: SPL Melbourne')).toBeVisible();
         await page.getByPlaceholder('e.g. John Smith').fill('Matthew Mancuso');
         await page.getByRole('button', { name: 'Save Facility Workflow' }).click();
-        await expect(page.getByText('Matthew Mancuso', { exact: true })).toBeVisible();
+        await expect(page.getByText('Matthew Mancuso', { exact: true }).first()).toBeVisible();
     });
 });

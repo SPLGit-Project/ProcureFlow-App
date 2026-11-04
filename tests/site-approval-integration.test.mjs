@@ -29,14 +29,23 @@ async function createTestDatabase(options = {}) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS public.roles (
       id TEXT PRIMARY KEY,
-      name TEXT NOT NULL
+      name TEXT NOT NULL,
+      description TEXT
     );
 
     CREATE TABLE IF NOT EXISTS public.users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       email TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
-      role_id TEXT
+      role_id TEXT,
+      site_ids TEXT[],
+      preferences JSONB
+    );
+
+    CREATE TABLE IF NOT EXISTS public.user_roles (
+      user_id UUID NOT NULL,
+      role_id TEXT NOT NULL,
+      PRIMARY KEY (user_id, role_id)
     );
 
     CREATE TABLE IF NOT EXISTS public.sites (
@@ -64,10 +73,12 @@ async function createTestDatabase(options = {}) {
     );
 
     -- Seed baseline users
-    INSERT INTO public.users (id, email, name, role_id) VALUES
-      ('460a44d0-5237-4e59-aad3-93619d6d50cd', 'matthew.mancuso@splservices.com.au', 'Matthew Mancuso', 'SITE_MANAGER'),
-      ('9e97d720-3bf0-4451-b739-9fd87d27686c', 'ebrahim.mokhtari@splservices.com.au', 'Ebrahim Mokhtari', 'ADMIN'),
-      ('11111111-1111-1111-1111-111111111111', 'user.regular@splservices.com.au', 'Regular User', 'SITE_USER')
+    INSERT INTO public.users (id, email, name, role_id, site_ids) VALUES
+      ('460a44d0-5237-4e59-aad3-93619d6d50cd', 'matthew.mancuso@splservices.com.au', 'Matthew Mancuso', 'SITE_MANAGER', ARRAY['44444444-4444-4444-8444-444444444444']),
+      ('805b9626-1779-43ae-bb8f-970bbb1503f7', 'teegan.paterson@splservices.com.au', 'Teegan Paterson', 'SITE_MANAGER', ARRAY['99999999-9999-4999-8999-999999999999']),
+      ('a6e2810c-2b85-4ee1-81cb-a6fe3cc71378', 'aaron.bell@splservices.com.au', 'Aaron Bell', 'ADMIN', ARRAY['44444444-4444-4444-8444-444444444444', '99999999-9999-4999-8999-999999999999']),
+      ('9e97d720-3bf0-4451-b739-9fd87d27686c', 'ebrahim.mokhtari@splservices.com.au', 'Ebrahim Mokhtari', 'ADMIN', ARRAY[]::TEXT[]),
+      ('11111111-1111-1111-1111-111111111111', 'user.regular@splservices.com.au', 'Regular User', 'SITE_USER', ARRAY[]::TEXT[])
     ON CONFLICT (email) DO NOTHING;
   `);
 
@@ -78,6 +89,10 @@ async function createTestDatabase(options = {}) {
   // 3. Execute Site Manager role migration
   const siteManagerRoleSql = fs.readFileSync('supabase/migrations/20261104000000_create_site_manager_role.sql', 'utf8');
   await db.exec(siteManagerRoleSql);
+
+  // 4. Execute Albury approver & reporting migration
+  const alburyReportingSql = fs.readFileSync('supabase/migrations/20261104010000_assign_mack_albury_and_teegan_reporting.sql', 'utf8');
+  await db.exec(alburyReportingSql);
 
   return db;
 }
@@ -98,6 +113,17 @@ test('1. Durable PostgreSQL Migration: Executes schema v2 and validates seed sta
   assert.equal(melb.escalation_sla_hours, 72);
   assert.equal(melb.sla_status, 'ACTIVE_AUTO');
   assert.equal(melb.is_active, true);
+
+  const albury = workflows.rows.find(r => r.site_name === 'SPL Albury');
+  assert.ok(albury);
+  assert.equal(albury.approval_manager_name, 'Matthew Mancuso');
+  assert.equal(albury.approval_manager_email, 'matthew.mancuso@splservices.com.au');
+  assert.equal(albury.escalation_manager_name, 'Aaron Bell');
+  assert.equal(albury.escalation_manager_email, 'aaron.bell@splservices.com.au');
+  assert.equal(albury.escalation_mode, 'AUTO');
+  assert.equal(albury.escalation_sla_hours, 72);
+  assert.equal(albury.sla_status, 'ACTIVE_AUTO');
+  assert.equal(albury.is_active, true);
 
   // Validate outbox table structure
   const outboxCols = await db.query(`
@@ -600,11 +626,13 @@ test('14. Site Manager Role Database Migration & Authorization Integration', asy
   assert.equal(permissions.includes('override_sod'), false);
   assert.equal(permissions.includes('view_all_requests'), false, 'Must be scoped to assigned sites');
 
-  // 2. Verify authorization for assigned site
+  // 2. Verify authorization for assigned sites (Melbourne AND Albury dual coverage)
   const melbSiteId = '44444444-4444-4444-8444-444444444444';
-  const workflow = await siteApprovalWorkflowService.getWorkflowForSite(melbSiteId);
+  const alburySiteId = '99999999-9999-4999-8999-999999999999';
+  const melbWorkflow = await siteApprovalWorkflowService.getWorkflowForSite(melbSiteId);
+  const alburyWorkflow = await siteApprovalWorkflowService.getWorkflowForSite(alburySiteId);
 
-  const po = {
+  const melbPo = {
     id: 'po_sm_01',
     displayId: 'POR-SM-01',
     siteId: melbSiteId,
@@ -613,50 +641,63 @@ test('14. Site Manager Role Database Migration & Authorization Integration', asy
     totalAmount: 4200,
   };
 
-  const authorizedSM = evaluateServerSideAuthorization({
-    po,
-    actor: {
-      id: '460a44d0-5237-4e59-aad3-93619d6d50cd', // Matthew Mancuso
-      email: 'matthew.mancuso@splservices.com.au',
-      role: 'SITE_MANAGER',
-      site_id: melbSiteId,
-      siteIds: [melbSiteId],
-    },
-    workflow,
-  });
-  assert.equal(authorizedSM.authorized, true);
-  assert.equal(authorizedSM.roleApplied, 'SITE_APPROVAL_MANAGER');
+  const mackActor = {
+    id: '460a44d0-5237-4e59-aad3-93619d6d50cd', // Matthew (Mack) Mancuso
+    email: 'matthew.mancuso@splservices.com.au',
+    role: 'SITE_MANAGER',
+    site_id: melbSiteId,
+    siteIds: [melbSiteId, alburySiteId],
+  };
 
-  // 3. Verify cross-site rejection for unassigned facility
+  // Mack authorized for Melbourne
+  const authorizedMelb = evaluateServerSideAuthorization({
+    po: melbPo,
+    actor: mackActor,
+    workflow: melbWorkflow,
+  });
+  assert.equal(authorizedMelb.authorized, true);
+  assert.equal(authorizedMelb.roleApplied, 'SITE_APPROVAL_MANAGER');
+
+  // Mack ALSO authorized for Albury (multi-site approval manager)
+  const alburyPo = {
+    id: 'po_sm_02',
+    displayId: 'POR-ALB-01',
+    siteId: alburySiteId,
+    siteName: 'SPL Albury',
+    requesterId: '805b9626-1779-43ae-bb8f-970bbb1503f7', // Teegan Paterson
+    totalAmount: 3100,
+  };
+
+  const authorizedAlbury = evaluateServerSideAuthorization({
+    po: alburyPo,
+    actor: mackActor,
+    workflow: alburyWorkflow,
+  });
+  assert.equal(authorizedAlbury.authorized, true, 'Mack must be authorized for Albury approvals');
+  assert.equal(authorizedAlbury.roleApplied, 'SITE_APPROVAL_MANAGER');
+
+  // Verify Albury workflow designates Aaron Bell as escalation/reporting recipient
+  assert.equal(alburyWorkflow.escalation_manager_id, 'a6e2810c-2b85-4ee1-81cb-a6fe3cc71378');
+  assert.equal(alburyWorkflow.escalation_manager_email, 'aaron.bell@splservices.com.au');
+
+  // 3. Verify cross-site rejection for unassigned facility (Adelaide)
   const adelaideSiteId = '11111111-1111-4111-8111-111111111111';
   const adelaideWorkflow = await siteApprovalWorkflowService.getWorkflowForSite(adelaideSiteId);
-  const adelaidePo = { ...po, siteId: adelaideSiteId, siteName: 'SPL Adelaide' };
+  const adelaidePo = { ...melbPo, siteId: adelaideSiteId, siteName: 'SPL Adelaide' };
 
   const crossSiteSM = evaluateServerSideAuthorization({
     po: adelaidePo,
-    actor: {
-      id: '460a44d0-5237-4e59-aad3-93619d6d50cd',
-      email: 'matthew.mancuso@splservices.com.au',
-      role: 'SITE_MANAGER',
-      site_id: melbSiteId,
-      siteIds: [melbSiteId],
-    },
+    actor: mackActor,
     workflow: adelaideWorkflow,
   });
   assert.equal(crossSiteSM.authorized, false);
 
   // 4. Verify SoD enforcement (Site Manager cannot approve own request)
-  const selfPo = { ...po, requesterId: '460a44d0-5237-4e59-aad3-93619d6d50cd' };
+  const selfPo = { ...melbPo, requesterId: '460a44d0-5237-4e59-aad3-93619d6d50cd' };
   const selfApprovalSM = evaluateServerSideAuthorization({
     po: selfPo,
-    actor: {
-      id: '460a44d0-5237-4e59-aad3-93619d6d50cd',
-      email: 'matthew.mancuso@splservices.com.au',
-      role: 'SITE_MANAGER',
-      site_id: melbSiteId,
-      siteIds: [melbSiteId],
-    },
-    workflow,
+    actor: mackActor,
+    workflow: melbWorkflow,
   });
   assert.equal(selfApprovalSM.authorized, false);
   assert.equal(selfApprovalSM.errorCode, 'SOD_VIOLATION');

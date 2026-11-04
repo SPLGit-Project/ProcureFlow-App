@@ -67,27 +67,47 @@ test('3b. Other Facility Approver Assignments: All 11 SPL Facilities Seeded Acro
   assert.equal(allWorkflows.length, 11, 'All 11 SPL facilities must be configured');
 
   const sites = [
-    { name: 'SPL Melbourne', mgr: 'Matthew Mancuso' },
-    { name: 'SPL Adelaide', mgr: 'Paul Phillips' },
-    { name: 'SPL Brisbane', mgr: 'Lisa Wilson' },
-    { name: 'SPL Cairns', mgr: 'Jason Waight' },
-    { name: 'SPL Classic Linen', mgr: 'David You' },
-    { name: 'SPL Sydney', mgr: 'David You' },
-    { name: 'SPL Holdings', mgr: 'Hamoun Adelinik' },
-    { name: 'SPL Mackay', mgr: 'Bronwen Glover' },
-    { name: 'SPL Perth: Belmont', mgr: 'Rob Callaghan' },
-    { name: 'SPL Perth: Maddington', mgr: 'Rob Callaghan' },
-    { name: 'SPL Albury', mgr: 'Teegan Paterson' },
+    { name: 'SPL Melbourne', mgr: 'Matthew Mancuso', esc: 'Ebrahim Mokhtari' },
+    { name: 'SPL Adelaide', mgr: 'Paul Phillips', esc: 'Ebrahim Mokhtari' },
+    { name: 'SPL Brisbane', mgr: 'Lisa Wilson', esc: 'Ebrahim Mokhtari' },
+    { name: 'SPL Cairns', mgr: 'Jason Waight', esc: 'Ebrahim Mokhtari' },
+    { name: 'SPL Classic Linen', mgr: 'David You', esc: 'Ebrahim Mokhtari' },
+    { name: 'SPL Sydney', mgr: 'David You', esc: 'Ebrahim Mokhtari' },
+    { name: 'SPL Holdings', mgr: 'Hamoun Adelinik', esc: 'Ebrahim Mokhtari' },
+    { name: 'SPL Mackay', mgr: 'Bronwen Glover', esc: 'Ebrahim Mokhtari' },
+    { name: 'SPL Perth: Belmont', mgr: 'Rob Callaghan', esc: 'Ebrahim Mokhtari' },
+    { name: 'SPL Perth: Maddington', mgr: 'Rob Callaghan', esc: 'Ebrahim Mokhtari' },
+    { name: 'SPL Albury', mgr: 'Matthew Mancuso', esc: 'Aaron Bell' },
   ];
 
   for (const s of sites) {
     const found = allWorkflows.find(w => w.site_name === s.name);
     assert.ok(found, `Facility ${s.name} must exist`);
     assert.equal(found.approval_manager_name, s.mgr, `Facility ${s.name} manager must match ${s.mgr}`);
-    assert.equal(found.escalation_manager_name, 'Ebrahim Mokhtari', `Facility ${s.name} escalation must be Eb`);
+    assert.equal(found.escalation_manager_name, s.esc, `Facility ${s.name} escalation must match ${s.esc}`);
     assert.equal(found.escalation_mode, 'AUTO');
     assert.equal(found.escalation_sla_hours, 72);
   }
+});
+
+test('3c. Dual-Facility Manager & Albury Reporting: Mack (Matthew Mancuso) for Melbourne & Albury; Teegan reports to Aaron Bell', async () => {
+  const melbWorkflow = await siteApprovalWorkflowService.getWorkflowForSite('44444444-4444-4444-8444-444444444444');
+  const alburyWorkflow = await siteApprovalWorkflowService.getWorkflowForSite('99999999-9999-4999-8999-999999999999');
+
+  assert.ok(melbWorkflow, 'Melbourne workflow must exist');
+  assert.ok(alburyWorkflow, 'Albury workflow must exist');
+
+  // Both Melbourne and Albury have Mack (Matthew Mancuso) as approval manager
+  assert.equal(melbWorkflow.approval_manager_id, '460a44d0-5237-4e59-aad3-93619d6d50cd');
+  assert.equal(melbWorkflow.approval_manager_email, 'matthew.mancuso@splservices.com.au');
+  assert.equal(alburyWorkflow.approval_manager_id, '460a44d0-5237-4e59-aad3-93619d6d50cd');
+  assert.equal(alburyWorkflow.approval_manager_email, 'matthew.mancuso@splservices.com.au');
+
+  // Albury escalation / reporting line routes to Aaron Bell
+  assert.equal(alburyWorkflow.escalation_manager_id, 'a6e2810c-2b85-4ee1-81cb-a6fe3cc71378');
+  assert.equal(alburyWorkflow.escalation_manager_name, 'Aaron Bell');
+  assert.equal(alburyWorkflow.escalation_manager_email, 'aaron.bell@splservices.com.au');
+  assert.ok(alburyWorkflow.notes?.includes('Teegan Paterson reports to Aaron Bell'));
 });
 
 test('4. Idempotent Notifications & Safe Preview Deduplication', async () => {
