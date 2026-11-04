@@ -35,6 +35,7 @@ async function createTestDatabase(options = {}) {
 
     CREATE TABLE IF NOT EXISTS public.users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      auth_user_id UUID,
       email TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       role_id TEXT,
@@ -80,11 +81,19 @@ async function createTestDatabase(options = {}) {
       ('9e97d720-3bf0-4451-b739-9fd87d27686c', 'ebrahim.mokhtari@splservices.com.au', 'Ebrahim Mokhtari', 'ADMIN', ARRAY[]::TEXT[]),
       ('11111111-1111-1111-1111-111111111111', 'user.regular@splservices.com.au', 'Regular User', 'SITE_USER', ARRAY[]::TEXT[])
     ON CONFLICT (email) DO NOTHING;
+    UPDATE public.users SET auth_user_id = id WHERE auth_user_id IS NULL;
   `);
 
   // 2. Execute migration v2
   const migrationSql = fs.readFileSync('supabase/migrations/20261030000000_site_approval_workflows_v2.sql', 'utf8');
   await db.exec(migrationSql);
+
+  // 3. Grant schema permissions to authenticated role
+  await db.exec(`
+    GRANT USAGE ON SCHEMA auth TO authenticated;
+    GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA auth TO authenticated;
+    GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
+  `);
 
   // 3. Execute Site Manager role migration
   const siteManagerRoleSql = fs.readFileSync('supabase/migrations/20261104000000_create_site_manager_role.sql', 'utf8');
@@ -93,6 +102,15 @@ async function createTestDatabase(options = {}) {
   // 4. Execute Albury approver & reporting migration
   const alburyReportingSql = fs.readFileSync('supabase/migrations/20261104010000_assign_mack_albury_and_teegan_reporting.sql', 'utf8');
   await db.exec(alburyReportingSql);
+
+  // 5. Execute po_requests RLS fix migration
+  const rlsFixSql = fs.readFileSync('supabase/migrations/20261105000000_fix_po_requests_approval_rls.sql', 'utf8');
+  await db.exec(rlsFixSql);
+
+  // Add default SELECT policy for authenticated role on po_requests in test environment
+  await db.exec(`
+    CREATE POLICY "Authenticated users can view requests" ON public.po_requests FOR SELECT TO authenticated USING (true);
+  `);
 
   return db;
 }
@@ -702,3 +720,111 @@ test('14. Site Manager Role Database Migration & Authorization Integration', asy
   assert.equal(selfApprovalSM.authorized, false);
   assert.equal(selfApprovalSM.errorCode, 'SOD_VIOLATION');
 });
+
+test('15. PostgreSQL Row-Level Security: Site Managers & Approvers Update Permissions', async () => {
+  const db = await createTestDatabase();
+
+  // Ensure table permissions and RLS are configured for authenticated role
+  await db.query('GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated');
+  await db.query('ALTER TABLE public.po_requests ENABLE ROW LEVEL SECURITY');
+  await db.query('ALTER TABLE public.po_requests FORCE ROW LEVEL SECURITY');
+
+  const melbSiteId = '44444444-4444-4444-8444-444444444444';
+  const mattAuthId = '460a44d0-5237-4e59-aad3-93619d6d50cd';
+  const regularUserId = '11111111-1111-1111-1111-111111111111';
+
+  // 1. Create test POs as superuser
+  const insertRes = await db.query(`
+    INSERT INTO public.po_requests (
+      display_id, requester_id, site_id, status, total_amount
+    ) VALUES (
+      'POR-RLS-001', $1, $2, 'PENDING_APPROVAL', 425785.69
+    ) RETURNING id;
+  `, [regularUserId, melbSiteId]);
+  const poId = insertRes.rows[0].id;
+
+  const insertRes2 = await db.query(`
+    INSERT INTO public.po_requests (
+      display_id, requester_id, site_id, status, total_amount
+    ) VALUES (
+      'POR-RLS-002', $1, $2, 'PENDING_APPROVAL', 1500.00
+    ) RETURNING id;
+  `, [regularUserId, melbSiteId]);
+  const poId2 = insertRes2.rows[0].id;
+
+  const insertSelfRes = await db.query(`
+    INSERT INTO public.po_requests (
+      display_id, requester_id, site_id, status, total_amount
+    ) VALUES (
+      'POR-RLS-SELF', $1, $2, 'PENDING_APPROVAL', 500.00
+    ) RETURNING id;
+  `, [mattAuthId, melbSiteId]);
+  const selfPoId = insertSelfRes.rows[0].id;
+
+  // 2. Switch to authenticated role and set session as Matthew Mancuso (Site Manager)
+  await db.query('SET ROLE authenticated');
+  await db.query("SELECT set_config('request.jwt.claim.sub', $1, false)", [mattAuthId]);
+
+  // 3. Matthew approves the order -> MUST SUCCEED (remediation for reported bug)
+  const approveRes = await db.query(`
+    UPDATE public.po_requests
+    SET status = 'APPROVED_PENDING_CONCUR_REQUEST',
+        approved_at = now()
+    WHERE id = $1
+    RETURNING status;
+  `, [poId]);
+  assert.equal(approveRes.rows.length, 1);
+  assert.equal(approveRes.rows[0].status, 'APPROVED_PENDING_CONCUR_REQUEST');
+
+  // 4. Matthew rejects another order -> MUST SUCCEED
+  const rejectRes = await db.query(`
+    UPDATE public.po_requests
+    SET status = 'REJECTED',
+        rejection_reason = 'Rejected via Site Manager review'
+    WHERE id = $1
+    RETURNING status;
+  `, [poId2]);
+  assert.equal(rejectRes.rows.length, 1);
+  assert.equal(rejectRes.rows[0].status, 'REJECTED');
+
+  // 5. Segregation of Duties (SoD) under RLS:
+  // Matthew cannot approve an order where he is the requester
+  let sodBlocked = false;
+  try {
+    const selfApproveRes = await db.query(`
+      UPDATE public.po_requests
+      SET status = 'APPROVED_PENDING_CONCUR_REQUEST'
+      WHERE id = $1
+      RETURNING status;
+    `, [selfPoId]);
+    if (selfApproveRes.rows.length === 0) {
+      sodBlocked = true;
+    }
+  } catch (err) {
+    sodBlocked = true;
+  }
+  assert.equal(sodBlocked, true, 'RLS must block Site Manager from self-approving their own purchase request');
+
+  // 6. Cross-Site Isolation under RLS:
+  // Regular user (or approver from another site) cannot approve Melbourne order
+  await db.query("SELECT set_config('request.jwt.claim.sub', $1, false)", [regularUserId]);
+  let crossSiteBlocked = false;
+  try {
+    const crossRes = await db.query(`
+      UPDATE public.po_requests
+      SET status = 'APPROVED_PENDING_CONCUR_REQUEST'
+      WHERE id = $1
+      RETURNING status;
+    `, [poId2]);
+    if (crossRes.rows.length === 0) {
+      crossSiteBlocked = true;
+    }
+  } catch (err) {
+    crossSiteBlocked = true;
+  }
+  assert.equal(crossSiteBlocked, true, 'RLS must block unauthorized cross-site user from approving requests');
+
+  await db.query('RESET ROLE');
+  await db.close();
+});
+
