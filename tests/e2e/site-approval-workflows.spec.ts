@@ -72,13 +72,20 @@ test.describe('Per-Site Approval Workflows & Melbourne Demo', () => {
         await expect(melbourneCard.getByText('matthew.mancuso@splservices.com.au')).toBeVisible();
         await expect(melbourneCard.getByText(/Ebrahim Mokhtari/)).toBeVisible();
         await expect(melbourneCard.getByText('ebrahim.mokhtari@splservices.com.au')).toBeVisible();
-        // Verify SPL Albury card has Matthew Mancuso and Aaron Bell (reporting/escalation)
+        // Verify SPL Albury card has Matthew Mancuso and Eb (escalation)
         const alburyCard = page.locator('text=SPL Albury').locator('xpath=ancestor::div[contains(@class, "rounded-2xl")]').first();
         await expect(alburyCard).toBeVisible();
         await expect(alburyCard.getByText('Matthew Mancuso')).toBeVisible();
         await expect(alburyCard.getByText('matthew.mancuso@splservices.com.au')).toBeVisible();
-        await expect(alburyCard.getByText(/Aaron Bell/)).toBeVisible();
+        await expect(alburyCard.getByText(/Ebrahim Mokhtari/)).toBeVisible();
         await expect(alburyCard.getByText('72h Auto SLA')).toBeVisible();
+
+        // Verify SPL Mackay card has Bronwen Glover and Eb (escalation)
+        const mackayCard = page.locator('text=SPL Mackay').locator('xpath=ancestor::div[contains(@class, "rounded-2xl")]').first();
+        await expect(mackayCard).toBeVisible();
+        await expect(mackayCard.getByText('Bronwen Glover')).toBeVisible();
+        await expect(mackayCard.getByText('bronwen.glover@splservices.com.au')).toBeVisible();
+        await expect(mackayCard.getByText(/Ebrahim Mokhtari/)).toBeVisible();
     });
 
     test('executes end-to-end Melbourne approval workflow demo & Concur handover', async ({ page }) => {

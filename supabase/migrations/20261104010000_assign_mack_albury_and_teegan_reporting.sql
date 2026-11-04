@@ -1,7 +1,6 @@
 -- Migration: 20261104010000_assign_mack_albury_and_teegan_reporting.sql
--- Description: Assign Mack (Matthew Mancuso) as approval manager for SPL Albury alongside Melbourne,
---              and configure Albury escalation & reporting routing to Aaron Bell.
--- Context: Teegan Paterson (Albury Depot Manager) reports to Aaron Bell; Matthew Mancuso manages approvals for both Melb & Albury.
+-- Description: Assign Matt (Matthew Mancuso) as approval manager for SPL Albury alongside Melbourne,
+--              with escalation to COO Ebrahim Mokhtari (Eb / Ed) across Melbourne, Albury, and Mackay.
 
 BEGIN;
 
@@ -35,15 +34,15 @@ SET
   approval_manager_name = 'Matthew Mancuso',
   approval_manager_email = 'matthew.mancuso@splservices.com.au',
   approval_manager_entra_id = '460a44d0-5237-4e59-aad3-93619d6d50cd',
-  escalation_manager_id = 'a6e2810c-2b85-4ee1-81cb-a6fe3cc71378',
-  escalation_manager_name = 'Aaron Bell',
-  escalation_manager_email = 'aaron.bell@splservices.com.au',
-  escalation_manager_entra_id = 'a6e2810c-2b85-4ee1-81cb-a6fe3cc71378',
+  escalation_manager_id = '9e97d720-3bf0-4451-b739-9fd87d27686c',
+  escalation_manager_name = 'Ebrahim Mokhtari',
+  escalation_manager_email = 'ebrahim.mokhtari@splservices.com.au',
+  escalation_manager_entra_id = '9e97d720-3bf0-4451-b739-9fd87d27686c',
   escalation_mode = 'AUTO',
   escalation_sla_hours = 72,
   sla_status = 'ACTIVE_AUTO',
   is_active = true,
-  notes = 'Albury workflow configured with Mack (Matthew Mancuso) as approval manager; Teegan Paterson reports to Aaron Bell.',
+  notes = 'Albury workflow configured with Matt Mancuso & COO Eb.',
   updated_at = timezone('utc'::text, now()),
   updated_by = 'Aaron Bell'
 WHERE site_id = '99999999-9999-4999-8999-999999999999';

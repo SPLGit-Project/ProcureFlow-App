@@ -118,8 +118,8 @@ test('1. Durable PostgreSQL Migration: Executes schema v2 and validates seed sta
   assert.ok(albury);
   assert.equal(albury.approval_manager_name, 'Matthew Mancuso');
   assert.equal(albury.approval_manager_email, 'matthew.mancuso@splservices.com.au');
-  assert.equal(albury.escalation_manager_name, 'Aaron Bell');
-  assert.equal(albury.escalation_manager_email, 'aaron.bell@splservices.com.au');
+  assert.equal(albury.escalation_manager_name, 'Ebrahim Mokhtari');
+  assert.equal(albury.escalation_manager_email, 'ebrahim.mokhtari@splservices.com.au');
   assert.equal(albury.escalation_mode, 'AUTO');
   assert.equal(albury.escalation_sla_hours, 72);
   assert.equal(albury.sla_status, 'ACTIVE_AUTO');
@@ -676,9 +676,9 @@ test('14. Site Manager Role Database Migration & Authorization Integration', asy
   assert.equal(authorizedAlbury.authorized, true, 'Mack must be authorized for Albury approvals');
   assert.equal(authorizedAlbury.roleApplied, 'SITE_APPROVAL_MANAGER');
 
-  // Verify Albury workflow designates Aaron Bell as escalation/reporting recipient
-  assert.equal(alburyWorkflow.escalation_manager_id, 'a6e2810c-2b85-4ee1-81cb-a6fe3cc71378');
-  assert.equal(alburyWorkflow.escalation_manager_email, 'aaron.bell@splservices.com.au');
+  // Verify Albury workflow designates COO Ebrahim Mokhtari as escalation recipient
+  assert.equal(alburyWorkflow.escalation_manager_id, '9e97d720-3bf0-4451-b739-9fd87d27686c');
+  assert.equal(alburyWorkflow.escalation_manager_email, 'ebrahim.mokhtari@splservices.com.au');
 
   // 3. Verify cross-site rejection for unassigned facility (Adelaide)
   const adelaideSiteId = '11111111-1111-4111-8111-111111111111';

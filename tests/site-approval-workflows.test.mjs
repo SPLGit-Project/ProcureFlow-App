@@ -77,7 +77,7 @@ test('3b. Other Facility Approver Assignments: All 11 SPL Facilities Seeded Acro
     { name: 'SPL Mackay', mgr: 'Bronwen Glover', esc: 'Ebrahim Mokhtari' },
     { name: 'SPL Perth: Belmont', mgr: 'Rob Callaghan', esc: 'Ebrahim Mokhtari' },
     { name: 'SPL Perth: Maddington', mgr: 'Rob Callaghan', esc: 'Ebrahim Mokhtari' },
-    { name: 'SPL Albury', mgr: 'Matthew Mancuso', esc: 'Aaron Bell' },
+    { name: 'SPL Albury', mgr: 'Matthew Mancuso', esc: 'Ebrahim Mokhtari' },
   ];
 
   for (const s of sites) {
@@ -90,24 +90,29 @@ test('3b. Other Facility Approver Assignments: All 11 SPL Facilities Seeded Acro
   }
 });
 
-test('3c. Dual-Facility Manager & Albury Reporting: Mack (Matthew Mancuso) for Melbourne & Albury; Teegan reports to Aaron Bell', async () => {
+test('3c. Facility Managers & COO Eb Escalation: Melbourne (Matt -> Eb), Albury (Matt -> Eb), Mackay (Bronwen -> Eb)', async () => {
   const melbWorkflow = await siteApprovalWorkflowService.getWorkflowForSite('44444444-4444-4444-8444-444444444444');
   const alburyWorkflow = await siteApprovalWorkflowService.getWorkflowForSite('99999999-9999-4999-8999-999999999999');
+  const mackayWorkflow = await siteApprovalWorkflowService.getWorkflowForSite('33333333-3333-4333-8333-333333333333');
 
   assert.ok(melbWorkflow, 'Melbourne workflow must exist');
   assert.ok(alburyWorkflow, 'Albury workflow must exist');
+  assert.ok(mackayWorkflow, 'Mackay workflow must exist');
 
-  // Both Melbourne and Albury have Mack (Matthew Mancuso) as approval manager
-  assert.equal(melbWorkflow.approval_manager_id, '460a44d0-5237-4e59-aad3-93619d6d50cd');
-  assert.equal(melbWorkflow.approval_manager_email, 'matthew.mancuso@splservices.com.au');
-  assert.equal(alburyWorkflow.approval_manager_id, '460a44d0-5237-4e59-aad3-93619d6d50cd');
-  assert.equal(alburyWorkflow.approval_manager_email, 'matthew.mancuso@splservices.com.au');
+  // Melbourne: Matt Mancuso -> Eb
+  assert.equal(melbWorkflow.approval_manager_name, 'Matthew Mancuso');
+  assert.equal(melbWorkflow.escalation_manager_name, 'Ebrahim Mokhtari');
+  assert.equal(melbWorkflow.escalation_manager_email, 'ebrahim.mokhtari@splservices.com.au');
 
-  // Albury escalation / reporting line routes to Aaron Bell
-  assert.equal(alburyWorkflow.escalation_manager_id, 'a6e2810c-2b85-4ee1-81cb-a6fe3cc71378');
-  assert.equal(alburyWorkflow.escalation_manager_name, 'Aaron Bell');
-  assert.equal(alburyWorkflow.escalation_manager_email, 'aaron.bell@splservices.com.au');
-  assert.ok(alburyWorkflow.notes?.includes('Teegan Paterson reports to Aaron Bell'));
+  // Albury: Matt Mancuso -> Eb
+  assert.equal(alburyWorkflow.approval_manager_name, 'Matthew Mancuso');
+  assert.equal(alburyWorkflow.escalation_manager_name, 'Ebrahim Mokhtari');
+  assert.equal(alburyWorkflow.escalation_manager_email, 'ebrahim.mokhtari@splservices.com.au');
+
+  // Mackay: Bronwen Glover -> Eb
+  assert.equal(mackayWorkflow.approval_manager_name, 'Bronwen Glover');
+  assert.equal(mackayWorkflow.escalation_manager_name, 'Ebrahim Mokhtari');
+  assert.equal(mackayWorkflow.escalation_manager_email, 'ebrahim.mokhtari@splservices.com.au');
 });
 
 test('4. Idempotent Notifications & Safe Preview Deduplication', async () => {
