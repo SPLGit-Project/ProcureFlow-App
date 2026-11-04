@@ -156,20 +156,29 @@ export class SupabaseWorkflowStorageAdapter {
   }
 }
 
+export type NotificationDispatchMode = 'LIVE' | 'PREVIEW';
+
 /**
  * Durable Notification Outbox Adapter.
- * Prepares exact payloads for existing providers without live network dispatch:
- * - In-App: formatted for public.user_notifications
- * - Email: formatted for Supabase Edge Function 'send-notification-email' (Microsoft Graph)
- * - Teams: formatted as Microsoft Teams Adaptive Card v1.4
- * - Telemetry: formatted for public.notification_delivery_logs
+ * Integrates with Microsoft Graph Edge Function ('send-notification-email') and Teams Webhooks
+ * with idempotent deduplication and configurable LIVE vs PREVIEW dispatch modes.
  */
 export class DurableNotificationOutboxAdapter {
   private outboxQueue: DurableOutboxRecord[] = [];
   private outboxStorageKey = 'procureflow_notification_outbox_v2';
+  private dispatchMode: NotificationDispatchMode = 'LIVE';
 
-  constructor() {
+  constructor(initialMode: NotificationDispatchMode = 'LIVE') {
+    this.dispatchMode = initialMode;
     this.loadFromStorage();
+  }
+
+  public setDispatchMode(mode: NotificationDispatchMode) {
+    this.dispatchMode = mode;
+  }
+
+  public getDispatchMode(): NotificationDispatchMode {
+    return this.dispatchMode;
   }
 
   private loadFromStorage() {
@@ -194,7 +203,7 @@ export class DurableNotificationOutboxAdapter {
   }
 
   /**
-   * Enqueues a notification into the durable outbox without sending live network messages.
+   * Enqueues a notification into the durable outbox with optional live network dispatch.
    * Deduplicates using deterministic idempotency keys.
    */
   async enqueue(params: {
@@ -223,6 +232,50 @@ export class DurableNotificationOutboxAdapter {
       return { queued: false, record: existing, duplicate: true };
     }
 
+    let initialStatus: DurableOutboxRecord['status'] = this.dispatchMode === 'LIVE' ? 'QUEUED' : 'PREVIEW_DURABLE';
+    let deliveredAt: string | undefined = undefined;
+    let lastError: string | undefined = undefined;
+
+    if (this.dispatchMode === 'LIVE') {
+      const sb = await getSupabaseClient();
+      if (sb) {
+        if (params.channel === 'EMAIL' && params.recipientEmail) {
+          try {
+            const { error: edgeErr } = await sb.functions.invoke('send-notification-email', {
+              body: {
+                to: params.recipientEmail,
+                subject: params.title,
+                html: params.htmlPayload || `<p>${params.body}</p>`,
+              },
+            });
+            if (!edgeErr) {
+              initialStatus = 'DELIVERED';
+              deliveredAt = new Date().toISOString();
+            } else {
+              lastError = edgeErr.message || 'Edge function dispatch failed';
+            }
+          } catch (err: any) {
+            lastError = err?.message || 'Email invoke exception';
+          }
+        } else if (params.channel === 'IN_APP') {
+          try {
+            await sb.from('user_notifications').insert({
+              user_id: params.recipientId,
+              title: params.title,
+              message: params.body,
+              type: 'info',
+              read: false,
+              created_at: new Date().toISOString(),
+            });
+            initialStatus = 'DELIVERED';
+            deliveredAt = new Date().toISOString();
+          } catch {
+            // Non-blocking schema fallback
+          }
+        }
+      }
+    }
+
     const record: DurableOutboxRecord = {
       id: 'outbox_' + Math.random().toString(36).slice(2, 10),
       idempotency_key: idempotencyKey,
@@ -233,14 +286,16 @@ export class DurableNotificationOutboxAdapter {
       recipient_name: params.recipientName,
       recipient_email: params.recipientEmail,
       channel: params.channel,
-      status: 'PREVIEW_DURABLE', // Safe non-sending status
+      status: initialStatus,
       title: params.title,
       body: params.body,
       html_payload: params.htmlPayload,
       teams_card_payload: params.teamsCardPayload,
       retry_count: 0,
       max_retries: 3,
+      last_error: lastError,
       created_at: new Date().toISOString(),
+      delivered_at: deliveredAt,
     };
 
     this.outboxQueue.unshift(record);
@@ -266,7 +321,9 @@ export class DurableNotificationOutboxAdapter {
           teams_card_payload: record.teams_card_payload,
           retry_count: record.retry_count,
           max_retries: record.max_retries,
+          last_error: record.last_error,
           created_at: record.created_at,
+          delivered_at: record.delivered_at,
         });
       } catch {
         // Non-blocking schema fallback
@@ -330,9 +387,11 @@ export function evaluateServerSideAuthorization(params: {
 
   // 3. Workflow-configured site manager evaluation
   if (workflow && workflow.is_active) {
+    const actorSites = actor.siteIds || (actor.site_id ? [actor.site_id] : []);
     const isApprovalManager =
       (workflow.approval_manager_id && workflow.approval_manager_id === actor.id) ||
-      (workflow.approval_manager_email && workflow.approval_manager_email.toLowerCase() === (actor.email || '').toLowerCase());
+      (workflow.approval_manager_email && workflow.approval_manager_email.toLowerCase() === (actor.email || '').toLowerCase()) ||
+      ((actor.role === 'SITE_MANAGER' || actor.role === 'PROCUREMENT_MANAGER') && actorSites.includes(workflow.site_id));
 
     if (isApprovalManager) {
       return {
@@ -384,6 +443,14 @@ export function evaluateServerSideAuthorization(params: {
  */
 export class SiteApprovalIntegrationService {
   private outbox = new DurableNotificationOutboxAdapter();
+
+  setDispatchMode(mode: NotificationDispatchMode) {
+    this.outbox.setDispatchMode(mode);
+  }
+
+  getDispatchMode(): NotificationDispatchMode {
+    return this.outbox.getDispatchMode();
+  }
 
   getOutbox(): DurableOutboxRecord[] {
     return this.outbox.getOutbox();

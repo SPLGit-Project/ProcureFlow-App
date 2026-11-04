@@ -387,9 +387,11 @@ export function evaluateServerSideAuthorization(params: {
 
   // 3. Workflow-configured site manager evaluation
   if (workflow && workflow.is_active) {
+    const actorSites = actor.siteIds || (actor.site_id ? [actor.site_id] : []);
     const isApprovalManager =
       (workflow.approval_manager_id && workflow.approval_manager_id === actor.id) ||
-      (workflow.approval_manager_email && workflow.approval_manager_email.toLowerCase() === (actor.email || '').toLowerCase());
+      (workflow.approval_manager_email && workflow.approval_manager_email.toLowerCase() === (actor.email || '').toLowerCase()) ||
+      ((actor.role === 'SITE_MANAGER' || actor.role === 'PROCUREMENT_MANAGER') && actorSites.includes(workflow.site_id));
 
     if (isApprovalManager) {
       return {

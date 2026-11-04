@@ -5,6 +5,7 @@ import {
   SiteApprovalWorkflowService,
   VERIFIED_APPROVAL_IDENTITIES
 } from '../services/siteApprovalWorkflowService.ts';
+import { ROLE_PRESETS } from '../constants/rolePresets.ts';
 
 test('1. Identity Verification: Maps Matthew Mancuso and Eb to verified Entra IDs', () => {
   const matthew = VERIFIED_APPROVAL_IDENTITIES.MELBOURNE_APPROVAL_MANAGER;
@@ -31,14 +32,62 @@ test('2. Per-Site Assignment: Melbourne defaults to Matthew Mancuso and Eb', asy
   assert.equal(workflow.is_active, true);
 });
 
-test('3. Escalation SLA Check: SLA requires operational decision (distinct from 48h stock hold)', async () => {
+test('3. Escalation SLA Check: 72-Hour Auto Escalation with Manual Toggle & Role Guard', async () => {
   const melbSiteId = '44444444-4444-4444-8444-444444444444';
   const workflow = await siteApprovalWorkflowService.getWorkflowForSite(melbSiteId);
 
   assert.ok(workflow);
-  // Must be marked as DECISION_PENDING because no formal SLA was found in executive communications
-  assert.equal(workflow.sla_status, 'DECISION_PENDING');
-  assert.ok(workflow.notes.includes('Escalation SLA requires formal executive approval'));
+  // Verified Auto 72-Hour SLA
+  assert.equal(workflow.escalation_mode, 'AUTO');
+  assert.equal(workflow.escalation_sla_hours, 72);
+  assert.equal(workflow.sla_status, 'ACTIVE_AUTO');
+  assert.ok(workflow.notes.includes('Auto escalation set to 72 hours') || workflow.notes.includes('Matthew Mancuso & COO Eb'));
+
+  // Role checks for toggling escalation mode
+  const canAdminToggle = siteApprovalWorkflowService.canActorToggleEscalationMode({ id: 'admin1', role: 'ADMIN' });
+  assert.equal(canAdminToggle, true, 'Admin can toggle escalation mode');
+
+  const canManagerWithPermToggle = siteApprovalWorkflowService.canActorToggleEscalationMode({
+    id: 'user1',
+    role: 'SITE_MANAGER',
+    permissions: ['manage_workflows'],
+  });
+  assert.equal(canManagerWithPermToggle, true, 'User with manage_workflows can toggle mode');
+
+  const canStandardUserToggle = siteApprovalWorkflowService.canActorToggleEscalationMode({
+    id: 'user2',
+    role: 'SITE_USER',
+    permissions: ['create_request'],
+  });
+  assert.equal(canStandardUserToggle, false, 'Standard user cannot toggle escalation mode');
+});
+
+test('3b. Other Facility Approver Assignments: All 11 SPL Facilities Seeded Across Australia', async () => {
+  const allWorkflows = await siteApprovalWorkflowService.getSiteWorkflows();
+  assert.equal(allWorkflows.length, 11, 'All 11 SPL facilities must be configured');
+
+  const sites = [
+    { name: 'SPL Melbourne', mgr: 'Matthew Mancuso' },
+    { name: 'SPL Adelaide', mgr: 'Paul Phillips' },
+    { name: 'SPL Brisbane', mgr: 'Lisa Wilson' },
+    { name: 'SPL Cairns', mgr: 'Jason Waight' },
+    { name: 'SPL Classic Linen', mgr: 'David You' },
+    { name: 'SPL Sydney', mgr: 'David You' },
+    { name: 'SPL Holdings', mgr: 'Hamoun Adelinik' },
+    { name: 'SPL Mackay', mgr: 'Bronwen Glover' },
+    { name: 'SPL Perth: Belmont', mgr: 'Rob Callaghan' },
+    { name: 'SPL Perth: Maddington', mgr: 'Rob Callaghan' },
+    { name: 'SPL Albury', mgr: 'Teegan Paterson' },
+  ];
+
+  for (const s of sites) {
+    const found = allWorkflows.find(w => w.site_name === s.name);
+    assert.ok(found, `Facility ${s.name} must exist`);
+    assert.equal(found.approval_manager_name, s.mgr, `Facility ${s.name} manager must match ${s.mgr}`);
+    assert.equal(found.escalation_manager_name, 'Ebrahim Mokhtari', `Facility ${s.name} escalation must be Eb`);
+    assert.equal(found.escalation_mode, 'AUTO');
+    assert.equal(found.escalation_sla_hours, 72);
+  }
 });
 
 test('4. Idempotent Notifications & Safe Preview Deduplication', async () => {
@@ -451,4 +500,59 @@ test('14. Notification Retries & Failure Recovery: Tracks retries and exhausts a
   const r4 = await siteApprovalWorkflowService.retryNotification(targetRecord.id);
   assert.equal(r4.status, 'FAILED');
   assert.ok(r4.error_message?.includes('Max retries (3) exhausted'));
+});
+
+test('15. Site Manager Role Definition & Scope Governance: Full access to manage, monitor and approve site requests', () => {
+  const siteManagerPreset = ROLE_PRESETS.find(p => p.id === 'PRESET_SITE_MANAGER');
+  assert.ok(siteManagerPreset, 'PRESET_SITE_MANAGER preset must exist');
+  assert.equal(siteManagerPreset.name, 'Site Manager');
+  assert.equal(siteManagerPreset.badge, 'Management');
+  assert.equal(siteManagerPreset.siteScopeMode, 'ASSIGNED', 'Site Manager must be scoped to ASSIGNED sites only');
+  assert.equal(siteManagerPreset.enforceSod, true, 'Segregation of duties must be enforced (no self-approval)');
+
+  // Monitoring permissions
+  const expectedMonitoring = [
+    'view_dashboard',
+    'view_active_requests',
+    'view_completed_requests',
+    'view_items',
+    'view_stock',
+    'view_purchase_pricing',
+    'view_suppliers',
+    'view_sites',
+    'view_reports',
+    'view_finance',
+    'view_audit_logs',
+    'view_workflow',
+    'view_notifications',
+    'export_orders',
+    'export_reports',
+  ];
+  for (const perm of expectedMonitoring) {
+    assert.ok(siteManagerPreset.permissions.includes(perm), `Site Manager must have monitoring permission: ${perm}`);
+  }
+
+  // Managing site requests permissions
+  const expectedManaging = [
+    'create_request',
+    'receive_goods',
+    'edit_po_lines',
+    'cancel_po',
+    'delete_requests',
+    'link_concur',
+    'manage_item_requests',
+  ];
+  for (const perm of expectedManaging) {
+    assert.ok(siteManagerPreset.permissions.includes(perm), `Site Manager must have managing permission: ${perm}`);
+  }
+
+  // Approval authority
+  assert.ok(siteManagerPreset.permissions.includes('approve_requests'), 'Site Manager must have approve_requests');
+
+  // Governance boundaries: must NOT have admin bypass or settings permissions
+  assert.equal(siteManagerPreset.permissions.includes('manage_settings'), false);
+  assert.equal(siteManagerPreset.permissions.includes('manage_roles'), false);
+  assert.equal(siteManagerPreset.permissions.includes('manage_users'), false);
+  assert.equal(siteManagerPreset.permissions.includes('override_sod'), false, 'Site Manager must not have override_sod');
+  assert.equal(siteManagerPreset.permissions.includes('view_all_requests'), false, 'Site Manager must not have view_all_requests (scoped to assigned site)');
 });

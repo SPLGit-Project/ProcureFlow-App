@@ -75,6 +75,10 @@ async function createTestDatabase(options = {}) {
   const migrationSql = fs.readFileSync('supabase/migrations/20261030000000_site_approval_workflows_v2.sql', 'utf8');
   await db.exec(migrationSql);
 
+  // 3. Execute Site Manager role migration
+  const siteManagerRoleSql = fs.readFileSync('supabase/migrations/20261104000000_create_site_manager_role.sql', 'utf8');
+  await db.exec(siteManagerRoleSql);
+
   return db;
 }
 
@@ -566,4 +570,94 @@ test('13. Ashish Chhabra Offboarding Audit & Zero Production Data Mutation', () 
   const openOrder = analysis.activeAwaitingConcur[0];
   assert.equal(openOrder.display_id, 'POR-202609-000029');
   assert.equal(openOrder.proposed_manager, 'Ebrahim Mokhtari (COO - Holdings Corporate)');
+});
+
+test('14. Site Manager Role Database Migration & Authorization Integration', async () => {
+  const db = await createTestDatabase();
+
+  // 1. Verify role persistence in public.roles
+  const roleRes = await db.query("SELECT * FROM public.roles WHERE id = 'SITE_MANAGER'");
+  assert.equal(roleRes.rows.length, 1, "Role 'SITE_MANAGER' must exist in public.roles");
+  const role = roleRes.rows[0];
+  assert.equal(role.name, 'Site Manager');
+  assert.equal(role.is_system, true);
+
+  const permissions = Array.isArray(role.permissions) ? role.permissions : [];
+  assert.ok(permissions.includes('approve_requests'), 'Must include approve_requests');
+  assert.ok(permissions.includes('create_request'), 'Must include create_request');
+  assert.ok(permissions.includes('view_active_requests'), 'Must include view_active_requests');
+  assert.ok(permissions.includes('view_completed_requests'), 'Must include view_completed_requests');
+  assert.ok(permissions.includes('receive_goods'), 'Must include receive_goods');
+  assert.ok(permissions.includes('link_concur'), 'Must include link_concur');
+  assert.ok(permissions.includes('edit_po_lines'), 'Must include edit_po_lines');
+  assert.ok(permissions.includes('view_dashboard'), 'Must include view_dashboard');
+  assert.ok(permissions.includes('view_stock'), 'Must include view_stock');
+  assert.ok(permissions.includes('view_reports'), 'Must include view_reports');
+
+  // Must NOT include global admin overrides
+  assert.equal(permissions.includes('manage_settings'), false);
+  assert.equal(permissions.includes('manage_roles'), false);
+  assert.equal(permissions.includes('override_sod'), false);
+  assert.equal(permissions.includes('view_all_requests'), false, 'Must be scoped to assigned sites');
+
+  // 2. Verify authorization for assigned site
+  const melbSiteId = '44444444-4444-4444-8444-444444444444';
+  const workflow = await siteApprovalWorkflowService.getWorkflowForSite(melbSiteId);
+
+  const po = {
+    id: 'po_sm_01',
+    displayId: 'POR-SM-01',
+    siteId: melbSiteId,
+    siteName: 'SPL Melbourne',
+    requesterId: 'user_req_01',
+    totalAmount: 4200,
+  };
+
+  const authorizedSM = evaluateServerSideAuthorization({
+    po,
+    actor: {
+      id: '460a44d0-5237-4e59-aad3-93619d6d50cd', // Matthew Mancuso
+      email: 'matthew.mancuso@splservices.com.au',
+      role: 'SITE_MANAGER',
+      site_id: melbSiteId,
+      siteIds: [melbSiteId],
+    },
+    workflow,
+  });
+  assert.equal(authorizedSM.authorized, true);
+  assert.equal(authorizedSM.roleApplied, 'SITE_APPROVAL_MANAGER');
+
+  // 3. Verify cross-site rejection for unassigned facility
+  const adelaideSiteId = '11111111-1111-4111-8111-111111111111';
+  const adelaideWorkflow = await siteApprovalWorkflowService.getWorkflowForSite(adelaideSiteId);
+  const adelaidePo = { ...po, siteId: adelaideSiteId, siteName: 'SPL Adelaide' };
+
+  const crossSiteSM = evaluateServerSideAuthorization({
+    po: adelaidePo,
+    actor: {
+      id: '460a44d0-5237-4e59-aad3-93619d6d50cd',
+      email: 'matthew.mancuso@splservices.com.au',
+      role: 'SITE_MANAGER',
+      site_id: melbSiteId,
+      siteIds: [melbSiteId],
+    },
+    workflow: adelaideWorkflow,
+  });
+  assert.equal(crossSiteSM.authorized, false);
+
+  // 4. Verify SoD enforcement (Site Manager cannot approve own request)
+  const selfPo = { ...po, requesterId: '460a44d0-5237-4e59-aad3-93619d6d50cd' };
+  const selfApprovalSM = evaluateServerSideAuthorization({
+    po: selfPo,
+    actor: {
+      id: '460a44d0-5237-4e59-aad3-93619d6d50cd',
+      email: 'matthew.mancuso@splservices.com.au',
+      role: 'SITE_MANAGER',
+      site_id: melbSiteId,
+      siteIds: [melbSiteId],
+    },
+    workflow,
+  });
+  assert.equal(selfApprovalSM.authorized, false);
+  assert.equal(selfApprovalSM.errorCode, 'SOD_VIOLATION');
 });

@@ -1,4 +1,4 @@
-import { PermissionId } from '../types.ts';
+import type { PermissionId } from '../types.ts';
 
 export interface RolePreset {
     id: string;
@@ -52,24 +52,40 @@ export const ROLE_PRESETS: RolePreset[] = [
     },
     {
         id: 'PRESET_SITE_MANAGER',
-        name: 'Site Manager (Approver Tier 1)',
-        description: 'Facility supervisor authorized to review and approve purchase orders up to $5,000 for their assigned site(s).',
+        name: 'Site Manager',
+        description: 'Facility supervisor authorized to manage, monitor, and approve procurement requests, goods receipt, and operational tracking for assigned site(s).',
         badge: 'Management',
-        maxApprovalLimit: 5000,
-        maxOrderLimit: 5000,
+        maxApprovalLimit: 10000,
+        maxOrderLimit: 10000,
         siteScopeMode: 'ASSIGNED',
         enforceSod: true,
         permissions: [
+            // Monitoring
             'view_dashboard',
-            'create_request',
-            'view_items',
-            'view_stock',
             'view_active_requests',
             'view_completed_requests',
-            'approve_requests',
-            'receive_goods',
+            'view_items',
+            'view_stock',
+            'view_purchase_pricing',
             'view_suppliers',
-            'view_reports'
+            'view_sites',
+            'view_reports',
+            'view_finance',
+            'view_audit_logs',
+            'view_workflow',
+            'view_notifications',
+            'export_orders',
+            'export_reports',
+            // Managing Site Requests & Operations
+            'create_request',
+            'receive_goods',
+            'edit_po_lines',
+            'cancel_po',
+            'delete_requests',
+            'link_concur',
+            'manage_item_requests',
+            // Approving
+            'approve_requests'
         ]
     },
     {
