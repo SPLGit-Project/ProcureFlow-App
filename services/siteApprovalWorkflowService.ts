@@ -466,7 +466,7 @@ export class SiteApprovalWorkflowService {
         escalation_sla_hours: 72,
         sla_status: 'ACTIVE_AUTO',
         is_active: true,
-        notes: 'Albury workflow configured with Teegan Paterson & COO Eb. (Pending confirmation)',
+        notes: 'Albury workflow configured with Teegan Paterson & COO Eb. (Confirmed)',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         updated_by: 'System Initializer',

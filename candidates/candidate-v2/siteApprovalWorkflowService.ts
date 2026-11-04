@@ -120,8 +120,9 @@ export interface SiteApprovalWorkflow {
   escalation_manager_name: string;
   escalation_manager_email: string;
   escalation_manager_entra_id?: string;
+  escalation_mode: 'AUTO' | 'MANUAL';
   escalation_sla_hours: number;
-  sla_status: 'DECISION_PENDING' | 'CONFIGURED';
+  sla_status: 'ACTIVE_AUTO' | 'ACTIVE_MANUAL' | 'CONFIGURED' | 'DECISION_PENDING';
   is_active: boolean;
   notes?: string;
   created_at: string;
@@ -227,13 +228,13 @@ export class SiteApprovalWorkflowService {
     } else {
       this.storageAdapter = defaultNodeStorage;
     }
-    this.seedDefaultMelbourneWorkflow();
+    this.seedDefaultWorkflows();
   }
 
   public setStorageAdapter(adapter: WorkflowStorageAdapter) {
     this.storageAdapter = adapter;
     this.inMemoryWorkflows.clear();
-    this.seedDefaultMelbourneWorkflow();
+    this.seedDefaultWorkflows();
   }
 
   public clearAllState() {
@@ -245,30 +246,234 @@ export class SiteApprovalWorkflowService {
     this.storageAdapter.removeItem(STORAGE_KEY_SITE_WORKFLOWS);
     this.storageAdapter.removeItem(STORAGE_KEY_NOTIFICATION_LOGS);
     this.storageAdapter.removeItem(STORAGE_KEY_AUDIT_LOGS);
-    this.seedDefaultMelbourneWorkflow();
+    this.seedDefaultWorkflows();
   }
 
-  private seedDefaultMelbourneWorkflow() {
-    const melb: SiteApprovalWorkflow = {
-      site_id: '44444444-4444-4444-8444-444444444444',
-      site_name: 'SPL Melbourne',
-      approval_manager_id: VERIFIED_APPROVAL_IDENTITIES.MELBOURNE_APPROVAL_MANAGER.id,
-      approval_manager_name: VERIFIED_APPROVAL_IDENTITIES.MELBOURNE_APPROVAL_MANAGER.name,
-      approval_manager_email: VERIFIED_APPROVAL_IDENTITIES.MELBOURNE_APPROVAL_MANAGER.email,
-      approval_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.MELBOURNE_APPROVAL_MANAGER.entra_oid,
-      escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
-      escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
-      escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
-      escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
-      escalation_sla_hours: 24, // Configurable baseline
-      sla_status: 'DECISION_PENDING', // Surfaced until executive sign-off
-      is_active: true,
-      notes: 'Initial per-site workflow demonstrated for Melbourne. Escalation SLA requires formal executive approval before activation.',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      updated_by: 'System Administrator',
-    };
-    this.inMemoryWorkflows.set(melb.site_id, melb);
+  private seedDefaultWorkflows() {
+    const facilities: SiteApprovalWorkflow[] = [
+      {
+        site_id: '44444444-4444-4444-8444-444444444444',
+        site_name: 'SPL Melbourne',
+        approval_manager_id: VERIFIED_APPROVAL_IDENTITIES.MELBOURNE_APPROVAL_MANAGER.id,
+        approval_manager_name: VERIFIED_APPROVAL_IDENTITIES.MELBOURNE_APPROVAL_MANAGER.name,
+        approval_manager_email: VERIFIED_APPROVAL_IDENTITIES.MELBOURNE_APPROVAL_MANAGER.email,
+        approval_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.MELBOURNE_APPROVAL_MANAGER.entra_oid,
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'Melbourne workflow configured with Matthew Mancuso & COO Eb.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+      {
+        site_id: '11111111-1111-4111-8111-111111111111',
+        site_name: 'SPL Adelaide',
+        approval_manager_id: '83b2c907-f3eb-4e3a-989f-aebea981500c',
+        approval_manager_name: 'Paul Phillips',
+        approval_manager_email: 'paul.phillips@splservices.com.au',
+        approval_manager_entra_id: '83b2c907-f3eb-4e3a-989f-aebea981500c',
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'Adelaide workflow configured with Paul Phillips & COO Eb.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+      {
+        site_id: '22222222-2222-4222-8222-222222222222',
+        site_name: 'SPL Brisbane',
+        approval_manager_id: 'a9bc57a2-ef69-411b-a8a5-f5f5179c2423',
+        approval_manager_name: 'Lisa Wilson',
+        approval_manager_email: 'lisa.wilson@splservices.com.au',
+        approval_manager_entra_id: 'a9bc57a2-ef69-411b-a8a5-f5f5179c2423',
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'Brisbane workflow configured with Lisa Wilson & COO Eb.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+      {
+        site_id: '683e10e8-0609-44eb-a089-584d8c0e30c2',
+        site_name: 'SPL Cairns',
+        approval_manager_id: 'e520848f-c4dd-4862-a7ad-335c65ede405',
+        approval_manager_name: 'Jason Waight',
+        approval_manager_email: 'jason.waight@splservices.com.au',
+        approval_manager_entra_id: 'e520848f-c4dd-4862-a7ad-335c65ede405',
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'Cairns workflow configured with Jason Waight & COO Eb.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+      {
+        site_id: '88888888-8888-4888-8888-888888888888',
+        site_name: 'SPL Classic Linen',
+        approval_manager_id: 'd593571a-c4bd-4627-8b03-33704226e826',
+        approval_manager_name: 'David You',
+        approval_manager_email: 'david.you@splservices.com.au',
+        approval_manager_entra_id: 'd593571a-c4bd-4627-8b03-33704226e826',
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'Classic Linen workflow configured with David You & COO Eb.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+      {
+        site_id: '77777777-7777-4777-8777-777777777777',
+        site_name: 'SPL Sydney',
+        approval_manager_id: 'd593571a-c4bd-4627-8b03-33704226e826',
+        approval_manager_name: 'David You',
+        approval_manager_email: 'david.you@splservices.com.au',
+        approval_manager_entra_id: 'd593571a-c4bd-4627-8b03-33704226e826',
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'Sydney workflow configured with David You & COO Eb.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+      {
+        site_id: '5d0c236b-4311-4bbe-894e-d7a2621ed559',
+        site_name: 'SPL Holdings',
+        approval_manager_id: 'be5428f4-8658-4c15-8b51-13119217311a',
+        approval_manager_name: 'Hamoun Adelinik',
+        approval_manager_email: 'hamoun.adelinik@splservices.com.au',
+        approval_manager_entra_id: 'be5428f4-8658-4c15-8b51-13119217311a',
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'SPL Holdings workflow configured with Hamoun Adelinik & COO Eb.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+      {
+        site_id: '33333333-3333-4333-8333-333333333333',
+        site_name: 'SPL Mackay',
+        approval_manager_id: '5dbebdad-7944-442f-8544-e9b6ebba52d4',
+        approval_manager_name: 'Bronwen Glover',
+        approval_manager_email: 'bronwen.glover@splservices.com.au',
+        approval_manager_entra_id: '5dbebdad-7944-442f-8544-e9b6ebba52d4',
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'Mackay workflow configured with Bronwen Glover & COO Eb.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+      {
+        site_id: '55555555-5555-4555-8555-555555555555',
+        site_name: 'SPL Perth: Belmont',
+        approval_manager_id: '8821acdf-3089-422f-843c-9919a9439640',
+        approval_manager_name: 'Rob Callaghan',
+        approval_manager_email: 'rob.callaghan@splservices.com.au',
+        approval_manager_entra_id: '8821acdf-3089-422f-843c-9919a9439640',
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'Perth Belmont workflow configured with Rob Callaghan & COO Eb.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+      {
+        site_id: '66666666-6666-4666-8666-666666666666',
+        site_name: 'SPL Perth: Maddington',
+        approval_manager_id: '8821acdf-3089-422f-843c-9919a9439640',
+        approval_manager_name: 'Rob Callaghan',
+        approval_manager_email: 'rob.callaghan@splservices.com.au',
+        approval_manager_entra_id: '8821acdf-3089-422f-843c-9919a9439640',
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'Perth Maddington workflow configured with Rob Callaghan & COO Eb.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+      {
+        site_id: '99999999-9999-4999-8999-999999999999',
+        site_name: 'SPL Albury',
+        approval_manager_id: '805b9626-1779-43ae-bb8f-970bbb1503f7',
+        approval_manager_name: 'Teegan Paterson',
+        approval_manager_email: 'teegan.paterson@splservices.com.au',
+        approval_manager_entra_id: '805b9626-1779-43ae-bb8f-970bbb1503f7',
+        escalation_manager_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.id,
+        escalation_manager_name: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.name,
+        escalation_manager_email: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.email,
+        escalation_manager_entra_id: VERIFIED_APPROVAL_IDENTITIES.ESCALATION_MANAGER_COO.entra_oid,
+        escalation_mode: 'AUTO',
+        escalation_sla_hours: 72,
+        sla_status: 'ACTIVE_AUTO',
+        is_active: true,
+        notes: 'Albury workflow configured with Teegan Paterson & COO Eb. (Confirmed)',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: 'System Initializer',
+      },
+    ];
+
+    facilities.forEach(f => this.inMemoryWorkflows.set(f.site_id, f));
   }
 
   /**
@@ -419,7 +624,7 @@ export class SiteApprovalWorkflowService {
   /**
    * Authorize whether a user has approval authority for a site's requisitions
    */
-  canActorApproveForSite(siteId: string, actor: { id: string; role?: string; is_admin?: boolean }): boolean {
+  canActorApproveForSite(siteId: string, actor: { id: string; role?: string; is_admin?: boolean; permissions?: string[] }): boolean {
     if (!actor || !siteId) return false;
     // Admins have global authority
     if (actor.role === 'ADMIN' || actor.is_admin === true) return true;
@@ -432,6 +637,37 @@ export class SiteApprovalWorkflowService {
     // Designated Escalation Authority (COO)
     if (workflow.escalation_manager_id === actor.id) return true;
 
+    if (actor.permissions?.includes('approve_requests') && (actor.role === 'SITE_MANAGER' || actor.role === 'PROCUREMENT_MANAGER')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Evaluates if caller is authorized to toggle between AUTO and MANUAL escalation modes.
+   * Role Guard: ADMIN, or users with manage_workflows / manage_lifecycle_triggers.
+   */
+  canActorToggleEscalationMode(actor: { id: string; role?: string; is_admin?: boolean; permissions?: string[] }): boolean {
+    if (!actor) return false;
+    if (actor.role === 'ADMIN' || actor.is_admin === true) return true;
+    if (actor.permissions?.includes('manage_workflows') || actor.permissions?.includes('manage_lifecycle_triggers')) return true;
+    return false;
+  }
+
+  /**
+   * Evaluates if caller is authorized to trigger manual escalation to Eb.
+   * Role Guard: ADMIN, designated Site Approval Manager, Escalation Authority, or users with approve_requests.
+   */
+  canActorEscalateForSite(siteId: string, actor: { id: string; role?: string; is_admin?: boolean; permissions?: string[] }): boolean {
+    if (!actor || !siteId) return false;
+    if (actor.role === 'ADMIN' || actor.is_admin === true) return true;
+    if (actor.permissions?.includes('manage_workflows')) return true;
+    const workflow = this.inMemoryWorkflows.get(siteId);
+    if (workflow) {
+      if (workflow.approval_manager_id === actor.id || workflow.escalation_manager_id === actor.id) return true;
+    }
+    if (actor.permissions?.includes('approve_requests')) return true;
     return false;
   }
 
@@ -443,7 +679,7 @@ export class SiteApprovalWorkflowService {
     poId: string;
     displayId: string;
     decision: 'APPROVED' | 'REJECTED' | 'ESCALATED';
-    actor: { id: string; name: string; role: string; email?: string; is_admin?: boolean };
+    actor: { id: string; name: string; role: string; email?: string; is_admin?: boolean; permissions?: string[] };
     comments?: string;
     totalAmount?: number;
     requesterName?: string;
@@ -455,8 +691,14 @@ export class SiteApprovalWorkflowService {
     auditEntry: WorkflowAuditEntry;
   }> {
     // 1. Authorization Guard
-    if (!this.canActorApproveForSite(params.siteId, params.actor)) {
-      throw new Error(`UNAUTHORIZED_ACTOR: User ${params.actor.name} (${params.actor.id}) is not authorized to approve requisitions for site ${params.siteId}.`);
+    if (params.decision === 'ESCALATED') {
+      if (!this.canActorEscalateForSite(params.siteId, params.actor)) {
+        throw new Error(`UNAUTHORIZED_ACTOR: User ${params.actor.name} (${params.actor.id}) is not authorized to escalate requisitions for site ${params.siteId}.`);
+      }
+    } else {
+      if (!this.canActorApproveForSite(params.siteId, params.actor)) {
+        throw new Error(`UNAUTHORIZED_ACTOR: User ${params.actor.name} (${params.actor.id}) is not authorized to approve requisitions for site ${params.siteId}.`);
+      }
     }
 
     // 2. Concurrent Double-Approval Lock Guard

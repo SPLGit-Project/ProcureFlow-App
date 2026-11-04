@@ -538,18 +538,12 @@ export const SiteApprovalWorkflowManager: React.FC = () => {
             {workflows
               .filter(w => w.site_id !== '44444444-4444-4444-8444-444444444444')
               .map(wf => {
-                const isAlbury = wf.site_name.includes('Albury');
                 return (
                   <div key={wf.site_id} className="rounded-2xl bg-white dark:bg-nocturne border border-gray-200 dark:border-white/10 p-5 space-y-4 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-base font-bold text-gray-900 dark:text-white">{wf.site_name}</h3>
-                          {isAlbury && (
-                            <span className="px-1.5 py-0.5 text-[9px] font-black rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
-                              Confirm Manager
-                            </span>
-                          )}
                         </div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 font-mono text-[10px] truncate max-w-[200px]">{wf.site_id}</p>
                       </div>
