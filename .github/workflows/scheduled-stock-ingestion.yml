@@ -1,0 +1,52 @@
+name: Scheduled Supplier SOH Ingestion
+
+on:
+  schedule:
+    # Runs Monday to Friday at 00:00, 04:00, and 08:00 UTC (11:00 AM, 3:00 PM, and 7:00 PM AEDT)
+    - cron: '0 0,4,8 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supplier-stock-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Poll inbound supplier mailbox
+        env:
+          SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PROJECT_REF: "yasosgkznoxamysutxfc"
+        run: |
+          echo "Triggering ingest-supplier-email edge function..."
+          curl -s -X POST \
+            -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+            -H "apikey: $SERVICE_ROLE_KEY" \
+            "https://${PROJECT_REF}.supabase.co/functions/v1/ingest-supplier-email" || true
+          echo ""
+
+      - name: Drain pending queue and update stock snapshots
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          npm run ingest:stock

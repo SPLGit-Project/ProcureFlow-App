@@ -288,11 +288,41 @@ function detectSupplierFromContent(
             confidence: 0.95,
             evidence: ['Detected Frenkel inventory report structure and ACN/ABN metadata']
         });
-    } else if (fileNameLower.includes('frenkel')) {
+    } else if (fileNameLower.includes('frenkel') || (fileNameLower.includes('weekly inventory') && !fileNameLower.includes('concur') && !fileNameLower.includes('depletion'))) {
         candidates.push({
             name: 'Frenkel Textiles',
-            confidence: 0.82,
-            evidence: ['Filename contains Frenkel']
+            confidence: 0.88,
+            evidence: ['Filename contains Frenkel or Weekly Inventory']
+        });
+    }
+
+    // ── Cy Linen Supply ──────────────────────────────────────────────────────────
+    if (headerText.includes('cy linen sku') || headerText.includes('soh @ cy linen') || (headerText.includes('ctn per pc') && headerText.includes('spl item code'))) {
+        candidates.push({
+            name: 'Cy Linen Supply',
+            confidence: 0.96,
+            evidence: ['Detected Cy Linen SOH & SOO report structure']
+        });
+    } else if (fileNameLower.includes('cy linen')) {
+        candidates.push({
+            name: 'Cy Linen Supply',
+            confidence: 0.88,
+            evidence: ['Filename contains Cy Linen']
+        });
+    }
+
+    // ── NCC Apparel ─────────────────────────────────────────────────────────────
+    if (headerText.includes('ncc sku') || headerText.includes('soh @ ncc') || (includesAll(headerText, ['spl item code', 'carton qty']) && text.includes('mto styles'))) {
+        candidates.push({
+            name: 'NCC Apparel Pty Ltd',
+            confidence: 0.96,
+            evidence: ['Detected NCC Apparel SOH report structure']
+        });
+    } else if (fileNameLower.includes('ncc')) {
+        candidates.push({
+            name: 'NCC Apparel Pty Ltd',
+            confidence: 0.88,
+            evidence: ['Filename contains NCC']
         });
     }
 
@@ -322,14 +352,21 @@ function detectSupplierFromContent(
         headerText.includes('cust code') ||
         headerText.includes('spl part id');
 
+    const isSimbaStockType =
+        headerText.includes('stocktype') ||
+        headerText.includes('stock type') ||
+        headerText.includes('stock group') ||
+        headerText.includes('soh') ||
+        headerText.includes('carton qty');
+
     const isSimbaByContent =
         (includesAll(text, ['stock report in quantity', 'stock group customer']) &&
-         includesAll(headerText, ['sku', 'product', 'stocktype']) && hasSimbaCustomerCode) ||
-        (includesAll(text, ['stock group customer']) && includesAll(headerText, ['stocktype']) && hasSimbaCustomerCode);
+         includesAll(headerText, ['sku', 'product']) && (isSimbaStockType || hasSimbaCustomerCode)) ||
+        (includesAll(text, ['stock group customer']) && isSimbaStockType && hasSimbaCustomerCode);
 
     const isSimbaByFilename =
-        fileNameLower.includes('simba') &&
-        (fileNameLower.includes('stock') || fileNameLower.includes('inventory') || fileNameLower.includes('report'));
+        (fileNameLower.includes('simba') || (fileNameLower.includes('spl') && (fileNameLower.includes('accommodation') || fileNameLower.includes('healthcare')))) &&
+        (fileNameLower.includes('stock') || fileNameLower.includes('inventory') || fileNameLower.includes('report') || fileNameLower.includes('soh'));
 
     if (isSimbaByContent || isSimbaByFilename) {
         const baseConfidence = isSimbaByContent ? 0.94 : 0.82;

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node scripts/serve-production.mjs",
     "test:stock": "node scripts/test_stock_accuracy.mjs",
+    "ingest:stock": "npx tsx scripts/drain_pending_inbox.ts",
     "test:startup": "node --test tests/startup/*.test.mjs",
     "dev": "vite --mode staging",
     "dev:prod": "vite --mode production",
