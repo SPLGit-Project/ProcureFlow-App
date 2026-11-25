@@ -2514,6 +2514,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         await db.submitDraftPO(poId, currentUser.name);
         sendNotification('PO_CREATED', { poId: po.displayId || po.id, requesterId: po.requesterId, amount: po.totalAmount });
         logAction('PO_DRAFT_SUBMITTED', { id: poId, amount: po.totalAmount });
+        siteApprovalIntegrationService.onRequisitionCreated(po, currentUser).catch(console.warn);
         await reloadData(true, true);
     } catch (e) {
         reloadData();

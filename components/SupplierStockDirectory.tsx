@@ -436,7 +436,7 @@ const SupplierStockDirectory: React.FC = () => {
 
   const stockClock = useReservationClock();
 
-  // Contact Ash modal state
+  // Contact Procurement modal state
   const [selectedItemForRequest, setSelectedItemForRequest] = useState<DirectoryRow | null>(null);
   const [requestSiteId, setRequestSiteId] = useState(userSites[0]?.id || '');
   const [requestQty, setRequestQty] = useState('50');
@@ -1143,12 +1143,12 @@ const SupplierStockDirectory: React.FC = () => {
     }
   };
 
-  const handleSendEmailToAsh = () => {
+  const handleSendEmailToProcurement = () => {
     if (!selectedItemForRequest) return;
     const siteName = userSites.find(s => s.id === requestSiteId)?.name || 'All Sites';
     const subject = encodeURIComponent(`[ProcureFlow] Request Alternate Supplier Approval: ${selectedItemForRequest.supplierName} - ${selectedItemForRequest.itemName}`);
     const body = encodeURIComponent(
-      `Hi Ashish,\n\n` +
+      `Hi Procurement Team,\n\n` +
       `I am requesting approval to procure the following item from an alternate supplier instead of our default supplier (NCC Apparel):\n\n` +
       `• Item Name: ${selectedItemForRequest.itemName}\n` +
       `• Internal SKU: ${selectedItemForRequest.internalSku}\n` +
@@ -1165,7 +1165,7 @@ const SupplierStockDirectory: React.FC = () => {
       `ProcureFlow User`
     );
 
-    window.location.href = `mailto:ashish.chhabra@splservices.com.au?cc=aaron.bell@splservices.com.au&subject=${subject}&body=${body}`;
+    window.location.href = `mailto:procurement@splservices.com.au?cc=aaron.bell@splservices.com.au&subject=${subject}&body=${body}`;
   };
 
   if (isLoadingData && items.length === 0 && stockSnapshots.length === 0) {
@@ -2098,7 +2098,7 @@ const SupplierStockDirectory: React.FC = () => {
         </div>
       </div>
 
-      {/* Interactive Contact Ash Modal */}
+      {/* Interactive Contact Procurement Modal */}
       {selectedItemForRequest && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white dark:bg-nocturne rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-default space-y-4">
@@ -2111,7 +2111,7 @@ const SupplierStockDirectory: React.FC = () => {
                   <h3 className="text-sm font-bold text-primary dark:text-white">
                     Request Alternate Supplier Authorization
                   </h3>
-                  <p className="text-[11px] text-tertiary">Direct request to Ashish Chhabra (Procurement Manager)</p>
+                  <p className="text-[11px] text-tertiary">Direct request to Procurement Team</p>
                 </div>
               </div>
               <button
@@ -2197,11 +2197,11 @@ const SupplierStockDirectory: React.FC = () => {
 
               <button
                 type="button"
-                onClick={handleSendEmailToAsh}
+                onClick={handleSendEmailToProcurement}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <Send size={13} />
-                <span>Send Email to Ash</span>
+                <span>Send Request Email</span>
               </button>
             </div>
           </div>

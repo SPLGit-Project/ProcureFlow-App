@@ -532,19 +532,17 @@ export const WorkflowNotificationHub: React.FC = () => {
         <div className="space-y-6 animate-page-entry pb-16 max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <PageHeader
-                    title="System Configuration"
-                    subtitle="System Configuration"
+                    title="Workflows & Notifications Hub"
+                    subtitle="Manage facility approval routing, automated notifications, and delivery channels."
                 />
             </div>
 
             <div className="flex items-center gap-2 border-b border-gray-200 dark:border-white/10 pb-3 overflow-x-auto custom-scrollbar">
                 {[
-                    { id: 'SITE_WORKFLOWS', label: 'Site Approvals (Per Facility)', icon: Building2 },
-                    { id: 'WORKFLOWS', label: 'Visual Workflow Studio', icon: GitMerge },
-                    { id: 'TEMPLATES', label: 'Notification Templates & Sandbox', icon: Mail },
-                    { id: 'CHANNELS', label: 'Channel Integrations', icon: MessageSquare },
-                    { id: 'LOGS', label: 'Delivery Audit & Logs', icon: Clock },
-                    { id: 'ANALYTICS', label: 'SLA Health & Velocity', icon: Activity }
+                    { id: 'SITE_WORKFLOWS', label: 'Facility Approvers & Routing', icon: Building2 },
+                    { id: 'CHANNELS', label: 'Teams & Email Channels', icon: MessageSquare },
+                    { id: 'TEMPLATES', label: 'Notification Templates', icon: Mail },
+                    { id: 'LOGS', label: 'Delivery Audit & Logs', icon: Clock }
                 ].map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;

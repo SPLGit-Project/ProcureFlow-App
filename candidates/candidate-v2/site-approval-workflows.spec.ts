@@ -13,8 +13,6 @@ async function safeGoto(page: Page, path: string) {
 /**
  * Handles the standard onboarding / feature updates dialog exactly as an ordinary
  * user does: waits for the modal to mount, then clicks the real UI "Close" button.
- * Preserves the full real application DOM and native <dialog> behavior without
- * any prototype monkeypatching or CSS overrides.
  */
 async function dismissFeatureUpdatesIfPresent(page: Page) {
     const dialog = page.locator('dialog[aria-labelledby="feature-updates-title"]');
@@ -28,10 +26,8 @@ async function dismissFeatureUpdatesIfPresent(page: Page) {
     }
 }
 
-test.describe('Per-Site Approval Workflows & Melbourne Demo', () => {
+test.describe('Site Approval Workflows & Live Notifications', () => {
     test.beforeEach(async ({ page }) => {
-        // Register native Playwright locator handler for asynchronous onboarding dialog:
-        // whenever the dialog mounts and intercepts pointer events, clicks the real UI "Close" button.
         await page.addLocatorHandler(
             page.locator('dialog[aria-labelledby="feature-updates-title"]'),
             async (dialog) => {
@@ -43,7 +39,7 @@ test.describe('Per-Site Approval Workflows & Melbourne Demo', () => {
             }
         );
 
-        // Inject Admin test user (real auth state, zero prototype monkeypatches or CSS overrides)
+        // Inject Admin test user
         await injectTestUser(page, [
             'view_dashboard',
             'manage_settings',
@@ -58,12 +54,8 @@ test.describe('Per-Site Approval Workflows & Melbourne Demo', () => {
         await dismissFeatureUpdatesIfPresent(page);
 
         // Verify page header
-        await expect(page.getByRole('heading', { name: 'Site Approval Workflows' })).toBeVisible();
-        await expect(page.getByText('Safe Non-Sending Harness Active')).toBeVisible();
-
-        // Verify SLA governance advisory callout
-        await expect(page.getByText('Escalation SLA Governance Notice')).toBeVisible();
-        await expect(page.getByText('48-hour timer applies strictly to supplier stock reservations')).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Site Approval Workflows & Notifications' })).toBeVisible();
+        await expect(page.getByText('Live Notifications: Active')).toBeVisible();
 
         // Verify SPL Melbourne card and verified managers
         const melbourneCard = page.locator('text=SPL Melbourne').locator('xpath=ancestor::div[contains(@class, "rounded-2xl")]').first();
@@ -71,98 +63,84 @@ test.describe('Per-Site Approval Workflows & Melbourne Demo', () => {
         await expect(melbourneCard.getByText('Matthew Mancuso')).toBeVisible();
         await expect(melbourneCard.getByText('matthew.mancuso@splservices.com.au')).toBeVisible();
         await expect(melbourneCard.getByText(/Ebrahim Mokhtari/)).toBeVisible();
-        await expect(melbourneCard.getByText('ebrahim.mokhtari@splservices.com.au')).toBeVisible();
-        await expect(melbourneCard.getByText('Decision Required')).toBeVisible();
+
+        // Verify SPL Albury card has Matthew Mancuso and Eb (escalation)
+        const alburyCard = page.locator('text=SPL Albury').locator('xpath=ancestor::div[contains(@class, "rounded-2xl")]').first();
+        await expect(alburyCard).toBeVisible();
+        await expect(alburyCard.getByText('Matthew Mancuso')).toBeVisible();
+        await expect(alburyCard.getByText('matthew.mancuso@splservices.com.au')).toBeVisible();
+        await expect(alburyCard.getByText(/Ebrahim Mokhtari/)).toBeVisible();
+        await expect(alburyCard.getByText(/72h Auto SLA/)).toBeVisible();
+
+        // Verify SPL Mackay card has Bronwen Glover and Eb (escalation)
+        const mackayCard = page.locator('text=SPL Mackay').locator('xpath=ancestor::div[contains(@class, "rounded-2xl")]').first();
+        await expect(mackayCard).toBeVisible();
+        await expect(mackayCard.getByText('Bronwen Glover')).toBeVisible();
+        await expect(mackayCard.getByText('bronwen.glover@splservices.com.au')).toBeVisible();
+        await expect(mackayCard.getByText(/Ebrahim Mokhtari/)).toBeVisible();
     });
 
-    test('executes end-to-end Melbourne approval workflow demo & Concur handover', async ({ page }) => {
+    test('toggles Live Notification Dispatch mode cleanly', async ({ page }) => {
         await safeGoto(page, '/admin/workflows');
         await dismissFeatureUpdatesIfPresent(page);
-        await expect(page.getByRole('heading', { name: 'Site Approval Workflows' })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Site Approval Workflows & Notifications' })).toBeVisible();
 
-        // Switch to Interactive Demo tab
-        await page.getByRole('button', { name: 'Melbourne Interactive Demo Live' }).click();
+        // Initial state should be Live
+        const toggleBtn = page.getByRole('button', { name: /Switch to Preview Mode|Turn On Live Dispatch/i });
+        await expect(toggleBtn).toBeVisible();
 
-        // Step 1: Submit Requisition
-        await expect(page.getByText('Raise Purchase Requisition')).toBeVisible();
-        await page.getByRole('button', { name: /Submit Requisition for Approval/i }).click();
+        // Toggle to Preview Mode
+        await toggleBtn.click();
+        await expect(page.getByText(/Preview Mode Active/i)).toBeVisible();
 
-        // Step 2 & 3: Site Manager review
-        await expect(page.getByText('Site Manager Action (Matthew Mancuso)')).toBeVisible();
-        await expect(page.getByText('Requisition POR-MELB-DEMO-01 routed automatically to Matthew Mancuso')).toBeVisible();
-
-        // Verify notification telemetry preview is populated
-        await expect(page.getByText('Notification Telemetry Preview')).toBeVisible();
-        await expect(page.getByText('PO Approval Required: POR-MELB-DEMO-01')).toBeVisible();
-
-        // Step 3: Site Manager approval action
-        await page.getByRole('button', { name: 'Approve', exact: true }).click();
-
-        // Step 4 & 5: Concur handover
-        await expect(page.getByText("Ash's June 17 Concur Handover Flow")).toBeVisible();
-        await expect(page.getByText('48-Hour Supplier Stock Reservation Hold Active')).toBeVisible();
-
-        // Step 5a: Log Concur PR #
-        const prInput = page.getByPlaceholder('e.g. PR-9848');
-        await prInput.fill('PR-9848');
-        await page.getByRole('button', { name: 'Save PR #' }).click();
-
-        // Step 5b: Link Concur PO #
-        const poInput = page.getByPlaceholder('e.g. PO-2026-9848');
-        await poInput.fill('PO-2026-9848');
-        await page.getByRole('button', { name: 'Link PO #' }).click();
-
-        // Verify deliveries unlocked
-        await expect(page.getByText('Requisition Lifecycle Complete')).toBeVisible();
-        await expect(page.getByText('Status is ACTIVE. Melbourne warehouse receiving, docket uploads, and invoice matching are fully unlocked.')).toBeVisible();
+        // Toggle back to Live Dispatch
+        await page.getByRole('button', { name: /Turn On Live Dispatch/i }).click();
+        await expect(page.getByText(/Live Notifications: Active/i)).toBeVisible();
     });
 
-    test('displays Ashish Chhabra offboarding analysis and traceable migration plan', async ({ page }) => {
+    test('dispatches test notification alert and records telemetry', async ({ page }) => {
         await safeGoto(page, '/admin/workflows');
         await dismissFeatureUpdatesIfPresent(page);
-        await expect(page.getByRole('heading', { name: 'Site Approval Workflows' })).toBeVisible();
 
-        // Switch to Offboarding tab
-        await page.getByRole('button', { name: 'Ashish Offboarding & Migration Traceable' }).click();
+        // Click Send Test Alert button
+        const sendTestBtn = page.getByRole('button', { name: /Send Test Alert/i });
+        await expect(sendTestBtn).toBeVisible();
+        await sendTestBtn.click();
 
-        // Verify offboarding header and analysis
-        await expect(page.getByText('Ashish Chhabra Offboarding Audit & Reassignment Plan')).toBeVisible();
-        await expect(page.getByText('Historical Closed Requests (Immutable Archive)')).toBeVisible();
-        await expect(page.getByText('2 Orders Preserved')).toBeVisible();
-
-        // Verify open order proposed reassignment
-        await expect(page.getByText('POR-202609-000029')).toBeVisible();
-        await expect(page.getByText('SPL Holdings')).toBeVisible();
-        await expect(page.getByText('Ebrahim Mokhtari (COO)')).toBeVisible();
+        // Verify toast confirmation or dispatch
+        await expect(page.getByText(/Test notification sent successfully/i)).toBeVisible();
     });
 
-    test('logs audit trail entries with cryptographic action trace', async ({ page }) => {
+    test('logs audit trail entries with real telemetry', async ({ page }) => {
         await safeGoto(page, '/admin/workflows');
         await dismissFeatureUpdatesIfPresent(page);
-        await expect(page.getByRole('heading', { name: 'Site Approval Workflows' })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Site Approval Workflows & Notifications' })).toBeVisible();
 
         // Switch to Audit tab
-        await page.getByRole('button', { name: /Audit Trail & Telemetry/i }).click();
+        await page.getByRole('button', { name: /Audit Trail & Notification Telemetry/i }).click();
 
         // Verify audit log header
-        await expect(page.getByText('Workflow Decision & Notification Audit Logs')).toBeVisible();
+        await expect(page.getByText('Workflow & Telemetry Audit Trail')).toBeVisible();
+        await expect(page.getByRole('table')).toBeVisible();
     });
 
     test('persists configured facility changes across page reload', async ({ page }) => {
         await safeGoto(page, '/admin/workflows');
         await dismissFeatureUpdatesIfPresent(page);
-        await expect(page.getByRole('heading', { name: 'Site Approval Workflows' })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Site Approval Workflows & Notifications' })).toBeVisible();
 
-        // Open Configure Facility modal for Melbourne
-        await page.getByRole('button', { name: 'Configure Melbourne Facility' }).click();
-        await expect(page.getByText('Configure Facility: SPL Melbourne')).toBeVisible();
+        // Click Edit button on Melbourne card
+        const melbourneCard = page.locator('text=SPL Melbourne').locator('xpath=ancestor::div[contains(@class, "rounded-2xl")]').first();
+        await melbourneCard.locator('button[title*="Edit Approver"]').click();
+
+        await expect(page.getByText('Edit Workflow: SPL Melbourne')).toBeVisible();
 
         // Update approval manager name
-        const nameInput = page.getByPlaceholder('e.g. John Smith');
+        const nameInput = page.getByPlaceholder('e.g. Matthew Mancuso');
         await nameInput.fill('Matthew Mancuso (Acting Site Lead)');
 
-        // Save facility workflow
-        await page.getByRole('button', { name: 'Save Facility Workflow' }).click();
+        // Save workflow
+        await page.getByRole('button', { name: 'Save Workflow' }).click();
 
         // Verify updated manager name appears on Melbourne card
         await expect(page.getByText('Matthew Mancuso (Acting Site Lead)')).toBeVisible();
@@ -170,16 +148,17 @@ test.describe('Per-Site Approval Workflows & Melbourne Demo', () => {
         // Reload page to verify persistence across reloads/restarts
         await page.reload();
         await dismissFeatureUpdatesIfPresent(page);
-        await expect(page.getByRole('heading', { name: 'Site Approval Workflows' })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Site Approval Workflows & Notifications' })).toBeVisible();
 
         // Card must still display the persisted manager name
         await expect(page.getByText('Matthew Mancuso (Acting Site Lead)')).toBeVisible();
 
         // Restore clean baseline for future runs
-        await page.getByRole('button', { name: 'Configure Melbourne Facility' }).click();
-        await expect(page.getByText('Configure Facility: SPL Melbourne')).toBeVisible();
-        await page.getByPlaceholder('e.g. John Smith').fill('Matthew Mancuso');
-        await page.getByRole('button', { name: 'Save Facility Workflow' }).click();
-        await expect(page.getByText('Matthew Mancuso', { exact: true })).toBeVisible();
+        const restoredCard = page.locator('text=SPL Melbourne').locator('xpath=ancestor::div[contains(@class, "rounded-2xl")]').first();
+        await restoredCard.locator('button[title*="Edit Approver"]').click();
+        await expect(page.getByText('Edit Workflow: SPL Melbourne')).toBeVisible();
+        await page.getByPlaceholder('e.g. Matthew Mancuso').fill('Matthew Mancuso');
+        await page.getByRole('button', { name: 'Save Workflow' }).click();
+        await expect(page.getByText('Matthew Mancuso', { exact: true }).first()).toBeVisible();
     });
 });

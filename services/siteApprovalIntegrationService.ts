@@ -11,6 +11,30 @@ async function getSupabaseClient(): Promise<any> {
     }
   }
   return cachedSupabase;
+} 
+
+async function getTeamsWebhookUrlForSite(siteId?: string): Promise<string> {
+  const sb = await getSupabaseClient();
+  if (sb) {
+    try {
+      const { data } = await sb.from('app_config').select('key, value').in('key', ['teams_webhook_url', 'teams_config']);
+      let defaultUrl = '';
+      let siteWebhooks: Record<string, string> = {};
+      data?.forEach((c: any) => {
+        if (c.key === 'teams_webhook_url' && typeof c.value === 'string') {
+          defaultUrl = c.value;
+        } else if (c.key === 'teams_config' && c.value) {
+          if (c.value.webhookUrl) defaultUrl = c.value.webhookUrl;
+          if (c.value.siteWebhooks && typeof c.value.siteWebhooks === 'object') {
+            siteWebhooks = c.value.siteWebhooks;
+          }
+        }
+      });
+      if (siteId && siteWebhooks[siteId]) return siteWebhooks[siteId];
+      return defaultUrl;
+    } catch {}
+  }
+  return '';
 }
 import { 
   siteApprovalWorkflowService, 
@@ -166,6 +190,7 @@ export type NotificationDispatchMode = 'LIVE' | 'PREVIEW';
 export class DurableNotificationOutboxAdapter {
   private outboxQueue: DurableOutboxRecord[] = [];
   private outboxStorageKey = 'procureflow_notification_outbox_v2';
+  private dispatchModeStorageKey = 'procureflow_notification_dispatch_mode';
   private dispatchMode: NotificationDispatchMode = 'LIVE';
 
   constructor(initialMode: NotificationDispatchMode = 'LIVE') {
@@ -175,6 +200,11 @@ export class DurableNotificationOutboxAdapter {
 
   public setDispatchMode(mode: NotificationDispatchMode) {
     this.dispatchMode = mode;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(this.dispatchModeStorageKey, mode);
+      }
+    } catch {}
   }
 
   public getDispatchMode(): NotificationDispatchMode {
@@ -184,11 +214,19 @@ export class DurableNotificationOutboxAdapter {
   private loadFromStorage() {
     try {
       if (typeof localStorage !== 'undefined') {
+        const storedMode = localStorage.getItem(this.dispatchModeStorageKey);
+        if (storedMode === 'LIVE' || storedMode === 'PREVIEW') {
+          this.dispatchMode = storedMode;
+        } else {
+          this.dispatchMode = 'LIVE';
+          localStorage.setItem(this.dispatchModeStorageKey, 'LIVE');
+        }
         const raw = localStorage.getItem(this.outboxStorageKey);
         if (raw) this.outboxQueue = JSON.parse(raw);
       }
     } catch {
       this.outboxQueue = [];
+      this.dispatchMode = 'LIVE';
     }
   }
 
@@ -271,6 +309,27 @@ export class DurableNotificationOutboxAdapter {
             deliveredAt = new Date().toISOString();
           } catch {
             // Non-blocking schema fallback
+          }
+        } else if (params.channel === 'TEAMS') {
+          try {
+            const webhookUrl = await getTeamsWebhookUrlForSite(params.siteId);
+            if (webhookUrl && params.teamsCardPayload) {
+              const resp = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params.teamsCardPayload),
+              });
+              if (resp.ok) {
+                initialStatus = 'DELIVERED';
+                deliveredAt = new Date().toISOString();
+              } else {
+                lastError = 'Teams webhook returned HTTP ' + resp.status;
+              }
+            } else if (!webhookUrl) {
+              lastError = 'No Teams webhook configured for site';
+            }
+          } catch (err: any) {
+            lastError = err?.message || 'Teams webhook network error';
           }
         }
       }
@@ -638,7 +697,7 @@ export class SiteApprovalIntegrationService {
       details: {
         totalAmount: po.totalAmount,
         reservationExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-        instruction: "Ash's June 17 Process: Requester must now create Concur PR & log PR number.",
+        instruction: "Procurement Concur Handover: Requester must now create Concur PR & log PR number.",
       },
       timestamp: new Date().toISOString(),
     });
@@ -801,6 +860,113 @@ export class SiteApprovalIntegrationService {
       },
       timestamp: new Date().toISOString(),
     });
+  }
+  /**
+   * Dispatches a live test notification across In-App, Email, and Teams channels
+   * to verify end-to-end delivery pipeline health for a specific site or recipient.
+   */
+  async dispatchTestNotification(params: {
+    siteId: string;
+    siteName: string;
+    recipientEmail: string;
+    recipientName: string;
+    recipientId?: string;
+  }): Promise<{ success: boolean; outboxRecords: DurableOutboxRecord[] }> {
+    const testPoId = 'TEST-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    const testDisplayId = `POR-TEST-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+
+    const facts = [
+      { label: 'Test Event', value: 'Live Approval Notification Verification' },
+      { label: 'Facility', value: params.siteName },
+      { label: 'Recipient', value: `${params.recipientName} (${params.recipientEmail})` },
+      { label: 'Timestamp', value: new Date().toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' }) },
+    ];
+
+    const emailHtml = buildSafeEmailHtml({
+      title: `[Live Test] PO Approval Notification: ${testDisplayId}`,
+      bodyHtml: `<p>This is a live test notification from <strong>ProcureFlow</strong> verifying that approving managers at <strong>${params.siteName}</strong> are actively connected to receive live requisition approval requests.</p>`,
+      facts,
+      actionUrl: `https://procureflow.splservices.com.au/admin/workflows`,
+      actionLabel: 'Open ProcureFlow Workflows',
+    });
+
+    const teamsCard = buildSafeTeamsCard({
+      title: `[Live Test] PO Approval Notification: ${testDisplayId}`,
+      bodyText: `Live verification alert for ${params.siteName}. Notifications for approving managers are active.`,
+      facts: facts.map(f => ({ title: f.label, value: f.value })),
+      actionUrl: `https://procureflow.splservices.com.au/admin/workflows`,
+      actionLabel: 'View in ProcureFlow',
+    });
+
+    const results: DurableOutboxRecord[] = [];
+
+    // In-App
+    const inAppRes = await this.outbox.enqueue({
+      eventType: 'SITE_MANAGER_APPROVAL_REQUIRED',
+      poId: testPoId,
+      displayId: testDisplayId,
+      siteId: params.siteId,
+      recipientId: params.recipientId || 'test_user',
+      recipientName: params.recipientName,
+      recipientEmail: params.recipientEmail,
+      channel: 'IN_APP',
+      title: `[Test] Approval Required: ${testDisplayId}`,
+      body: `Live notification test for ${params.siteName}. System is active and operational.`,
+    });
+    if (inAppRes.record) results.push(inAppRes.record);
+
+    // Email
+    if (params.recipientEmail) {
+      const emailRes = await this.outbox.enqueue({
+        eventType: 'SITE_MANAGER_APPROVAL_REQUIRED',
+        poId: testPoId,
+        displayId: testDisplayId,
+        siteId: params.siteId,
+        recipientId: params.recipientId || 'test_user',
+        recipientName: params.recipientName,
+        recipientEmail: params.recipientEmail,
+        channel: 'EMAIL',
+        title: `[Test] PO Approval Required: ${testDisplayId}`,
+        body: `Live notification test for ${params.siteName}.`,
+        htmlPayload: emailHtml,
+      });
+      if (emailRes.record) results.push(emailRes.record);
+    }
+
+    // Teams
+    const teamsRes = await this.outbox.enqueue({
+      eventType: 'SITE_MANAGER_APPROVAL_REQUIRED',
+      poId: testPoId,
+      displayId: testDisplayId,
+      siteId: params.siteId,
+      recipientId: params.recipientId || 'test_user',
+      recipientName: params.recipientName,
+      recipientEmail: params.recipientEmail,
+      channel: 'TEAMS',
+      title: `[Test] PO Approval Required: ${testDisplayId}`,
+      body: `Live notification test for ${params.siteName}.`,
+      teamsCardPayload: teamsCard,
+    });
+    if (teamsRes.record) results.push(teamsRes.record);
+
+    siteApprovalWorkflowService.logAudit({
+      po_id: testPoId,
+      display_id: testDisplayId,
+      site_id: params.siteId,
+      action: 'ROUTED_TO_SITE_MANAGER',
+      actor_id: 'admin_test',
+      actor_name: 'System Admin (Live Test)',
+      actor_role: 'ADMIN',
+      details: {
+        type: 'LIVE_NOTIFICATION_PIPELINE_VERIFICATION',
+        site: params.siteName,
+        targetEmail: params.recipientEmail,
+        channelsTested: ['IN_APP', 'EMAIL', 'TEAMS'],
+      },
+      timestamp: new Date().toISOString(),
+    });
+
+    return { success: true, outboxRecords: results };
   }
 }
 
