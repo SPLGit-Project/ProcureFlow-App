@@ -1,0 +1,17 @@
+name: Scheduled 72h PO Escalation Sweep
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  escalate-overdue-pos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invoke Supabase Edge Function escalate-overdue-pos
+        run: |
+          curl --fail --silent --show-error -X POST \
+            "${{ secrets.VITE_SUPABASE_URL }}/functions/v1/escalate-overdue-pos" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json"

@@ -536,6 +536,7 @@ export interface EomMonthDefinition {
 export type POStatus = 
   | 'DRAFT' 
   | 'PENDING_APPROVAL' 
+  | 'ESCALATED'
   | 'REJECTED' 
   | 'APPROVED_PENDING_CONCUR_REQUEST'
   | 'APPROVED_PENDING_CONCUR' // Approved internally, waiting for user to create in Concur
@@ -583,6 +584,7 @@ export interface PORequest {
   concurLinkedAt?: string;
   cancellationReason?: string;
   autoCancelledAt?: string;
+  assignedApproverId?: string;
   isNonDefaultSupplier?: boolean;
   nonDefaultSupplierReason?: string;
 }

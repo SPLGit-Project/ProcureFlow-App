@@ -18,6 +18,7 @@ import DeliveryModal from './DeliveryModal';
 import { formatCurrency } from '../utils/taxCalculations';
 import { db } from '../services/db';
 import { evaluatePOTrigger, evaluateAllStagesStatus } from '../utils/lifecycleTriggers';
+import { siteApprovalWorkflowService, SiteApprovalWorkflow } from '../services/siteApprovalWorkflowService';
 
 // ── ProcureFlow Role-Tailored Insights Engine ─────────────────────────────────
 
@@ -285,22 +286,52 @@ export const LIFECYCLE_STAGES: LifecycleStageConfig[] = [
 ];
 
 // Helper to determine stage number and next step metadata
-export function getPOStageInfo(po: PORequest, currentUser: any, hasPermission: (perm: string) => boolean) {
+export function getPOStageInfo(
+  po: PORequest,
+  currentUser: any,
+  hasPermission: (perm: string) => boolean,
+  siteWorkflows: SiteApprovalWorkflow[] = []
+) {
   let stageNum = 1;
   let nextActionTitle = 'Review & Approve';
   let actionType: 'APPROVE' | 'CONCUR_REQ' | 'CONCUR_PO' | 'DELIVERY' | 'QUICK_VIEW' = 'APPROVE';
   let canAction = false;
 
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.roleIds?.includes('ADMIN') || hasPermission('manage_settings');
-  const isApprover = isAdmin || hasPermission('approve_requests');
   const canLinkConcur = hasPermission('link_concur');
   const isRequester = po.requesterId === currentUser?.id;
 
-  if (po.status === 'PENDING_APPROVAL' || po.status === 'DRAFT') {
+  const workflow = siteWorkflows.find(w => w.site_id === po.siteId && w.is_active);
+  const userEmailLower = (currentUser?.email || '').toLowerCase();
+  const isAssignedSiteManager = Boolean(
+    workflow &&
+      (workflow.approval_manager_id === currentUser?.id ||
+        (userEmailLower && (workflow.approval_manager_email || '').toLowerCase() === userEmailLower))
+  ) || Boolean(po.assignedApproverId && po.assignedApproverId === currentUser?.id);
+
+  const isAssignedEscalationManager = Boolean(
+    workflow &&
+      (workflow.escalation_manager_id === currentUser?.id ||
+        (userEmailLower && (workflow.escalation_manager_email || '').toLowerCase() === userEmailLower))
+  );
+
+  if (po.status === 'PENDING_APPROVAL') {
     stageNum = 1;
     nextActionTitle = 'Review & Approve';
     actionType = 'APPROVE';
-    canAction = isApprover || isAdmin;
+    // Only the assigned Site Approval Manager (never ADMINs or other managers) can approve, respecting SoD
+    canAction = !isRequester && (workflow ? isAssignedSiteManager : hasPermission('approve_requests'));
+  } else if (po.status === 'ESCALATED') {
+    stageNum = 1;
+    nextActionTitle = 'COO Escalation Review';
+    actionType = 'APPROVE';
+    // Once escalated, only the assigned COO Escalation Manager can approve/reject
+    canAction = !isRequester && isAssignedEscalationManager;
+  } else if (po.status === 'DRAFT') {
+    stageNum = 1;
+    nextActionTitle = 'Submit Draft';
+    actionType = 'QUICK_VIEW';
+    canAction = isRequester;
   } else if (po.status === 'APPROVED_PENDING_CONCUR_REQUEST') {
     stageNum = 2;
     nextActionTitle = 'Log Concur Req #';
@@ -392,6 +423,11 @@ export default function Home() {
   const isApprover = isAdmin || hasPermission('approve_requests');
   const canLinkConcur = hasPermission('link_concur');
 
+  const [siteWorkflows, setSiteWorkflows] = useState<SiteApprovalWorkflow[]>([]);
+  useEffect(() => {
+    siteApprovalWorkflowService.getSiteWorkflows().then(setSiteWorkflows).catch(() => {});
+  }, []);
+
   // Selected stage filter (null = "REQUESTS AWAITING COMPLETION" | 1 | 2 | 3 | 4 | 5 | 6)
   const [selectedStage, setSelectedStage] = useState<number | null>(null);
   const [completionFilter, setCompletionFilter] = useState<'ALL' | 'IN_FULL' | 'AWAITING_DELIVERY'>('ALL');
@@ -440,7 +476,7 @@ export default function Home() {
   const stageCounts = useMemo(() => {
     const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
     siteFilteredPOs.forEach(p => {
-      if (p.status === 'PENDING_APPROVAL' || p.status === 'DRAFT') counts[1] += 1;
+      if (p.status === 'PENDING_APPROVAL' || p.status === 'ESCALATED' || p.status === 'DRAFT') counts[1] += 1;
       else if (p.status === 'APPROVED_PENDING_CONCUR_REQUEST') counts[2] += 1;
       else if (p.status === 'APPROVED_PENDING_CONCUR') counts[3] += 1;
       else if (p.status === 'ACTIVE') counts[4] += 1;
@@ -701,7 +737,7 @@ export default function Home() {
 
   // ── Inline Action Handlers ──────────────────────────────────────────────────
   const handleOpenActionModal = (po: PORequest) => {
-    const stageInfo = getPOStageInfo(po, currentUser, hasPermission);
+    const stageInfo = getPOStageInfo(po, currentUser, hasPermission, siteWorkflows);
     setApprovalComment('');
     setConcurReqInput(po.concurRequestNumber || '');
     setConcurPoInput(po.concurPoNumber || '');
@@ -797,7 +833,7 @@ export default function Home() {
   };
 
   const renderPOCard = (po: PORequest) => {
-    const stageInfo = getPOStageInfo(po, currentUser, hasPermission);
+    const stageInfo = getPOStageInfo(po, currentUser, hasPermission, siteWorkflows);
     const StageIcon = stageInfo.stageConfig.icon;
     const totalItems = po.lines.reduce((sum, l) => sum + (l.quantityOrdered || 0), 0);
     const receivedItems = po.lines.reduce((sum, l) => sum + (l.quantityReceived || 0), 0);

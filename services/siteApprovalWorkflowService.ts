@@ -9,6 +9,15 @@
 export const PROCUREFLOW_LOGO_URL = 'https://raw.githubusercontent.com/SPLGit-Project/ProcureFlow-App/main/public/Procureflow_Logo.png';
 export const PROCUREFLOW_ICON_URL = 'https://raw.githubusercontent.com/SPLGit-Project/ProcureFlow-App/main/public/Procureflow_Icon.png';
 
+export const APP_BASE_URL = 'https://procureflow-app-spl.azurewebsites.net';
+
+export function getAppBaseUrl(): string {
+  if (typeof window !== 'undefined' && window.location?.origin && !window.location.origin.includes('localhost')) {
+    return window.location.origin;
+  }
+  return APP_BASE_URL;
+}
+
 export function buildSafeTeamsCard(params: {
   title: string;
   subtitle?: string;
@@ -16,7 +25,18 @@ export function buildSafeTeamsCard(params: {
   actionUrl?: string;
   actionLabel?: string;
   facts?: Array<{ title: string; value: string }>;
+  mention?: { name: string; email: string };
 }) {
+  const mentionLine = params.mention
+    ? {
+        type: 'TextBlock',
+        text: `Assigned Approver: <at>${params.mention.name}</at>`,
+        weight: 'Bolder',
+        size: 'Small',
+        wrap: true,
+      }
+    : null;
+
   return {
     type: 'message',
     attachments: [
@@ -48,6 +68,7 @@ export function buildSafeTeamsCard(params: {
                 },
               ],
             },
+            mentionLine,
             params.bodyText ? { type: 'TextBlock', text: params.bodyText, wrap: true } : null,
             params.facts && params.facts.length > 0
               ? { type: 'FactSet', facts: params.facts.map(f => ({ title: f.title, value: f.value })) }
@@ -62,6 +83,22 @@ export function buildSafeTeamsCard(params: {
                 },
               ]
             : [],
+          ...(params.mention
+            ? {
+                msteams: {
+                  entities: [
+                    {
+                      type: 'mention',
+                      text: `<at>${params.mention.name}</at>`,
+                      mentioned: {
+                        id: params.mention.email,
+                        name: params.mention.name,
+                      },
+                    },
+                  ],
+                },
+              }
+            : {}),
         },
       },
     ],
@@ -850,7 +887,7 @@ export class SiteApprovalWorkflowService {
     }
 
     const createdRecords: ApprovalNotificationRecord[] = [];
-    const actionUrl = params.actionUrl || `${typeof window !== 'undefined' ? window.location.origin : 'https://procureflow.splservices.com.au'}/procurement/orders`;
+    const actionUrl = params.actionUrl || `${getAppBaseUrl()}/procurement/orders`;
 
     // 1. Prepare Titles & Content based on event type
     let title = '';

@@ -13,34 +13,47 @@ async function getSupabaseClient(): Promise<any> {
   return cachedSupabase;
 } 
 
-async function getTeamsWebhookUrlForSite(siteId?: string): Promise<string> {
+interface TeamsRoutingConfig {
+  directBotWebhookUrl: string;
+  cooEscalationWebhookUrl: string;
+  siteWebhooks: Record<string, string>;
+  defaultWebhookUrl: string;
+}
+
+async function getTeamsRoutingConfig(): Promise<TeamsRoutingConfig> {
+  const result: TeamsRoutingConfig = {
+    directBotWebhookUrl: '',
+    cooEscalationWebhookUrl: '',
+    siteWebhooks: {},
+    defaultWebhookUrl: '',
+  };
   const sb = await getSupabaseClient();
   if (sb) {
     try {
       const { data } = await sb.from('app_config').select('key, value').in('key', ['teams_webhook_url', 'teams_config']);
-      let defaultUrl = '';
-      let siteWebhooks: Record<string, string> = {};
       data?.forEach((c: any) => {
         if (c.key === 'teams_webhook_url' && typeof c.value === 'string') {
-          defaultUrl = c.value;
+          result.defaultWebhookUrl = c.value;
         } else if (c.key === 'teams_config' && c.value) {
-          if (c.value.webhookUrl) defaultUrl = c.value.webhookUrl;
+          if (c.value.directBotWebhookUrl) result.directBotWebhookUrl = c.value.directBotWebhookUrl;
+          if (c.value.cooEscalationWebhookUrl) result.cooEscalationWebhookUrl = c.value.cooEscalationWebhookUrl;
+          if (c.value.webhookUrl) result.defaultWebhookUrl = c.value.webhookUrl;
           if (c.value.siteWebhooks && typeof c.value.siteWebhooks === 'object') {
-            siteWebhooks = c.value.siteWebhooks;
+            result.siteWebhooks = c.value.siteWebhooks;
           }
         }
       });
-      if (siteId && siteWebhooks[siteId]) return siteWebhooks[siteId];
-      return defaultUrl;
     } catch {}
   }
-  return '';
+  return result;
 }
+
 import { 
   siteApprovalWorkflowService, 
   VERIFIED_APPROVAL_IDENTITIES,
   buildSafeEmailHtml,
-  buildSafeTeamsCard
+  buildSafeTeamsCard,
+  getAppBaseUrl
 } from './siteApprovalWorkflowService.ts';
 import type { 
   SiteApprovalWorkflow, 
@@ -312,21 +325,65 @@ export class DurableNotificationOutboxAdapter {
           }
         } else if (params.channel === 'TEAMS') {
           try {
-            const webhookUrl = await getTeamsWebhookUrlForSite(params.siteId);
-            if (webhookUrl && params.teamsCardPayload) {
-              const resp = await fetch(webhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(params.teamsCardPayload),
-              });
-              if (resp.ok) {
-                initialStatus = 'DELIVERED';
-                deliveredAt = new Date().toISOString();
-              } else {
-                lastError = 'Teams webhook returned HTTP ' + resp.status;
+            const routing = await getTeamsRoutingConfig();
+            const isEscalation = params.eventType === 'PO_ESCALATED_TO_COO' || params.eventType === 'ESCALATION_MANAGER_ALERT';
+            const targetUrl =
+              routing.directBotWebhookUrl ||
+              (isEscalation ? routing.cooEscalationWebhookUrl : routing.siteWebhooks[params.siteId] || routing.defaultWebhookUrl);
+
+            if (targetUrl && params.teamsCardPayload) {
+              // Prefer server-side Edge Function dispatch to avoid browser CORS blocks on Power Automate
+              let dispatchedViaEdge = false;
+              try {
+                const { error: edgeErr } = await sb.functions.invoke('send-teams-notification', {
+                  body: {
+                    mode: routing.directBotWebhookUrl ? 'DIRECT_BOT' : 'CHANNEL_WEBHOOK',
+                    webhookUrl: targetUrl,
+                    recipientEmail: params.recipientEmail,
+                    recipientName: params.recipientName,
+                    siteId: params.siteId,
+                    eventType: params.eventType,
+                    title: params.title,
+                    card: params.teamsCardPayload,
+                  },
+                });
+                if (!edgeErr) {
+                  dispatchedViaEdge = true;
+                  initialStatus = 'DELIVERED';
+                  deliveredAt = new Date().toISOString();
+                }
+              } catch {
+                // Fall back to direct POST if edge function is not yet deployed
               }
-            } else if (!webhookUrl) {
-              lastError = 'No Teams webhook configured for site';
+
+              if (!dispatchedViaEdge) {
+                const payload = routing.directBotWebhookUrl
+                  ? {
+                      recipientEmail: params.recipientEmail,
+                      recipientName: params.recipientName,
+                      siteId: params.siteId,
+                      eventType: params.eventType,
+                      title: params.title,
+                      card: params.teamsCardPayload,
+                    }
+                  : params.teamsCardPayload;
+
+                const resp = await fetch(targetUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload),
+                });
+                if (resp.ok) {
+                  initialStatus = 'DELIVERED';
+                  deliveredAt = new Date().toISOString();
+                } else {
+                  lastError = 'Teams webhook returned HTTP ' + resp.status;
+                }
+              }
+            } else if (!targetUrl) {
+              lastError = isEscalation
+                ? 'No Direct Bot or COO Escalation Teams webhook configured'
+                : 'No Direct Bot or site Teams webhook configured';
             }
           } catch (err: any) {
             lastError = err?.message || 'Teams webhook network error';
@@ -613,20 +670,24 @@ export class SiteApprovalIntegrationService {
       { label: 'Total Value', value: `$${(po.totalAmount || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}` },
     ];
 
+    const approvalUrl = `${getAppBaseUrl()}/approvals/${po.id}`;
+
     const emailHtml = buildSafeEmailHtml({
       title: `PO Approval Required: ${po.displayId || po.id}`,
       bodyHtml: `<p>A new purchase requisition has been raised for <strong>${siteDisplayName}</strong> and requires your approval as designated Site Approval Manager.</p>`,
       facts,
-      actionUrl: `https://procureflow.splservices.com.au/approvals/${po.id}`,
+      actionUrl: approvalUrl,
       actionLabel: 'Review Requisition in ProcureFlow',
     });
 
     const teamsCard = buildSafeTeamsCard({
       title: `PO Approval Required: ${po.displayId || po.id}`,
+      subtitle: `${siteDisplayName} • Assigned Approver Only`,
       bodyText: `Purchase requisition raised by ${requester?.name || 'Staff Member'} for ${siteDisplayName}. Total: $${(po.totalAmount || 0).toFixed(2)} AUD.`,
       facts: facts.map(f => ({ title: f.label, value: f.value })),
-      actionUrl: `https://procureflow.splservices.com.au/approvals/${po.id}`,
+      actionUrl: approvalUrl,
       actionLabel: 'Review in ProcureFlow',
+      mention: { name: siteManagerName, email: siteManagerEmail },
     });
 
     // Enqueue In-App
@@ -802,6 +863,35 @@ export class SiteApprovalIntegrationService {
       timestamp: new Date().toISOString(),
     });
 
+    const escalationUrl = `${getAppBaseUrl()}/approvals/${po.id}`;
+    const siteDisplayName = workflow?.site_name || po.site || 'SPL Facility';
+    const escalationReason = reason || 'Manual or 72-hour SLA escalation';
+    const facts = [
+      { label: 'Requisition ID', value: po.displayId || po.id },
+      { label: 'Facility', value: siteDisplayName },
+      { label: 'Escalation Authority', value: escalationName },
+      { label: 'Total Value', value: `$${(po.totalAmount || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })} AUD` },
+      { label: 'Reason', value: escalationReason },
+    ];
+
+    const emailHtml = buildSafeEmailHtml({
+      title: `ESCALATED PO Approval Required: ${po.displayId || po.id}`,
+      bodyHtml: `<p>Purchase requisition <strong>${po.displayId || po.id}</strong> for <strong>${siteDisplayName}</strong> has been escalated to your exclusive COO approval queue.</p>`,
+      facts,
+      actionUrl: escalationUrl,
+      actionLabel: 'Review & Approve in ProcureFlow',
+    });
+
+    const teamsCard = buildSafeTeamsCard({
+      title: `🚨 Escalated PO Approval Required: ${po.displayId || po.id}`,
+      subtitle: `${siteDisplayName} • COO Exclusive Escalation`,
+      bodyText: `Requisition ${po.displayId || po.id} ($${(po.totalAmount || 0).toFixed(2)} AUD) has been escalated to COO ${escalationName}. Reason: ${escalationReason}.`,
+      facts: facts.map(f => ({ title: f.label, value: f.value })),
+      actionUrl: escalationUrl,
+      actionLabel: 'Approve in ProcureFlow',
+      mention: { name: escalationName, email: escalationEmail },
+    });
+
     await this.outbox.enqueue({
       eventType: 'PO_ESCALATED_TO_COO',
       poId: po.id,
@@ -813,6 +903,34 @@ export class SiteApprovalIntegrationService {
       channel: 'IN_APP',
       title: `Escalated PO Approval Required: ${po.displayId || po.id}`,
       body: `Requisition ${po.displayId || po.id} ($${(po.totalAmount || 0).toFixed(2)}) has been escalated to you for final approval.`,
+    });
+
+    await this.outbox.enqueue({
+      eventType: 'PO_ESCALATED_TO_COO',
+      poId: po.id,
+      displayId: po.displayId || po.id,
+      siteId,
+      recipientId: escalationId,
+      recipientName: escalationName,
+      recipientEmail: escalationEmail,
+      channel: 'EMAIL',
+      title: `ESCALATED PO Approval Required: ${po.displayId || po.id}`,
+      body: `Requisition ${po.displayId || po.id} has been escalated for COO approval.`,
+      htmlPayload: emailHtml,
+    });
+
+    await this.outbox.enqueue({
+      eventType: 'PO_ESCALATED_TO_COO',
+      poId: po.id,
+      displayId: po.displayId || po.id,
+      siteId,
+      recipientId: escalationId,
+      recipientName: escalationName,
+      recipientEmail: escalationEmail,
+      channel: 'TEAMS',
+      title: `Escalated PO Approval Required: ${po.displayId || po.id}`,
+      body: `Escalation card dispatched directly to COO ${escalationName}`,
+      teamsCardPayload: teamsCard,
     });
   }
 
@@ -882,20 +1000,24 @@ export class SiteApprovalIntegrationService {
       { label: 'Timestamp', value: new Date().toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' }) },
     ];
 
+    const workflowsUrl = `${getAppBaseUrl()}/admin/workflows`;
+
     const emailHtml = buildSafeEmailHtml({
       title: `[Live Test] PO Approval Notification: ${testDisplayId}`,
       bodyHtml: `<p>This is a live test notification from <strong>ProcureFlow</strong> verifying that approving managers at <strong>${params.siteName}</strong> are actively connected to receive live requisition approval requests.</p>`,
       facts,
-      actionUrl: `https://procureflow.splservices.com.au/admin/workflows`,
+      actionUrl: workflowsUrl,
       actionLabel: 'Open ProcureFlow Workflows',
     });
 
     const teamsCard = buildSafeTeamsCard({
       title: `[Live Test] PO Approval Notification: ${testDisplayId}`,
+      subtitle: `${params.siteName} • 1:1 Direct Bot Verification`,
       bodyText: `Live verification alert for ${params.siteName}. Notifications for approving managers are active.`,
       facts: facts.map(f => ({ title: f.label, value: f.value })),
-      actionUrl: `https://procureflow.splservices.com.au/admin/workflows`,
+      actionUrl: workflowsUrl,
       actionLabel: 'View in ProcureFlow',
+      mention: { name: params.recipientName, email: params.recipientEmail },
     });
 
     const results: DurableOutboxRecord[] = [];

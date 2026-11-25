@@ -62,6 +62,9 @@ export const WorkflowNotificationHub: React.FC = () => {
     const [isSendingTest, setIsSendingTest] = useState(false);
 
     // ── 3. Channels State ─────────────────────────────────────────────────────────
+    const [directBotWebhookUrl, setDirectBotWebhookUrl] = useState('');
+    const [cooEscalationWebhookUrl, setCooEscalationWebhookUrl] = useState('');
+    const [isSavingBotConfig, setIsSavingBotConfig] = useState(false);
     const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
     const [siteWebhooks, setSiteWebhooks] = useState<Record<string, string>>({});
     const [selectedSiteId, setSelectedSiteId] = useState<string>('');
@@ -121,6 +124,9 @@ export const WorkflowNotificationHub: React.FC = () => {
         try {
             const defaultUrl = await notificationEngineService.getTeamsWebhookUrl();
             const webhooks = await notificationEngineService.getSiteTeamsWebhooks();
+            const adv = await notificationEngineService.getTeamsAdvancedConfig();
+            setDirectBotWebhookUrl(adv.directBotWebhookUrl);
+            setCooEscalationWebhookUrl(adv.cooEscalationWebhookUrl);
             setSiteWebhooks(webhooks);
 
             const initialSite = (sites || []).find(s => s.name?.toLowerCase().includes('melbourne')) || (sites || [])[0];
@@ -259,6 +265,21 @@ export const WorkflowNotificationHub: React.FC = () => {
             notificationEngineService.getTeamsWebhookUrl().then(url => setTeamsWebhookUrl(url));
         } else {
             setTeamsWebhookUrl(siteWebhooks[siteId] || '');
+        }
+    };
+
+    const handleSaveBotConfig = async () => {
+        setIsSavingBotConfig(true);
+        try {
+            await notificationEngineService.saveTeamsAdvancedConfig({
+                directBotWebhookUrl,
+                cooEscalationWebhookUrl,
+            });
+            success('1:1 Direct Teams Bot & COO Escalation routing saved successfully!');
+        } catch {
+            error('Failed to save Direct Teams Bot configuration');
+        } finally {
+            setIsSavingBotConfig(false);
         }
     };
 
@@ -1126,6 +1147,61 @@ export const WorkflowNotificationHub: React.FC = () => {
                                 </ol>
                             </div>
                         )}
+
+                        {/* 1:1 Direct Teams Bot & COO Escalation Isolation */}
+                        <div className="bg-sky-50/70 dark:bg-sky-950/20 p-5 rounded-2xl border border-sky-200 dark:border-sky-800/40 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div>
+                                    <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                        1:1 Direct Teams Bot & COO Escalation Routing
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                            directBotWebhookUrl
+                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                        }`}>
+                                            {directBotWebhookUrl ? '1:1 Bot Active' : 'Pending Bot URL'}
+                                        </span>
+                                    </h4>
+                                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                                        Single Power Automate Flow Bot HTTP trigger that sends private 1:1 Adaptive Cards directly to the assigned Site Manager (or COO Eb on escalation) — eliminating shared channel visibility.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveBotConfig}
+                                    disabled={isSavingBotConfig}
+                                    className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all shrink-0 cursor-pointer disabled:opacity-50"
+                                >
+                                    {isSavingBotConfig ? 'Saving...' : 'Save Bot Routing'}
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">
+                                        1:1 Flow Bot Webhook URL (All Sites + COO)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={directBotWebhookUrl}
+                                        onChange={e => setDirectBotWebhookUrl(e.target.value)}
+                                        placeholder="https://...powerplatform.com/.../triggers/manual/paths/invoke?..."
+                                        className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-nocturne border border-gray-200 dark:border-white/10 text-xs font-mono text-gray-900 dark:text-white"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">
+                                        COO Escalation Private Fallback Webhook (Optional)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={cooEscalationWebhookUrl}
+                                        onChange={e => setCooEscalationWebhookUrl(e.target.value)}
+                                        placeholder="Optional private COO channel webhook URL..."
+                                        className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-nocturne border border-gray-200 dark:border-white/10 text-xs font-mono text-gray-900 dark:text-white"
+                                    />
+                                </div>
+                            </div>
+                        </div>
 
                         {/* Individual Facility Selector & Live Tester */}
                         <div className="bg-gray-50/70 dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-100 dark:border-white/5 space-y-4">

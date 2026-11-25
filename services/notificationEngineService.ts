@@ -470,9 +470,47 @@ class NotificationEngineService {
     }
 
     /**
+     * Get Direct Bot & COO Escalation webhook URLs from app_config.teams_config
+     */
+    async getTeamsAdvancedConfig(): Promise<{ directBotWebhookUrl: string; cooEscalationWebhookUrl: string }> {
+        try {
+            const { data } = await supabase
+                .from('app_config')
+                .select('value')
+                .eq('key', 'teams_config')
+                .single();
+            return {
+                directBotWebhookUrl: data?.value?.directBotWebhookUrl || '',
+                cooEscalationWebhookUrl: data?.value?.cooEscalationWebhookUrl || ''
+            };
+        } catch {
+            return { directBotWebhookUrl: '', cooEscalationWebhookUrl: '' };
+        }
+    }
+
+    /**
+     * Save Direct Bot & COO Escalation webhook URLs while preserving siteWebhooks and default webhookUrl
+     */
+    async saveTeamsAdvancedConfig(params: { directBotWebhookUrl?: string; cooEscalationWebhookUrl?: string }): Promise<void> {
+        const { data } = await supabase.from('app_config').select('value').eq('key', 'teams_config').single();
+        const existing = (data?.value && typeof data.value === 'object') ? data.value : {};
+        await supabase.from('app_config').upsert({
+            key: 'teams_config',
+            value: {
+                ...existing,
+                ...(params.directBotWebhookUrl !== undefined ? { directBotWebhookUrl: params.directBotWebhookUrl.trim() } : {}),
+                ...(params.cooEscalationWebhookUrl !== undefined ? { cooEscalationWebhookUrl: params.cooEscalationWebhookUrl.trim() } : {})
+            },
+            updated_at: new Date().toISOString()
+        });
+    }
+
+    /**
      * Save a site-specific Microsoft Teams webhook URL
      */
     async saveSiteTeamsWebhookUrl(siteId: string, url: string): Promise<void> {
+        const { data } = await supabase.from('app_config').select('value').eq('key', 'teams_config').single();
+        const existing = (data?.value && typeof data.value === 'object') ? data.value : {};
         const currentSiteWebhooks = await this.getSiteTeamsWebhooks();
         const currentDefault = await this.getTeamsWebhookUrl();
         const updated = {
@@ -483,6 +521,7 @@ class NotificationEngineService {
         await supabase.from('app_config').upsert({
             key: 'teams_config',
             value: {
+                ...existing,
                 webhookUrl: currentDefault,
                 siteWebhooks: updated
             },
@@ -494,6 +533,8 @@ class NotificationEngineService {
      * Save Microsoft Teams default webhook URL to database
      */
     async saveTeamsWebhookUrl(url: string): Promise<void> {
+        const { data } = await supabase.from('app_config').select('value').eq('key', 'teams_config').single();
+        const existing = (data?.value && typeof data.value === 'object') ? data.value : {};
         const siteWebhooks = await this.getSiteTeamsWebhooks();
         await Promise.all([
             supabase.from('app_config').upsert({
@@ -504,6 +545,7 @@ class NotificationEngineService {
             supabase.from('app_config').upsert({
                 key: 'teams_config',
                 value: {
+                    ...existing,
                     webhookUrl: url,
                     siteWebhooks: siteWebhooks
                 },
@@ -571,7 +613,7 @@ class NotificationEngineService {
         const uniqueRecipients = Array.from(new Map(targetUsers.map(u => [u.id || u.email, u])).values());
 
         // Context variables for interpolation
-        const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://procureflow.splservices.com.au';
+        const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://procureflow-app-spl.azurewebsites.net';
         const vars = {
             ...params.variables,
             app_url: appUrl,
