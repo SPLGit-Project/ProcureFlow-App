@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rememberRequestForSignIn, sydneyTeamsRequestUrl, SYDNEY_APPROVAL_SITE_ID, takeRequestAfterSignIn, validRequestPath } from '../../utils/requestDeepLink.mjs';
+import { rememberRequestForSignIn, validLinkedRequestId, takeRequestAfterSignIn, validRequestPath } from '../../utils/requestDeepLink.mjs';
 
 const sampleId = '00000000-0000-4000-8000-000000000042';
 const path = `/requests/${sampleId}`;
@@ -15,10 +15,11 @@ function makeStorage() {
   };
 }
 
-test('Sydney card uses exact request on the Azure deployment; other sites stay on old branch', () => {
-  assert.equal(sydneyTeamsRequestUrl(SYDNEY_APPROVAL_SITE_ID, sampleId), `https://procureflow-app-spl.azurewebsites.net${path}`);
-  assert.equal(sydneyTeamsRequestUrl('classic-linen', sampleId), null);
-  assert.equal(sydneyTeamsRequestUrl(SYDNEY_APPROVAL_SITE_ID, '../approvals'), null);
+test('a focused request query accepts only a single UUID', () => {
+  assert.equal(validLinkedRequestId(sampleId), sampleId);
+  for (const id of [null, 'site-01', '../approvals', `${sampleId}?x=1`, `${sampleId}\n`]) {
+    assert.equal(validLinkedRequestId(id), null, String(id));
+  }
 });
 
 test('sign-in target resumes one time across the same-tab OAuth round trip', () => {

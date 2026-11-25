@@ -3,7 +3,6 @@ const retainedRequestKey = 'pf_request_after_sign_in';
 const maxAgeMs = 15 * 60 * 1000;
 
 export const SYDNEY_APPROVAL_SITE_ID = '77777777-7777-4777-8777-777777777777';
-const procureFlowProductionOrigin = 'https://procureflow-app-spl.azurewebsites.net';
 
 export function validRequestPath(value) {
   return typeof value === 'string' && requestPathPattern.test(value) ? value : null;
@@ -13,11 +12,6 @@ export function validLinkedRequestId(value) {
   return typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value) ? value : null;
 }
 
-export function sydneyTeamsRequestUrl(siteId, requestId) {
-  if (siteId !== SYDNEY_APPROVAL_SITE_ID || !validLinkedRequestId(requestId)) return null;
-  const requestPath = validRequestPath(`/requests/${requestId}`);
-  return requestPath ? `${procureFlowProductionOrigin}${requestPath}` : null;
-}
 
 export function rememberRequestForSignIn(value, storage = undefined, now = Date.now()) {
   try {
