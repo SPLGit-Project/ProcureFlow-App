@@ -44,6 +44,7 @@ Deno.serve(async (req) => {
 
     const now = new Date();
     const escalatedIds: string[] = [];
+    const deliveryFailures: Array<{ displayId: string; channel: string; error: string }> = [];
 
     for (const wf of workflows || []) {
       const slaHours = Number(wf.escalation_sla_hours) || 72;
@@ -80,29 +81,53 @@ Deno.serve(async (req) => {
         const displayId = po.display_id || po.id;
         const escalationEmail = wf.escalation_manager_email || "ebrahim.mokhtari@splservices.com.au";
         const escalationName = wf.escalation_manager_name || "Ebrahim Mokhtari";
-        const approvalUrl = `${APP_BASE_URL}/approvals/${po.id}`;
+        const escalationId = wf.escalation_manager_id || "9e97d720-3bf0-4451-b739-9fd87d27686c";
+        const approvalUrl = `${APP_BASE_URL}/requests/${po.id}`;
         const amountStr = `$${Number(po.total_amount || 0).toLocaleString("en-AU", {
           minimumFractionDigits: 2,
         })} AUD`;
+        const nowIso = now.toISOString();
 
-        // 5a. In-App Notification for COO only
-        if (wf.escalation_manager_id) {
-          await supabaseAdmin.from("user_notifications").insert({
-            user_id: wf.escalation_manager_id,
-            title: `Escalated PO Approval Required: ${displayId}`,
-            message: `${displayId} (${wf.site_name}, ${amountStr}) exceeded the ${slaHours}h SLA and is now in your exclusive COO queue.`,
-            type: "warning",
-            read: false,
-            action_url: `/approvals/${po.id}`,
-            created_at: now.toISOString(),
-          });
-        }
+        // 5a. In-App Notification for COO only (schema-compliant: is_read, category, severity)
+        const inAppTitle = `Escalated PO Approval Required: ${displayId}`;
+        const inAppMsg = `${displayId} (${wf.site_name}, ${amountStr}) exceeded the ${slaHours}h SLA and is now in your exclusive COO queue.`;
+        const { error: inAppErr } = await supabaseAdmin.from("user_notifications").insert({
+          user_id: escalationId,
+          title: inAppTitle,
+          message: inAppMsg,
+          category: "APPROVAL",
+          severity: "WARNING",
+          is_read: false,
+          action_url: `/requests/${po.id}`,
+          created_at: nowIso,
+        });
+
+        await supabaseAdmin.from("site_workflow_notification_outbox").insert({
+          idempotency_key: `esc_${po.id}_IN_APP_${escalationId}`,
+          po_id: po.id,
+          display_id: displayId,
+          site_id: wf.site_id,
+          recipient_id: escalationId,
+          recipient_name: escalationName,
+          recipient_email: escalationEmail,
+          channel: "IN_APP",
+          status: inAppErr ? "FAILED" : "DELIVERED",
+          title: inAppTitle,
+          body: inAppMsg,
+          retry_count: 0,
+          max_retries: 3,
+          last_error: inAppErr ? inAppErr.message : null,
+          created_at: nowIso,
+          delivered_at: inAppErr ? null : nowIso,
+        });
+        if (inAppErr) deliveryFailures.push({ displayId, channel: "IN_APP", error: inAppErr.message });
 
         // 5b. Email Notification via send-notification-email
-        await supabaseAdmin.functions.invoke("send-notification-email", {
+        const emailSubject = `ESCALATED (${slaHours}h SLA): PO Approval Required — ${displayId} (${wf.site_name})`;
+        const { error: emailErr } = await supabaseAdmin.functions.invoke("send-notification-email", {
           body: {
             to: escalationEmail,
-            subject: `ESCALATED (${slaHours}h SLA): PO Approval Required — ${displayId} (${wf.site_name})`,
+            subject: emailSubject,
             html: `
               <p>Dear ${escalationName},</p>
               <p>Purchase requisition <strong>${displayId}</strong> for <strong>${wf.site_name}</strong> (${amountStr}) did not receive a site manager decision within ${slaHours} hours and has been escalated exclusively to you for COO approval.</p>
@@ -111,9 +136,35 @@ Deno.serve(async (req) => {
           },
         });
 
-        // 5c. Teams 1:1 Direct Bot or COO-only Private Channel Notification
+        await supabaseAdmin.from("site_workflow_notification_outbox").insert({
+          idempotency_key: `esc_${po.id}_EMAIL_${escalationId}`,
+          po_id: po.id,
+          display_id: displayId,
+          site_id: wf.site_id,
+          recipient_id: escalationId,
+          recipient_name: escalationName,
+          recipient_email: escalationEmail,
+          channel: "EMAIL",
+          status: emailErr ? "FAILED" : "DELIVERED",
+          title: emailSubject,
+          body: inAppMsg,
+          retry_count: 0,
+          max_retries: 3,
+          last_error: emailErr ? emailErr.message : null,
+          created_at: nowIso,
+          delivered_at: emailErr ? null : nowIso,
+        });
+        if (emailErr) deliveryFailures.push({ displayId, channel: "EMAIL", error: emailErr.message });
+
+        // 5c. Teams 1:1 Direct Bot or COO-only Private Channel Notification with HTTP & Audit verification
         const teamsTargetUrl = directBotUrl || cooEscWebhookUrl;
-        if (teamsTargetUrl) {
+        let teamsStatus: "DELIVERED" | "FAILED" = "FAILED";
+        let teamsError: string | null = null;
+        let teamsHttpStatus: number | null = null;
+
+        if (!teamsTargetUrl) {
+          teamsError = "No Direct Bot or COO Escalation Teams webhook configured";
+        } else {
           const card = {
             type: "message",
             attachments: [
@@ -192,18 +243,63 @@ Deno.serve(async (req) => {
                 recipientName: escalationName,
                 siteId: wf.site_id,
                 eventType: "PO_ESCALATED_TO_COO",
-                title: `Escalated PO Approval Required: ${displayId}`,
+                title: inAppTitle,
                 card,
               }
             : card;
 
-          await fetch(teamsTargetUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(outbound),
-          });
+          try {
+            const resp = await fetch(teamsTargetUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(outbound),
+            });
+            teamsHttpStatus = resp.status;
+            if (resp.ok) {
+              teamsStatus = "DELIVERED";
+            } else {
+              teamsError = `Teams webhook returned HTTP ${resp.status}`;
+            }
+          } catch (fetchErr: unknown) {
+            teamsError = fetchErr instanceof Error ? fetchErr.message : "Teams fetch exception";
+          }
         }
 
+        await supabaseAdmin.from("site_workflow_notification_outbox").insert({
+          idempotency_key: `esc_${po.id}_TEAMS_${escalationId}`,
+          po_id: po.id,
+          display_id: displayId,
+          site_id: wf.site_id,
+          recipient_id: escalationId,
+          recipient_name: escalationName,
+          recipient_email: escalationEmail,
+          channel: "TEAMS",
+          status: teamsStatus,
+          title: inAppTitle,
+          body: inAppMsg,
+          retry_count: 0,
+          max_retries: 3,
+          last_error: teamsError,
+          created_at: nowIso,
+          delivered_at: teamsStatus === "DELIVERED" ? nowIso : null,
+        });
+
+        await supabaseAdmin.from("notification_delivery_logs").insert({
+          event_type: "PO_ESCALATED_TO_COO",
+          channel: "TEAMS",
+          recipient: escalationEmail,
+          status: teamsStatus,
+          title: inAppTitle,
+          payload: {
+            mode: directBotUrl ? "DIRECT_BOT" : "CHANNEL_WEBHOOK",
+            siteId: wf.site_id,
+            displayId,
+            httpStatus: teamsHttpStatus,
+          },
+          error_message: teamsError,
+        });
+
+        if (teamsError) deliveryFailures.push({ displayId, channel: "TEAMS", error: teamsError });
         escalatedIds.push(displayId);
       }
     }
@@ -213,6 +309,7 @@ Deno.serve(async (req) => {
         success: true,
         escalatedCount: escalatedIds.length,
         escalatedIds,
+        deliveryFailuresCount: deliveryFailures.length,
         checkedAt: now.toISOString(),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }

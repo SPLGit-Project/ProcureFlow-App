@@ -7,6 +7,7 @@ import { DirectoryService } from '../services/graphService.ts';
 import { notificationEngineService } from '../services/notificationEngineService.ts';
 import { realtimeNotificationService } from '../services/realtimeNotificationService.ts';
 import { siteApprovalIntegrationService } from '../services/siteApprovalIntegrationService.ts';
+import { siteApprovalWorkflowService, SiteApprovalWorkflow } from '../services/siteApprovalWorkflowService.ts';
 import { canonicalSupplierName, mergeSupplierRecords, normalizeSupplierContacts } from '../utils/suppliers.ts';
 import { calculateItemRunningStock, StockBreakdown } from '../utils/reservationUtils.ts';
 import {
@@ -565,6 +566,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
 
     refreshNotifications();
+    siteApprovalWorkflowService.getSiteWorkflows().then(setSiteWorkflows).catch(() => {});
     realtimeNotificationService.subscribe(currentUser.id, (newNotif) => {
       setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
       triggerNotificationPopup(newNotif);
@@ -1942,10 +1944,10 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       return true;
   }, [currentUser, roles]);
 
+  const [siteWorkflows, setSiteWorkflows] = useState<SiteApprovalWorkflow[]>([]);
+
   const canApproveOrder = useCallback((po: PORequest): boolean => {
       if (!currentUser || !po) return false;
-      if (isEffectiveAdminUser(currentUser)) return true;
-      if (!hasPermission('approve_requests')) return false;
 
       const assignedRoleIds = sessionRoleOverrideRef.current
           ? [currentUser.role]
@@ -1959,6 +1961,28 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
               return false;
           }
       }
+
+      // Strict site-approval workflow check (only assigned Site Manager for PENDING_APPROVAL, only COO for ESCALATED; ADMINs cannot approve unless assigned)
+      const wf = siteWorkflows.find(w => w.site_id === po.siteId && w.is_active);
+      const userEmailLower = (currentUser.email || '').toLowerCase();
+
+      if (po.status === 'ESCALATED') {
+          if (!wf) return false;
+          return Boolean(
+              wf.escalation_manager_id === currentUser.id ||
+              (userEmailLower && (wf.escalation_manager_email || '').toLowerCase() === userEmailLower)
+          );
+      }
+
+      if (po.status === 'PENDING_APPROVAL' && wf) {
+          return Boolean(
+              wf.approval_manager_id === currentUser.id ||
+              (userEmailLower && (wf.approval_manager_email || '').toLowerCase() === userEmailLower) ||
+              (po.assignedApproverId && po.assignedApproverId === currentUser.id)
+          );
+      }
+
+      if (!hasPermission('approve_requests')) return false;
 
       // Check financial authority limit
       const approvingRoles = assignedRoles.filter(r => r.permissions.includes('approve_requests'));

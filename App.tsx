@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext.tsx';
 import Layout from './components/Layout.tsx';
 import Login from './components/Login.tsx';
@@ -98,8 +98,44 @@ const LoadingSpinner = () => (
     </div>
 );
 
+const POST_LOGIN_REDIRECT_KEY = 'pf_post_login_redirect';
+
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
     const { isAuthenticated, isPendingApproval, isLoadingAuth } = useApp();
+    const location = useLocation();
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        if (!isLoadingAuth && !isAuthenticated) {
+            const target = `${location.pathname}${location.search}${location.hash}`;
+            if (
+                target &&
+                target !== '/' &&
+                !target.startsWith('/login') &&
+                !target.startsWith('/pending-approval') &&
+                !target.startsWith('/invite')
+            ) {
+                try {
+                    sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, target);
+                } catch {
+                    // Ignore storage failures in restricted contexts
+                }
+            }
+            return;
+        }
+
+        if (!isLoadingAuth && isAuthenticated && !isPendingApproval && location.pathname === '/') {
+            try {
+                const savedRedirect = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
+                if (savedRedirect && savedRedirect.startsWith('/') && !savedRedirect.startsWith('//')) {
+                    sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+                    navigate(savedRedirect, { replace: true });
+                }
+            } catch {
+                // Ignore storage failures
+            }
+        }
+    }, [isLoadingAuth, isAuthenticated, isPendingApproval, location.pathname, location.search, location.hash, navigate]);
     
     if (isLoadingAuth) {
         return (
@@ -110,7 +146,7 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
     }
 
     if (!isAuthenticated) {
-        return <Navigate to="/login" replace />;
+        return <Navigate to="/login" replace state={{ from: location }} />;
     }
 
     if (isPendingApproval) {
@@ -139,6 +175,7 @@ function App() {
               
               <Route path="requests" element={<Suspense fallback={<LoadingSpinner />}><POList filter="ALL" /></Suspense>} />
               <Route path="approvals" element={<Suspense fallback={<LoadingSpinner />}><ApprovalQueue /></Suspense>} />
+              <Route path="approvals/:id" element={<Suspense fallback={<LoadingSpinner />}><PODetail /></Suspense>} />
               <Route path="active-requests" element={<Suspense fallback={<LoadingSpinner />}><ActiveRequestsView /></Suspense>} />
               <Route path="completed" element={<Suspense fallback={<LoadingSpinner />}><POList filter="COMPLETED" /></Suspense>} />
               <Route path="requests/:id" element={<Suspense fallback={<LoadingSpinner />}><PODetail /></Suspense>} />
