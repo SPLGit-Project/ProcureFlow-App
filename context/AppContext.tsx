@@ -17,6 +17,7 @@ import {
     writeSessionLogoutNotice
 } from '../utils/sessionState.ts';
 import { resetSessionLinenFact } from '../constants/linenFacts.ts';
+import { SYDNEY_APPROVAL_SITE_ID, validLinkedRequestId } from '../utils/requestDeepLink.mjs';
 import { clearFeatureUpdatePresentation, getFeatureUpdateSessionId } from '../utils/featureUpdateSession.ts';
 
 interface DevelopmentFixtures {
@@ -254,6 +255,8 @@ interface AppContextType {
   stockPos: PORequest[];
   isStockReady: boolean;
   allPos: PORequest[];
+  focusLinkedRequest: (id: string | undefined) => () => void;
+  linkedRequestLoading: boolean;
   suppliers: Supplier[];
   items: Item[];
   sites: Site[];
@@ -503,7 +506,15 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   }, [persistSessionActivity]);
 
   // Data State
-  const [pos, setPos] = useState<PORequest[]>([]);
+  const [listedPos, setPos] = useState<PORequest[]>([]);
+  const [linkedRequestId, setLinkedRequestId] = useState<string | null>(null);
+  const [linkedRequestResult, setLinkedRequestResult] = useState<{ key: string; po: PORequest | null } | null>(null);
+  const [linkedRequestRefresh, refreshLinkedRequest] = useState(0);
+  const focusLinkedRequest = useCallback((id: string | undefined) => {
+      const validId = validLinkedRequestId(id);
+      setLinkedRequestId(validId);
+      return () => setLinkedRequestId(current => current === validId ? null : current);
+  }, []);
   const [stockPos, setStockPos] = useState<PORequest[]>([]);
   const [isStockReady, setIsStockReady] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -759,6 +770,34 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
         return site ? site.name : 'Unknown Site';
     }, [sites]);
 
+    // The Sydney Teams link may open a single authorized requisition while a different
+    // site filter is selected. Never enlarge the list query or change saved preferences.
+    const linkedRequestKey = isAuthenticated && !isPendingApproval && authSessionId && currentUser
+        && linkedRequestId && !activeSiteIds.includes(SYDNEY_APPROVAL_SITE_ID)
+        && (currentUser.siteIds?.includes(SYDNEY_APPROVAL_SITE_ID) || userSites.some(s => s.id === SYDNEY_APPROVAL_SITE_ID))
+        ? `${authSessionId}:${currentUser.id}:${linkedRequestId}`
+        : null;
+    useEffect(() => {
+        if (!linkedRequestKey || !linkedRequestId) {
+            setLinkedRequestResult(null);
+            return;
+        }
+        const controller = new AbortController();
+        const finish = (row?: PORequest) => {
+            if (controller.signal.aborted) return;
+            const po = row?.id === linkedRequestId && row.siteId === SYDNEY_APPROVAL_SITE_ID ? row : null;
+            setLinkedRequestResult({ key: linkedRequestKey, po });
+        };
+        // The signed-in Supabase client's existing SELECT RLS also governs this narrow query.
+        void db.getPOs([SYDNEY_APPROVAL_SITE_ID], { id: linkedRequestId, signal: controller.signal })
+            .then(rows => finish(rows[0]), () => finish());
+        return () => controller.abort();
+    }, [linkedRequestId, linkedRequestKey, linkedRequestRefresh]);
+    const linkedRequestLoading = !!linkedRequestKey && linkedRequestResult?.key !== linkedRequestKey;
+    const focusedRequest = linkedRequestKey && linkedRequestResult?.key === linkedRequestKey ? linkedRequestResult.po : null;
+    const pos = React.useMemo(() => focusedRequest && !listedPos.some(po => po.id === focusedRequest.id)
+        ? [...listedPos, focusedRequest] : listedPos, [listedPos, focusedRequest]);
+
     // --- Data Filtering based on Active Site ---
     const filteredPos = React.useMemo(() => {
         if (!activeSiteIds.length) return []; // STRICT: No sites selected = No data
@@ -933,6 +972,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             console.error("Failed to load data", error);
         } finally {
             if (!silent) setIsLoadingData(false);
+            refreshLinkedRequest(value => value + 1);
         }
     }, [activeSiteIds, qaMode, isAuthenticated, currentUser?.id, hydrateDevelopmentData]);
 
@@ -3528,7 +3568,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     teamsWebhookUrl, updateTeamsWebhook,
     inboundEmailAddress, updateInboundEmailAddress,
     stockPos, isStockReady,
-    pos: filteredPos, allPos: pos, // Expose filtered POs as default, raw as allPos 
+    pos: filteredPos, allPos: pos, focusLinkedRequest, linkedRequestLoading, // Only detail sees the focused order. 
     suppliers, items, sites, userSites, catalog, stockSnapshots,
     emailIngestionQueue, refreshEmailIngestionQueue, updateEmailIngestionItem, claimEmailIngestionItem, downloadInboxAttachment,
     mappings, availability, attributeOptions,
@@ -3599,7 +3639,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   }), [
     currentUser, isAuthenticated, authSessionId, activeSiteIds, isLoadingAuth, isPendingApproval, isLoadingData,
     users, roles, teamsWebhookUrl, inboundEmailAddress, theme, branding,
-    filteredPos, pos, stockPos, isStockReady, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
+    filteredPos, pos, focusLinkedRequest, linkedRequestLoading, stockPos, isStockReady, suppliers, items, sites, catalog, stockSnapshots, mappings, availability, attributeOptions,
     workflowSteps, notificationRules,
     notifications, unreadNotificationCount, isNotificationDrawerOpen, isNotificationPrefsOpen, refreshNotifications,
     notificationPopups, dismissNotificationPopup, triggerNotificationPopup,

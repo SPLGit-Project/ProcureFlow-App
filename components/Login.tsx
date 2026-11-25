@@ -1,7 +1,8 @@
 
 import React from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { rememberRequestForSignIn, validRequestPath } from '../utils/requestDeepLink.mjs';
 import { Shield } from 'lucide-react';
 import { consumeSessionLogoutNotice } from '../utils/sessionState.ts';
 import procureFlowTransitionGif from '../docs/Logo Branding/LOGO-NEW/ProcureFlow_transition_.gif';
@@ -9,13 +10,16 @@ import procureFlowTransitionGif from '../docs/Logo Branding/LOGO-NEW/ProcureFlow
 const Login = () => {
   const { login, isAuthenticated, branding, isLoadingAuth } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
+  const requestPath = validRequestPath(location.state?.requestPath);
   const [logoutNotice] = React.useState(() => consumeSessionLogoutNotice());
 
   React.useEffect(() => {
     if (isAuthenticated) {
-      navigate('/');
+      if (requestPath) rememberRequestForSignIn(null);
+      navigate(requestPath ?? '/', { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, requestPath]);
 
   return (
     <div className="min-h-screen bg-app flex flex-col items-center justify-center p-4">
@@ -41,7 +45,10 @@ const Login = () => {
            <div className="space-y-4">
                <button 
                 type="button"
-                onClick={login}
+                onClick={() => {
+                  rememberRequestForSignIn(requestPath);
+                  void login();
+                }}
                 disabled={isLoadingAuth}
                 className="w-full flex items-center justify-center gap-3 bg-[#2f2f2f] hover:bg-[#1f1f1f] text-white p-3 rounded-none border border-transparent transition-all shadow-md group relative overflow-hidden"
                >

@@ -1,3 +1,5 @@
+import { SYDNEY_APPROVAL_SITE_ID, sydneyTeamsRequestUrl } from '../utils/requestDeepLink.mjs';
+
 // Safe dynamic Supabase client loader (prevents Node.js ESM evaluation crashes on window/import.meta)
 let cachedSupabase: any = null;
 async function getSupabaseClient(): Promise<any> {
@@ -625,7 +627,9 @@ export class SiteApprovalIntegrationService {
       title: `PO Approval Required: ${po.displayId || po.id}`,
       bodyText: `Purchase requisition raised by ${requester?.name || 'Staff Member'} for ${siteDisplayName}. Total: $${(po.totalAmount || 0).toFixed(2)} AUD.`,
       facts: facts.map(f => ({ title: f.label, value: f.value })),
-      actionUrl: `https://procureflow.splservices.com.au/approvals/${po.id}`,
+      actionUrl: siteId === SYDNEY_APPROVAL_SITE_ID
+        ? (sydneyTeamsRequestUrl(siteId, po.id) ?? undefined)
+        : `https://procureflow.splservices.com.au/approvals/${po.id}`,
       actionLabel: 'Review in ProcureFlow',
     });
 

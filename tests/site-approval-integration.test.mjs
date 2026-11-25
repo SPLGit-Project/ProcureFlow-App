@@ -495,6 +495,32 @@ test('8. Integrated Submit Entrypoint: Enqueues durable outbox notification to M
   assert.ok(['QUEUED', 'PREVIEW_DURABLE', 'DELIVERED'].includes(teams.status));
 });
 
+test('Sydney Teams pilot routes to its exact request with an open-only card action', async () => {
+  siteApprovalIntegrationService.clearOutbox();
+  const requestId = '00000000-0000-4000-8000-000000000042';
+  const siteId = '77777777-7777-4777-8777-777777777777';
+  await siteApprovalIntegrationService.onRequisitionCreated({
+    id: requestId,
+    displayId: 'SYNTHETIC-SYD-PILOT',
+    siteId,
+    siteName: 'SPL Sydney',
+    requesterId: 'synthetic-requester',
+    requesterName: 'Synthetic Requester',
+    totalAmount: 1,
+    status: 'PENDING_APPROVAL',
+  }, { id: 'synthetic-requester', name: 'Synthetic Requester', role: 'SITE_USER' });
+
+  const teams = siteApprovalIntegrationService.getOutbox().find(r => r.channel === 'TEAMS');
+  assert.ok(teams);
+  assert.equal(teams.site_id, siteId);
+  assert.equal(teams.recipient_email, 'david.you@splservices.com.au');
+  assert.deepEqual(teams.teams_card_payload.attachments[0].content.actions, [{
+    type: 'Action.OpenUrl',
+    title: 'Review in ProcureFlow',
+    url: `https://procureflow-app-spl.azurewebsites.net/requests/${requestId}`,
+  }]);
+});
+
 test('9. Integrated Approve Entrypoint & 48h Stock Hold Notice to Requester', async () => {
   siteApprovalIntegrationService.clearOutbox();
 
