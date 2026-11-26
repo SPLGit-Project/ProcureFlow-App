@@ -156,150 +156,144 @@ Deno.serve(async (req) => {
         });
         if (emailErr) deliveryFailures.push({ displayId, channel: "EMAIL", error: emailErr.message });
 
-        // 5c. Teams 1:1 Direct Bot or COO-only Private Channel Notification with HTTP & Audit verification
-        const teamsTargetUrl = directBotUrl || cooEscWebhookUrl;
+        // 5c. Teams 1:1 Notification (Custom ProcureFlow Approval Bot priority -> Power Automate fallback)
         let teamsStatus: "DELIVERED" | "FAILED" = "FAILED";
         let teamsError: string | null = null;
         let teamsHttpStatus: number | null = null;
+        let teamsMode = "CUSTOM_BOT";
 
-        if (!teamsTargetUrl) {
-          teamsError = "No Direct Bot or COO Escalation Teams webhook configured";
-        } else {
-          const card = {
-            type: "message",
-            attachments: [
-              {
-                contentType: "application/vnd.microsoft.card.adaptive",
-                content: {
-                  $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-                  type: "AdaptiveCard",
-                  version: "1.4",
-                  body: [
-                    {
-                      type: "Container",
-                      style: "emphasis",
-                      items: [
-                        {
-                          type: "ColumnSet",
-                          columns: [
-                            {
-                              type: "Column",
-                              width: "auto",
-                              verticalContentAlignment: "Center",
-                              items: [
-                                {
-                                  type: "Image",
-                                  url: `${APP_BASE_URL}/Procureflow_Icon.png`,
-                                  size: "Small",
-                                  width: "36px",
-                                  height: "36px",
-                                  altText: "ProcureFlow Approval Bot",
-                                },
-                              ],
-                            },
-                            {
-                              type: "Column",
-                              width: "stretch",
-                              items: [
-                                {
-                                  type: "TextBlock",
-                                  text: "ProcureFlow Approval Bot",
-                                  weight: "Bolder",
-                                  size: "Small",
-                                  color: "Attention",
-                                  spacing: "None",
-                                  wrap: true,
-                                },
-                                {
-                                  type: "TextBlock",
-                                  text: `🚨 Escalated PO Approval Required: ${displayId}`,
-                                  weight: "Bolder",
-                                  size: "Medium",
-                                  color: "Attention",
-                                  spacing: "None",
-                                  wrap: true,
-                                },
-                                {
-                                  type: "TextBlock",
-                                  text: `${wf.site_name} • COO Exclusive Escalation (${slaHours}h SLA)`,
-                                  isSubtle: true,
-                                  size: "Small",
-                                  spacing: "None",
-                                  wrap: true,
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                    {
-                      type: "TextBlock",
-                      text: `Assigned Escalation Authority: <at>${escalationName}</at>`,
-                      weight: "Bolder",
-                      size: "Small",
-                      wrap: true,
-                    },
-                    {
-                      type: "FactSet",
-                      facts: [
-                        { title: "Requisition ID", value: displayId },
-                        { title: "Facility", value: wf.site_name },
-                        { title: "Total Value", value: amountStr },
-                        { title: "SLA Breached", value: `${slaHours} hours` },
-                      ],
-                    },
-                  ],
-                  actions: [
-                    {
-                      type: "Action.OpenUrl",
-                      title: "Approve in ProcureFlow",
-                      url: approvalUrl,
-                    },
-                  ],
-                  msteams: {
-                    entities: [
+        const card = {
+          type: "message",
+          attachments: [
+            {
+              contentType: "application/vnd.microsoft.card.adaptive",
+              content: {
+                $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+                type: "AdaptiveCard",
+                version: "1.4",
+                body: [
+                  {
+                    type: "Container",
+                    style: "emphasis",
+                    items: [
                       {
-                        type: "mention",
-                        text: `<at>${escalationName}</at>`,
-                        mentioned: {
-                          id: escalationEmail,
-                          name: escalationName,
-                        },
+                        type: "ColumnSet",
+                        columns: [
+                          {
+                            type: "Column",
+                            width: "auto",
+                            verticalContentAlignment: "Center",
+                            items: [
+                              {
+                                type: "Image",
+                                url: `${APP_BASE_URL}/Procureflow_Icon.png`,
+                                size: "Small",
+                                width: "36px",
+                                height: "36px",
+                                altText: "ProcureFlow Approval Bot",
+                              },
+                            ],
+                          },
+                          {
+                            type: "Column",
+                            width: "stretch",
+                            items: [
+                              {
+                                type: "TextBlock",
+                                text: "ProcureFlow Approval Bot",
+                                weight: "Bolder",
+                                size: "Small",
+                                color: "Attention",
+                                spacing: "None",
+                                wrap: true,
+                              },
+                              {
+                                type: "TextBlock",
+                                text: `🚨 Escalated PO Approval Required: ${displayId}`,
+                                weight: "Bolder",
+                                size: "Medium",
+                                color: "Attention",
+                                spacing: "None",
+                                wrap: true,
+                              },
+                              {
+                                type: "TextBlock",
+                                text: `${wf.site_name} • COO Exclusive Escalation (${slaHours}h SLA)`,
+                                isSubtle: true,
+                                size: "Small",
+                                spacing: "None",
+                                wrap: true,
+                              },
+                            ],
+                          },
+                        ],
                       },
                     ],
                   },
+                  {
+                    type: "TextBlock",
+                    text: `Assigned Escalation Authority: <at>${escalationName}</at>`,
+                    weight: "Bolder",
+                    size: "Small",
+                    wrap: true,
+                  },
+                  {
+                    type: "FactSet",
+                    facts: [
+                      { title: "Requisition ID", value: displayId },
+                      { title: "Facility", value: wf.site_name },
+                      { title: "Total Value", value: amountStr },
+                      { title: "SLA Breached", value: `${slaHours} hours` },
+                    ],
+                  },
+                ],
+                actions: [
+                  {
+                    type: "Action.OpenUrl",
+                    title: "Approve in ProcureFlow",
+                    url: approvalUrl,
+                  },
+                ],
+                msteams: {
+                  entities: [
+                    {
+                      type: "mention",
+                      text: `<at>${escalationName}</at>`,
+                      mentioned: {
+                        id: escalationEmail,
+                        name: escalationName,
+                      },
+                    },
+                  ],
                 },
               },
-            ],
-          };
+            },
+          ],
+        };
 
-          const outbound = directBotUrl
-            ? {
+        try {
+          const { data: teamsData, error: teamsErr } = await supabaseAdmin.functions.invoke(
+            "send-teams-notification",
+            {
+              body: {
                 recipientEmail: escalationEmail,
                 recipientName: escalationName,
                 siteId: wf.site_id,
                 eventType: "PO_ESCALATED_TO_COO",
                 title: inAppTitle,
                 card,
-              }
-            : card;
-
-          try {
-            const resp = await fetch(teamsTargetUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(outbound),
-            });
-            teamsHttpStatus = resp.status;
-            if (resp.ok) {
-              teamsStatus = "DELIVERED";
-            } else {
-              teamsError = `Teams webhook returned HTTP ${resp.status}`;
+              },
             }
-          } catch (fetchErr: unknown) {
-            teamsError = fetchErr instanceof Error ? fetchErr.message : "Teams fetch exception";
+          );
+          teamsHttpStatus = teamsData?.status || null;
+          teamsMode = teamsData?.mode || (directBotUrl ? "DIRECT_BOT" : "CHANNEL_WEBHOOK");
+          if (!teamsErr && teamsData?.success) {
+            teamsStatus = "DELIVERED";
+          } else {
+            teamsError = teamsErr?.message || teamsData?.error || "Teams dispatch failed";
           }
+        } catch (fetchErr: unknown) {
+          teamsError = fetchErr instanceof Error ? fetchErr.message : "Teams invoke exception";
         }
 
         await supabaseAdmin.from("site_workflow_notification_outbox").insert({
@@ -328,7 +322,7 @@ Deno.serve(async (req) => {
           status: teamsStatus,
           title: inAppTitle,
           payload: {
-            mode: directBotUrl ? "DIRECT_BOT" : "CHANNEL_WEBHOOK",
+            mode: teamsMode,
             siteId: wf.site_id,
             displayId,
             httpStatus: teamsHttpStatus,

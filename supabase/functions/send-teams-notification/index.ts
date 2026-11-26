@@ -6,7 +6,77 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
+
+async function trySendViaCustomBot(params: {
+  supabaseAdmin: ReturnType<typeof createClient>;
+  recipientEmail: string;
+  card: Record<string, unknown>;
+}): Promise<{ delivered: boolean; error?: string; httpStatus?: number }> {
+  const botAppId = Deno.env.get("TEAMS_BOT_APP_ID") || "";
+  const botAppSecret = Deno.env.get("TEAMS_BOT_APP_SECRET") || "";
+  const tenantId = Deno.env.get("AZURE_TENANT_ID") || "";
+  if (!botAppId || !botAppSecret || !tenantId || !params.recipientEmail) {
+    return { delivered: false };
+  }
+
+  const emailLower = params.recipientEmail.toLowerCase();
+  const { data: install } = await params.supabaseAdmin
+    .from("teams_bot_installations")
+    .select("conversation_id, service_url")
+    .eq("user_email", emailLower)
+    .maybeSingle();
+
+  if (!install?.conversation_id || !install?.service_url) {
+    return { delivered: false, error: "Custom bot not yet installed for recipient" };
+  }
+
+  try {
+    const tokenResp = await fetch(
+      `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "client_credentials",
+          client_id: botAppId,
+          client_secret: botAppSecret,
+          scope: "https://api.botframework.com/.default",
+        }),
+      }
+    );
+    if (!tokenResp.ok) {
+      return { delivered: false, error: `Bot token HTTP ${tokenResp.status}` };
+    }
+    const { access_token } = await tokenResp.json();
+    if (!access_token) return { delivered: false, error: "Missing Bot Framework token" };
+
+    const serviceBase = String(install.service_url).replace(/\/+$/, "");
+    const activityUrl = `${serviceBase}/v3/conversations/${encodeURIComponent(install.conversation_id)}/activities`;
+    const resp = await fetch(activityUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "message",
+        attachments: (params.card as any)?.attachments || [],
+      }),
+    });
+
+    return {
+      delivered: resp.ok,
+      httpStatus: resp.status,
+      error: resp.ok ? undefined : `Bot Framework HTTP ${resp.status}`,
+    };
+  } catch (err: unknown) {
+    return {
+      delivered: false,
+      error: err instanceof Error ? err.message : "Custom bot exception",
+    };
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -19,6 +89,7 @@ Deno.serve(async (req) => {
         status: "online",
         function: "send-teams-notification",
         version: VERSION,
+        hasCustomBot: Boolean(Deno.env.get("TEAMS_BOT_APP_ID")),
         timestamp: new Date().toISOString(),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -54,7 +125,32 @@ Deno.serve(async (req) => {
       throw new Error("Adaptive Card payload ('card') is required.");
     }
 
-    // Strictly resolve destination from approved server-side app_config (ignore any client-supplied URL)
+    // Priority 1: Dedicated Custom Teams Bot ('ProcureFlow Approval Bot') if installed for recipient
+    if (recipientEmail) {
+      const customRes = await trySendViaCustomBot({ supabaseAdmin, recipientEmail, card });
+      if (customRes.delivered) {
+        await supabaseAdmin.from("notification_delivery_logs").insert({
+          event_type: eventType || "TEAMS_NOTIFICATION",
+          channel: "TEAMS",
+          recipient: recipientEmail,
+          status: "DELIVERED",
+          title: title || "ProcureFlow Approval Notification",
+          payload: { mode: "CUSTOM_BOT", siteId: siteId || null, httpStatus: customRes.httpStatus },
+          error_message: null,
+        });
+        return new Response(
+          JSON.stringify({
+            success: true,
+            mode: "CUSTOM_BOT",
+            recipientEmail,
+            status: customRes.httpStatus || 200,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+        );
+      }
+    }
+
+    // Priority 2: Approved server-side app_config (Power Automate 1:1 Direct Bot or site/COO webhook)
     const { data: configs, error: cfgErr } = await supabaseAdmin
       .from("app_config")
       .select("key, value")
@@ -92,7 +188,6 @@ Deno.serve(async (req) => {
       targetUrl = directBotUrl;
       resolvedMode = "DIRECT_BOT";
     } else if (isEscalation) {
-      // Escalations never fall back to site/public channels
       targetUrl = cooEscUrl;
       resolvedMode = "CHANNEL_WEBHOOK";
     } else if (siteId && siteWebhooks[siteId]) {

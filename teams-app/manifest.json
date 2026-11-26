@@ -1,0 +1,35 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "38ae4167-b303-49a6-8814-f33312be45b3",
+  "developer": {
+    "name": "Specialised Linen Services (SPL)",
+    "websiteUrl": "https://procureflow-app-spl.azurewebsites.net",
+    "privacyUrl": "https://procureflow-app-spl.azurewebsites.net",
+    "termsOfUseUrl": "https://procureflow-app-spl.azurewebsites.net"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "ProcureFlow Approval Bot",
+    "full": "ProcureFlow Approval Bot"
+  },
+  "description": {
+    "short": "1:1 purchase requisition approval and COO escalation alerts from ProcureFlow.",
+    "full": "Receives isolated 1:1 purchase requisition approval requests and 72-hour COO escalation alerts directly from ProcureFlow with one-click deep links."
+  },
+  "accentColor": "#0284C7",
+  "bots": [
+    {
+      "botId": "38ae4167-b303-49a6-8814-f33312be45b3",
+      "scopes": ["personal"],
+      "supportsFiles": false,
+      "isNotificationOnly": true
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": ["procureflow-app-spl.azurewebsites.net"]
+}
