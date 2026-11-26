@@ -312,6 +312,7 @@ export class DurableNotificationOutboxAdapter {
               // Strictly server-side destination resolution via Edge Function (never send webhook URLs from client)
               const { data: edgeData, error: edgeErr } = await sb.functions.invoke('send-teams-notification', {
                 body: {
+                  poId: params.poId,
                   recipientEmail: params.recipientEmail,
                   recipientName: params.recipientName,
                   siteId: params.siteId,
