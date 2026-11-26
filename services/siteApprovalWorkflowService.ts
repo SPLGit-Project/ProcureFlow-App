@@ -10,6 +10,8 @@ export const PROCUREFLOW_LOGO_URL = 'https://raw.githubusercontent.com/SPLGit-Pr
 export const PROCUREFLOW_ICON_URL = 'https://raw.githubusercontent.com/SPLGit-Project/ProcureFlow-App/main/public/Procureflow_Icon.png';
 
 export const APP_BASE_URL = 'https://procureflow-app-spl.azurewebsites.net';
+export const APPROVAL_BOT_NAME = 'ProcureFlow Approval Bot';
+export const APPROVAL_BOT_ICON_URL = `${APP_BASE_URL}/Procureflow_Icon.png`;
 
 export function getAppBaseUrl(): string {
   if (typeof window !== 'undefined' && window.location?.origin && !window.location.origin.includes('localhost')) {
@@ -52,19 +54,55 @@ export function buildSafeTeamsCard(params: {
               style: 'emphasis',
               items: [
                 {
-                  type: 'TextBlock',
-                  text: params.title,
-                  weight: 'Bolder',
-                  size: 'Medium',
-                  color: 'Accent',
-                  wrap: true,
-                },
-                {
-                  type: 'TextBlock',
-                  text: params.subtitle || 'ProcureFlow Approvals',
-                  isSubtle: true,
-                  size: 'Small',
-                  wrap: true,
+                  type: 'ColumnSet',
+                  columns: [
+                    {
+                      type: 'Column',
+                      width: 'auto',
+                      verticalContentAlignment: 'Center',
+                      items: [
+                        {
+                          type: 'Image',
+                          url: APPROVAL_BOT_ICON_URL,
+                          size: 'Small',
+                          width: '36px',
+                          height: '36px',
+                          altText: APPROVAL_BOT_NAME,
+                        },
+                      ],
+                    },
+                    {
+                      type: 'Column',
+                      width: 'stretch',
+                      items: [
+                        {
+                          type: 'TextBlock',
+                          text: APPROVAL_BOT_NAME,
+                          weight: 'Bolder',
+                          size: 'Small',
+                          color: 'Accent',
+                          spacing: 'None',
+                          wrap: true,
+                        },
+                        {
+                          type: 'TextBlock',
+                          text: params.title,
+                          weight: 'Bolder',
+                          size: 'Medium',
+                          spacing: 'None',
+                          wrap: true,
+                        },
+                        {
+                          type: 'TextBlock',
+                          text: params.subtitle || 'ProcureFlow Approval Notification',
+                          isSubtle: true,
+                          size: 'Small',
+                          spacing: 'None',
+                          wrap: true,
+                        },
+                      ],
+                    },
+                  ],
                 },
               ],
             },
