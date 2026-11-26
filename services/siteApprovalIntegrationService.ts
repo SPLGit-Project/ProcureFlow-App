@@ -325,7 +325,19 @@ export class DurableNotificationOutboxAdapter {
                 initialStatus = 'DELIVERED';
                 deliveredAt = new Date().toISOString();
               } else {
-                lastError = edgeErr?.message || edgeData?.error || 'Teams edge function dispatch failed';
+                let edgeDetail = edgeErr?.message || edgeData?.error || 'Teams edge function dispatch failed';
+                const errCtx = (edgeErr as any)?.context;
+                if (errCtx && typeof errCtx.clone === 'function') {
+                  try {
+                    const detailText = await errCtx.clone().text();
+                    if (detailText) {
+                      edgeDetail = `HTTP ${errCtx.status}: ${detailText.slice(0, 300)}`;
+                    }
+                  } catch {
+                    // Ignore body parse errors
+                  }
+                }
+                lastError = edgeDetail;
               }
             }
           } catch (err: any) {
