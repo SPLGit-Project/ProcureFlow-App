@@ -4,6 +4,7 @@ import { normalizeItemCode } from '../utils/normalization.ts';
 import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeItemPriceOptions } from '../utils/itemPricing.ts';
 import { normalizeSupplierContacts } from '../utils/suppliers.ts';
 import { calculateLinePricing, calculatePOTotals, roundCurrency } from '../utils/taxCalculations.ts';
+import { validLinkedRequestId } from '../utils/requestDeepLink.mjs';
 
 
 
@@ -707,7 +708,8 @@ export const db = {
         })) as PORequest[];
     },
 
-    getPOs: async (siteIds?: string[]): Promise<PORequest[]> => {
+    getPOs: async (siteIds?: string[], exactRequest?: { id: string; signal: AbortSignal }): Promise<PORequest[]> => {
+        if (exactRequest && (!(siteIds?.length === 1) || !validLinkedRequestId(exactRequest.id))) return [];
         let query = supabase
             .from('po_requests')
             .select(`
@@ -727,6 +729,7 @@ export const db = {
             return [];
         }
 
+        if (exactRequest) query = query.eq('id', exactRequest.id).limit(1).abortSignal(exactRequest.signal);
         const { data, error } = await query;
         if (error) {
             console.error("Error in getPOs:", error);

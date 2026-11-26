@@ -54,7 +54,9 @@ interface PODetailEditDraft {
 const PODetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { pos, allPos, suppliers, items, sites, updatePOStatus, reReservePOStock, getEffectiveStock, getStockBreakdown, isStockReady, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
+  const { pos, allPos, focusLinkedRequest, linkedRequestLoading, isLoadingData, suppliers, items, sites, updatePOStatus, reReservePOStock, getEffectiveStock, getStockBreakdown, isStockReady, updatePendingPO, submitDraftPO, currentUser, hasPermission, addDelivery, linkConcurPO, linkConcurRequest, reloadData, deletePO, isUserAdmin, canApproveOrder, canReceiveOrder, canApproveAmount, updatePOLinesNeedByDate } = useApp();
+  
+  useEffect(() => focusLinkedRequest(id), [focusLinkedRequest, id]);
   
   const [activeTab, setActiveTab] = useState<'LINES' | 'DELIVERIES' | 'HISTORY' | 'AUDIT'>('LINES');
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -485,7 +487,7 @@ const PODetail = () => {
     setEditableLines([]);
   }, [canEditRequest, editDraftKey, isEditing]);
 
-  if (!po) return <div className="p-8 text-primary dark:text-white">PO Not Found</div>;
+  if (!po) return <div className="p-8 text-primary dark:text-white">{isLoadingData || linkedRequestLoading ? 'Loading purchase request…' : 'PO Not Found'}</div>;
 
   const linesInView = isEditing ? editableLines : po.lines;
 

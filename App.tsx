@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { takeRequestAfterSignIn, validRequestPath } from './utils/requestDeepLink.mjs';
 import { AppProvider, useApp } from './context/AppContext.tsx';
 import Layout from './components/Layout.tsx';
 import Login from './components/Login.tsx';
@@ -98,44 +99,9 @@ const LoadingSpinner = () => (
     </div>
 );
 
-const POST_LOGIN_REDIRECT_KEY = 'pf_post_login_redirect';
-
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
     const { isAuthenticated, isPendingApproval, isLoadingAuth } = useApp();
-    const location = useLocation();
-    const navigate = useNavigate();
-
-    useEffect(() => {
-        if (!isLoadingAuth && !isAuthenticated) {
-            const target = `${location.pathname}${location.search}${location.hash}`;
-            if (
-                target &&
-                target !== '/' &&
-                !target.startsWith('/login') &&
-                !target.startsWith('/pending-approval') &&
-                !target.startsWith('/invite')
-            ) {
-                try {
-                    sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, target);
-                } catch {
-                    // Ignore storage failures in restricted contexts
-                }
-            }
-            return;
-        }
-
-        if (!isLoadingAuth && isAuthenticated && !isPendingApproval && location.pathname === '/') {
-            try {
-                const savedRedirect = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
-                if (savedRedirect && savedRedirect.startsWith('/') && !savedRedirect.startsWith('//')) {
-                    sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
-                    navigate(savedRedirect, { replace: true });
-                }
-            } catch {
-                // Ignore storage failures
-            }
-        }
-    }, [isLoadingAuth, isAuthenticated, isPendingApproval, location.pathname, location.search, location.hash, navigate]);
+    const { pathname } = useLocation();
     
     if (isLoadingAuth) {
         return (
@@ -146,7 +112,7 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
     }
 
     if (!isAuthenticated) {
-        return <Navigate to="/login" replace state={{ from: location }} />;
+        return <Navigate to="/login" state={{ requestPath: validRequestPath(pathname) }} replace />;
     }
 
     if (isPendingApproval) {
@@ -154,6 +120,21 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
     }
 
     return <>{children}</>;
+};
+
+// Microsoft OAuth still uses the configured app-root callback. Resume once
+// authentication and account approval have both passed the surrounding guard.
+const HomeAfterSignIn = () => {
+    const navigate = useNavigate();
+    const [ready, setReady] = React.useState(false);
+
+    React.useEffect(() => {
+        const requestPath = takeRequestAfterSignIn();
+        if (requestPath) navigate(requestPath, { replace: true });
+        else setReady(true);
+    }, [navigate]);
+
+    return ready ? <Home /> : <LoadingSpinner />;
 };
 
 function App() {
@@ -168,7 +149,7 @@ function App() {
             <Route path="/pending-approval" element={<PendingApproval />} />
             
             <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
-              <Route index element={<Suspense fallback={<LoadingSpinner />}><Home /></Suspense>} />
+              <Route index element={<Suspense fallback={<LoadingSpinner />}><HomeAfterSignIn /></Suspense>} />
               <Route path="dashboard" element={<Navigate to="/procurement/dashboard" replace />} />
               <Route path="procurement" element={<Navigate to="/procurement/dashboard" replace />} />
               <Route path="procurement/dashboard" element={<Suspense fallback={<LoadingSpinner />}><Dashboard /></Suspense>} />
