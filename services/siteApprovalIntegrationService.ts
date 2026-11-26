@@ -736,6 +736,33 @@ export class SiteApprovalIntegrationService {
         bodyHtml: `<p>Your purchase requisition for <strong>${siteDisplayName}</strong> has been approved by <strong>${approver.name || 'Site Manager'}</strong>.</p><p style="color: #0284c7; font-weight: bold;">48-Hour Supplier Stock Reservation Hold is now active.</p><p>Please raise the Concur Purchase Request and log the PR number in ProcureFlow.</p>`,
       }),
     });
+
+    const approvedCard = buildSafeTeamsCard({
+      title: `Request Approved: ${po.displayId || po.id}`,
+      subtitle: `${siteDisplayName} • Approved by ${approver.name || 'Site Manager'}`,
+      bodyText: `Your purchase request has been approved (48-hour supplier stock reservation hold active). Total: $${(po.totalAmount || 0).toFixed(2)} AUD. Please proceed to create the Concur PR and log the PR number in ProcureFlow.`,
+      facts: [
+        { title: 'Site', value: siteDisplayName },
+        { title: 'Order Total', value: `$${(po.totalAmount || 0).toFixed(2)} AUD` },
+        { title: 'Approved By', value: approver.name || 'Site Approval Manager' },
+      ],
+      actionUrl: `${getAppBaseUrl()}/requests/${po.id}`,
+      actionLabel: 'Open in ProcureFlow',
+    });
+
+    await this.outbox.enqueue({
+      eventType: 'PO_APPROVED_PROCEED_TO_CONCUR',
+      poId: po.id,
+      displayId: po.displayId || po.id,
+      siteId,
+      recipientId: requesterId,
+      recipientName: requesterName,
+      recipientEmail: requesterEmail,
+      channel: 'TEAMS',
+      title: `Request Approved: ${po.displayId || po.id}`,
+      body: `Approved by ${approver.name || 'Site Manager'}. Proceed to SAP Concur.`,
+      teamsCardPayload: approvedCard,
+    });
   }
 
   /**
@@ -773,6 +800,33 @@ export class SiteApprovalIntegrationService {
       channel: 'IN_APP',
       title: `Requisition Rejected: ${po.displayId || po.id}`,
       body: `Requisition was rejected by ${rejector.name || 'Site Manager'}. Reason: ${reason || 'No reason provided'}.`,
+    });
+
+    const rejectedCard = buildSafeTeamsCard({
+      title: `Request Rejected: ${po.displayId || po.id}`,
+      subtitle: `${siteDisplayName} • Rejected by ${rejector.name || 'Site Manager'}`,
+      bodyText: `Your purchase request was rejected by ${rejector.name || 'Site Manager'}.${reason ? ` Reason: ${reason}` : ''}`,
+      facts: [
+        { title: 'Site', value: siteDisplayName },
+        { title: 'Order Total', value: `$${(po.totalAmount || 0).toFixed(2)} AUD` },
+        { title: 'Rejected By', value: rejector.name || 'Site Approval Manager' },
+      ],
+      actionUrl: `${getAppBaseUrl()}/requests/${po.id}`,
+      actionLabel: 'Review in ProcureFlow',
+    });
+
+    await this.outbox.enqueue({
+      eventType: 'PO_REJECTED',
+      poId: po.id,
+      displayId: po.displayId || po.id,
+      siteId,
+      recipientId: requesterId,
+      recipientName: requesterName,
+      recipientEmail: requesterEmail,
+      channel: 'TEAMS',
+      title: `Request Rejected: ${po.displayId || po.id}`,
+      body: `Rejected by ${rejector.name || 'Site Manager'}.`,
+      teamsCardPayload: rejectedCard,
     });
   }
 
