@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -25,6 +25,11 @@ Deno.serve(async (req) => {
     );
   }
 
+  const supabaseAdmin = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
+
   try {
     const authHeader = req.headers.get("Authorization");
     const apikey = req.headers.get("apikey");
@@ -37,8 +42,6 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const {
-      mode,
-      webhookUrl,
       recipientEmail,
       recipientName,
       siteId,
@@ -51,59 +54,70 @@ Deno.serve(async (req) => {
       throw new Error("Adaptive Card payload ('card') is required.");
     }
 
-    let targetUrl = typeof webhookUrl === "string" ? webhookUrl.trim() : "";
-    let resolvedMode = mode || "CHANNEL_WEBHOOK";
+    // Strictly resolve destination from approved server-side app_config (ignore any client-supplied URL)
+    const { data: configs, error: cfgErr } = await supabaseAdmin
+      .from("app_config")
+      .select("key, value")
+      .in("key", ["teams_config", "teams_webhook_url"]);
 
-    // Resolve server-side from app_config if webhookUrl wasn't passed explicitly
-    if (!targetUrl) {
-      const supabaseAdmin = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-      );
-      const { data: configs } = await supabaseAdmin
-        .from("app_config")
-        .select("key, value")
-        .in("key", ["teams_config", "teams_webhook_url"]);
+    if (cfgErr) {
+      throw new Error(`Failed to load server-side Teams config: ${cfgErr.message}`);
+    }
 
-      let directBotUrl = "";
-      let cooEscUrl = "";
-      let defaultUrl = "";
-      let siteWebhooks: Record<string, string> = {};
+    let directBotUrl = "";
+    let cooEscUrl = "";
+    let defaultUrl = "";
+    let siteWebhooks: Record<string, string> = {};
 
-      for (const row of configs || []) {
-        if (row.key === "teams_webhook_url" && typeof row.value === "string") {
-          defaultUrl = row.value;
-        } else if (row.key === "teams_config" && row.value) {
-          if (row.value.directBotWebhookUrl) directBotUrl = row.value.directBotWebhookUrl;
-          if (row.value.cooEscalationWebhookUrl) cooEscUrl = row.value.cooEscalationWebhookUrl;
-          if (row.value.webhookUrl) defaultUrl = row.value.webhookUrl;
-          if (row.value.siteWebhooks && typeof row.value.siteWebhooks === "object") {
-            siteWebhooks = row.value.siteWebhooks;
-          }
+    for (const row of configs || []) {
+      if (row.key === "teams_webhook_url" && typeof row.value === "string") {
+        defaultUrl = row.value;
+      } else if (row.key === "teams_config" && row.value) {
+        if (row.value.directBotWebhookUrl) directBotUrl = row.value.directBotWebhookUrl;
+        if (row.value.cooEscalationWebhookUrl) cooEscUrl = row.value.cooEscalationWebhookUrl;
+        if (row.value.webhookUrl) defaultUrl = row.value.webhookUrl;
+        if (row.value.siteWebhooks && typeof row.value.siteWebhooks === "object") {
+          siteWebhooks = row.value.siteWebhooks;
         }
-      }
-
-      const isEscalation =
-        eventType === "PO_ESCALATED_TO_COO" || eventType === "ESCALATION_MANAGER_ALERT";
-
-      if (directBotUrl) {
-        targetUrl = directBotUrl;
-        resolvedMode = "DIRECT_BOT";
-      } else if (isEscalation && cooEscUrl) {
-        targetUrl = cooEscUrl;
-        resolvedMode = "CHANNEL_WEBHOOK";
-      } else if (siteId && siteWebhooks[siteId]) {
-        targetUrl = siteWebhooks[siteId];
-        resolvedMode = "CHANNEL_WEBHOOK";
-      } else {
-        targetUrl = defaultUrl;
-        resolvedMode = "CHANNEL_WEBHOOK";
       }
     }
 
+    const isEscalation =
+      eventType === "PO_ESCALATED_TO_COO" || eventType === "ESCALATION_MANAGER_ALERT";
+
+    let targetUrl = "";
+    let resolvedMode: "DIRECT_BOT" | "CHANNEL_WEBHOOK" = "CHANNEL_WEBHOOK";
+
+    if (directBotUrl && recipientEmail) {
+      targetUrl = directBotUrl;
+      resolvedMode = "DIRECT_BOT";
+    } else if (isEscalation) {
+      // Escalations never fall back to site/public channels
+      targetUrl = cooEscUrl;
+      resolvedMode = "CHANNEL_WEBHOOK";
+    } else if (siteId && siteWebhooks[siteId]) {
+      targetUrl = siteWebhooks[siteId];
+      resolvedMode = "CHANNEL_WEBHOOK";
+    } else {
+      targetUrl = defaultUrl;
+      resolvedMode = "CHANNEL_WEBHOOK";
+    }
+
     if (!targetUrl) {
+      const msg = isEscalation
+        ? "No approved Direct Bot or COO Escalation Teams destination configured."
+        : "No approved Teams destination configured for this site.";
+      await supabaseAdmin.from("notification_delivery_logs").insert({
+        event_type: eventType || "TEAMS_NOTIFICATION",
+        channel: "TEAMS",
+        recipient: recipientEmail || siteId || "unconfigured",
+        status: "FAILED",
+        title: title || "ProcureFlow Notification",
+        payload: { mode: resolvedMode, siteId: siteId || null },
+        error_message: msg,
+      });
       return new Response(
-        JSON.stringify({ success: false, error: "No Teams webhook URL configured." }),
+        JSON.stringify({ success: false, error: msg }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
       );
     }
@@ -126,10 +140,33 @@ Deno.serve(async (req) => {
       body: JSON.stringify(outboundPayload),
     });
 
+    const respText = await resp.text().catch(() => "");
     if (!resp.ok) {
-      const errText = await resp.text().catch(() => "");
-      throw new Error(`Teams webhook returned HTTP ${resp.status}: ${errText}`);
+      const errMsg = `Teams webhook returned HTTP ${resp.status}`;
+      await supabaseAdmin.from("notification_delivery_logs").insert({
+        event_type: eventType || "TEAMS_NOTIFICATION",
+        channel: "TEAMS",
+        recipient: recipientEmail || siteId || "channel",
+        status: "FAILED",
+        title: title || "ProcureFlow Notification",
+        payload: { mode: resolvedMode, siteId: siteId || null, httpStatus: resp.status },
+        error_message: errMsg,
+      });
+      return new Response(
+        JSON.stringify({ success: false, error: errMsg }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 502 }
+      );
     }
+
+    await supabaseAdmin.from("notification_delivery_logs").insert({
+      event_type: eventType || "TEAMS_NOTIFICATION",
+      channel: "TEAMS",
+      recipient: recipientEmail || siteId || "channel",
+      status: "DELIVERED",
+      title: title || "ProcureFlow Notification",
+      payload: { mode: resolvedMode, siteId: siteId || null, httpStatus: resp.status },
+      error_message: null,
+    });
 
     return new Response(
       JSON.stringify({
@@ -137,6 +174,7 @@ Deno.serve(async (req) => {
         mode: resolvedMode,
         recipientEmail: recipientEmail || null,
         status: resp.status,
+        bodyPreview: respText ? respText.slice(0, 120) : null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );

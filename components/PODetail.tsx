@@ -401,7 +401,7 @@ const PODetail = () => {
     return events.sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [po]);
 
-  const canApprove = Boolean(po && po.status === 'PENDING_APPROVAL' && canApproveOrder(po));
+  const canApprove = Boolean(po && (po.status === 'PENDING_APPROVAL' || po.status === 'ESCALATED') && canApproveOrder(po));
   const canLinkConcurRequest = (hasPermission('link_concur') || po?.requesterId === currentUser?.id) && (po?.status === 'APPROVED_PENDING_CONCUR_REQUEST' || (po?.status === 'CANCELLED' && !po?.concurRequestNumber));
   const canLinkConcur = (hasPermission('link_concur') || po?.requesterId === currentUser?.id || isAdmin) && ['APPROVED_PENDING_CONCUR', 'ACTIVE', 'CANCELLED'].includes(po?.status || '');
   const canReceive = Boolean(po && (po.status === 'ACTIVE' || po.status === 'RECEIVED' || po.status === 'VARIANCE_PENDING') && canReceiveOrder(po));
@@ -440,18 +440,16 @@ const PODetail = () => {
 
   const isSodApprovalBlocked = Boolean(
     po &&
-    po.status === 'PENDING_APPROVAL' &&
+    (po.status === 'PENDING_APPROVAL' || po.status === 'ESCALATED') &&
     hasPermission('approve_requests') &&
-    !isAdmin &&
     !hasPermission('override_sod') &&
     po.requesterId === currentUser?.id
   );
 
   const isSpendLimitApprovalBlocked = Boolean(
     po &&
-    po.status === 'PENDING_APPROVAL' &&
+    (po.status === 'PENDING_APPROVAL' || po.status === 'ESCALATED') &&
     hasPermission('approve_requests') &&
-    !isAdmin &&
     !canApproveAmount(po.totalAmount || 0)
   );
   
