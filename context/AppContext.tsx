@@ -577,7 +577,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     }
 
     refreshNotifications();
-    siteApprovalWorkflowService.getSiteWorkflows().then(setSiteWorkflows).catch(() => {});
+    siteApprovalIntegrationService.getLiveWorkflows().then(setSiteWorkflows).catch(() => {});
     realtimeNotificationService.subscribe(currentUser.id, (newNotif) => {
       setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
       triggerNotificationPopup(newNotif);
@@ -2048,7 +2048,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       }
 
       return true;
-  }, [currentUser, roles]);
+  }, [currentUser, roles, siteWorkflows]);
 
   const getUserAuthorityLimits = useCallback(() => {
       if (!currentUser) {

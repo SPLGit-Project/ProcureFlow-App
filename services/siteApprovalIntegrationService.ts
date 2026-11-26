@@ -514,6 +514,45 @@ export function evaluateServerSideAuthorization(params: {
  */
 export class SiteApprovalIntegrationService {
   private outbox = new DurableNotificationOutboxAdapter();
+  private workflowStorage = new SupabaseWorkflowStorageAdapter({
+    getItem: (k: string) => {
+      try {
+        return typeof localStorage !== 'undefined' ? localStorage.getItem(k) : null;
+      } catch {
+        return null;
+      }
+    },
+    setItem: (k: string, v: string) => {
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(k, v);
+      } catch {}
+    },
+  });
+
+  async getLiveWorkflows(): Promise<SiteApprovalWorkflow[]> {
+    try {
+      const dbReady = await this.workflowStorage.checkTableAvailability();
+      if (dbReady) {
+        const workflows = await this.workflowStorage.getWorkflows();
+        if (workflows.length > 0) {
+          for (const wf of workflows) {
+            try {
+              await siteApprovalWorkflowService.saveSiteWorkflow(wf, wf.updated_by || 'Supabase Sync');
+            } catch {}
+          }
+          return workflows;
+        }
+      }
+    } catch {
+      // Fallback to local workflow service cache when offline / unit tests
+    }
+    return siteApprovalWorkflowService.getSiteWorkflows();
+  }
+
+  async resolveWorkflowForSite(siteId: string): Promise<SiteApprovalWorkflow | null> {
+    const workflows = await this.getLiveWorkflows();
+    return workflows.find(w => w.site_id === siteId) || await siteApprovalWorkflowService.getWorkflowForSite(siteId);
+  }
 
   setDispatchMode(mode: NotificationDispatchMode) {
     this.outbox.setDispatchMode(mode);
@@ -594,7 +633,7 @@ export class SiteApprovalIntegrationService {
     if (!po) return;
 
     const siteId = po.siteId || '44444444-4444-4444-8444-444444444444';
-    const workflow = await siteApprovalWorkflowService.getWorkflowForSite(siteId);
+    const workflow = await this.resolveWorkflowForSite(siteId);
 
     const siteDisplayName = (po as any).siteName || workflow?.site_name || 'SPL Facility';
     const siteManagerName = workflow?.approval_manager_name || 'Site Manager';
@@ -849,7 +888,7 @@ export class SiteApprovalIntegrationService {
     if (!po) return;
 
     const siteId = po.siteId || '44444444-4444-4444-8444-444444444444';
-    const workflow = await siteApprovalWorkflowService.getWorkflowForSite(siteId);
+    const workflow = await this.resolveWorkflowForSite(siteId);
 
     const escalationName = workflow?.escalation_manager_name || 'Ebrahim Mokhtari (COO)';
     const escalationEmail = workflow?.escalation_manager_email || 'ebrahim.mokhtari@splservices.com.au';
