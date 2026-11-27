@@ -828,3 +828,24 @@ test('15. PostgreSQL Row-Level Security: Site Managers & Approvers Update Permis
   await db.close();
 });
 
+test('16. Mutation Guard: Fails loudly on RLS silent 0-row / null-count denials (never splits po_requests vs po_approvals)', async () => {
+  const { assertMutationAffected } = await import('../utils/mutationGuard.mjs');
+
+  // Reproduces PostgREST bug where .update().select('*', { count: 'exact', head: true }) returns count: null, data: []
+  assert.throws(
+    () => assertMutationAffected({ data: [], error: null, count: null }, 'Permission denied or PO not found.'),
+    /Permission denied/,
+  );
+  assert.throws(
+    () => assertMutationAffected({ data: [], error: null, count: 0 }, 'Permission denied or PO not found.'),
+    /Permission denied/,
+  );
+  assert.throws(
+    () => assertMutationAffected({ data: [{ id: '1' }], error: null, count: null }, 'Count missing.'),
+    /Count missing/,
+  );
+  assert.doesNotThrow(() =>
+    assertMutationAffected({ data: [{ id: 'po-1' }], error: null, count: 1 }, 'Should pass')
+  );
+});
+

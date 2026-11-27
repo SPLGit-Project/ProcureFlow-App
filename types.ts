@@ -619,6 +619,7 @@ export interface POLineItem {
 }
 
 export interface ApprovalEvent {
+  approverId?: string;
   id: string;
   approverName: string;
   date: string;

@@ -5,6 +5,7 @@ import { buildItemSpecsWithPriceOptions, getDefaultItemPriceOption, normalizeIte
 import { normalizeSupplierContacts } from '../utils/suppliers.ts';
 import { calculateLinePricing, calculatePOTotals, roundCurrency } from '../utils/taxCalculations.ts';
 import { validLinkedRequestId } from '../utils/requestDeepLink.mjs';
+import { assertMutationAffected } from '../utils/mutationGuard.mjs';
 
 
 
@@ -20,7 +21,6 @@ type DbWorkflowStepRow = { id: string; step_name: string; approver_role: string;
 type DbNotificationRuleRow = { id: string; event_type: NotificationRule['eventType']; label: string; is_active: boolean; recipients: NotificationRule['recipients'] };
 type DbAppNotificationRow = { id: string; user_id: string; title: string; message: string; is_read: boolean; link: string; created_at: string };
 type DbAttributeOptionRow = { id: string; type: AttributeOption['type']; value: string; parent_id: string; parent_ids: string[]; active_flag: boolean; created_at: string; updated_at: string };
-type DbUpdateResult = { select: (s: string, o: Record<string, unknown>) => Promise<{ error: Error | null, count: number | null }> };
 type DbSystemAuditLogRow = { id: string; action_type: string; performed_by: string; performedByName?: string; summary: Record<string, unknown>; details: Record<string, unknown>; created_at: string; };
 type DbUserRow = { id: string; auth_user_id: string; name: string; };
 // -----------------------------------------------------------
@@ -1113,6 +1113,7 @@ export const db = {
     addPOApproval: async (poId: string, approval: ApprovalEvent): Promise<void> => {
         const { error } = await supabase.from('po_approvals').insert({
             po_request_id: poId,
+            ...(approval.approverId ? { approver_id: approval.approverId } : {}),
             approver_name: approval.approverName,
             action: approval.action,
             date: approval.date,
@@ -1127,14 +1128,13 @@ export const db = {
         if (updates.date !== undefined) payload.date = updates.date;
         if (updates.receivedBy !== undefined) payload.received_by = updates.receivedBy;
 
-        const { error, count } = await (supabase
+        const res = await supabase
             .from('deliveries')
-            .update(payload)
-            .eq('id', id) as unknown as DbUpdateResult)
-            .select('*', { count: 'exact', head: true });
+            .update(payload, { count: 'exact' })
+            .eq('id', id)
+            .select('id');
 
-        if (error) throw error;
-        if (count === 0) throw new Error('Failed to update delivery header. Permission denied or record not found.');
+        assertMutationAffected(res, 'Failed to update delivery header. Permission denied or record not found.');
     },
 
     updateApprovalHistory: async (poId: string, approvalId: string, updates: { approverName?: string, date?: string, comments?: string }): Promise<void> => {
@@ -1143,15 +1143,14 @@ export const db = {
         if (updates.date !== undefined) payload.date = updates.date;
         if (updates.comments !== undefined) payload.comments = updates.comments;
 
-        const { error, count } = await (supabase
+        const res = await supabase
             .from('po_approvals')
-            .update(payload)
+            .update(payload, { count: 'exact' })
             .eq('id', approvalId)
-            .eq('po_request_id', poId) as unknown as DbUpdateResult)
-            .select('*', { count: 'exact', head: true });
+            .eq('po_request_id', poId)
+            .select('id');
 
-        if (error) throw error;
-        if (count === 0) throw new Error('Failed to update approval history. Record not found or permission denied.');
+        assertMutationAffected(res, 'Failed to update approval history. Record not found or permission denied.');
     },
 
     updateDeliveryLineFinanceInfo: async (lineId: string, updates: Partial<DeliveryLineItem>): Promise<void> => {
@@ -1161,14 +1160,13 @@ export const db = {
         if (updates.isCapitalised !== undefined) payload.is_capitalised = updates.isCapitalised;
         if (updates.capitalisedDate !== undefined) payload.capitalised_date = updates.capitalisedDate;
 
-        const { error, count } = await (supabase
+        const res = await supabase
             .from('delivery_lines')
-            .update(payload)
-            .eq('id', lineId) as unknown as DbUpdateResult)
-            .select('*', { count: 'exact', head: true });
-            
-        if (error) throw error;
-        if (count === 0) throw new Error('Failed to update finance info. Permission denied.');
+            .update(payload, { count: 'exact' })
+            .eq('id', lineId)
+            .select('id');
+
+        assertMutationAffected(res, 'Failed to update finance info. Permission denied.');
     },
 
     updateDeliveryLineQty: async (lineId: string, quantity: number): Promise<void> => {
@@ -1623,7 +1621,7 @@ export const db = {
         const specsWithPricing = buildItemSpecsWithPriceOptions(item);
         const priceOptions = normalizeItemPriceOptions({ ...item, specs: specsWithPricing });
         const defaultPrice = getDefaultItemPriceOption({ ...item, specs: specsWithPricing, priceOptions }).price;
-        const { error, count } = await (supabase.from('items').update({
+        const res = await supabase.from('items').update({
             sku: item.sku,
             name: item.name,
             description: item.description,
@@ -1655,11 +1653,9 @@ export const db = {
             cog_flag: item.cogFlag,
             cog_customer: item.cogCustomer,
             specs: specsWithPricing
-        }).eq('id', item.id) as unknown as DbUpdateResult)
-        .select('*', { count: 'exact', head: true });
+        }, { count: 'exact' }).eq('id', item.id).select('id');
 
-        if (error) throw error;
-        if (count === 0) throw new Error('Failed to update item. Permission denied or item not found.');
+        assertMutationAffected(res, 'Failed to update item. Permission denied or item not found.');
     },
 
     deleteItem: async (itemId: string): Promise<void> => {
@@ -1963,14 +1959,13 @@ export const db = {
 
     updatePOStatus: async (poId: string, status: string, extraUpdates?: Record<string, unknown>): Promise<void> => {
         const payload: Record<string, unknown> = { status, ...(extraUpdates || {}) };
-        const { error, count } = await (supabase
+        const res = await supabase
             .from('po_requests')
-            .update(payload)
-            .eq('id', poId) as unknown as DbUpdateResult)
-            .select('*', { count: 'exact', head: true });
+            .update(payload, { count: 'exact' })
+            .eq('id', poId)
+            .select('id');
 
-        if (error) throw error;
-        if (count === 0) throw new Error('Permission denied or PO not found. You may not have the rights to update this order in its current status.');
+        assertMutationAffected(res, 'Permission denied or PO not found. You may not have the rights to update this order in its current status.');
     },
 
     expireStaleReservations: async (): Promise<{ 
@@ -2035,19 +2030,13 @@ export const db = {
     },
 
     updatePOLines: async (lines: Partial<POLineItem>[]): Promise<void> => {
-        const { error, count } = await (supabase
+        if (lines.length === 0) return;
+        const res = await supabase
             .from('po_lines')
-            .upsert(lines) as unknown as DbUpdateResult)
-            .select('*', { count: 'exact', head: true });
-            
-        if (error) throw error;
-        // For upsert, we expect at least one row if lines is non-empty
-        if (lines.length > 0 && (count === null || count < lines.length)) {
-             console.warn(`updatePOLines: Expected ${lines.length} rows, but got ${count}. RLS might be blocking some updates.`);
-             // We don't throw if at least some succeeded, but we should be aware.
-             // Actually, for consistency, if ANY fail, it's a problem.
-             if (count === 0) throw new Error('Failed to update line items. Permission denied.');
-        }
+            .upsert(lines, { count: 'exact' })
+            .select('id');
+
+        assertMutationAffected(res, 'Failed to update line items. Permission denied.', lines.length);
     },
 
     updatePOLine: async (id: string, updates: Partial<POLineItem>): Promise<void> => {
@@ -2057,14 +2046,13 @@ export const db = {
         if (updates.totalPrice !== undefined) payload.total_price = updates.totalPrice;
         if (updates.needByDate !== undefined) payload.need_by_date = updates.needByDate ? updates.needByDate.split('T')[0] : null;
 
-        const { error, count } = await (supabase
+        const res = await supabase
             .from('po_lines')
-            .update(payload)
-            .eq('id', id) as unknown as DbUpdateResult)
-            .select('*', { count: 'exact', head: true });
-            
-        if (error) throw error;
-        if (count === 0) throw new Error('Failed to update line item. Permission denied.');
+            .update(payload, { count: 'exact' })
+            .eq('id', id)
+            .select('id');
+
+        assertMutationAffected(res, 'Failed to update line item. Permission denied.');
     },
 
     updatePOsNeedByDate: async (poIds: string[], needByDate: string): Promise<void> => {

@@ -19,6 +19,7 @@ import { formatCurrency } from '../utils/taxCalculations';
 import { db } from '../services/db';
 import { evaluatePOTrigger, evaluateAllStagesStatus } from '../utils/lifecycleTriggers';
 import { siteApprovalWorkflowService, SiteApprovalWorkflow } from '../services/siteApprovalWorkflowService';
+import { siteApprovalIntegrationService } from '../services/siteApprovalIntegrationService';
 
 // ── ProcureFlow Role-Tailored Insights Engine ─────────────────────────────────
 
@@ -301,7 +302,8 @@ export function getPOStageInfo(
   const canLinkConcur = hasPermission('link_concur');
   const isRequester = po.requesterId === currentUser?.id;
 
-  const workflow = siteWorkflows.find(w => w.site_id === po.siteId && w.is_active);
+  const workflow = siteWorkflows.find(w => w.site_id === po.siteId && w.is_active)
+    || siteApprovalWorkflowService.getWorkflowForSiteSync(po.siteId);
   const userEmailLower = (currentUser?.email || '').toLowerCase();
   const isAssignedSiteManager = Boolean(
     workflow &&
@@ -425,7 +427,7 @@ export default function Home() {
 
   const [siteWorkflows, setSiteWorkflows] = useState<SiteApprovalWorkflow[]>([]);
   useEffect(() => {
-    siteApprovalWorkflowService.getSiteWorkflows().then(setSiteWorkflows).catch(() => {});
+    siteApprovalIntegrationService.getLiveWorkflows().then(setSiteWorkflows).catch(() => {});
   }, []);
 
   // Selected stage filter (null = "REQUESTS AWAITING COMPLETION" | 1 | 2 | 3 | 4 | 5 | 6)
@@ -966,18 +968,18 @@ export default function Home() {
           ) : (
             // In specific Stage filter mode:
             <>
-              {stageInfo.actionType === 'APPROVE' && (isApprover || isAdmin) && (
+              {stageInfo.actionType === 'APPROVE' && stageInfo.canAction && (
                 <button
                   type="button"
                   onClick={() => handleOpenActionModal(po)}
                   className="flex-1 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <ShieldCheck size={14} />
-                  <span>Review &amp; Approve</span>
+                  <span>{po.status === 'ESCALATED' ? 'COO Escalation Review' : 'Review & Approve'}</span>
                 </button>
               )}
 
-              {stageInfo.actionType === 'CONCUR_REQ' && (canLinkConcur || isAdmin || po.requesterId === currentUser?.id) && (
+              {stageInfo.actionType === 'CONCUR_REQ' && stageInfo.canAction && (
                 <button
                   type="button"
                   onClick={() => handleOpenActionModal(po)}
@@ -988,7 +990,7 @@ export default function Home() {
                 </button>
               )}
 
-              {stageInfo.actionType === 'CONCUR_PO' && (canLinkConcur || isAdmin) && (
+              {stageInfo.actionType === 'CONCUR_PO' && stageInfo.canAction && (
                 <button
                   type="button"
                   onClick={() => handleOpenActionModal(po)}

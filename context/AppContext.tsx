@@ -2711,7 +2711,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             extraUpdates.reservation_expires_at = null;
         }
         await db.updatePOStatus(poId, status, extraUpdates);
-        await db.addPOApproval(poId, event);
+        await db.addPOApproval(poId, { ...event, approverId: event.approverId || currentUser?.id });
         
         // NOTIFICATION TRIGGER
         if (status === 'APPROVED_PENDING_CONCUR' || status === 'APPROVED_PENDING_CONCUR_REQUEST') {
